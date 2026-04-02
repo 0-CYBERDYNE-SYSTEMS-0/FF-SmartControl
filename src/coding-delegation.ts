@@ -10,18 +10,15 @@ export type DelegationTrigger =
   | 'coding'
   | 'coder-plan'
   | 'coder_plan'
-  | 'alias';
+  | 'coder-create-project'
+  | 'coder_create_project';
 
 interface DelegationParseResult {
   hint: CodingHint;
   trigger: DelegationTrigger;
   instruction: string | null;
+  projectSlug?: string | null;
 }
-
-const EXACT_ALIAS_PHRASES = new Set([
-  'use coding agent',
-  'use your coding agent skill',
-]);
 
 const TELEGRAM_COMMAND_SUFFIX = '(?:@[A-Za-z0-9_]+)?';
 const CODER_PLAN_PATTERN = new RegExp(
@@ -34,6 +31,14 @@ const CODER_DASH_PLAN_PATTERN = new RegExp(
 );
 const CODER_PATTERN = new RegExp(`^/coder${TELEGRAM_COMMAND_SUFFIX}\\b`, 'i');
 const CODING_PATTERN = new RegExp(`^/coding${TELEGRAM_COMMAND_SUFFIX}\\b`, 'i');
+const CODER_CREATE_PROJECT_PATTERN = new RegExp(
+  `^/coder_create_project${TELEGRAM_COMMAND_SUFFIX}\\s+([A-Za-z0-9._-]+)\\b`,
+  'i',
+);
+const CODER_DASH_CREATE_PROJECT_PATTERN = new RegExp(
+  `^/coder-create-project${TELEGRAM_COMMAND_SUFFIX}\\s+([A-Za-z0-9._-]+)\\b`,
+  'i',
+);
 
 export function normalizeDelegationAlias(text: string): string {
   return text
@@ -46,6 +51,20 @@ export function normalizeDelegationAlias(text: string): string {
 
 export function parseDelegationTrigger(text: string): DelegationParseResult {
   const trimmed = text.trimStart();
+  const createProjectMatch =
+    trimmed.match(CODER_CREATE_PROJECT_PATTERN) ??
+    trimmed.match(CODER_DASH_CREATE_PROJECT_PATTERN);
+  if (createProjectMatch) {
+    const matchedText = createProjectMatch[0] || '';
+    return {
+      hint: 'force_delegate_plan',
+      trigger: matchedText.includes('/coder-create-project')
+        ? 'coder-create-project'
+        : 'coder_create_project',
+      instruction: trimmed.slice(matchedText.length).trim() || null,
+      projectSlug: createProjectMatch[1]?.trim() || null,
+    };
+  }
 
   if (CODER_PLAN_PATTERN.test(trimmed)) {
     return {
@@ -79,16 +98,7 @@ export function parseDelegationTrigger(text: string): DelegationParseResult {
     };
   }
 
-  const normalized = normalizeDelegationAlias(trimmed);
-  if (EXACT_ALIAS_PHRASES.has(normalized)) {
-    return {
-      hint: 'force_delegate_execute',
-      trigger: 'alias',
-      instruction: null,
-    };
-  }
-
-  return { hint: 'none', trigger: 'none', instruction: null };
+  return { hint: 'none', trigger: 'none', instruction: null, projectSlug: null };
 }
 
 const CODING_ACTION_PATTERNS = [

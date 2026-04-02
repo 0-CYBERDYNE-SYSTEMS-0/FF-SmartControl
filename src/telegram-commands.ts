@@ -220,9 +220,31 @@ export interface TelegramCommandDeps {
     assistantName: string;
     sessionKey: string;
     group: any;
+    workspaceRoot?: string;
     runtimePrefs?: Record<string, any>;
     abortController?: AbortController;
   }) => Promise<CodingRunResult>;
+  prepareCoderTarget?: (params: {
+    chatJid: string;
+    mode: 'plan' | 'execute';
+    taskText: string;
+    requestId: string;
+  }) => Promise<
+    | {
+        status: 'ready';
+        workspaceRoot: string;
+        taskText: string;
+        projectLabel: string;
+      }
+    | { status: 'handled' }
+  >;
+  createCoderProject?: (params: {
+    slug: string;
+  }) => Promise<{
+    workspaceRoot: string;
+    projectLabel: string;
+    isGitRepo: boolean;
+  }>;
   setTyping: (chatJid: string, typing: boolean) => Promise<void>;
   persistAssistantHistory: (
     chatJid: string,
@@ -254,6 +276,131 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
   handleTelegramSetupInput: (m: TelegramSetupInputMessage) => Promise<boolean>;
   handleTelegramCommand: (m: TelegramCommandMessage) => Promise<boolean>;
 } {
+  async function startCoderRun(params: {
+    chatJid: string;
+    requestId: string;
+    mode: 'plan' | 'execute';
+    route: 'coder_execute' | 'coder_plan';
+    taskText: string;
+    workspaceRoot: string;
+    projectLabel: string;
+  }): Promise<void> {
+    const group = deps.state.registeredGroups[params.chatJid];
+    if (!group) {
+      await deps.sendMessage(params.chatJid, 'Chat is not registered.');
+      return;
+    }
+
+    const existingRun = deps.activeChatRuns.get(params.chatJid);
+    if (existingRun) {
+      await deps.sendMessage(
+        params.chatJid,
+        `Cannot start coder while another run is active (${existingRun.requestId || 'unknown'}). Use /stop first.`,
+      );
+      return;
+    }
+
+    const abortController = new AbortController();
+    const activeRun = {
+      chatJid: params.chatJid,
+      startedAt: Date.now(),
+      requestId: params.requestId,
+      abortController,
+    };
+    deps.activeChatRuns.set(params.chatJid, activeRun);
+    deps.activeChatRunsById?.set(params.requestId, activeRun);
+    deps.emitTuiChatEvent({
+      runId: params.requestId,
+      sessionKey: deps.getSessionKeyForChat(params.chatJid),
+      state: 'message',
+      message: { role: 'system', content: `Starting ${params.mode === 'plan' ? 'coder plan' : 'coder'} run (${params.requestId}) for ${params.projectLabel}...` },
+    });
+    deps.emitTuiAgentEvent({
+      runId: params.requestId,
+      sessionKey: deps.getSessionKeyForChat(params.chatJid),
+      phase: 'start',
+      detail: 'running',
+    });
+    await deps.sendMessage(
+      params.chatJid,
+      params.mode === 'plan'
+        ? `Starting coder plan run (${params.requestId}) for ${params.projectLabel}...`
+        : `Starting coder run (${params.requestId}) for ${params.projectLabel}...`,
+    );
+    await deps.setTyping(params.chatJid, true);
+    try {
+      const run = deps.runCodingTask
+        ? await deps.runCodingTask({
+            requestId: params.requestId,
+            mode: params.mode,
+            route: params.route,
+            originChatJid: params.chatJid,
+            originGroupFolder: group.folder,
+            taskText: params.taskText,
+            workspaceMode:
+              params.mode === 'plan' ? 'read_only' : 'ephemeral_worktree',
+            timeoutSeconds: 1800,
+            allowFanout: params.mode === 'execute',
+            sessionContext: `[APPROVED CODER ${params.mode.toUpperCase()} REQUEST]\n${params.taskText}`,
+            assistantName: deps.constants.assistantName,
+            sessionKey: deps.getSessionKeyForChat(params.chatJid),
+            group,
+            workspaceRoot: params.workspaceRoot,
+            runtimePrefs: deps.state.chatRunPreferences[params.chatJid] || {},
+            abortController,
+          })
+        : await deps.runAgent(
+            group,
+            `[APPROVED CODER ${params.mode.toUpperCase()} REQUEST]\n${params.taskText}`,
+            params.chatJid,
+            params.mode === 'plan' ? 'force_delegate_plan' : 'force_delegate_execute',
+            params.requestId,
+            deps.state.chatRunPreferences[params.chatJid] || {},
+            {},
+            abortController.signal,
+          );
+      deps.updateChatUsage(params.chatJid, run.usage);
+      if (!run.ok) {
+        deps.emitTuiChatEvent({
+          runId: params.requestId,
+          sessionKey: deps.getSessionKeyForChat(params.chatJid),
+          state: 'error',
+          errorMessage: 'Coder run failed',
+        });
+        deps.emitTuiAgentEvent({
+          runId: params.requestId,
+          sessionKey: deps.getSessionKeyForChat(params.chatJid),
+          phase: 'error',
+          detail: 'coder run failed',
+        });
+      } else if (run.result) {
+        deps.persistAssistantHistory(params.chatJid, run.result, params.requestId);
+        if (!run.streamed) {
+          await deps.sendAgentResultMessage(params.chatJid, run.result);
+        }
+        deps.emitTuiChatEvent({
+          runId: params.requestId,
+          sessionKey: deps.getSessionKeyForChat(params.chatJid),
+          state: 'final',
+          message: { role: 'assistant', content: run.result },
+          usage: run.usage,
+        });
+        deps.emitTuiAgentEvent({
+          runId: params.requestId,
+          sessionKey: deps.getSessionKeyForChat(params.chatJid),
+          phase: 'end',
+          detail: run.streamed ? 'streamed' : 'complete',
+        });
+      }
+    } finally {
+      if (deps.activeChatRuns.get(params.chatJid) === activeRun) {
+        deps.activeChatRuns.delete(params.chatJid);
+      }
+      deps.activeChatRunsById?.delete(params.requestId);
+      await deps.setTyping(params.chatJid, false);
+    }
+  }
+
   async function handleTelegramCallbackQuery(
     q: TelegramCommandCallbackQuery,
   ): Promise<void> {
@@ -271,6 +418,136 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
     );
     if (settingsAction) {
       switch (settingsAction.kind) {
+        case 'coder-approve-plan':
+        case 'coder-approve-execute': {
+          const prepared = deps.prepareCoderTarget
+            ? await deps.prepareCoderTarget({
+                chatJid: q.chatJid,
+                mode:
+                  settingsAction.kind === 'coder-approve-plan'
+                    ? 'plan'
+                    : 'execute',
+                taskText: settingsAction.taskText,
+                requestId: `coder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              })
+            : null;
+          if (prepared?.status === 'handled') return;
+          if (prepared?.status !== 'ready') {
+            await deps.sendMessage(
+              q.chatJid,
+              'Could not prepare a coding target for that request.',
+            );
+            return;
+          }
+          await startCoderRun({
+            chatJid: q.chatJid,
+            requestId: `coder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            mode:
+              settingsAction.kind === 'coder-approve-plan'
+                ? 'plan'
+                : 'execute',
+            route:
+              settingsAction.kind === 'coder-approve-plan'
+                ? 'coder_plan'
+                : 'coder_execute',
+            taskText: prepared.taskText,
+            workspaceRoot: prepared.workspaceRoot,
+            projectLabel: prepared.projectLabel,
+          });
+          return;
+        }
+        case 'coder-select-project':
+          if (settingsAction.mode === 'execute' && !settingsAction.isGitRepo) {
+            if (deps.state.telegramBot?.sendMessageWithKeyboard) {
+              await deps.state.telegramBot.sendMessageWithKeyboard(
+                q.chatJid,
+                `${settingsAction.projectLabel} is not a git-backed project, so execute mode cannot create an isolated worktree there.`,
+                [
+                  [
+                    {
+                      text: 'Start Plan Instead',
+                      callbackData: deps.registerTelegramSettingsPanelAction(
+                        q.chatJid,
+                        {
+                          kind: 'coder-select-project',
+                          mode: 'plan',
+                          taskText: settingsAction.taskText,
+                          projectPath: settingsAction.projectPath,
+                          projectLabel: settingsAction.projectLabel,
+                          isGitRepo: settingsAction.isGitRepo,
+                        },
+                      ),
+                    },
+                    {
+                      text: 'Cancel',
+                      callbackData: deps.registerTelegramSettingsPanelAction(
+                        q.chatJid,
+                        { kind: 'coder-cancel' },
+                      ),
+                    },
+                  ],
+                ],
+              );
+            } else {
+              await deps.sendMessage(
+                q.chatJid,
+                `${settingsAction.projectLabel} is not a git-backed project, so execute mode cannot create an isolated worktree there. Use /coder-plan instead.`,
+              );
+            }
+            return;
+          }
+          await startCoderRun({
+            chatJid: q.chatJid,
+            requestId: `coder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            mode: settingsAction.mode,
+            route:
+              settingsAction.mode === 'plan' ? 'coder_plan' : 'coder_execute',
+            taskText: settingsAction.taskText,
+            workspaceRoot: settingsAction.projectPath,
+            projectLabel: settingsAction.projectLabel,
+          });
+          return;
+        case 'coder-create-project': {
+          if (!deps.createCoderProject) {
+            await deps.sendMessage(
+              q.chatJid,
+              'Project creation is not available in this runtime.',
+            );
+            return;
+          }
+          const created = await deps.createCoderProject({
+            slug: settingsAction.slug,
+          });
+          if (settingsAction.mode === 'execute') {
+            await deps.sendMessage(
+              q.chatJid,
+              `Created ${created.projectLabel}. It is not git-backed yet, so execute mode cannot start there. Starting a coder plan instead.`,
+            );
+            await startCoderRun({
+              chatJid: q.chatJid,
+              requestId: `coder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              mode: 'plan',
+              route: 'coder_plan',
+              taskText: settingsAction.taskText,
+              workspaceRoot: created.workspaceRoot,
+              projectLabel: created.projectLabel,
+            });
+            return;
+          }
+          await startCoderRun({
+            chatJid: q.chatJid,
+            requestId: `coder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            mode: 'plan',
+            route: 'coder_plan',
+            taskText: settingsAction.taskText,
+            workspaceRoot: created.workspaceRoot,
+            projectLabel: created.projectLabel,
+          });
+          return;
+        }
+        case 'coder-cancel':
+          await deps.sendMessage(q.chatJid, 'Coder request canceled.');
+          return;
         case 'show-home':
         case 'show-model-providers':
         case 'show-models-for-provider':
@@ -1142,7 +1419,9 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
       cmd === '/coder' ||
       cmd === '/coding' ||
       cmd === '/coder-plan' ||
-      cmd === '/coder_plan'
+      cmd === '/coder_plan' ||
+      cmd === '/coder-create-project' ||
+      cmd === '/coder_create_project'
     ) {
       if (!isMainGroup) {
         deps.logTelegramCommandAudit(m.chatJid, cmd, false, 'non-main chat');

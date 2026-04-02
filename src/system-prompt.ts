@@ -110,15 +110,13 @@ interface BuildSystemPromptOptions {
 
 const DEFAULT_FILE_MAX_CHARS = 12_000;
 const DEFAULT_TOTAL_MAX_CHARS = 48_000;
-const DEFAULT_MEMORY_DAILY_MAX_CHARS = 8_000;
 const DEFAULT_MEMORY_CONTEXT_MAX_CHARS = 20_000;
 const DEFAULT_SKILL_CATALOG_MAX_CHARS = 6_000;
 
-const MAIN_BOOTSTRAP_ORDER = [
+const MAIN_ALWAYS_INJECTED_FILES = [
   'NANO.md',
   'SOUL.md',
   'TODOS.md',
-  'BOOTSTRAP.md',
   'MEMORY.md',
 ] as const;
 
@@ -265,7 +263,6 @@ function addContextEntry(params: {
 
 function buildMainContextEntries(params: {
   readFileIfExists: (filePath: string) => string | null;
-  now: Date;
   includeHeartbeat: boolean;
   fileMaxChars: number;
   totalMaxChars: number;
@@ -277,7 +274,7 @@ function buildMainContextEntries(params: {
   const entries: ContextEntry[] = [];
   let remaining = params.totalMaxChars;
 
-  for (const name of MAIN_BOOTSTRAP_ORDER) {
+  for (const name of MAIN_ALWAYS_INJECTED_FILES) {
     remaining = addContextEntry({
       entries,
       readFileIfExists: params.readFileIfExists,
@@ -300,28 +297,6 @@ function buildMainContextEntries(params: {
     });
   }
 
-  const day = (offsetDays: number): string => {
-    const d = new Date(params.now.getTime() + offsetDays * 24 * 60 * 60 * 1000);
-    const yyyy = d.getUTCFullYear();
-    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  };
-
-  for (const dateStr of [day(0), day(-1)]) {
-    remaining = addContextEntry({
-      entries,
-      readFileIfExists: params.readFileIfExists,
-      label: `memory/${dateStr}.md`,
-      path: `${params.groupDir}/memory/${dateStr}.md`,
-      fileMaxChars: Math.min(
-        params.fileMaxChars,
-        DEFAULT_MEMORY_DAILY_MAX_CHARS,
-      ),
-      remainingTotalChars: remaining,
-    });
-  }
-
   return { entries, remainingTotalChars: remaining };
 }
 
@@ -330,7 +305,6 @@ function buildNonMainContextEntries(params: {
   includeHeartbeat: boolean;
   fileMaxChars: number;
   totalMaxChars: number;
-  includeMemoryFallback: boolean;
   groupDir: string;
   globalDir: string;
 }): {
@@ -413,47 +387,6 @@ function buildNonMainContextEntries(params: {
       remainingTotalChars: remaining,
       includeMissing: false,
     });
-  }
-
-  if (params.includeMemoryFallback && remaining > 0) {
-    const globalMemoryPrimary = `${params.globalDir}/MEMORY.md`;
-    const globalMemoryLegacy = `${params.globalDir}/memory.md`;
-    const globalMemoryPath =
-      params.readFileIfExists(globalMemoryPrimary) !== null
-        ? globalMemoryPrimary
-        : globalMemoryLegacy;
-    remaining = addContextEntry({
-      entries,
-      readFileIfExists: params.readFileIfExists,
-      label:
-        globalMemoryPath === globalMemoryPrimary
-          ? 'global/MEMORY.md'
-          : 'global/memory.md',
-      path: globalMemoryPath,
-      fileMaxChars: params.fileMaxChars,
-      remainingTotalChars: remaining,
-      includeMissing: false,
-    });
-    if (remaining > 0) {
-      const groupMemoryPrimary = `${params.groupDir}/MEMORY.md`;
-      const groupMemoryLegacy = `${params.groupDir}/memory.md`;
-      const groupMemoryPath =
-        params.readFileIfExists(groupMemoryPrimary) !== null
-          ? groupMemoryPrimary
-          : groupMemoryLegacy;
-      remaining = addContextEntry({
-        entries,
-        readFileIfExists: params.readFileIfExists,
-        label:
-          groupMemoryPath === groupMemoryPrimary
-            ? 'group/MEMORY.md'
-            : 'group/memory.md',
-        path: groupMemoryPath,
-        fileMaxChars: params.fileMaxChars,
-        remainingTotalChars: remaining,
-        includeMissing: false,
-      });
-    }
   }
 
   return { entries, remainingTotalChars: remaining };
@@ -583,7 +516,10 @@ function renderBasePrompt(params: {
     `- Active mission state belongs in ${params.paths.groupDir}/TODOS.md.`,
   );
   lines.push(
-    `- Durable memory belongs in ${params.paths.groupDir}/MEMORY.md and ${params.paths.groupDir}/memory/*.md.`,
+    `- Durable memory belongs in ${params.paths.groupDir}/canonical/*.md.`,
+  );
+  lines.push(
+    `- Daily staging and compaction notes belong in ${params.paths.groupDir}/memory/*.md.`,
   );
   lines.push('- Keep SOUL.md stable; do not use it as compaction log storage.');
   lines.push('');
@@ -658,6 +594,9 @@ function renderBasePrompt(params: {
   lines.push('## Memory Action IPC');
   lines.push(
     `Write memory action requests into ${params.paths.ipcDir}/actions/*.json and read results from ${params.paths.ipcDir}/action_results/<requestId>.json.`,
+  );
+  lines.push(
+    '- In non-main/shared runs, durable memory is not auto-injected beyond the control-plane files. Use memory_search or memory_get when you need more context.',
   );
   lines.push('- Search: {"type":"memory_action","action":"memory_search","requestId":"<id>","params":{"query":"...","topK":8,"sources":"all"}}');
   lines.push('- Get: {"type":"memory_action","action":"memory_get","requestId":"<id>","params":{"path":"MEMORY.md"}}');
@@ -789,7 +728,6 @@ export function buildSystemPrompt(
   options: BuildSystemPromptOptions = {},
 ): { text: string; report: SystemPromptReport } {
   const readFileIfExists = options.readFileIfExists ?? defaultReadFileIfExists;
-  const now = options.now ? options.now() : new Date();
   const fileMaxChars =
     options.fileMaxChars ??
     parsePositiveInt(
@@ -832,7 +770,6 @@ export function buildSystemPrompt(
   const contextState = input.isMain
     ? buildMainContextEntries({
         readFileIfExists,
-        now,
         includeHeartbeat: includeHeartbeatContext,
         fileMaxChars,
         totalMaxChars,
@@ -843,7 +780,6 @@ export function buildSystemPrompt(
         includeHeartbeat: includeHeartbeatContext,
         fileMaxChars,
         totalMaxChars,
-        includeMemoryFallback: !providedMemoryContext,
         groupDir: paths.groupDir,
         globalDir: paths.globalDir,
       });

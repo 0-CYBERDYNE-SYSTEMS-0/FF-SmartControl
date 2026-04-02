@@ -138,6 +138,7 @@ import {
   createCodingOrchestrator,
   type CodingWorkerRequest,
 } from './coding-orchestrator.js';
+import { resolveCoderProjectTarget } from './coder-project-resolver.js';
 import { executeFarmAction } from './farm-action-gateway.js';
 import {
   startFarmStateCollector,
@@ -527,13 +528,14 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
         '1. Read NANO.md',
         '2. Read SOUL.md',
         '3. Read TODOS.md',
-        '4. Read BOOTSTRAP.md (if present)',
-        '5. Read MEMORY.md',
+        '4. Retrieve durable canon from canonical/*.md when needed',
+        '5. Read BOOTSTRAP.md (if present)',
         '',
         'Heartbeat and scheduled maintenance runs also read HEARTBEAT.md.',
         '',
         'Memory policy:',
-        '- Durable memory belongs in MEMORY.md and memory/*.md.',
+        '- Durable memory belongs in canonical/*.md.',
+        '- Daily staging and compaction notes belong in memory/*.md.',
         '- Keep SOUL.md stable; do not use it as compaction log storage.',
         '- TODOS.md is mission control for active execution state.',
         '',
@@ -837,7 +839,7 @@ function resolveMainOnboardingGate(chatJid: string): {
 }
 
 function isCoderDelegationCommand(content: string): boolean {
-  return /^\/(?:coder|coding|coder-plan|coder_plan)(?:@[A-Za-z0-9_]+)?(?:\s|$)/i.test(
+  return /^\/(?:coder|coding|coder-plan|coder_plan|coder-create-project|coder_create_project)(?:@[A-Za-z0-9_]+)?(?:\s|$)/i.test(
     content.trim(),
   );
 }
@@ -854,7 +856,7 @@ function buildOnboardingInterviewPrompt(params: {
     '[ONBOARDING INTERVIEW MODE]',
     'Main workspace onboarding is pending. Continue first-run interview flow now.',
     'Use BOOTSTRAP.md instructions. Ask one concise question at a time and keep the exchange practical.',
-    'Update NANO.md, SOUL.md, and TODOS.md based on user responses. Promote durable facts and decisions into MEMORY.md.',
+    'Update NANO.md, SOUL.md, and TODOS.md based on user responses. Promote durable facts and decisions into canonical/*.md.',
     `When onboarding is complete, remove BOOTSTRAP.md and include the token ${MAIN_ONBOARDING_COMPLETION_TOKEN} exactly once on its own line in your final reply.`,
     '',
     '[LATEST USER MESSAGE]',
@@ -1816,6 +1818,243 @@ function getTelegramSettingsPanelAction(
   const state = telegramSettingsPanelActions.get(token);
   if (!state || state.chatJid !== chatJid) return null;
   return state.action;
+}
+
+async function sendTelegramCoderKeyboard(params: {
+  chatJid: string;
+  text: string;
+  keyboard: TelegramInlineKeyboard;
+  fallbackText?: string;
+}): Promise<void> {
+  if (isTelegramJid(params.chatJid) && state.telegramBot?.sendMessageWithKeyboard) {
+    await state.telegramBot.sendMessageWithKeyboard(
+      params.chatJid,
+      params.text,
+      params.keyboard,
+    );
+    return;
+  }
+  await sendMessage(params.chatJid, params.fallbackText || params.text);
+}
+
+function buildCoderCommand(command: '/coder' | '/coder-plan', taskText: string): string {
+  const normalizedTask = taskText.replace(/\s+/g, ' ').trim();
+  return `${command} ${normalizedTask}`.trim();
+}
+
+async function presentCoderSuggestion(params: {
+  chatJid: string;
+  taskText: string;
+  requestId: string;
+}): Promise<void> {
+  await sendTelegramCoderKeyboard({
+    chatJid: params.chatJid,
+    text: [
+      'This sounds like coding work.',
+      'Recommended next step: run a coder plan first, then explicitly escalate to execute if it looks right.',
+    ].join('\n'),
+    fallbackText: [
+      'This sounds like coding work.',
+      `Reply with: ${buildCoderCommand('/coder-plan', params.taskText)}`,
+      `Or execute directly with: ${buildCoderCommand('/coder', params.taskText)}`,
+      'Reply with: cancel',
+    ].join('\n'),
+    keyboard: [
+      [
+        {
+          text: 'Plan',
+          callbackData: registerTelegramSettingsPanelAction(params.chatJid, {
+            kind: 'coder-approve-plan',
+            taskText: params.taskText,
+          }),
+        },
+        {
+          text: 'Execute',
+          callbackData: registerTelegramSettingsPanelAction(params.chatJid, {
+            kind: 'coder-approve-execute',
+            taskText: params.taskText,
+          }),
+        },
+      ],
+      [
+        {
+          text: 'Cancel',
+          callbackData: registerTelegramSettingsPanelAction(params.chatJid, {
+            kind: 'coder-cancel',
+          }),
+        },
+      ],
+    ],
+  });
+}
+
+async function prepareCoderTarget(params: {
+  chatJid: string;
+  mode: 'plan' | 'execute';
+  taskText: string;
+  requestId: string;
+}): Promise<
+  | {
+      status: 'ready';
+      workspaceRoot: string;
+      taskText: string;
+      projectLabel: string;
+    }
+  | { status: 'handled' }
+> {
+  const resolved = resolveCoderProjectTarget({
+    mainWorkspaceDir: MAIN_WORKSPACE_DIR,
+    taskText: params.taskText,
+  });
+
+  if (resolved.status === 'resolved') {
+    if (params.mode === 'execute' && !resolved.isGitRepo) {
+      await sendTelegramCoderKeyboard({
+        chatJid: params.chatJid,
+        text: [
+          `${resolved.projectLabel} is not a git-backed project, so execute mode cannot create an isolated worktree there.`,
+          'Run a coder plan first or initialize git for that project.',
+        ].join('\n'),
+        fallbackText: [
+          `${resolved.projectLabel} is not a git-backed project, so execute mode cannot create an isolated worktree there.`,
+          `Reply with: ${buildCoderCommand('/coder-plan', `project:${resolved.projectLabel} ${resolved.taskText}`)}`,
+          'Or initialize git for that project and retry execute mode.',
+        ].join('\n'),
+        keyboard: [
+          [
+            {
+              text: 'Start Plan Instead',
+              callbackData: registerTelegramSettingsPanelAction(params.chatJid, {
+                kind: 'coder-select-project',
+                mode: 'plan',
+                taskText: resolved.taskText,
+                projectPath: resolved.workspaceRoot,
+                projectLabel: resolved.projectLabel,
+                isGitRepo: resolved.isGitRepo,
+              }),
+            },
+            {
+              text: 'Cancel',
+              callbackData: registerTelegramSettingsPanelAction(params.chatJid, {
+                kind: 'coder-cancel',
+              }),
+            },
+          ],
+        ],
+      });
+      return { status: 'handled' };
+    }
+    return {
+      status: 'ready',
+      workspaceRoot: resolved.workspaceRoot,
+      taskText: resolved.taskText,
+      projectLabel: resolved.projectLabel,
+    };
+  }
+
+  if (resolved.status === 'ambiguous') {
+    await sendTelegramCoderKeyboard({
+      chatJid: params.chatJid,
+      text: 'I found multiple likely projects. Pick the right one before coder continues.',
+      fallbackText: [
+        'I found multiple likely projects. Re-run your request with one of these project selectors:',
+        ...resolved.candidates.map((candidate) =>
+          `${buildCoderCommand(
+            params.mode === 'plan' ? '/coder-plan' : '/coder',
+            `project:${candidate.projectLabel} ${resolved.taskText}`,
+          )}`,
+        ),
+        'Reply with: cancel',
+      ].join('\n'),
+      keyboard: [
+        ...resolved.candidates.map((candidate) => [
+          {
+            text: truncateButtonLabel(candidate.projectLabel),
+            callbackData: registerTelegramSettingsPanelAction(params.chatJid, {
+              kind: 'coder-select-project',
+              mode: params.mode,
+              taskText: resolved.taskText,
+              projectPath: candidate.workspaceRoot,
+              projectLabel: candidate.projectLabel,
+              isGitRepo: candidate.isGitRepo,
+            }),
+          },
+        ]),
+        [
+          {
+            text: 'Cancel',
+            callbackData: registerTelegramSettingsPanelAction(params.chatJid, {
+              kind: 'coder-cancel',
+            }),
+          },
+        ],
+      ],
+    });
+    return { status: 'handled' };
+  }
+
+  if (resolved.projectHint && resolved.suggestedSlug) {
+    await sendTelegramCoderKeyboard({
+      chatJid: params.chatJid,
+      text: [
+        `I could not find a project matching "${resolved.projectHint}".`,
+        'If that project does not exist yet, you can create it now.',
+      ].join('\n'),
+      fallbackText: [
+        `I could not find a project matching "${resolved.projectHint}".`,
+        `Reply with: /coder-create-project ${resolved.suggestedSlug} ${resolved.taskText}`.trim(),
+        'That will create the project and start a coder plan there.',
+        'Or reply with: cancel',
+      ].join('\n'),
+      keyboard: [
+        [
+          {
+            text: `Create ${truncateButtonLabel(resolved.suggestedSlug)}`,
+            callbackData: registerTelegramSettingsPanelAction(params.chatJid, {
+              kind: 'coder-create-project',
+              mode: params.mode,
+              taskText: resolved.taskText,
+              slug: resolved.suggestedSlug,
+              projectLabel: resolved.projectHint,
+            }),
+          },
+          {
+            text: 'Cancel',
+            callbackData: registerTelegramSettingsPanelAction(params.chatJid, {
+              kind: 'coder-cancel',
+            }),
+          },
+        ],
+      ],
+    });
+  } else {
+    await sendMessage(
+      params.chatJid,
+      'I could not map that request to a project. Re-run it with `project:<name>` so I can target the right workspace.',
+    );
+  }
+  return { status: 'handled' };
+}
+
+async function createCoderProject(params: {
+  slug: string;
+}): Promise<{
+  workspaceRoot: string;
+  projectLabel: string;
+  isGitRepo: boolean;
+}> {
+  const workspaceRoot = path.join(
+    MAIN_WORKSPACE_DIR,
+    'workspace',
+    'projects',
+    params.slug,
+  );
+  fs.mkdirSync(workspaceRoot, { recursive: true });
+  return {
+    workspaceRoot,
+    projectLabel: params.slug,
+    isGitRepo: false,
+  };
 }
 
 function truncateButtonLabel(text: string, max = 28): string {
@@ -2852,7 +3091,7 @@ async function runCompactionForChat(
         : summary;
     return [
       `Compaction complete (${compactRequestId}).`,
-      'Saved summary to /workspace/group/MEMORY.md and scheduled fresh next session.',
+      `Saved summary to /workspace/group/memory/${ts.slice(0, 10)}.md and scheduled fresh next session.`,
       '',
       preview,
     ].join('\n');
@@ -3136,6 +3375,8 @@ const telegramCommandHandlers = createTelegramCommandHandlers({
   getSessionKeyForChat,
   runAgent,
   runCodingTask,
+  prepareCoderTarget,
+  createCoderProject,
   setTyping,
   persistAssistantHistory,
   sendAgentResultMessage,
@@ -3209,6 +3450,9 @@ const messageDispatcher = createMessageDispatcher({
   finalizeCompletedRun,
   parseDelegationTrigger,
   isSubstantialCodingTask,
+  presentCoderSuggestion,
+  prepareCoderTarget,
+  createCoderProject,
   isCoderDelegationCommand,
   onboardingCommandBlockedText,
   makeRunId,

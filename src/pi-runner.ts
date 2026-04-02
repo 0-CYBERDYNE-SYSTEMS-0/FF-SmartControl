@@ -117,6 +117,12 @@ export interface ContainerRuntimeEvent {
   error?: string;
 }
 
+export function shouldBuildRetrievedMemoryContext(input: {
+  isMain: boolean;
+}): boolean {
+  return MEMORY_RETRIEVAL_GATE_ENABLED && input.isMain;
+}
+
 type CodingHint =
   | 'none'
   | 'auto'
@@ -456,7 +462,7 @@ export async function runContainerAgent(
   }
 
   let payload = input;
-  if (MEMORY_RETRIEVAL_GATE_ENABLED) {
+  if (shouldBuildRetrievedMemoryContext(input)) {
     try {
       const memory = getMemoryBackend().buildContext({
         groupFolder: group.folder,

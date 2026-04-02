@@ -66,7 +66,9 @@ Notes:
 - In the main/admin chat you can use: `@FarmFriend /coder <task>`.
 - `/coding <task>` is an alias for `/coder <task>`.
 - `/coder-plan <task>` and `/coder_plan <task>` run the coding worker in read-only planning mode.
-- Main/admin substantial natural-language coding requests can auto-route to the real coding worker.
+- Main/admin natural-language coding requests stay in the main assistant unless the operator explicitly approves coder escalation.
+- When a message looks like coding work, the bot offers approval controls for `Plan`, `Execute`, or `Cancel` instead of silently auto-running coder.
+- `/coder-plan` is the recommended first step; `/coder` and `/coding` stay explicit execute commands.
 - Execute-mode coder runs use a host-managed isolated worktree by default; they report the worktree path, changed files, and test commands in the final result.
 - `/subagents` manages real worker runs owned by the host orchestrator.
 - When spawning subagents, prefer `gpt-5.4-mini` whenever possible; only use a larger model when the task clearly requires it.

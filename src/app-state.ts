@@ -135,7 +135,25 @@ export type TelegramSettingsPanelAction =
   | { kind: 'show-setup-api-key' }
   | { kind: 'prompt-setup-api-key' }
   | { kind: 'clear-setup-api-key' }
-  | { kind: 'restart-gateway' };
+  | { kind: 'restart-gateway' }
+  | { kind: 'coder-approve-plan'; taskText: string }
+  | { kind: 'coder-approve-execute'; taskText: string }
+  | {
+      kind: 'coder-select-project';
+      mode: 'plan' | 'execute';
+      taskText: string;
+      projectPath: string;
+      projectLabel: string;
+      isGitRepo: boolean;
+    }
+  | {
+      kind: 'coder-create-project';
+      mode: 'plan' | 'execute';
+      taskText: string;
+      slug: string;
+      projectLabel: string;
+    }
+  | { kind: 'coder-cancel' };
 
 export interface ActiveChatRun {
   chatJid: string;

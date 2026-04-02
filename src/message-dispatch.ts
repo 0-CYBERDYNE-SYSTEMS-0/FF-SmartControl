@@ -127,6 +127,7 @@ interface DispatchRequest {
   shouldUseCodingWorker: boolean;
   runPreferences: Record<string, any>;
   timestampToPersist?: string;
+  workspaceRoot?: string;
 }
 
 export type RunRoute = 'agent' | 'coding_worker';
@@ -263,6 +264,7 @@ export interface MessageDispatcherDeps {
     assistantName: string;
     sessionKey: string;
     group: any;
+    workspaceRoot?: string;
     runtimePrefs?: Record<string, any>;
     abortController?: AbortController;
   }) => Promise<CodingRunResult>;
@@ -313,9 +315,35 @@ export interface MessageDispatcherDeps {
   finalizeCompletedRun: (params: FinalizeCompletedRunParams) => Promise<void>;
   parseDelegationTrigger?: (text: string) => {
     hint: string;
+    trigger?: string;
     instruction: string | null;
+    projectSlug?: string | null;
   };
   isSubstantialCodingTask?: (text: string) => boolean;
+  presentCoderSuggestion?: (params: {
+    chatJid: string;
+    taskText: string;
+    requestId: string;
+  }) => Promise<void>;
+  prepareCoderTarget?: (params: {
+    chatJid: string;
+    mode: 'plan' | 'execute';
+    taskText: string;
+    requestId: string;
+  }) => Promise<
+    | {
+        status: 'ready';
+        workspaceRoot: string;
+        taskText: string;
+        projectLabel: string;
+      }
+    | { status: 'handled' }
+  >;
+  createCoderProject?: (params: { slug: string }) => Promise<{
+    workspaceRoot: string;
+    projectLabel: string;
+    isGitRepo: boolean;
+  }>;
   isCoderDelegationCommand?: (content: string) => boolean;
   onboardingCommandBlockedText?: () => string;
   makeRunId?: (prefix: string) => string;
@@ -741,6 +769,7 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
     timestampToPersist?: string;
     deliverToChat?: boolean;
     onSettled?: () => void;
+    workspaceRoot?: string;
   }): Promise<void> {
     let result: string | null = null;
     let streamed = false;
@@ -802,6 +831,7 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
               assistantName: deps.constants.assistantName,
               sessionKey: params.sessionKey,
               group: params.group,
+              workspaceRoot: params.workspaceRoot,
               runtimePrefs: params.runPreferences,
               abortController,
             })
@@ -937,6 +967,7 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
       ? deps.makeRunId('chat')
       : `chat-${Date.now()}`;
     let delegationInstruction: string | null = null;
+    let workspaceRoot: string | undefined;
 
     const stripped = content
       .replace(deps.constants.triggerPattern, '')
@@ -946,6 +977,9 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
         ? { hint: 'none' as const, instruction: null }
         : deps.parseDelegationTrigger(stripped);
     const wantsDelegation = parsedTrigger.hint !== 'none';
+    const wantsCreateProject =
+      parsedTrigger.trigger === 'coder-create-project' ||
+      parsedTrigger.trigger === 'coder_create_project';
 
     if (wantsDelegation && !isMainGroup) {
       await deps.sendMessage(
@@ -956,17 +990,55 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
     }
 
     if (wantsDelegation) {
-      codingHint = parsedTrigger.hint;
-      codingRoute =
-        codingHint === 'force_delegate_plan' ? 'coder_plan' : 'coder_execute';
+      codingHint = wantsCreateProject ? 'force_delegate_plan' : parsedTrigger.hint;
+      codingRoute = wantsCreateProject
+        ? 'coder_plan'
+        : codingHint === 'force_delegate_plan'
+          ? 'coder_plan'
+          : 'coder_execute';
       delegationInstruction = parsedTrigger.instruction;
+      let projectLabel: string | undefined;
+      if (wantsCreateProject) {
+        if (!parsedTrigger.projectSlug || !deps.createCoderProject) {
+          await deps.sendMessage(
+            msg.chat_jid,
+            'Could not create that project. Use `/coder-create-project <slug> <task>` from the main chat.',
+          );
+          return null;
+        }
+        const created = await deps.createCoderProject({
+          slug: parsedTrigger.projectSlug,
+        });
+        workspaceRoot = created.workspaceRoot;
+        projectLabel = created.projectLabel;
+        delegationInstruction = delegationInstruction || stripped;
+        await deps.sendMessage(
+          msg.chat_jid,
+          `Created ${created.projectLabel}. Starting a coder plan there.`,
+        );
+      } else {
+        const preparedTarget = deps.prepareCoderTarget
+          ? await deps.prepareCoderTarget({
+              chatJid: msg.chat_jid,
+              mode: codingHint === 'force_delegate_plan' ? 'plan' : 'execute',
+              taskText: delegationInstruction || stripped,
+              requestId,
+            })
+          : null;
+        if (preparedTarget?.status === 'handled') return null;
+        if (preparedTarget?.status === 'ready') {
+          delegationInstruction = preparedTarget.taskText;
+          workspaceRoot = preparedTarget.workspaceRoot;
+          projectLabel = preparedTarget.projectLabel;
+        }
+      }
       requestId = `coder-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 8)}`;
       const startMessageBody =
         codingHint === 'force_delegate_plan'
-          ? `Starting coder plan run (${requestId})...`
-          : `Starting coder run (${requestId})...`;
+          ? `Starting coder plan run (${requestId})${projectLabel ? ` for ${projectLabel}` : ''}...`
+          : `Starting coder run (${requestId})${projectLabel ? ` for ${projectLabel}` : ''}...`;
       await deps.sendMessage(msg.chat_jid, startMessageBody);
     }
 
@@ -1017,13 +1089,30 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
 
     const latestUserText =
       selectedMessages[selectedMessages.length - 1]?.content || content;
-    const shouldAutoRouteCoding =
+    const shouldSuggestCoding =
       !wantsDelegation &&
       isMainGroup &&
       !onboardingGate.active &&
       deps.isSubstantialCodingTask?.(latestUserText) === true;
-    const shouldUseCodingWorker = wantsDelegation || shouldAutoRouteCoding;
-    if (shouldAutoRouteCoding) codingRoute = 'auto_execute';
+    if (shouldSuggestCoding) {
+      const suggestionRequestId = deps.makeRunId
+        ? deps.makeRunId('coder-suggest')
+        : `coder-suggest-${Date.now()}`;
+      if (deps.presentCoderSuggestion) {
+        await deps.presentCoderSuggestion({
+          chatJid: msg.chat_jid,
+          taskText: latestUserText,
+          requestId: suggestionRequestId,
+        });
+      } else {
+        await deps.sendMessage(
+          msg.chat_jid,
+          `${deps.constants.assistantName}: this sounds like coding work. Use /coder-plan to review it first, or /coder to execute it.`,
+        );
+      }
+      return null;
+    }
+    const shouldUseCodingWorker = wantsDelegation;
 
     let finalPrompt = preparedPrompt.finalPrompt;
     if (onboardingGate.active) {
@@ -1077,6 +1166,7 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
       shouldUseCodingWorker,
       runPreferences,
       timestampToPersist: msg.timestamp,
+      workspaceRoot,
     };
   }
 
@@ -1101,6 +1191,7 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
       onboardingGate: request.onboardingGate,
       route: selectRunRoute(request, deps),
       timestampToPersist: request.timestampToPersist,
+      workspaceRoot: request.workspaceRoot,
     });
     return true;
   }
