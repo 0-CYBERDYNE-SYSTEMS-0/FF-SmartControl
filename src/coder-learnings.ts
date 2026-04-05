@@ -35,7 +35,8 @@ const BULLET_RE = /^[-*]\s+/;
 
 /**
  * Parse all coder learnings entries from MEMORY.md content.
- * Returns entries in reverse chronological order (newest first).
+ * Returns entries in encounter order within the Coder Learnings section.
+ * (The writer prepends newest entries, so parse naturally yields newest-first.)
  */
 export function parseCoderLearnings(memoryContent: string): CoderLearningsEntry[] {
   if (!memoryContent || typeof memoryContent !== 'string') {
@@ -51,6 +52,7 @@ export function parseCoderLearnings(memoryContent: string): CoderLearningsEntry[
   let currentWhatDidnt: string[] = [];
   let currentPatterns: string[] = [];
   let currentRawLines: string[] = [];
+  let inLearningsSection = false;
 
   const flushEntry = () => {
     if (currentDate) {
@@ -76,10 +78,24 @@ export function parseCoderLearnings(memoryContent: string): CoderLearningsEntry[
   for (const line of lines) {
     const trimmed = line.trim();
 
-    // Detect section header (top-level markdown heading)
+    // Detect learnings section header.
     if (trimmed === LEARNINGS_SECTION_HEADER) {
+      if (inLearningsSection) {
+        flushEntry();
+      }
+      resetCurrent();
+      inLearningsSection = true;
+      continue;
+    }
+
+    // Ignore everything until we enter the learnings section.
+    if (!inLearningsSection) continue;
+
+    // Exit when another top-level section begins.
+    if (/^##\s+/.test(trimmed) && trimmed !== LEARNINGS_SECTION_HEADER) {
       flushEntry();
       resetCurrent();
+      inLearningsSection = false;
       continue;
     }
 
@@ -87,6 +103,7 @@ export function parseCoderLearnings(memoryContent: string): CoderLearningsEntry[
     const dateMatch = trimmed.match(DATE_HEADING_RE);
     if (dateMatch) {
       flushEntry();
+      resetCurrent();
       currentDate = dateMatch[1];
       currentRawLines.push(line);
       continue;
@@ -125,7 +142,7 @@ export function parseCoderLearnings(memoryContent: string): CoderLearningsEntry[
   }
 
   flushEntry();
-  return entries.reverse();
+  return entries;
 }
 
 /**

@@ -6,6 +6,12 @@ import {
   CONTAINER_MAX_OUTPUT_SIZE,
   CONTAINER_TIMEOUT,
   DATA_DIR,
+  FFT_NANO_JITTER_FACTOR,
+  FFT_NANO_MAX_RETRIES,
+  FFT_NANO_PROVIDER_FALLBACK_ENABLED,
+  FFT_NANO_PROVIDER_FALLBACK_ORDER,
+  FFT_NANO_RETRY_BASE_DELAY_MS,
+  FFT_NANO_RETRY_MAX_DELAY_MS,
   GROUPS_DIR,
   IDLE_TIMEOUT,
   MAIN_GROUP_FOLDER,
@@ -91,9 +97,13 @@ export interface ContainerInput {
   lifecyclePolicyOverride?: {
     hardTimeoutMs?: number;
     staleAfterMs?: number | null;
+    toolActiveStaleMs?: number | null;
+    waitStateStaleMs?: number | null;
     allowFreshSessionFallback?: boolean;
   };
   effectiveTimezone?: string;
+  // Internal guardrail for provider fallback sequencing.
+  attemptedProviders?: string[];
 }
 
 export interface ContainerOutput {
@@ -148,6 +158,11 @@ export type ContainerProgressEvent =
       at: number;
     }
   | {
+      kind: 'wait';
+      at: number;
+      reason: 'extension_ui';
+    }
+  | {
       kind: 'tool';
       at: number;
       toolName: string;
@@ -163,6 +178,25 @@ export type ContainerProgressEvent =
       at: number;
       reason: 'stale_no_progress';
       retryingFresh: boolean;
+    }
+  | {
+      kind: 'retry_delay';
+      at: number;
+      delayMs: number;
+      attempt: number;
+      reason: string;
+    }
+  | {
+      kind: 'retry_exhausted';
+      at: number;
+      attempts: number;
+      finalError: string;
+    }
+  | {
+      kind: 'retry_provider_switch';
+      at: number;
+      fromProvider: string;
+      toProvider: string;
     };
 
 export interface ExtensionUIRequest {
@@ -259,17 +293,27 @@ function resolvePiRunLifecyclePolicy(params: {
 }): {
   hardTimeoutMs: number;
   staleAfterMs: number | null;
+  toolActiveStaleMs: number | null;
+  waitStateStaleMs: number | null;
   allowFreshSessionFallback: boolean;
 } {
   const applyOverride = (policy: {
     hardTimeoutMs: number;
     staleAfterMs: number | null;
+    toolActiveStaleMs: number | null;
+    waitStateStaleMs: number | null;
     allowFreshSessionFallback: boolean;
   }) => ({
     hardTimeoutMs:
       params.input.lifecyclePolicyOverride?.hardTimeoutMs ?? policy.hardTimeoutMs,
     staleAfterMs:
       params.input.lifecyclePolicyOverride?.staleAfterMs ?? policy.staleAfterMs,
+    toolActiveStaleMs:
+      params.input.lifecyclePolicyOverride?.toolActiveStaleMs ??
+      policy.toolActiveStaleMs,
+    waitStateStaleMs:
+      params.input.lifecyclePolicyOverride?.waitStateStaleMs ??
+      policy.waitStateStaleMs,
     allowFreshSessionFallback:
       params.input.lifecyclePolicyOverride?.allowFreshSessionFallback ??
       policy.allowFreshSessionFallback,
@@ -284,6 +328,8 @@ function resolvePiRunLifecyclePolicy(params: {
         CONTAINER_TIMEOUT,
       ),
       staleAfterMs: null,
+      toolActiveStaleMs: null,
+      waitStateStaleMs: null,
       allowFreshSessionFallback: false,
     });
   }
@@ -294,6 +340,8 @@ function resolvePiRunLifecyclePolicy(params: {
     return applyOverride({
       hardTimeoutMs: Math.max(configuredTimeout, IDLE_TIMEOUT + 30_000),
       staleAfterMs: null,
+      toolActiveStaleMs: null,
+      waitStateStaleMs: null,
       allowFreshSessionFallback: false,
     });
   }
@@ -308,15 +356,30 @@ function resolvePiRunLifecyclePolicy(params: {
     params.groupTimeoutMs > 0
       ? Math.min(params.groupTimeoutMs, defaultInteractiveTimeoutMs)
       : defaultInteractiveTimeoutMs;
+  const staleAfterMs = parseRuntimeMs(
+    process.env.FFT_NANO_INTERACTIVE_STALE_MS,
+    90_000,
+    100,
+    Math.max(100, hardTimeoutMs - 100),
+  );
+  const toolActiveStaleMs = parseRuntimeMs(
+    process.env.FFT_NANO_INTERACTIVE_TOOL_STALE_MS,
+    Math.min(Math.max(100, hardTimeoutMs - 100), Math.max(staleAfterMs, 5 * 60 * 1000)),
+    100,
+    Math.max(100, hardTimeoutMs - 100),
+  );
+  const waitStateStaleMs = parseRuntimeMs(
+    process.env.FFT_NANO_INTERACTIVE_WAIT_STALE_MS,
+    Math.min(Math.max(100, hardTimeoutMs - 100), Math.max(staleAfterMs, 3 * 60 * 1000)),
+    100,
+    Math.max(100, hardTimeoutMs - 100),
+  );
 
   return applyOverride({
     hardTimeoutMs,
-    staleAfterMs: parseRuntimeMs(
-      process.env.FFT_NANO_INTERACTIVE_STALE_MS,
-      90_000,
-      100,
-      Math.max(100, hardTimeoutMs - 100),
-    ),
+    staleAfterMs,
+    toolActiveStaleMs,
+    waitStateStaleMs,
     allowFreshSessionFallback: true,
   });
 }
@@ -609,6 +672,65 @@ function buildPiArgs(params: {
     args.push(prompt);
   }
   return args;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function getProviderFallbackCandidates(params: {
+  primaryProvider: string;
+  configuredOrder: string[];
+  attemptedProviders?: string[];
+}): string[] {
+  const attempted = new Set(
+    [...(params.attemptedProviders ?? []), params.primaryProvider]
+      .map((provider) => provider.trim())
+      .filter(Boolean),
+  );
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  for (const provider of params.configuredOrder) {
+    const normalized = provider.trim();
+    if (!normalized || attempted.has(normalized) || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    candidates.push(normalized);
+  }
+  return candidates;
+}
+
+type RunErrorClass = 'rate_limit' | 'timeout' | 'unknown' | 'non_retryable';
+
+function classifyRunError(stderr: string, code: number | null): RunErrorClass {
+  // Stale timer already retries via code 75 — treat as retryable 'unknown'
+  if (code === 75 || code === 76) return 'unknown';
+  if (/FFT_NANO_STALE_RETRY/i.test(stderr)) return 'unknown';
+
+  // Fresh interactive runs that trip the stale timer should fail immediately.
+  if (/Pi run stalled before producing progress/i.test(stderr)) {
+    return 'non_retryable';
+  }
+
+  // Explicit rate limit
+  if (/429|rate\s*limit|too\s*many\s*requests/i.test(stderr)) return 'rate_limit';
+
+  // Timeout / failover codes
+  if (/408|502|503|504|ETIMEDOUT|ECONNRESET|ECONNABORTED/i.test(stderr)) return 'timeout';
+
+  // Hard failures — never retry
+  if (
+    /context\s*(length|size)\s*exceeded|overflow|token\s*limit/i.test(stderr)
+  ) return 'non_retryable';
+  if (/401|403|invalid.*api.*key|auth|unauthorized/i.test(stderr))
+    return 'non_retryable';
+  if (/SIGKILL|killed/i.test(stderr)) return 'non_retryable';
+
+  // Empty or unclassifiable — retry once
+  if (!stderr.trim()) return 'unknown';
+
+  return 'unknown';
 }
 
 function appendToolVerboseSection(
@@ -994,6 +1116,9 @@ export async function runContainerAgent(
       retryFresh?: boolean;
     }>((resolve) => {
       let localSettled = false;
+      // Set true when stale timer fires and we kill the child intentionally.
+      // Prevents the child's close event (SIGTERM) from overwriting the stale result.
+      let staleKillInProgress = false;
       const transportMode: PiTransportMode = onExtensionUIRequest
         ? 'rpc'
         : 'json';
@@ -1082,6 +1207,7 @@ export async function runContainerAgent(
       let streamedDraft = false;
       let stdoutTruncated = false;
       let sawMeaningfulProgress = false;
+      let sawToolActivity = false;
       const initialStaleDelayMs = lifecyclePolicy.staleAfterMs
         ? useContinue
           ? lifecyclePolicy.staleAfterMs
@@ -1178,13 +1304,16 @@ export async function runContainerAgent(
             reason: 'stale_no_progress',
             retryingFresh: retryFresh,
           });
+          staleKillInProgress = true;
           killActiveChild();
           settleLocal({
-            code: retryFresh ? 75 : 1,
+            code: retryFresh ? 75 : sawMeaningfulProgress ? 76 : 1,
             stdout,
             stderr: retryFresh
               ? 'FFT_NANO_STALE_RETRY'
-              : 'Pi run stalled before producing progress',
+              : sawMeaningfulProgress
+                ? 'FFT_NANO_STALE_RETRY_AFTER_PROGRESS'
+                : 'Pi run stalled before producing progress',
             streamedDraft,
             retryFresh,
           });
@@ -1204,17 +1333,40 @@ export async function runContainerAgent(
       ) => {
         sawMeaningfulProgress = true;
         onProgressEvent?.(event);
-        armStaleTimer();
+        if (event.kind === 'tool') {
+          if (event.status === 'start') {
+            sawToolActivity = true;
+            armStaleTimer(lifecyclePolicy.toolActiveStaleMs);
+            return;
+          }
+          // Tool completed; revert to normal interactive stale budget.
+          sawToolActivity = false;
+          armStaleTimer(lifecyclePolicy.staleAfterMs);
+          return;
+        }
+        armStaleTimer(
+          sawToolActivity
+            ? lifecyclePolicy.toolActiveStaleMs
+            : lifecyclePolicy.staleAfterMs,
+        );
       };
 
       const noteActivity = (event?: { kind: 'stdout'; at: number }) => {
         if (event) onProgressEvent?.(event);
-        armStaleTimer();
+        armStaleTimer(
+          sawToolActivity
+            ? lifecyclePolicy.toolActiveStaleMs
+            : lifecyclePolicy.staleAfterMs,
+        );
       };
 
       const noteWaitState = (delayMs?: number, meaningful = true) => {
         if (meaningful) sawMeaningfulProgress = true;
-        armStaleTimer(delayMs ?? lifecyclePolicy.staleAfterMs);
+        armStaleTimer(
+          delayMs ??
+            lifecyclePolicy.waitStateStaleMs ??
+            lifecyclePolicy.staleAfterMs,
+        );
       };
 
       const maybeSendDraft = (force = false) => {
@@ -1262,9 +1414,16 @@ export async function runContainerAgent(
           },
           'Extension UI request from pi',
         );
+        onProgressEvent?.({
+          kind: 'wait',
+          at: Date.now(),
+          reason: 'extension_ui',
+        });
         noteWaitState(
           Math.max(
-            lifecyclePolicy.staleAfterMs ?? 0,
+            lifecyclePolicy.waitStateStaleMs ??
+              lifecyclePolicy.staleAfterMs ??
+              0,
             (request.timeout ?? 60_000) + 1_000,
           ),
         );
@@ -1446,9 +1605,14 @@ export async function runContainerAgent(
 
       child.on('close', (code) => {
         if (localSettled) return;
-        if (lineBuffer.trim()) processStdoutLine(lineBuffer);
-        maybeSendDraft(true);
-        settleLocal({ code, stdout, stderr, streamedDraft });
+        // When stale timer kills the child via SIGTERM, the close event fires
+        // synchronously BEFORE the stale callback finishes calling settleLocal.
+        // staleKillInProgress flag tells us the stale timer already fired.
+        if (!staleKillInProgress) {
+          if (lineBuffer.trim()) processStdoutLine(lineBuffer);
+          maybeSendDraft(true);
+          settleLocal({ code, stdout, stderr, streamedDraft });
+        }
       });
 
       child.on('error', (err) => {
@@ -1461,6 +1625,7 @@ export async function runContainerAgent(
     const finish = (output: ContainerOutput) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timeoutHandle);
       resolve(output);
     };
 
@@ -1490,30 +1655,129 @@ export async function runContainerAgent(
 
     const doRun = async () => {
       try {
-        let res = effectiveInputNoContinue
-          ? await runPi(false)
-          : await runPi(true);
-        if (res.retryFresh) {
-          const retryAt = Date.now();
-          logger.warn(
-            {
-              group: group.name,
-              requestId: input.requestId,
-              retryAt,
-            },
-            'Retrying pi run with fresh session after stale continue attempt',
-          );
+        let attempt = 0;
+        let delay = FFT_NANO_RETRY_BASE_DELAY_MS;
+        let lastRes: Awaited<ReturnType<typeof runPi>> | null = null;
+        let exhausted = false;
+        let finalError = '';
+        let didFreshRetry = false;
+
+        while (attempt < FFT_NANO_MAX_RETRIES) {
+          const useContinue = attempt === 0 && !effectiveInputNoContinue;
+          lastRes = await runPi(useContinue);
+
+          if (lastRes.code === 0) break; // success
+
+          const errClass = classifyRunError(lastRes.stderr, lastRes.code);
+
+          // Hard fail — do not retry
+          if (errClass === 'non_retryable') {
+            finalError = lastRes.stderr.trim() || `pi exited with code ${lastRes.code}`;
+            break;
+          }
+
+          // Stale on continue session → one fresh retry, then exit without backoff
+          if (lastRes.retryFresh && useContinue) {
+            didFreshRetry = true;
+            const retryAt = Date.now();
+            logger.warn(
+              { group: group.name, requestId: input.requestId, retryAt },
+              'Retrying pi run with fresh session after stale continue attempt',
+            );
+            onProgressEvent?.({
+              kind: 'retry_fresh',
+              at: retryAt,
+              reason: 'stale_no_progress',
+            });
+            lastRes = await runPi(false);
+            if (lastRes.code === 0) break;
+            finalError = lastRes.stderr.trim() || `pi exited with code ${lastRes.code}`;
+            break;
+          }
+
+          // If we already did a fresh retry, no more retries — exit
+          if (didFreshRetry) {
+            exhausted = true;
+            finalError = lastRes!.stderr.trim() || `pi exited with code ${lastRes!.code}`;
+            break;
+          }
+
+          attempt++;
+          if (attempt >= FFT_NANO_MAX_RETRIES) {
+            exhausted = true;
+            finalError = lastRes!.stderr.trim() || `pi exited with code ${lastRes!.code}`;
+            break;
+          }
+
+          // Exponential backoff with full jitter
+          delay = Math.min(delay * 2, FFT_NANO_RETRY_MAX_DELAY_MS);
+          const jitter = Math.random() * delay * FFT_NANO_JITTER_FACTOR;
+          const delayMs = delay + jitter;
+
           onProgressEvent?.({
-            kind: 'retry_fresh',
-            at: retryAt,
-            reason: 'stale_no_progress',
+            kind: 'retry_delay',
+            at: Date.now(),
+            delayMs,
+            attempt,
+            reason: errClass,
           });
-          res = await runPi(false);
+
+          await sleep(delayMs);
         }
-        if (!effectiveInputNoContinue && res.code !== 0) {
-          const looksLikeNoSession =
-            /no\s+previous\s+session|no\s+session/i.test(res.stderr);
-          if (looksLikeNoSession) res = await runPi(false);
+
+        // If all retries exhausted, try provider fallback chain
+        if (
+          exhausted &&
+          FFT_NANO_PROVIDER_FALLBACK_ENABLED &&
+          FFT_NANO_PROVIDER_FALLBACK_ORDER.length > 0
+        ) {
+          const primaryProvider =
+            input.provider ||
+            secrets.PI_API ||
+            process.env.PI_API ||
+            '';
+          const fallbackProviders = getProviderFallbackCandidates({
+            primaryProvider,
+            configuredOrder: FFT_NANO_PROVIDER_FALLBACK_ORDER,
+            attemptedProviders: input.attemptedProviders,
+          });
+
+          for (const fallbackProvider of fallbackProviders) {
+            onProgressEvent?.({
+              kind: 'retry_provider_switch',
+              at: Date.now(),
+              fromProvider: primaryProvider,
+              toProvider: fallbackProvider,
+            });
+
+            // Recursive call with fallback provider — runs full retry loop
+            const fallbackResult = await runContainerAgent(
+              group,
+              {
+                ...input,
+                provider: fallbackProvider,
+                noContinue: true, // fresh session on fallback
+                attemptedProviders: [
+                  ...(input.attemptedProviders ?? []),
+                  primaryProvider,
+                ].filter(Boolean),
+              },
+              abortSignal,
+              onRuntimeEvent,
+              onExtensionUIRequest,
+              onProgressEvent,
+            );
+
+            if (fallbackResult.status === 'success') {
+              clearTimeout(timeoutHandle);
+              if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
+              if (settled) return;
+              finish(fallbackResult);
+              return;
+            }
+            // Try next fallback
+            finalError = fallbackResult.error || 'fallback provider failed';
+          }
         }
 
         clearTimeout(timeoutHandle);
@@ -1522,47 +1786,49 @@ export async function runContainerAgent(
 
         const duration = Date.now() - startTime;
 
-        if (res.code !== 0) {
+        if (lastRes && lastRes.code !== 0) {
           const failedState: PromptRuntimeState = {
             ...readPromptRuntimeState(promptStatePath),
             lastPreflightDecision: preflightDecision,
-            ...(isOverflowStyleError(res.stderr)
+            ...(isOverflowStyleError(lastRes.stderr)
               ? { lastOverflowAt: new Date().toISOString() }
               : {}),
           };
           writePromptRuntimeState(promptStatePath, failedState);
+
+          if (exhausted) {
+            onProgressEvent?.({
+              kind: 'retry_exhausted',
+              at: Date.now(),
+              attempts: FFT_NANO_MAX_RETRIES,
+              finalError,
+            });
+          }
+
           logger.error(
-            {
-              group: group.name,
-              code: res.code,
-              duration,
-              stderr: res.stderr.slice(-500),
-            },
+            { group: group.name, code: lastRes.code, duration, stderr: lastRes.stderr.slice(-500) },
             'Pi exited with error',
           );
           finish({
             status: 'error',
             result: null,
-            error: res.stderr.trim() || `pi exited with code ${res.code}`,
+            error: finalError || lastRes.stderr.trim() || `pi exited with code ${lastRes.code}`,
           });
           return;
         }
 
+        // Success path (lastRes.code === 0)
         const parsed = parsePiJsonOutput({
-          stdout: res.stdout,
+          stdout: lastRes!.stdout,
           provider: input.provider,
           model: input.model,
         });
         const result = isTelegramChatJid(input.chatJid)
           ? parsed.result
-          : appendToolVerboseSection(
-              parsed.result,
-              input.verboseMode,
-              parsed.toolExecutions,
-            );
+          : appendToolVerboseSection(parsed.result, input.verboseMode, parsed.toolExecutions);
 
         let finalResult: string | null = result;
-        let finalStreamed = res.streamedDraft;
+        let finalStreamed = lastRes!.streamedDraft;
 
         if (isForceDelegateHint(codingHint) && !input.isScheduledTask) {
           const outDir = path.join(wp.groupDir, 'coder_runs');

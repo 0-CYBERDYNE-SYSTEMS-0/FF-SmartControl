@@ -37,6 +37,20 @@ test('parseCoderLearnings returns empty array when no learnings section exists',
   assert.deepEqual(parseCoderLearnings(content), []);
 });
 
+test('parseCoderLearnings ignores dated headings outside learnings section', () => {
+  const content = `# MEMORY
+
+### 2026-03-01
+- unrelated journal note
+
+## Other Notes
+
+### 2026-03-02
+- unrelated checkpoint
+`;
+  assert.deepEqual(parseCoderLearnings(content), []);
+});
+
 test('parseCoderLearnings extracts single entry', () => {
   const content = `# MEMORY
 
@@ -87,9 +101,8 @@ Patterns:
 `;
   const entries = parseCoderLearnings(content);
   assert.equal(entries.length, 2);
-  // Entries are in encounter order (newest first in file), so newest first
-  assert.equal(entries[0].date, '2026-04-04');
-  assert.equal(entries[1].date, '2026-04-03');
+  assert.equal(entries[0].date, '2026-04-03');
+  assert.equal(entries[1].date, '2026-04-04');
 });
 
 test('parseCoderLearnings handles entries with only some sections', () => {
@@ -181,9 +194,8 @@ What didn't:
 `;
   const entries = parseCoderLearnings(content);
   assert.equal(entries.length, 2);
-  // With reverse (newest first), Jan 1 comes before Dec 31
-  assert.equal(entries[0].date, '2026-01-01');
-  assert.equal(entries[1].date, '2026-12-31');
+  assert.equal(entries[0].date, '2026-12-31');
+  assert.equal(entries[1].date, '2026-01-01');
 });
 
 test('formatCoderLearningsEntry formats entry with all sections', () => {
@@ -300,7 +312,7 @@ test('roundtrip: parse -> format -> parse preserves content', () => {
   });
 
   const formatted = formatCoderLearningsEntry(entry);
-  const reparsed = parseCoderLearnings(formatted);
+  const reparsed = parseCoderLearnings(`## Coder Learnings\n\n${formatted}`);
 
   assert.equal(reparsed.length, 1);
   assert.equal(reparsed[0].date, entry.date);
@@ -494,15 +506,10 @@ test('writeCoderLearningsToMemory prepends new entries (newest first)', async ()
   assert.ok(formatted1.includes('### 2026-04-03'));
   assert.ok(formatted2.includes('### 2026-04-04'));
 
-  // Verify parseCoderLearnings returns newest first when entries are prepended
-  // Note: parseCoderLearnings reverses encounter order, so if entry2 (2026-04-04)
-  // comes first in the file and entry1 (2026-04-03) comes second, after reverse
-  // entry1 (2026-04-03) will be first (since it was encountered last).
-  const combined = `${formatted2}\n\n${formatted1}`;
+  // Verify parseCoderLearnings preserves encounter order.
+  const combined = `## Coder Learnings\n\n${formatted2}\n\n${formatted1}`;
   const parsed = parseCoderLearnings(combined);
   assert.equal(parsed.length, 2);
-  // parseCoderLearnings returns in reverse chronological order (newest first)
-  // Since 2026-04-03 was encountered last in the combined string, it ends up first after reverse
-  assert.equal(parsed[0].date, '2026-04-03');
-  assert.equal(parsed[1].date, '2026-04-04');
+  assert.equal(parsed[0].date, '2026-04-04');
+  assert.equal(parsed[1].date, '2026-04-03');
 });
