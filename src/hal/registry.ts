@@ -1,5 +1,7 @@
 import { getDb } from './db.js';
 import { HalDevice, DeviceType, DeviceProtocol, DeviceState } from './types.js';
+import { createHttpClient } from './http-devices.js';
+import { gpio } from './gpio.js';
 
 function genId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -49,6 +51,40 @@ export class HalRegistry {
   // Remove device
   remove(id: string): void {
     this.db.prepare('DELETE FROM hal_devices WHERE id = ?').run(id);
+  }
+
+  // Poll all registered HTTP devices and update their state in DB
+  async poll(): Promise<void> {
+    const devices = this.list();
+    for (const dev of devices) {
+      if (!dev.host || dev.protocol === 'gpio') continue;
+      try {
+        const client = await createHttpClient(dev.host, dev.protocol as any);
+        const result = await client.getPower();
+        this.updateState(dev.id, result.state, result.watts);
+      } catch {
+        this.updateState(dev.id, 'unknown');
+      }
+    }
+  }
+
+  // Control a device (on/off)
+  async control(id: string, action: 'on' | 'off'): Promise<void> {
+    const dev = this.get(id);
+    if (!dev) throw new Error(`Device ${id} not found`);
+
+    if (dev.protocol === 'gpio') {
+      // Map device id to GPIO pin number (stored in device metadata or use default)
+      const pin = parseInt(dev.host || '0');
+      gpio.digitalWrite(pin, action === 'on');
+      this.updateState(id, action);
+      return;
+    }
+
+    if (!dev.host) throw new Error(`No host for device ${id}`);
+    const client = await createHttpClient(dev.host, dev.protocol as any);
+    await client.setPower(action === 'on');
+    this.updateState(id, action);
   }
 }
 
