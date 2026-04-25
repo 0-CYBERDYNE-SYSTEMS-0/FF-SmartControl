@@ -1473,8 +1473,27 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
 
     await processMessageWithOutcome(msg);
 
-    // FarmPal: agent removed — !auto mode disabled in fork
-    // if (process.env.HAL_AUTO_MODE === 'true' && content.startsWith('!auto ')) { ... }
+    // Check for HAL auto mode: messages starting with !auto trigger the decision loop
+    if (process.env.HAL_AUTO_MODE === 'true' && content.startsWith('!auto ')) {
+      void (async () => {
+        try {
+          const { runDecisionCycle } = await import('./agent/decision-loop.js');
+          const result = await runDecisionCycle({
+            trigger: 'message',
+            message: content.replace('!auto ', ''),
+            chatId: msg.chat_jid,
+          });
+          if (result.decision !== 'noop') {
+            await deps.sendMessage(
+              msg.chat_jid,
+              `[Auto] ${result.decision}: ${result.reasoning}`,
+            );
+          }
+        } catch (err) {
+          deps.logger?.error?.({ err }, '[HAL] Auto mode decision cycle failed');
+        }
+      })();
+    }
 
     return true;
   }

@@ -504,7 +504,8 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
         const { halRegistry: halReg } = await import('./hal/registry.js');
         await halReg.poll();
         if (process.env.HAL_AUTO_DECISIONS === 'true') {
-          // FarmPal: agent removed — decision loop disabled in fork
+          const { runDecisionCycle } = await import('./agent/decision-loop.js');
+          await runDecisionCycle({ trigger: 'heartbeat' });
         }
       } catch (err) {
         deps.logger.error?.({ err }, '[HAL] Periodic poll error');
