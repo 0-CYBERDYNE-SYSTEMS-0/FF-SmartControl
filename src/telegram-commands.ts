@@ -1146,6 +1146,65 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
     }
   }
 
+  // HAL device management commands
+  async function handleHALCommand(args: string, chatId: string): Promise<string> {
+    const { halRegistry } = await import('./hal/registry.js');
+    const sub = args.trim().split(' ')[0]?.toLowerCase();
+
+    if (sub === 'list' || sub === 'devices') {
+      const devices = halRegistry.list();
+      if (devices.length === 0) return 'No HAL devices registered. Run `/hal discover` first.';
+      return 'HAL Devices:\n' + devices.map(d =>
+        `• ${d.label || d.id} (${d.type}/${d.protocol}) ${d.host ? '@ ' + d.host : ''} — ${d.last_state}${d.last_value ? ' [' + d.last_value + ']' : ''}`
+      ).join('\n');
+    }
+
+    if (sub === 'discover') {
+      const { discoverDevices, autoRegisterDiscovered } = await import('./hal/discovery.js');
+      const found = await discoverDevices({ subnet: process.env.HAL_SUBNET || '192.168.1' });
+      await autoRegisterDiscovered(found);
+      return `Discovery complete. Found ${found.length} device(s).`;
+    }
+
+    if (sub === 'on' || sub === 'off') {
+      const deviceArg = args.trim().split(' ').slice(1).join(' ');
+      if (!deviceArg) return 'Usage: /hal on <device_id_or_label>';
+      const dev = halRegistry.list().find(d => d.id === deviceArg || d.label === deviceArg);
+      if (!dev) return `Device "${deviceArg}" not found.`;
+      const action = sub === 'on' ? 'on' : 'off';
+      await halRegistry.control(dev.id, action);
+      return `${dev.label || dev.id} turned ${action}.`;
+    }
+
+    if (sub === 'sensors' || sub === 'read') {
+      const { halSensors } = await import('./hal/sensors.js');
+      const devices = halRegistry.list().filter(d => d.type === 'sensor');
+      if (!devices.length) return 'No sensors registered.';
+      const lines = [];
+      for (const dev of devices) {
+        const temp = halSensors.latest(dev.id, 'temperature');
+        const hum = halSensors.latest(dev.id, 'humidity');
+        lines.push(`${dev.label || dev.id}: ${temp ? temp.value + '°C' : '—'} / ${hum ? hum.value + '%' : '—'}`);
+      }
+      return lines.join('\n');
+    }
+
+    if (sub === 'history') {
+      const { halSensors } = await import('./hal/sensors.js');
+      const deviceArg = args.trim().split(' ').slice(1).join(' ');
+      if (!deviceArg) return 'Usage: /hal history <device_id>';
+      const dev = halRegistry.list().find(d => d.id === deviceArg || d.label === deviceArg);
+      if (!dev) return `Device "${deviceArg}" not found.`;
+      const from = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const to = new Date().toISOString();
+      const readings = halSensors.history(dev.id, 'temperature', from, to);
+      if (!readings.length) return 'No readings in the last 24h.';
+      return `Last 24h for ${dev.label || dev.id}:\n` + readings.slice(-10).map(r => `${r.read_at}: ${r.value}`).join('\n');
+    }
+
+    return 'HAL commands: /hal list | discover | on <device> | off <device> | sensors | history <device>';
+  }
+
   async function handleTelegramCommand(
     m: TelegramCommandMessage,
   ): Promise<boolean> {
@@ -1190,6 +1249,13 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
         state: 'final',
         message: { role: 'assistant', content: responseText },
       });
+      await deps.sendMessage(m.chatJid, responseText);
+      return true;
+    }
+
+    if (cmd === '/hal') {
+      const args = rest.join(' ');
+      const responseText = await handleHALCommand(args, m.chatJid);
       await deps.sendMessage(m.chatJid, responseText);
       return true;
     }

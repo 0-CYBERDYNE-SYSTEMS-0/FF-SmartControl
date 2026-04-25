@@ -478,6 +478,40 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     deps.ensureContainerSystemRunning?.();
     deps.initDatabase?.();
     deps.logger.info?.('Database initialized');
+
+    // Initialize HAL subsystem (hardware abstraction layer)
+    try {
+      const { runMigrations: halRunMigrations } = await import('./hal/db.js');
+      const { halRegistry: halReg } = await import('./hal/registry.js');
+      halRunMigrations();
+      deps.logger.info?.('[HAL] Database migrated');
+
+      if (process.env.MQTT_BROKER_URL) {
+        const { mqttSubscriber } = await import('./hal/mqtt.js');
+        await mqttSubscriber.start();
+        deps.logger.info?.('[HAL] MQTT subscriber started');
+      }
+
+      await halReg.poll();
+      deps.logger.info?.('[HAL] Initial device poll complete');
+    } catch (err) {
+      deps.logger.error?.({ err }, '[HAL] Init error — continuing without HAL');
+    }
+
+    // Periodic HAL poll every 5 minutes (HAL_AUTO_DECISIONS triggers decision loop)
+    setInterval(async () => {
+      try {
+        const { halRegistry: halReg } = await import('./hal/registry.js');
+        await halReg.poll();
+        if (process.env.HAL_AUTO_DECISIONS === 'true') {
+          const { runDecisionCycle } = await import('./agent/decision-loop.js');
+          await runDecisionCycle({ trigger: 'heartbeat' });
+        }
+      } catch (err) {
+        deps.logger.error?.({ err }, '[HAL] Periodic poll error');
+      }
+    }, 5 * 60 * 1000);
+
     deps.loadState?.();
     deps.migrateLegacyClaudeMemoryFiles?.();
     deps.migrateCompactionSummariesFromSoul?.();
