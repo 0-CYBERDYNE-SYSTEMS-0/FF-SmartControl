@@ -862,6 +862,190 @@ export async function startWebControlCenterServer(
       return;
     }
 
+    // HAL API routes
+    if (requestPath.startsWith('/api/hal/')) {
+      const path = requestPath.slice('/api/hal'.length);
+
+      // GET /api/hal/state — full HAL snapshot
+      if (path === '/state' && method === 'GET') {
+        const { halRegistry } = await import('../hal/registry.js');
+        const { halSensors } = await import('../hal/sensors.js');
+        const { halDecisions } = await import('../hal/decisions.js');
+        const devices = halRegistry.list();
+        const sensorSnapshots: Record<string, any> = {};
+        for (const dev of devices.filter((d: any) => d.type === 'sensor')) {
+          sensorSnapshots[dev.id] = {
+            temperature: halSensors.latest(dev.id, 'temperature'),
+            humidity: halSensors.latest(dev.id, 'humidity'),
+          };
+        }
+        sendJson(res, 200, { devices, sensorSnapshots, recentDecisions: halDecisions.recent(10) });
+        return;
+      }
+
+      // GET /api/hal/devices — list all devices
+      if (path === '/devices' && method === 'GET') {
+        const { halRegistry } = await import('../hal/registry.js');
+        sendJson(res, 200, halRegistry.list());
+        return;
+      }
+
+      // POST /api/hal/devices/:id/control — { action: 'on' | 'off' }
+      if (path.match(/^\/devices\/[^/]+\/control$/) && method === 'POST') {
+        const { halRegistry } = await import('../hal/registry.js');
+        const { halRelays } = await import('../hal/relays.js');
+        const deviceId = path.split('/')[2];
+        let body: any;
+        try { body = await readJsonBody(req); } catch { body = {}; }
+        const action = body.action;
+        if (action !== 'on' && action !== 'off') {
+          sendJson(res, 400, { error: 'action must be "on" or "off"' });
+          return;
+        }
+        try {
+          await halRegistry.control(deviceId, action);
+          halRelays.log({ device_id: deviceId, state: action, reason: 'manual', triggered_by: 'web-ui' });
+          sendJson(res, 200, { ok: true });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // POST /api/hal/devices/discover — { subnet: string }
+      if (path === '/devices/discover' && method === 'POST') {
+        const { discoverDevices, autoRegisterDiscovered } = await import('../hal/discovery.js');
+        let body: any;
+        try { body = await readJsonBody(req); } catch { body = {}; }
+        const subnet = body.subnet || process.env.HAL_SUBNET || '192.168.1';
+        try {
+          const found = await discoverDevices({ subnet });
+          await autoRegisterDiscovered(found);
+          sendJson(res, 200, { ok: true, found: found.length, devices: found });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/hal/sensors/latest — latest readings
+      if (path === '/sensors/latest' && method === 'GET') {
+        const { halRegistry } = await import('../hal/registry.js');
+        const { halSensors } = await import('../hal/sensors.js');
+        const devices = halRegistry.list().filter((d: any) => d.type === 'sensor');
+        const readings: any[] = [];
+        for (const dev of devices) {
+          const temp = halSensors.latest(dev.id, 'temperature');
+          const hum = halSensors.latest(dev.id, 'humidity');
+          if (temp || hum) readings.push({ device: dev, temperature: temp, humidity: hum });
+        }
+        sendJson(res, 200, readings);
+        return;
+      }
+
+      // GET /api/hal/sensors/history?device=:id&metric=:m&from=&to=
+      if (path.startsWith('/sensors/history') && method === 'GET') {
+        const { halSensors } = await import('../hal/sensors.js');
+        const url = new URL(requestPath, 'http://localhost');
+        const deviceId = url.searchParams.get('device');
+        const metric = url.searchParams.get('metric') as any;
+        const from = url.searchParams.get('from') || new Date(Date.now() - 86400000).toISOString();
+        const to = url.searchParams.get('to') || new Date().toISOString();
+        if (!deviceId || !metric) {
+          sendJson(res, 400, { error: 'device and metric are required' });
+          return;
+        }
+        const history = halSensors.history(deviceId, metric, from, to);
+        sendJson(res, 200, history);
+        return;
+      }
+
+      // GET /api/hal/decisions?limit=20
+      if (path.startsWith('/decisions') && method === 'GET') {
+        const { halDecisions } = await import('../hal/decisions.js');
+        const url = new URL(requestPath, 'http://localhost');
+        const limit = parseInt(url.searchParams.get('limit') || '20');
+        sendJson(res, 200, halDecisions.recent(limit));
+        return;
+      }
+
+      // POST /api/hal/decisions/:id/complete — { outcome: 'success' | 'failure' }
+      if (path.match(/^\/decisions\/[^/]+\/complete$/) && method === 'POST') {
+        const { halDecisions } = await import('../hal/decisions.js');
+        const decisionId = path.split('/')[2];
+        let body: any;
+        try { body = await readJsonBody(req); } catch { body = {}; }
+        try {
+          halDecisions.complete(decisionId, body.outcome);
+          sendJson(res, 200, { ok: true });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/hal/cameras — list camera devices
+      if (path === '/cameras' && method === 'GET') {
+        const { halRegistry } = await import('../hal/registry.js');
+        const cameras = halRegistry.list().filter((d: any) => d.type === 'camera');
+        sendJson(res, 200, cameras);
+        return;
+      }
+
+      // POST /api/hal/cameras/:id/capture — trigger a camera capture
+      if (path.match(/^\/cameras\/[^/]+\/capture$/) && method === 'POST') {
+        const { halRegistry } = await import('../hal/registry.js');
+        const { V4L2Camera } = await import('../hal/camera.js');
+        const deviceId = path.split('/')[2];
+        const dev = halRegistry.get(deviceId);
+        if (!dev || dev.type !== 'camera') {
+          sendJson(res, 404, { error: 'Camera not found' });
+          return;
+        }
+        try {
+          const cam = new V4L2Camera({ device: dev.host || '/dev/video0' });
+          const buf = cam.capture();
+          const filename = `/tmp/hal_cam_${deviceId}_${Date.now()}.jpg`;
+          const { writeFileSync } = await import('fs');
+          writeFileSync(filename, buf);
+          sendJson(res, 200, { ok: true, path: filename, size_bytes: buf.length });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // Catch-all for /api/hal/* — 404
+      sendJson(res, 404, { error: 'HAL API endpoint not found' });
+      return;
+    }
+
+    // HAL UI static files (src/web/hal-ui/)
+    if (requestPath.startsWith('/hal-ui')) {
+      const halUiDir = path.resolve(process.cwd(), 'src', 'web', 'hal-ui');
+      const halUiPath = requestPath === '/hal-ui' || requestPath === '/hal-ui/'
+        ? path.join(halUiDir, 'index.html')
+        : path.join(halUiDir, requestPath.replace('/hal-ui/', ''));
+      if (!halUiPath.startsWith(halUiDir)) {
+        sendJson(res, 403, { ok: false, error: 'Forbidden' });
+        return;
+      }
+      const ext = path.extname(halUiPath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+      try {
+        const body = fs.readFileSync(halUiPath);
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=300',
+          'Content-Length': body.byteLength,
+        });
+        res.end(body);
+      } catch {
+        sendText(res, 404, 'Not found');
+      }
+      return;
+    }
+
     const normalizedPath =
       requestPath === '/' ? 'index.html' : requestPath.replace(/^\/+/, '');
     const candidatePath = path.resolve(staticDir, normalizedPath);

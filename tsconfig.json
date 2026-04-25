@@ -16,5 +16,5 @@
     "sourceMap": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/extensions/pi-autoresearch"]
+  "exclude": ["node_modules", "dist", "src/extensions/pi-autoresearch", "src/web/hal-ui"],
 }
