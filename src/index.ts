@@ -4442,6 +4442,8 @@ const appRuntime = createAppRuntime({
   startWebControlCenterService,
   stopTuiGatewayService,
   stopWebControlCenterService,
+  startHalUiService,
+  stopHalUiService,
   startFarmStateCollector,
   stopFarmStateCollector,
   startHeartbeatLoop,
@@ -4925,6 +4927,44 @@ async function stopWebControlCenterService(): Promise<void> {
     logger.info('FFT Control Center server stopped');
   } catch (err) {
     logger.warn({ err }, 'Failed to stop FFT Control Center server cleanly');
+  }
+}
+
+// HAL UI server state
+let halUiServer: Awaited<ReturnType<typeof import('./web/hal-ui-server.js').startHalUiServer>> | null = null;
+
+async function startHalUiService(): Promise<void> {
+  if (halUiServer) return;
+  if (process.env.HAL_UI_ENABLED === '0') {
+    logger.info('HAL UI disabled via HAL_UI_ENABLED=0');
+    return;
+  }
+  try {
+    const { startHalUiServer } = await import('./web/hal-ui-server.js');
+    const port = parseInt(process.env.HAL_UI_PORT || '28991', 10);
+    const host = process.env.HAL_UI_HOST || '127.0.0.1';
+    halUiServer = await startHalUiServer(port, host);
+    logger.info({ port, host }, 'HAL UI server started');
+
+    // Auto-open browser if enabled (default: 1)
+    if (process.env.HAL_UI_AUTO_OPEN !== '0') {
+      const open = (await import('open')).default;
+      open(`http://${host}:${port}`).catch(() => {});
+    }
+  } catch (err) {
+    logger.warn({ err }, 'HAL UI server failed to start — continuing');
+  }
+}
+
+async function stopHalUiService(): Promise<void> {
+  if (!halUiServer) return;
+  const server = halUiServer;
+  halUiServer = null;
+  try {
+    await server.close();
+    logger.info('HAL UI server stopped');
+  } catch (err) {
+    logger.warn({ err }, 'Failed to stop HAL UI server cleanly');
   }
 }
 
@@ -6474,6 +6514,7 @@ main().catch(async (err) => {
   stopFarmServicesForShutdown('startup_error');
   await stopWebControlCenterService();
   await stopTuiGatewayService();
+  await stopHalUiService();
   logger.error({ err }, 'Failed to start FFT_nano');
   process.exit(1);
 });

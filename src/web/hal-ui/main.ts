@@ -1,0 +1,143 @@
+// FarmPal HAL UI — main.ts
+// Entry point, router, state management, data polling
+
+import './tokens.css';
+import './reset.css';
+import './themes.css';
+
+import { renderHeader, initHeader } from './components/Header.js';
+import { renderViewTabs, initViewTabs } from './components/ViewTabs.js';
+import { injectCardStyles } from './components/Card.js';
+import { injectToggleStyles } from './components/Toggle.js';
+import { injectModalStyles } from './components/Modal.js';
+import { showToast } from './components/Toast.js';
+
+import { renderDashboard } from './views/Dashboard.js';
+import { renderDevices } from './views/Devices.js';
+import { renderSensors } from './views/Sensors.js';
+import { renderDecisions } from './views/Decisions.js';
+import { renderCameras } from './views/Cameras.js';
+
+import { halApi } from './api.js';
+import type { HalState } from './api.js';
+import { getStore, setStore, subscribe, applyModeAccent } from './store.js';
+import type { FarmMode } from './components/Header.js';
+import type { ViewId } from './components/ViewTabs.js';
+
+type AsyncViewRenderer = (container: HTMLElement) => Promise<void>;
+
+const views: Record<ViewId, AsyncViewRenderer> = {
+  dashboard:  renderDashboard,
+  devices:    renderDevices,
+  sensors:    renderSensors,
+  decisions:  renderDecisions,
+  cameras:    renderCameras,
+};
+
+// Uptime tracking
+let pageLoadTime = Date.now();
+
+async function init(): Promise<void> {
+  const app = document.getElementById('app');
+  if (!app) throw new Error('#app element not found');
+
+  // Inject shared component styles
+  injectCardStyles();
+  injectToggleStyles();
+  injectModalStyles();
+
+  // Build shell
+  const store = getStore();
+  app.innerHTML = `
+    <div id="hal-header"></div>
+    <div id="hal-tabs"></div>
+    <main class="main-content" id="view-container"></main>
+  `;
+
+  // Render header & tabs
+  const headerEl = document.getElementById('hal-header')!;
+  const tabsEl   = document.getElementById('hal-tabs')!;
+  headerEl.innerHTML = renderHeader(store.mode, handleModeChange);
+  tabsEl.innerHTML   = renderViewTabs(store.activeView as ViewId);
+
+  // Init header clock and mode buttons
+  initHeader(store.mode, handleModeChange);
+  initViewTabs(handleViewChange);
+
+  // Subscribe to store changes
+  subscribe(render);
+
+  // Initial data fetch
+  await refreshHALData();
+
+  // Render initial view
+  await render();
+
+  // Start polling
+  startPolling();
+
+  // Start uptime counter
+  startUptimeCounter();
+}
+
+function handleModeChange(mode: FarmMode): void {
+  setStore({ mode });
+  applyModeAccent(mode);
+  showToast(`Mode: ${mode}`, 'info', 2000);
+}
+
+async function handleViewChange(viewId: ViewId): Promise<void> {
+  setStore({ activeView: viewId });
+  await render();
+}
+
+async function render(): Promise<void> {
+  const store = getStore();
+  const container = document.getElementById('view-container');
+  if (!container) return;
+
+  const renderer = views[store.activeView as ViewId];
+  if (renderer) {
+    await renderer(container);
+  }
+}
+
+async function refreshHALData(): Promise<void> {
+  try {
+    const state: HalState = await halApi.getState();
+    setStore({
+      devices: state.devices,
+      sensors: state.sensorSnapshots,
+      cameras: state.devices.filter(device => device.type === 'camera'),
+      decisions: state.recentDecisions,
+      decisionsToday: countTodayDecisions(state.recentDecisions),
+    });
+  } catch (err: any) {
+    console.error('HAL data refresh failed:', err);
+  }
+}
+
+function countTodayDecisions(decisions: ReturnType<typeof getStore>['decisions']): number {
+  const today = new Date().toDateString();
+  return decisions.filter(d => {
+    try {
+      return new Date(d.timestamp).toDateString() === today;
+    } catch { return false; }
+  }).length;
+}
+
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+function startPolling(): void {
+  // Refresh HAL data every 10 seconds
+  pollInterval = setInterval(refreshHALData, 10000);
+}
+
+function startUptimeCounter(): void {
+  setInterval(() => {
+    setStore({ uptime: Math.floor((Date.now() - pageLoadTime) / 1000) });
+  }, 1000);
+}
+
+// Boot
+document.addEventListener('DOMContentLoaded', init);

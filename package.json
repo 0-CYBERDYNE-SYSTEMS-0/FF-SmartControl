@@ -63,9 +63,14 @@
     "release:sha256": "bash scripts/release/generate-sha256s.sh",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\"",
+    "hal:ui:build": "bash scripts/build-hal-ui.sh",
+    "hal:ui:watch": "bash scripts/build-hal-ui.sh --watch",
+    "hal:ui:open": "node -e \"import('open').then(m => m.default('http://127.0.0.1:28991'))\"",
     "format:check": "prettier --check \"src/**/*.ts\""
   },
   "dependencies": {
+    "@google/design.md": "^0.1.1",
+    "@mapbox/node-pre-gyp": "^2.0.3",
     "@mariozechner/pi-coding-agent": "^0.67.6",
     "@mariozechner/pi-tui": "^0.53.0",
     "@serialport/parser-readline": "^13.0.0",
@@ -73,10 +78,13 @@
     "better-sqlite3": "^12.8.0",
     "chalk": "^5.6.2",
     "cron-parser": "^5.5.0",
+    "esbuild": "^0.25.12",
     "mqtt": "^5.15.1",
+    "open": "^10.2.0",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
     "qrcode-terminal": "^0.12.0",
+    "sql.js": "^1.14.1",
     "ws": "^8.19.0",
     "yaml": "^2.8.2",
     "zod": "^4.3.6"

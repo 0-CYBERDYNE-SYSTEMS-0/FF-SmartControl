@@ -100,6 +100,8 @@ export interface AppRuntimeDeps {
   startWebControlCenterService?: () => Promise<void>;
   stopTuiGatewayService?: () => Promise<void>;
   stopWebControlCenterService?: () => Promise<void>;
+  startHalUiService?: () => Promise<void>;
+  stopHalUiService?: () => Promise<void>;
   startFarmStateCollector?: () => void;
   stopFarmStateCollector?: () => void;
   startHeartbeatLoop?: () => void;
@@ -447,6 +449,7 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     stopFarmServicesForShutdown(signal);
     await deps.stopWebControlCenterService?.();
     await deps.stopTuiGatewayService?.();
+    await deps.stopHalUiService?.();
     process.exit(exitCode);
   }
 
@@ -494,12 +497,18 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
 
       await halReg.poll();
       deps.logger.info?.('[HAL] Initial device poll complete');
+
+      const { seedHalDemoData } = await import('./hal/seed-data.js');
+      seedHalDemoData();
+      deps.logger.info?.('[HAL] Demo data seeded');
+
+      await deps.startHalUiService?.();
     } catch (err) {
       deps.logger.error?.({ err }, '[HAL] Init error — continuing without HAL');
     }
 
     // Periodic HAL poll every 5 minutes (HAL_AUTO_DECISIONS triggers decision loop)
-    setInterval(async () => {
+    const halPollTimer = setInterval(async () => {
       try {
         const { halRegistry: halReg } = await import('./hal/registry.js');
         await halReg.poll();
@@ -511,6 +520,7 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
         deps.logger.error?.({ err }, '[HAL] Periodic poll error');
       }
     }, 5 * 60 * 1000);
+    halPollTimer.unref?.();
 
     deps.loadState?.();
     deps.migrateLegacyClaudeMemoryFiles?.();
