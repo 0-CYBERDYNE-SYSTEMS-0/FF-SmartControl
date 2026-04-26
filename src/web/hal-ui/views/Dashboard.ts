@@ -149,13 +149,17 @@ async function loadDashboardHeroCard(): Promise<void> {
     if (sequence !== dashLoadSequence) return;
     const store = getStore();
 
-    // Derive zones from device names in the loaded layers
-    const zones = [...new Set(layers.map(l => l.deviceName))];
-    // If no zones from data but we have sensors, use sensor names
+    // Derive zones from explicit layer zone names
+    const zones = [...new Set(layers.map(l => l.zoneName).filter(Boolean))];
+    // If no zones from data but we have sensors, infer Tent A/Tent B from ids.
     if (zones.length === 0) {
-      const sensorNames = store.devices.filter(d => d.type === 'sensor').map(d => d.name);
-      if (sensorNames.length > 0) {
-        zones.push(...sensorNames);
+      const inferredZones = new Set<string>();
+      for (const device of store.devices.filter(d => d.type === 'sensor')) {
+        if (device.id.startsWith('tent_a_')) inferredZones.add('Tent A');
+        if (device.id.startsWith('tent_b_')) inferredZones.add('Tent B');
+      }
+      if (inferredZones.size > 0) {
+        zones.push(...Array.from(inferredZones));
       }
     }
 
@@ -165,7 +169,7 @@ async function loadDashboardHeroCard(): Promise<void> {
 
     // Filter layers to only the selected zone
     const zoneLayers = dashActiveZone
-      ? layers.filter(l => l.deviceName === dashActiveZone)
+      ? layers.filter(l => l.zoneName === dashActiveZone)
       : layers;
 
     // Build DashboardHeroMetric[] from zone-filtered layers
@@ -184,25 +188,22 @@ async function loadDashboardHeroCard(): Promise<void> {
       };
     });
 
-    // Ensure every supported metric has a toggle, even when zone has no points.
-    for (const key of HERO_METRIC_KEYS) {
-      if (!allMetrics.find(m => m.key === key)) {
-        const cfg = DASH_METRIC_META[key];
-        allMetrics.push({ key, label: cfg.label, color: cfg.color, unit: cfg.unit, data: [] });
-      }
-    }
-
     const heroMetrics = allMetrics
       .filter(m => HERO_METRIC_KEYS.includes(m.key as (typeof HERO_METRIC_KEYS)[number]))
       .sort((a, b) => HERO_METRIC_KEYS.indexOf(a.key as (typeof HERO_METRIC_KEYS)[number]) - HERO_METRIC_KEYS.indexOf(b.key as (typeof HERO_METRIC_KEYS)[number]));
 
+    const availableMetricKeys = new Set(heroMetrics.filter(m => m.data.length > 0).map(m => m.key));
+    const fallbackMetric =
+      ['temperature', 'humidity', 'co2'].find(key => availableMetricKeys.has(key)) ??
+      Array.from(availableMetricKeys)[0];
+
     for (const key of Array.from(dashActiveMetrics)) {
-      if (!HERO_METRIC_KEYS.includes(key as (typeof HERO_METRIC_KEYS)[number])) {
+      if (!availableMetricKeys.has(key)) {
         dashActiveMetrics.delete(key);
       }
     }
-    if (dashActiveMetrics.size === 0) {
-      dashActiveMetrics.add('temperature');
+    if (dashActiveMetrics.size === 0 && fallbackMetric) {
+      dashActiveMetrics.add(fallbackMetric);
     }
 
     if (sequence !== dashLoadSequence) return;
@@ -211,8 +212,15 @@ async function loadDashboardHeroCard(): Promise<void> {
       subtitle: 'Environment Overview',
       activeKeys: new Set(dashActiveMetrics),
       onToggle: (key) => {
-        if (dashActiveMetrics.has(key)) dashActiveMetrics.delete(key);
-        else dashActiveMetrics.add(key);
+        if (!availableMetricKeys.has(key)) return;
+        const currentlyActive = Array.from(dashActiveMetrics).filter(metricKey => availableMetricKeys.has(metricKey));
+        if (dashActiveMetrics.has(key)) {
+          // Never allow removing the last active metric; chart must always have at least one series.
+          if (currentlyActive.length <= 1) return;
+          dashActiveMetrics.delete(key);
+        } else {
+          dashActiveMetrics.add(key);
+        }
         void loadDashboardHeroCard();
       },
       zoneToggles: zones.length > 1 ? {
@@ -574,7 +582,7 @@ function injectDashboardStyles(): void {
 /* ── Layout ── */
 .dash-layout {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
   gap: var(--space-6);
 }
 .dash-main { min-width: 0; }
@@ -582,10 +590,11 @@ function injectDashboardStyles(): void {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  min-width: 0;
 }
 
 /* ── CALM mode ── */
-.calm-layout { grid-template-columns: 1fr 220px; }
+.calm-layout { grid-template-columns: minmax(0, 1fr) minmax(220px, 260px); }
 .calm-hero { margin-bottom: var(--space-6); }
 .calm-status-row {
   display: grid;
@@ -696,13 +705,13 @@ function injectDashboardStyles(): void {
 }
 .dash-bottom-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: var(--space-6);
   margin-top: var(--space-6);
 }
 .device-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: var(--space-2);
 }
 .device-mini-card {
@@ -780,11 +789,11 @@ function injectDashboardStyles(): void {
 }
 
 /* ── DIAGNOSTIC mode ── */
-.diag-layout { grid-template-columns: 1fr 280px; }
+.diag-layout { grid-template-columns: minmax(0, 1fr) minmax(240px, 280px); }
 .diag-raw-data { margin: var(--space-6) 0; }
 .diag-snapshot-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: var(--space-3);
 }
 .diag-snapshot {
@@ -868,20 +877,22 @@ function injectDashboardStyles(): void {
 }
 
 /* ── Responsive ── */
-@media (max-width: 1023px) {
+@media (max-width: 1279px) {
   .dash-layout, .calm-layout, .diag-layout { grid-template-columns: 1fr; }
   .dash-sidebar { flex-direction: row; flex-wrap: wrap; }
-  .dash-sidebar > * { flex: 1; min-width: 240px; }
+  .dash-sidebar > * { flex: 1 1 260px; min-width: 0; }
   .calm-status-row { grid-template-columns: repeat(3, 1fr); }
-  .diag-snapshot-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 767px) {
-  .dash-bottom-grid { grid-template-columns: 1fr; }
-  .device-grid { grid-template-columns: 1fr; }
   .dash-hero-header { flex-direction: column; align-items: flex-start; }
   .dash-live-bar { gap: var(--space-2); }
   .calm-status-row { grid-template-columns: 1fr; }
-  .diag-snapshot-grid { grid-template-columns: 1fr; }
+  .dash-sidebar {
+    flex-direction: column;
+  }
+  .dash-sidebar > * {
+    flex: 1 1 auto;
+  }
 }
 `;
   document.head.appendChild(style);

@@ -12,6 +12,7 @@ import {
 export interface HeroChartLayer {
   deviceId: string;
   deviceName: string;
+  zoneName: string;
   metric: string;
   color: string;
   data: HalSensorReading[];
@@ -42,6 +43,14 @@ const metricConfig: Record<string, { label: string; color: string; unit: string;
   vpd:          { label: 'VPD',          color: '#A855F7', unit: 'kPa', minAxis: 0,  maxAxis: 3 },
 };
 
+function resolveZoneName(deviceId: string, deviceName: string): string {
+  if (deviceId.startsWith('tent_a_')) return 'Tent A';
+  if (deviceId.startsWith('tent_b_')) return 'Tent B';
+  if (/tent\s*a/i.test(deviceName)) return 'Tent A';
+  if (/tent\s*b/i.test(deviceName)) return 'Tent B';
+  return 'Unzoned';
+}
+
 export async function loadHeroChartData(): Promise<{ layers: HeroChartLayer[]; decisions: HalDecision[] }> {
   const store = (await import('../store.js')).getStore();
   const sensors = store.devices.filter(d => d.type === 'sensor');
@@ -58,7 +67,14 @@ export async function loadHeroChartData(): Promise<{ layers: HeroChartLayer[]; d
           const data = await halApi.getSensorHistory(s.id, m, from, to);
           if (data.length > 0) {
             const cfg = metricConfig[m];
-            layers.push({ deviceId: s.id, deviceName: s.name, metric: m, color: cfg?.color || '#888', data });
+            layers.push({
+              deviceId: s.id,
+              deviceName: s.name,
+              zoneName: resolveZoneName(s.id, s.name),
+              metric: m,
+              color: cfg?.color || '#888',
+              data,
+            });
           }
         } catch { /* skip */ }
       })

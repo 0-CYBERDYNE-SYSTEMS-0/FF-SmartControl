@@ -21,6 +21,7 @@ interface MetricConfig {
 interface SeriesLayer {
   deviceId: string;
   deviceName: string;
+  zoneName: string;
   metric: MetricConfig;
   data: HalSensorReading[];
 }
@@ -40,6 +41,7 @@ const viewState = {
   deviceId: 'all',
   range: '24H' as '1H' | '6H' | '24H' | '7D' | '30D',
   activeMetrics: new Set<MetricKey>(['temperature', 'humidity', 'co2']),
+  availableMetrics: new Set<MetricKey>(['temperature', 'humidity', 'co2']),
   activeZone: '',
   decisions: [] as HalDecision[],
 };
@@ -175,17 +177,16 @@ function attachHandlers(sensors: ReturnType<typeof getStore>['devices']): void {
   document.querySelectorAll<HTMLButtonElement>('.metric-pill').forEach(btn => {
     btn.addEventListener('click', () => {
       const metric = btn.dataset.metric as MetricKey;
+      if (!viewState.availableMetrics.has(metric)) return;
       if (viewState.activeMetrics.has(metric)) {
+        const activeAvailable = Array.from(viewState.activeMetrics).filter(key => viewState.availableMetrics.has(key));
+        // Keep at least one active metric so the hero chart never blanks due to toggles.
+        if (activeAvailable.length <= 1) return;
         viewState.activeMetrics.delete(metric);
       } else {
         viewState.activeMetrics.add(metric);
       }
-      // Re-render pills to update active state
-      document.querySelectorAll('.metric-pill').forEach(pill => {
-        const key = pill.dataset.metric as MetricKey;
-        pill.classList.toggle('active', viewState.activeMetrics.has(key));
-        pill.setAttribute('aria-pressed', viewState.activeMetrics.has(key) ? 'true' : 'false');
-      });
+      syncMetricPills();
       void loadData(sensors);
     });
   });
@@ -196,8 +197,11 @@ async function loadData(sensors: ReturnType<typeof getStore>['devices']): Promis
   const selectedDevices = viewState.deviceId === 'all'
     ? sensors
     : sensors.filter(s => s.id === viewState.deviceId);
-  const activeMetricConfigs = metrics.filter(m => viewState.activeMetrics.has(m.key));
   const { from, to } = getRangeBounds(viewState.range);
+  viewState.availableMetrics = getAvailableMetrics(selectedDevices);
+  reconcileActiveMetrics();
+  syncMetricPills();
+  const activeMetricConfigs = metrics.filter(m => viewState.activeMetrics.has(m.key));
 
   const heroChart = document.getElementById('hero-chart');
   if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
@@ -209,7 +213,15 @@ async function loadData(sensors: ReturnType<typeof getStore>['devices']): Promis
       ...selectedDevices.flatMap(device =>
         activeMetricConfigs.map(async metric => {
           const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
-          if (data.length > 0) layers.push({ deviceId: device.id, deviceName: device.name, metric, data });
+          if (data.length > 0) {
+            layers.push({
+              deviceId: device.id,
+              deviceName: device.name,
+              zoneName: resolveZoneName(device.id, device.name),
+              metric,
+              data,
+            });
+          }
         })
       ),
     ]);
@@ -217,12 +229,17 @@ async function loadData(sensors: ReturnType<typeof getStore>['devices']): Promis
     if (sequence !== loadSequence) return;
 
     // Derive zones from loaded layers and render zone toggles
-    const zones = [...new Set(layers.map(l => l.deviceName))];
+    const zones = [...new Set(layers.map(l => l.zoneName).filter(Boolean))];
     renderZoneToggles(zones);
+
+    // Only expose connected metrics, and always keep at least one active metric.
+    viewState.availableMetrics = getAvailableMetrics(selectedDevices);
+    reconcileActiveMetrics();
+    syncMetricPills();
 
     // Filter layers to only the selected zone
     const zoneLayers = viewState.activeZone
-      ? layers.filter(l => l.deviceName === viewState.activeZone)
+      ? layers.filter(l => l.zoneName === viewState.activeZone)
       : layers;
 
     viewState.decisions = decisions;
@@ -284,6 +301,59 @@ function getRangeBounds(range: typeof viewState.range): { from: string; to: stri
     default: from.setDate(from.getDate() - 1); break;
   }
   return { from: from.toISOString(), to: to.toISOString() };
+}
+
+function getAvailableMetrics(selectedDevices: ReturnType<typeof getStore>['devices']): Set<MetricKey> {
+  const store = getStore();
+  const available = new Set<MetricKey>();
+  const zoneDevices = viewState.activeZone
+    ? selectedDevices.filter(device => resolveZoneName(device.id, device.name) === viewState.activeZone)
+    : selectedDevices;
+
+  for (const device of zoneDevices) {
+    const snapshot = store.sensors[device.id] as Record<string, HalSensorReading | undefined> | undefined;
+    if (!snapshot) continue;
+    for (const metric of metrics) {
+      const reading = snapshot[metric.key];
+      if (reading && typeof reading.value === 'number' && Number.isFinite(reading.value)) {
+        available.add(metric.key);
+      }
+    }
+  }
+
+  return available;
+}
+
+function resolveZoneName(deviceId: string, deviceName: string): string {
+  if (deviceId.startsWith('tent_a_')) return 'Tent A';
+  if (deviceId.startsWith('tent_b_')) return 'Tent B';
+  if (/tent\s*a/i.test(deviceName)) return 'Tent A';
+  if (/tent\s*b/i.test(deviceName)) return 'Tent B';
+  return 'Unzoned';
+}
+
+function reconcileActiveMetrics(): void {
+  for (const metricKey of Array.from(viewState.activeMetrics)) {
+    if (!viewState.availableMetrics.has(metricKey)) {
+      viewState.activeMetrics.delete(metricKey);
+    }
+  }
+
+  if (viewState.activeMetrics.size > 0) return;
+  const fallback =
+    (['temperature', 'humidity', 'co2'] as MetricKey[]).find(key => viewState.availableMetrics.has(key)) ??
+    Array.from(viewState.availableMetrics)[0];
+  if (fallback) viewState.activeMetrics.add(fallback);
+}
+
+function syncMetricPills(): void {
+  document.querySelectorAll<HTMLElement>('.metric-pill').forEach(pill => {
+    const key = pill.dataset.metric as MetricKey;
+    const available = viewState.availableMetrics.has(key);
+    pill.style.display = available ? '' : 'none';
+    pill.classList.toggle('active', available && viewState.activeMetrics.has(key));
+    pill.setAttribute('aria-pressed', available && viewState.activeMetrics.has(key) ? 'true' : 'false');
+  });
 }
 
 /* ─────────────── Hero Chart (Stacked Area) ─────────────── */
@@ -669,10 +739,12 @@ function renderQualityMatrix(layers: SeriesLayer[], decisions: HalDecision[]): s
         <span class="qm-legend-item"><span class="qm-dot" style="background:#FF5C6C"></span>Old</span>
         <span class="qm-legend-item"><span class="qm-dot" style="background:#1A2822"></span>Missing</span>
       </div>
-      <table class="qm-table">
-        <thead><tr><th class="qm-th-device">Device</th>${headerCols}</tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <div class="qm-table-wrap">
+        <table class="qm-table">
+          <thead><tr><th class="qm-th-device">Device</th>${headerCols}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     </div>`;
 }
 
@@ -721,6 +793,7 @@ function injectSensorStyles(): void {
   gap: var(--space-2);
   align-items: center;
   flex-wrap: wrap;
+  min-width: 0;
 }
 .hal-input {
   background: var(--bg-tertiary);
@@ -967,10 +1040,12 @@ function injectSensorStyles(): void {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .hal-table {
   width: 100%;
+  min-width: 560px;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -1070,8 +1145,13 @@ function injectSensorStyles(): void {
 }
 .qm-table {
   width: 100%;
+  min-width: 560px;
   border-collapse: collapse;
   font-size: 11px;
+}
+.qm-table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .qm-th, .qm-th-device {
   text-align: left;
@@ -1107,6 +1187,12 @@ function injectSensorStyles(): void {
 }
 @media (max-width: 768px) {
   .sensors-hero-header { flex-direction: column; align-items: flex-start; }
+  .sensors-hero-controls {
+    width: 100%;
+  }
+  .hal-input {
+    width: 100%;
+  }
   .hero-chart { min-height: 200px; }
   .metric-bar { gap: var(--space-1); }
   .metric-pill { height: 32px; padding: 0 10px; font-size: 11px; }
