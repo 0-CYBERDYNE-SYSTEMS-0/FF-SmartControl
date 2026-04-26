@@ -501,6 +501,134 @@ export function renderOriginalAreaChart(
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   #v4 — STACKED AREA CHART (options.html exact)
+   Additive stack — total height = sum of all layers.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export interface StackedLayer {
+  label: string;
+  color: string;
+  data: Array<{ t: number; v: number }>;
+}
+
+export function renderStackedAreaChart(
+  layers: StackedLayer[],
+  containerId: string,
+  opts: { width?: number; height?: number; showLegend?: boolean } = {}
+): void {
+  const container = document.getElementById(containerId);
+  if (!container || layers.length === 0) {
+    if (container) container.innerHTML = '<div class="chart-empty">No data</div>';
+    return;
+  }
+
+  const width = opts.width ?? 900;
+  const height = opts.height ?? 320;
+  const pad = { top: 24, right: 24, bottom: 40, left: 52 };
+
+  // Unified time domain
+  const allTimes = layers.flatMap(l => l.data.map(d => d.t));
+  const tMin = Math.min(...allTimes);
+  const tMax = Math.max(...allTimes);
+  const tSpan = Math.max(1, tMax - tMin);
+  const tx = (t: number) => pad.left + ((t - tMin) / tSpan) * (width - pad.left - pad.right);
+
+  // Build stacked values at each time point
+  const timeMap = new Map<number, number[]>();
+  for (const layer of layers) {
+    for (const d of layer.data) {
+      if (!timeMap.has(d.t)) timeMap.set(d.t, []);
+    }
+  }
+  const times = Array.from(timeMap.keys()).sort((a, b) => a - b);
+
+  // For each time, compute stacked Y positions
+  const stacked = times.map(t => {
+    const x = tx(t);
+    let y0 = 0;
+    const segs: { x: number; y0: number; y1: number; v: number }[] = [];
+    for (const layer of layers) {
+      const pt = layer.data.find(d => d.t === t);
+      const v = pt?.v ?? 0;
+      y0 += v;
+      segs.push({ x, y0, y1: y0 - v, v });
+    }
+    return { t, x, segs, total: y0 };
+  });
+
+  const maxTotal = Math.max(...stacked.map(s => s.total), 1);
+  const yScale = (v: number) => pad.top + ((maxTotal - v) / maxTotal) * (height - pad.top - pad.bottom);
+
+  // Build area paths per layer (bottom-up)
+  const layerPaths = layers.map((layer, li) => {
+    const topPts: SplinePoint[] = [];
+    const botPts: SplinePoint[] = [];
+
+    for (const st of stacked) {
+      const seg = st.segs[li];
+      topPts.push({ x: seg.x, y: yScale(seg.y0) });
+      botPts.push({ x: seg.x, y: yScale(seg.y1) });
+    }
+
+    const topPath = straightLinePath(topPts);
+    const botPath = straightLinePath(botPts);
+    const area = topPath && botPath
+      ? `${topPath} L${botPts[botPts.length - 1].x.toFixed(1)},${botPts[botPts.length - 1].y.toFixed(1)} ${botPts.slice().reverse().map(p => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} Z`
+      : '';
+
+    return { layer, area, topPath };
+  });
+
+  // Grid lines
+  const gridLines = Array.from({ length: 6 }, (_, i) => {
+    const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
+    const v = maxTotal * (1 - i / 5);
+    return `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid"/>` +
+           `<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(0)}</text>`;
+  }).join('');
+
+  // Time labels
+  const timeLabels = Array.from({ length: 7 }, (_, i) => {
+    const t = tMin + (i / 6) * tSpan;
+    const x = tx(t);
+    const label = new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
+  }).join('');
+
+  const defs = layerPaths.map((lp, i) => `
+    <linearGradient id="stack-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.08"/>
+    </linearGradient>
+  `).join('');
+
+  const areas = layerPaths.map((lp, i) =>
+    lp.area ? `<path d="${lp.area}" fill="url(#stack-grad-${containerId}-${i})" stroke="none"/>` : ''
+  ).join('');
+
+  const lines = layerPaths.map(lp =>
+    lp.topPath ? `<path d="${lp.topPath}" fill="none" stroke="${lp.layer.color}" stroke-width="1.5" stroke-linejoin="round"/>` : ''
+  ).join('');
+
+  const svg = `
+    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+      <defs>${defs}</defs>
+      ${gridLines}${areas}${lines}${timeLabels}
+    </svg>
+  `;
+
+  // Legend
+  const legendHtml = opts.showLegend !== false
+    ? `<div class="stack-legend">${layers.map(l => `
+        <span class="legend-item" style="--metric-color:${l.color}">
+          <span class="legend-dot"></span>${escapeHtml(l.label)}
+        </span>`).join('')}</div>`
+    : '';
+
+  container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    #v5-v7 — CARD CHARTS (Area, Line, Bar)
    Compact tiles for viz grids.
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -637,6 +765,69 @@ export function renderBarCard(
     </div>
     <svg viewBox="0 0 ${w} ${h}" class="viz-svg">${rects}</svg>
   `;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TINY DEVICE CHARTS — Inline area/bar trends for device cards
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export function renderTinyAreaChart(
+  data: number[],
+  color: string,
+  containerId: string
+): void {
+  const container = document.getElementById(containerId);
+  if (!container || data.length < 2) return;
+
+  const w = 200, h = 40;
+  const pad = { t: 2, r: 2, b: 2, l: 2 };
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const span = Math.max(0.001, max - min);
+
+  const step = (w - pad.l - pad.r) / (data.length - 1);
+  const points = data.map((v, i) => {
+    const x = pad.l + i * step;
+    const y = pad.t + ((max - v) / span) * (h - pad.t - pad.b);
+    return { x, y };
+  });
+
+  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const area = `${line} L${points[points.length - 1].x.toFixed(1)},${h - pad.b} L${points[0].x.toFixed(1)},${h - pad.b} Z`;
+
+  container.innerHTML = `
+    <svg viewBox="0 0 ${w} ${h}" class="tiny-chart-svg">
+      <path d="${area}" fill="color-mix(in srgb, ${color} 20%, transparent)" stroke="none"/>
+      <path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+  `;
+}
+
+export function renderTinyBarChart(
+  data: number[],
+  color: string,
+  containerId: string
+): void {
+  const container = document.getElementById(containerId);
+  if (!container || data.length < 2) return;
+
+  const w = 200, h = 40;
+  const pad = { t: 2, r: 2, b: 2, l: 2 };
+  const bars = Math.min(data.length, 20);
+  const step = (w - pad.l - pad.r) / bars;
+  const barW = step * 0.7;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const span = Math.max(0.001, max - min);
+
+  const rects = data.slice(-bars).map((v, i) => {
+    const bh = ((v - min) / span) * (h - pad.t - pad.b);
+    const x = pad.l + i * step + (step - barW) / 2;
+    const y = h - pad.b - bh;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${color}" opacity="0.7" rx="1"/>`;
+  }).join('');
+
+  container.innerHTML = `<svg viewBox="0 0 ${w} ${h}" class="tiny-chart-svg">${rects}</svg>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

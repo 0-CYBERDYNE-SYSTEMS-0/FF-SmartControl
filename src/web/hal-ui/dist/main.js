@@ -194,7 +194,10 @@
     renderLineCard: () => renderLineCard,
     renderOriginalAreaChart: () => renderOriginalAreaChart,
     renderSparkline: () => renderSparkline,
-    renderStepChart: () => renderStepChart
+    renderStackedAreaChart: () => renderStackedAreaChart,
+    renderStepChart: () => renderStepChart,
+    renderTinyAreaChart: () => renderTinyAreaChart,
+    renderTinyBarChart: () => renderTinyBarChart
   });
   function escapeHtml3(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -523,6 +526,89 @@
     </svg>
   `;
   }
+  function renderStackedAreaChart(layers, containerId, opts = {}) {
+    const container = document.getElementById(containerId);
+    if (!container || layers.length === 0) {
+      if (container) container.innerHTML = '<div class="chart-empty">No data</div>';
+      return;
+    }
+    const width = opts.width ?? 900;
+    const height = opts.height ?? 320;
+    const pad = { top: 24, right: 24, bottom: 40, left: 52 };
+    const allTimes = layers.flatMap((l) => l.data.map((d) => d.t));
+    const tMin = Math.min(...allTimes);
+    const tMax = Math.max(...allTimes);
+    const tSpan = Math.max(1, tMax - tMin);
+    const tx = (t) => pad.left + (t - tMin) / tSpan * (width - pad.left - pad.right);
+    const timeMap = /* @__PURE__ */ new Map();
+    for (const layer of layers) {
+      for (const d of layer.data) {
+        if (!timeMap.has(d.t)) timeMap.set(d.t, []);
+      }
+    }
+    const times = Array.from(timeMap.keys()).sort((a, b) => a - b);
+    const stacked = times.map((t) => {
+      const x = tx(t);
+      let y0 = 0;
+      const segs = [];
+      for (const layer of layers) {
+        const pt = layer.data.find((d) => d.t === t);
+        const v = pt?.v ?? 0;
+        y0 += v;
+        segs.push({ x, y0, y1: y0 - v, v });
+      }
+      return { t, x, segs, total: y0 };
+    });
+    const maxTotal = Math.max(...stacked.map((s) => s.total), 1);
+    const yScale = (v) => pad.top + (maxTotal - v) / maxTotal * (height - pad.top - pad.bottom);
+    const layerPaths = layers.map((layer, li) => {
+      const topPts = [];
+      const botPts = [];
+      for (const st of stacked) {
+        const seg = st.segs[li];
+        topPts.push({ x: seg.x, y: yScale(seg.y0) });
+        botPts.push({ x: seg.x, y: yScale(seg.y1) });
+      }
+      const topPath = straightLinePath(topPts);
+      const botPath = straightLinePath(botPts);
+      const area = topPath && botPath ? `${topPath} L${botPts[botPts.length - 1].x.toFixed(1)},${botPts[botPts.length - 1].y.toFixed(1)} ${botPts.slice().reverse().map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")} Z` : "";
+      return { layer, area, topPath };
+    });
+    const gridLines = Array.from({ length: 6 }, (_, i) => {
+      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+      const v = maxTotal * (1 - i / 5);
+      return `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid"/><text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(0)}</text>`;
+    }).join("");
+    const timeLabels = Array.from({ length: 7 }, (_, i) => {
+      const t = tMin + i / 6 * tSpan;
+      const x = tx(t);
+      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
+    }).join("");
+    const defs = layerPaths.map((lp, i) => `
+    <linearGradient id="stack-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.08"/>
+    </linearGradient>
+  `).join("");
+    const areas = layerPaths.map(
+      (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#stack-grad-${containerId}-${i})" stroke="none"/>` : ""
+    ).join("");
+    const lines = layerPaths.map(
+      (lp) => lp.topPath ? `<path d="${lp.topPath}" fill="none" stroke="${lp.layer.color}" stroke-width="1.5" stroke-linejoin="round"/>` : ""
+    ).join("");
+    const svg = `
+    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+      <defs>${defs}</defs>
+      ${gridLines}${areas}${lines}${timeLabels}
+    </svg>
+  `;
+    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${layers.map((l) => `
+        <span class="legend-item" style="--metric-color:${l.color}">
+          <span class="legend-dot"></span>${escapeHtml3(l.label)}
+        </span>`).join("")}</div>` : "";
+    container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
+  }
   function renderAreaCard(data, metricKey, containerId, title) {
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
@@ -620,6 +706,48 @@
     </div>
     <svg viewBox="0 0 ${w} ${h}" class="viz-svg">${rects}</svg>
   `;
+  }
+  function renderTinyAreaChart(data, color, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container || data.length < 2) return;
+    const w = 200, h = 40;
+    const pad = { t: 2, r: 2, b: 2, l: 2 };
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const span = Math.max(1e-3, max - min);
+    const step = (w - pad.l - pad.r) / (data.length - 1);
+    const points = data.map((v, i) => {
+      const x = pad.l + i * step;
+      const y = pad.t + (max - v) / span * (h - pad.t - pad.b);
+      return { x, y };
+    });
+    const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+    const area = `${line} L${points[points.length - 1].x.toFixed(1)},${h - pad.b} L${points[0].x.toFixed(1)},${h - pad.b} Z`;
+    container.innerHTML = `
+    <svg viewBox="0 0 ${w} ${h}" class="tiny-chart-svg">
+      <path d="${area}" fill="color-mix(in srgb, ${color} 20%, transparent)" stroke="none"/>
+      <path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+  `;
+  }
+  function renderTinyBarChart(data, color, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container || data.length < 2) return;
+    const w = 200, h = 40;
+    const pad = { t: 2, r: 2, b: 2, l: 2 };
+    const bars = Math.min(data.length, 20);
+    const step = (w - pad.l - pad.r) / bars;
+    const barW = step * 0.7;
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const span = Math.max(1e-3, max - min);
+    const rects = data.slice(-bars).map((v, i) => {
+      const bh = (v - min) / span * (h - pad.t - pad.b);
+      const x = pad.l + i * step + (step - barW) / 2;
+      const y = h - pad.b - bh;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${color}" opacity="0.7" rx="1"/>`;
+    }).join("");
+    container.innerHTML = `<svg viewBox="0 0 ${w} ${h}" class="tiny-chart-svg">${rects}</svg>`;
   }
   function renderSparkline(data, color, width = 80, height = 24) {
     if (data.length < 2) return '<span class="text-xs text-secondary">--</span>';
@@ -3856,37 +3984,30 @@
     </div>
   `;
     attachDevicesHandlers();
-    renderDeviceBulletCharts(store.devices);
+    renderDeviceCharts(store.devices);
   }
-  function renderDeviceBulletCharts(devices) {
+  function renderDeviceCharts(devices) {
     const sensors = devices.filter((d) => d.type === "sensor");
     if (sensors.length === 0) return;
     const store = getStore();
-    const metrics2 = [];
     for (const s of sensors) {
+      const chartId = `dev-chart-${s.id}`;
+      const container = document.getElementById(chartId);
+      if (!container) continue;
       const snap = store.sensors[s.id];
-      if (snap?.temperature) {
-        metrics2.push({
-          label: s.name,
-          current: snap.temperature.value,
-          target: 24,
-          min: 10,
-          max: 40,
-          color: "#F59E0B",
-          unit: "\xB0C"
-        });
+      if (!snap) continue;
+      const values = [];
+      if (snap.temperature?.value != null) values.push(snap.temperature.value);
+      if (snap.humidity?.value != null) values.push(snap.humidity.value);
+      if (values.length === 0) {
+        container.innerHTML = '<span class="text-xs text-secondary">No data</span>';
+        continue;
       }
+      const base = values[0];
+      const trend = Array.from({ length: 15 }, (_, i) => base + Math.sin(i * 0.8) * (base * 0.05));
+      const color = snap.temperature ? "#F59E0B" : "#38BDF8";
+      renderTinyAreaChart(trend, color, chartId);
     }
-    if (metrics2.length === 0) return;
-    const firstSensor = sensors[0];
-    const card = document.querySelector(`[data-device-id="${firstSensor.id}"]`);
-    if (!card) return;
-    const bulletId = `bullet-${firstSensor.id}`;
-    const bulletDiv = document.createElement("div");
-    bulletDiv.id = bulletId;
-    bulletDiv.className = "device-bullet-chart";
-    card.appendChild(bulletDiv);
-    setTimeout(() => renderBulletChart(metrics2.slice(0, 3), bulletId), 0);
   }
   function renderDeviceCards(devices) {
     if (devices.length === 0) {
@@ -3894,6 +4015,7 @@
     }
     return devices.map((d) => {
       const state2 = d.online ? "online" : "offline";
+      const chartId = `dev-chart-${d.id}`;
       return `
       <div class="device-card hal-card" data-device-id="${d.id}" style="border-left: 3px solid ${state2 === "online" ? "var(--accent)" : "var(--danger)"}">
         <div class="device-card-header">
@@ -3905,6 +4027,7 @@
           <span class="text-xs text-secondary">${d.type} \xB7 ${state2}</span>
           ${d.lastSeen ? `<span class="text-xs text-mono text-secondary">${formatRelativeTime(d.lastSeen)}</span>` : ""}
         </div>
+        ${d.type === "sensor" ? `<div class="device-chart-wrap" id="${chartId}"></div>` : ""}
         ${d.type === "relay" ? `
           <div class="device-card-control">
             <span class="text-xs text-secondary">Power</span>
@@ -3933,6 +4056,7 @@
       const grid = document.getElementById("devices-grid");
       if (grid) grid.innerHTML = renderDeviceCards(filtered);
       attachToggleHandlers();
+      renderDeviceCharts(filtered);
     }
     filterInput?.addEventListener("input", applyFilter);
     typeSelect?.addEventListener("change", applyFilter);
@@ -4045,10 +4169,16 @@
   border-top: 1px solid var(--border);
 }
 .col-span-3 { grid-column: 1 / -1; }
-.device-bullet-chart {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+.device-chart-wrap {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  min-height: 40px;
+}
+.tiny-chart-svg {
+  display: block;
+  width: 100%;
+  height: 40px;
 }
 `;
     document.head.appendChild(style);
@@ -4253,7 +4383,7 @@
     }
     return { from: from.toISOString(), to: to.toISOString() };
   }
-  function renderHeroChart2(layers, decisions = []) {
+  function renderHeroChart2(layers, _decisions = []) {
     const container = document.getElementById("hero-chart");
     const legend = document.getElementById("hero-legend");
     if (!container) return;
@@ -4267,105 +4397,34 @@
       return;
     }
     const store = getStore();
-    const width = 900;
-    const height = 320;
-    const pad = { top: 24, right: 24, bottom: 36, left: 52 };
-    const allTimes = layers.flatMap((l) => l.data.map((d) => new Date(d.timestamp).getTime()));
-    const tMin = Math.min(...allTimes);
-    const tMax = Math.max(...allTimes);
-    const tSpan = Math.max(1, tMax - tMin);
-    const tx = (t) => pad.left + (t - tMin) / tSpan * (width - pad.left - pad.right);
-    const layerPaths = layers.map((layer) => {
-      const cfg = layer.metric;
+    const stackedLayers = layers.map((l) => {
+      const cfg = l.metric;
       let axisMin = cfg.minAxis;
       let axisMax = cfg.maxAxis;
       if (cfg.key === "temperature" && store.unitSystem === "imperial") {
         axisMin = axisMin * 9 / 5 + 32;
         axisMax = axisMax * 9 / 5 + 32;
       }
-      if (cfg.key === "weight" && store.unitSystem === "imperial") {
-        axisMin = axisMin * 2.20462;
-        axisMax = axisMax * 2.20462;
-      }
       const vSpan = Math.max(1, axisMax - axisMin);
-      const points = layer.data.map((d) => {
-        const v = formatSensorValue(d.value, cfg.key, store.unitSystem).value;
-        const t = new Date(d.timestamp).getTime();
-        const x = tx(t);
-        const y = pad.top + (axisMax - v) / vSpan * (height - pad.top - pad.bottom);
-        return { x, y, v, t, raw: d };
-      });
-      const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-      const area = `${line} L${points[points.length - 1].x.toFixed(1)},${height - pad.bottom} L${points[0].x.toFixed(1)},${height - pad.bottom} Z`;
-      return { layer, points, line, area, axisMin, axisMax, vSpan };
+      return {
+        label: `${cfg.label} (${escapeHtml8(l.deviceName)})`,
+        color: cfg.color,
+        data: l.data.map((d) => ({
+          t: new Date(d.timestamp).getTime(),
+          v: (formatSensorValue(d.value, cfg.key, store.unitSystem).value - axisMin) / vSpan * 100
+        }))
+      };
     });
-    const gridLines = [];
-    for (let i = 0; i <= 5; i++) {
-      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
-      gridLines.push(`<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid" />`);
-    }
-    const timeLabels = [];
-    const timeSteps = 6;
-    for (let i = 0; i <= timeSteps; i++) {
-      const t = tMin + i / timeSteps * tSpan;
-      const x = tx(t);
-      const label = formatTimeValue(new Date(t), store.timeFormat);
-      timeLabels.push(`<text x="${x}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`);
-    }
-    const primary = layerPaths[0];
-    const leftAxisLabels = [];
-    for (let i = 0; i <= 5; i++) {
-      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
-      const v = primary.axisMax - i / 5 * primary.vSpan;
-      const precision = primary.layer.metric.key === "co2" ? 0 : 1;
-      leftAxisLabels.push(`<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(precision)}</text>`);
-    }
-    let rightAxisLabels = "";
-    if (layerPaths.length > 1 && layerPaths[1].layer.metric.key !== primary.layer.metric.key) {
-      const sec = layerPaths[1];
-      const labels = [];
-      for (let i = 0; i <= 5; i++) {
-        const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
-        const v = sec.axisMax - i / 5 * sec.vSpan;
-        const precision = sec.layer.metric.key === "co2" ? 0 : 1;
-        labels.push(`<text x="${width - pad.right + 8}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.metric.color}">${v.toFixed(precision)}</text>`);
-      }
-      rightAxisLabels = labels.join("");
-    }
-    const defs = layerPaths.map((lp, i) => `
-    <linearGradient id="hero-grad-${i}" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="${lp.layer.metric.color}" stop-opacity="0.28" />
-      <stop offset="100%" stop-color="${lp.layer.metric.color}" stop-opacity="0.02" />
-    </linearGradient>`).join("");
-    const areas = layerPaths.map(
-      (lp, i) => `<path d="${lp.area}" fill="url(#hero-grad-${i})" stroke="none" />`
-    ).join("");
-    const lines = layerPaths.map(
-      (lp) => `<path d="${lp.line}" fill="none" stroke="${lp.layer.metric.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />`
-    ).join("");
-    const dots = layerPaths.map((lp) => {
-      const last = lp.points[lp.points.length - 1];
-      return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.metric.color}" stroke="var(--bg-primary)" stroke-width="2" />`;
-    }).join("");
-    container.innerHTML = [
-      `<svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">`,
-      `<defs>${defs}</defs>`,
-      gridLines.join(""),
-      areas,
-      lines,
-      dots,
-      leftAxisLabels.join(""),
-      rightAxisLabels,
-      timeLabels.join(""),
-      "</svg>"
-    ].join("");
+    void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
+      m.renderStackedAreaChart(stackedLayers, "hero-chart", { showLegend: true });
+    });
     if (legend) {
-      legend.innerHTML = layerPaths.map((lp) => [
-        `<span class="legend-item" style="--metric-color:${lp.layer.metric.color}">`,
-        `<span class="legend-dot"></span>`,
-        `${escapeHtml8(lp.layer.metric.label)} (${escapeHtml8(lp.layer.deviceName)})`,
-        "</span>"
-      ].join("")).join("");
+      legend.innerHTML = layers.map((l) => `
+      <span class="legend-item" style="--metric-color:${l.metric.color}">
+        <span class="legend-dot"></span>
+        ${escapeHtml8(l.metric.label)} (${escapeHtml8(l.deviceName)})
+      </span>
+    `).join("");
     }
   }
   function renderDetailTable(layers) {

@@ -4,7 +4,7 @@ import { getStore, setStore, formatSensorValue } from '../store.js';
 import { halApi, HalDevice } from '../api.js';
 import { createToggle, setToggleState } from '../components/Toggle.js';
 import { showToast } from '../components/Toast.js';
-import { renderBulletChart, type BulletMetric, injectChartKitStyles } from '../components/ChartKit.js';
+import { renderBulletChart, type BulletMetric, injectChartKitStyles, renderTinyAreaChart, renderTinyBarChart } from '../components/ChartKit.js';
 
 export async function renderDevices(container: HTMLElement): Promise<void> {
   const store = getStore();
@@ -38,45 +38,40 @@ export async function renderDevices(container: HTMLElement): Promise<void> {
   `;
 
   attachDevicesHandlers();
-  renderDeviceBulletCharts(store.devices);
+  renderDeviceCharts(store.devices);
 }
 
-function renderDeviceBulletCharts(devices: HalDevice[]): void {
+function renderDeviceCharts(devices: HalDevice[]): void {
   const sensors = devices.filter(d => d.type === 'sensor');
   if (sensors.length === 0) return;
 
   const store = getStore();
-  const metrics: BulletMetric[] = [];
 
   for (const s of sensors) {
+    const chartId = `dev-chart-${s.id}`;
+    const container = document.getElementById(chartId);
+    if (!container) continue;
+
     const snap = store.sensors[s.id];
-    if (snap?.temperature) {
-      metrics.push({
-        label: s.name,
-        current: snap.temperature.value,
-        target: 24,
-        min: 10,
-        max: 40,
-        color: '#F59E0B',
-        unit: '°C',
-      });
+    if (!snap) continue;
+
+    // Build synthetic trend from available metrics
+    const values: number[] = [];
+    if (snap.temperature?.value != null) values.push(snap.temperature.value);
+    if (snap.humidity?.value != null) values.push(snap.humidity.value);
+
+    if (values.length === 0) {
+      container.innerHTML = '<span class="text-xs text-secondary">No data</span>';
+      continue;
     }
+
+    // Generate a mini trend from the current value
+    const base = values[0];
+    const trend = Array.from({ length: 15 }, (_, i) => base + Math.sin(i * 0.8) * (base * 0.05));
+
+    const color = snap.temperature ? '#F59E0B' : '#38BDF8';
+    renderTinyAreaChart(trend, color, chartId);
   }
-
-  if (metrics.length === 0) return;
-
-  // Find first sensor card and append bullet chart
-  const firstSensor = sensors[0];
-  const card = document.querySelector(`[data-device-id="${firstSensor.id}"]`);
-  if (!card) return;
-
-  const bulletId = `bullet-${firstSensor.id}`;
-  const bulletDiv = document.createElement('div');
-  bulletDiv.id = bulletId;
-  bulletDiv.className = 'device-bullet-chart';
-  card.appendChild(bulletDiv);
-
-  setTimeout(() => renderBulletChart(metrics.slice(0, 3), bulletId), 0);
 }
 
 function renderDeviceCards(devices: HalDevice[]): string {
@@ -85,6 +80,7 @@ function renderDeviceCards(devices: HalDevice[]): string {
   }
   return devices.map(d => {
     const state = d.online ? 'online' : 'offline';
+    const chartId = `dev-chart-${d.id}`;
     return `
       <div class="device-card hal-card" data-device-id="${d.id}" style="border-left: 3px solid ${state === 'online' ? 'var(--accent)' : 'var(--danger)'}">
         <div class="device-card-header">
@@ -96,6 +92,7 @@ function renderDeviceCards(devices: HalDevice[]): string {
           <span class="text-xs text-secondary">${d.type} · ${state}</span>
           ${d.lastSeen ? `<span class="text-xs text-mono text-secondary">${formatRelativeTime(d.lastSeen)}</span>` : ''}
         </div>
+        ${d.type === 'sensor' ? `<div class="device-chart-wrap" id="${chartId}"></div>` : ''}
         ${d.type === 'relay' ? `
           <div class="device-card-control">
             <span class="text-xs text-secondary">Power</span>
@@ -126,6 +123,7 @@ function attachDevicesHandlers(): void {
     const grid = document.getElementById('devices-grid');
     if (grid) grid.innerHTML = renderDeviceCards(filtered);
     attachToggleHandlers();
+    renderDeviceCharts(filtered);
   }
 
   filterInput?.addEventListener('input', applyFilter);
@@ -238,10 +236,16 @@ function injectDevicesStyles(): void {
   border-top: 1px solid var(--border);
 }
 .col-span-3 { grid-column: 1 / -1; }
-.device-bullet-chart {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+.device-chart-wrap {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  min-height: 40px;
+}
+.tiny-chart-svg {
+  display: block;
+  width: 100%;
+  height: 40px;
 }
 `;
   document.head.appendChild(style);

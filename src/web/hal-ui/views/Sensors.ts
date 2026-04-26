@@ -238,13 +238,13 @@ function getRangeBounds(range: typeof viewState.range): { from: string; to: stri
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-/* ─────────────── Hero Chart (ChartKit dual-axis) ─────────────── */
+/* ─────────────── Hero Chart (Stacked Area) ─────────────── */
 
 function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function renderHeroChart(layers: SeriesLayer[], decisions: HalDecision[] = []): void {
+function renderHeroChart(layers: SeriesLayer[], _decisions: HalDecision[] = []): void {
   const container = document.getElementById('hero-chart');
   const legend = document.getElementById('hero-legend');
   if (!container) return;
@@ -260,121 +260,41 @@ function renderHeroChart(layers: SeriesLayer[], decisions: HalDecision[] = []): 
   }
 
   const store = getStore();
-  const width = 900;
-  const height = 320;
-  const pad = { top: 24, right: 24, bottom: 36, left: 52 };
 
-  const allTimes = layers.flatMap(l => l.data.map(d => new Date(d.timestamp).getTime()));
-  const tMin = Math.min(...allTimes);
-  const tMax = Math.max(...allTimes);
-  const tSpan = Math.max(1, tMax - tMin);
-
-  const tx = (t: number) => pad.left + ((t - tMin) / tSpan) * (width - pad.left - pad.right);
-
-  const layerPaths = layers.map(layer => {
-    const cfg = layer.metric;
+  // Build stacked layers for ChartKit
+  const stackedLayers = layers.map(l => {
+    const cfg = l.metric;
     let axisMin = cfg.minAxis;
     let axisMax = cfg.maxAxis;
     if (cfg.key === 'temperature' && store.unitSystem === 'imperial') {
       axisMin = (axisMin * 9 / 5) + 32;
       axisMax = (axisMax * 9 / 5) + 32;
     }
-    if (cfg.key === 'weight' && store.unitSystem === 'imperial') {
-      axisMin = axisMin * 2.20462;
-      axisMax = axisMax * 2.20462;
-    }
+    // Normalize values to 0-100 scale for stacking
     const vSpan = Math.max(1, axisMax - axisMin);
-
-    const points = layer.data.map(d => {
-      const v = formatSensorValue(d.value, cfg.key, store.unitSystem).value;
-      const t = new Date(d.timestamp).getTime();
-      const x = tx(t);
-      const y = pad.top + ((axisMax - v) / vSpan) * (height - pad.top - pad.bottom);
-      return { x, y, v, t, raw: d };
-    });
-
-    const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-    const area = `${line} L${points[points.length - 1].x.toFixed(1)},${height - pad.bottom} L${points[0].x.toFixed(1)},${height - pad.bottom} Z`;
-
-    return { layer, points, line, area, axisMin, axisMax, vSpan };
+    return {
+      label: `${cfg.label} (${escapeHtml(l.deviceName)})`,
+      color: cfg.color,
+      data: l.data.map(d => ({
+        t: new Date(d.timestamp).getTime(),
+        v: ((formatSensorValue(d.value, cfg.key, store.unitSystem).value - axisMin) / vSpan) * 100,
+      })),
+    };
   });
 
-  const gridLines = [];
-  for (let i = 0; i <= 5; i++) {
-    const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
-    gridLines.push(`<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid" />`);
-  }
+  // Use ChartKit stacked area
+  void import('../components/ChartKit.js').then(m => {
+    m.renderStackedAreaChart(stackedLayers, 'hero-chart', { showLegend: true });
+  });
 
-  const timeLabels = [];
-  const timeSteps = 6;
-  for (let i = 0; i <= timeSteps; i++) {
-    const t = tMin + (i / timeSteps) * tSpan;
-    const x = tx(t);
-    const label = formatTimeValue(new Date(t), store.timeFormat);
-    timeLabels.push(`<text x="${x}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`);
-  }
-
-  const primary = layerPaths[0];
-  const leftAxisLabels = [];
-  for (let i = 0; i <= 5; i++) {
-    const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
-    const v = primary.axisMax - (i / 5) * primary.vSpan;
-    const precision = primary.layer.metric.key === 'co2' ? 0 : 1;
-    leftAxisLabels.push(`<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(precision)}</text>`);
-  }
-
-  let rightAxisLabels = '';
-  if (layerPaths.length > 1 && layerPaths[1].layer.metric.key !== primary.layer.metric.key) {
-    const sec = layerPaths[1];
-    const labels = [];
-    for (let i = 0; i <= 5; i++) {
-      const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
-      const v = sec.axisMax - (i / 5) * sec.vSpan;
-      const precision = sec.layer.metric.key === 'co2' ? 0 : 1;
-      labels.push(`<text x="${width - pad.right + 8}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.metric.color}">${v.toFixed(precision)}</text>`);
-    }
-    rightAxisLabels = labels.join('');
-  }
-
-  const defs = layerPaths.map((lp, i) => `
-    <linearGradient id="hero-grad-${i}" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="${lp.layer.metric.color}" stop-opacity="0.28" />
-      <stop offset="100%" stop-color="${lp.layer.metric.color}" stop-opacity="0.02" />
-    </linearGradient>`).join('');
-
-  const areas = layerPaths.map((lp, i) =>
-    `<path d="${lp.area}" fill="url(#hero-grad-${i})" stroke="none" />`
-  ).join('');
-
-  const lines = layerPaths.map(lp =>
-    `<path d="${lp.line}" fill="none" stroke="${lp.layer.metric.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />`
-  ).join('');
-
-  const dots = layerPaths.map(lp => {
-    const last = lp.points[lp.points.length - 1];
-    return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.metric.color}" stroke="var(--bg-primary)" stroke-width="2" />`;
-  }).join('');
-
-  container.innerHTML = [
-    `<svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">`,
-    `<defs>${defs}</defs>`,
-    gridLines.join(''),
-    areas,
-    lines,
-    dots,
-    leftAxisLabels.join(''),
-    rightAxisLabels,
-    timeLabels.join(''),
-    '</svg>',
-  ].join('');
-
+  // Legend below chart
   if (legend) {
-    legend.innerHTML = layerPaths.map(lp => [
-      `<span class="legend-item" style="--metric-color:${lp.layer.metric.color}">`,
-      `<span class="legend-dot"></span>`,
-      `${escapeHtml(lp.layer.metric.label)} (${escapeHtml(lp.layer.deviceName)})`,
-      '</span>',
-    ].join('')).join('');
+    legend.innerHTML = layers.map(l => `
+      <span class="legend-item" style="--metric-color:${l.metric.color}">
+        <span class="legend-dot"></span>
+        ${escapeHtml(l.metric.label)} (${escapeHtml(l.deviceName)})
+      </span>
+    `).join('');
   }
 }
 
