@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FarmPal Elite Viz Playground</title>
+<script src="https://cdn.jsdelivr.net/npm/vega@5/build/vega.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #050908;
+  color: #e8fff2;
+  font-family: Inter, system-ui, sans-serif;
+  padding: 24px;
+}
+h1 { font-size: 22px; font-weight: 700; margin: 0 0 6px; }
+.subtitle { color: #9cb8aa; font-size: 13px; margin-bottom: 28px; }
+.section-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: #6DFF9A; margin: 32px 0 12px;
+  border-bottom: 1px solid #22312e; padding-bottom: 6px;
+}
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 1000px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
+.card {
+  background: #07100e;
+  border: 1px solid #22312e;
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 0 30px rgba(109,255,154,0.015);
+}
+.card-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px;
+}
+.card-title { font-size: 12px; font-weight: 600; color: #e8fff2; }
+.card-sub { font-size: 10px; color: #9cb8aa; margin-top: 2px; }
+.card-badge {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; padding: 3px 8px; border-radius: 6px;
+  background: #101918; border: 1px solid #39524b; color: #e8fff2;
+}
+.chart-wrap { width: 100%; }
+.chart-wrap .vega-embed { width: 100% !important; }
+.chart-wrap .vega-embed canvas, .chart-wrap .vega-embed svg { display: block; width: 100%; height: auto; }
+.hero-card { padding: 20px; }
+.hero-card .card-title { font-size: 14px; }
+.cell-card { padding: 10px; }
+.cell-card .card-title { font-size: 10px; }
+.kpi-row {
+  display: flex; gap: 16px; margin-bottom: 20px;
+}
+.kpi-cell {
+  flex: 1; background: #07100e; border: 1px solid #22312e;
+  border-radius: 12px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.kpi-label { font-size: 10px; color: #9cb8aa; text-transform: uppercase; letter-spacing: 0.06em; }
+.kpi-value { font-size: 28px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.kpi-delta { font-size: 11px; font-weight: 600; }
+.kpi-delta.up { color: #6DFF9A; }
+.kpi-delta.down { color: #FF5C6C; }
+</style>
+</head>
+<body>
+
+<h1>FarmPal Elite Visualization Playground</h1>
+<p class="subtitle">Every chart type we can deploy — pick what you want</p>
+
+<!-- ═══════ HERO CHARTS ═══════ -->
+<div class="section-title">Hero Charts — Full Width, Primary Focus</div>
+
+<div class="grid-2">
+  <div class="card hero-card">
+    <div class="card-header">
+      <div><div class="card-title">Multi-Area Lake Chart</div><div class="card-sub">Overlapping translucent areas with glowing strokes</div></div>
+      <span class="card-badge">Hero</span>
+    </div>
+    <div id="hero-lake" class="chart-wrap" style="height:280px;"></div>
+  </div>
+
+  <div class="card hero-card">
+    <div class="card-header">
+      <div><div class="card-title">Streamgraph</div><div class="card-sub">Centered flow, organic shape, no flat baseline</div></div>
+      <span class="card-badge">Hero</span>
+    </div>
+    <div id="hero-stream" class="chart-wrap" style="height:280px;"></div>
+  </div>
+</div>
+
+<div class="grid-2" style="margin-top:20px;">
+  <div class="card hero-card">
+    <div class="card-header">
+      <div><div class="card-title">Normalized 100% Area</div><div class="card-sub">Proportional contribution over time</div></div>
+      <span class="card-badge">Hero</span>
+    </div>
+    <div id="hero-normalized" class="chart-wrap" style="height:280px;"></div>
+  </div>
+
+  <div class="card hero-card">
+    <div class="card-header">
+      <div><div class="card-title">Ridgeline Plot</div><div class="card-sub">Layered density curves, offset vertically</div></div>
+      <span class="card-badge">Hero</span>
+    </div>
+    <div id="hero-ridgeline" class="chart-wrap" style="height:280px;"></div>
+  </div>
+</div>
+
+<!-- ═══════ METRIC CELLS / SPARKLINES ═══════ -->
+<div class="section-title">Metric Cells — Inline Sparklines</div>
+
+<div class="kpi-row">
+  <div class="kpi-cell">
+    <span class="kpi-label">Temperature</span>
+    <span class="kpi-value" style="color:#FF6B57;">23.4°</span>
+    <span class="kpi-delta up">↑ 1.2° vs avg</span>
+    <div id="spark-temp" class="chart-wrap" style="height:40px;margin-top:4px;"></div>
+  </div>
+  <div class="kpi-cell">
+    <span class="kpi-label">Humidity</span>
+    <span class="kpi-value" style="color:#4AD7FF;">58%</span>
+    <span class="kpi-delta down">↓ 3% vs avg</span>
+    <div id="spark-hum" class="chart-wrap" style="height:40px;margin-top:4px;"></div>
+  </div>
+  <div class="kpi-cell">
+    <span class="kpi-label">CO₂</span>
+    <span class="kpi-value" style="color:#6DFF9A;">842</span>
+    <span class="kpi-delta up">↑ 12 ppm</span>
+    <div id="spark-co2" class="chart-wrap" style="height:40px;margin-top:4px;"></div>
+  </div>
+  <div class="kpi-cell">
+    <span class="kpi-label">VPD</span>
+    <span class="kpi-value" style="color:#B56CFF;">1.08</span>
+    <span class="kpi-delta up">↑ 0.04</span>
+    <div id="spark-vpd" class="chart-wrap" style="height:40px;margin-top:4px;"></div>
+  </div>
+</div>
+
+<!-- ═══════ CARD CHARTS ═══════ -->
+<div class="section-title">Card Charts — Grid Tiles</div>
+
+<div class="grid-3">
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Area Trend</div><div class="card-sub">Filled area with gradient feel</div></div></div>
+    <div id="card-area" class="chart-wrap" style="height:120px;"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Line Trend</div><div class="card-sub">Clean line with dots at peaks</div></div></div>
+    <div id="card-line" class="chart-wrap" style="height:120px;"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Bar Trend</div><div class="card-sub">Discrete hourly buckets</div></div></div>
+    <div id="card-bar" class="chart-wrap" style="height:120px;"></div>
+  </div>
+</div>
+
+<div class="grid-3" style="margin-top:16px;">
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Horizon Strip</div><div class="card-sub">Single-band density visualization</div></div></div>
+    <div id="card-horizon" class="chart-wrap" style="height:120px;"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Heatmap Strip</div><div class="card-sub">Color intensity over time</div></div></div>
+    <div id="card-heatmap" class="chart-wrap" style="height:120px;"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Step Chart</div><div class="card-sub">Discrete state changes</div></div></div>
+    <div id="card-step" class="chart-wrap" style="height:120px;"></div>
+  </div>
+</div>
+
+<!-- ═══════ GAUGE / RADIAL ═══════ -->
+<div class="section-title">Radial & Gauge Charts</div>
+
+<div class="grid-4">
+  <div class="card cell-card">
+    <div class="card-header"><div class="card-title">Arc Gauge</div></div>
+    <div id="gauge-arc" class="chart-wrap" style="height:140px;"></div>
+  </div>
+  <div class="card cell-card">
+    <div class="card-header"><div class="card-title">Radial Bar</div></div>
+    <div id="gauge-radial" class="chart-wrap" style="height:140px;"></div>
+  </div>
+  <div class="card cell-card">
+    <div class="card-header"><div class="card-title">Bullet Chart</div></div>
+    <div id="gauge-bullet" class="chart-wrap" style="height:140px;"></div>
+  </div>
+  <div class="card cell-card">
+    <div class="card-header"><div class="card-title">Dot Plot</div></div>
+    <div id="gauge-dot" class="chart-wrap" style="height:140px;"></div>
+  </div>
+</div>
+
+<!-- ═══════ COMPARISON / DISTRIBUTION ═══════ -->
+<div class="section-title">Comparison & Distribution</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Box Plot — Daily Distribution</div><div class="card-sub">Min, max, median, quartiles per day</div></div></div>
+    <div id="dist-box" class="chart-wrap" style="height:220px;"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Violin Plot — Density</div><div class="card-sub">Full distribution shape per metric</div></div></div>
+    <div id="dist-violin" class="chart-wrap" style="height:220px;"></div>
+  </div>
+</div>
+
+<div class="grid-2" style="margin-top:16px;">
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Candlestick — Range Bands</div><div class="card-sub">Open/high/low/close per hour</div></div></div>
+    <div id="dist-candle" class="chart-wrap" style="height:220px;"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Scatter Matrix — Correlation</div><div class="card-sub">Metric relationships</div></div></div>
+    <div id="dist-scatter" class="chart-wrap" style="height:220px;"></div>
+  </div>
+</div>
+
+<!-- ═══════ COMPACT CELLS ═══════ -->
+<div class="section-title">Micro Cells — Tiny Inline</div>
+
+<div class="grid-4">
+  <div class="card cell-card">
+    <div class="card-header"><div class="card-title">Waffle Grid</div></div>
+    <div id="micro-waffle" class="chart-wrap" style="height:100px;"></div>
+  </div>
+  <div class="card cell-card">
+    <div class="card-header"><div class="card-title">Pictogram</div></div>
+    <div id="micro-picto" class="chart-wrap" style="height:100px;"></div>
+  </div>
+  <div class="card cell-card">
+    <div class="card-header"><div class="card-title">Dumbbell Range</div></div>
+    <div id="micro-dumbbell" class="chart-wrap" style="height:100px;"></div>
+  </div>
+  <div class="card cell-card">
+    <div class="card-header"><div class="card-title">Lollipop</div></div>
+    <div id="micro-lollipop" class="chart-wrap" style="height:100px;"></div>
+  </div>
+</div>
+
+<script>
+// ── Data generation ──
+function genHours(n = 48) {
+  const arr = [];
+  const now = new Date(); now.setMinutes(0, 0, 0);
+  for (let i = n - 1; i >= 0; i--) {
+    const t = new Date(now.getTime() - i * 3600000);
+    const h = t.getHours();
+    const cycle = Math.sin((h - 6) * Math.PI / 12);
+    arr.push({
+      ts: t.toISOString(), hour: h,
+      temp: 22 + cycle * 5 + (Math.random() - 0.5) * 1.5,
+      humidity: 58 - cycle * 10 + (Math.random() - 0.5) * 4,
+      co2: 820 + (1 - cycle) * 200 + (Math.random() - 0.5) * 30,
+      vpd: 1.0 + cycle * 0.5 + (Math.random() - 0.5) * 0.15,
+      light: Math.max(0, cycle * 800 + (Math.random() - 0.5) * 100),
+      power: 120 + cycle * 300 + (Math.random() - 0.5) * 40,
+    });
+  }
+  return arr;
+}
+
+function genOHLC(n = 24) {
+  const arr = [];
+  const now = new Date(); now.setMinutes(0, 0, 0);
+  let last = 22;
+  for (let i = n - 1; i >= 0; i--) {
+    const t = new Date(now.getTime() - i * 3600000);
+    const open = last;
+    const close = open + (Math.random() - 0.5) * 3;
+    const high = Math.max(open, close) + Math.random() * 1.5;
+    const low = Math.min(open, close) - Math.random() * 1.5;
+    arr.push({ ts: t.toISOString(), open, close, high, low });
+    last = close;
+  }
+  return arr;
+}
+
+function genScatter(n = 200) {
+  const arr = [];
+  for (let i = 0; i < n; i++) {
+    const temp = 18 + Math.random() * 12;
+    const humidity = 70 - (temp - 22) * 2 + (Math.random() - 0.5) * 15;
+    const vpd = 0.5 + (temp / 30) * 1.5 + (Math.random() - 0.5) * 0.3;
+    arr.push({ temp, humidity: Math.max(20, Math.min(95, humidity)), vpd: Math.max(0.2, vpd) });
+  }
+  return arr;
+}
+
+function genDistribution() {
+  const arr = [];
+  const metrics = ['Temp', 'Humidity', 'CO₂', 'VPD', 'Light'];
+  metrics.forEach(m => {
+    for (let i = 0; i < 100; i++) {
+      let v;
+      if (m === 'Temp') v = 18 + Math.random() * 14;
+      else if (m === 'Humidity') v = 30 + Math.random() * 50;
+      else if (m === 'CO₂') v = 400 + Math.random() * 1000;
+      else if (m === 'VPD') v = 0.3 + Math.random() * 1.8;
+      else v = Math.random() * 1000;
+      arr.push({ metric: m, value: v });
+    }
+  });
+  return arr;
+}
+
+const hours = genHours(48);
+const ohlc = genOHLC(24);
+const scatter = genScatter(200);
+const dist = genDistribution();
+
+const darkX = { title: null, labelColor: '#9CB8AA', tickColor: '#22312E', domainColor: '#22312E', grid: false };
+const darkY = { title: null, labelColor: '#9CB8AA', tickColor: '#22312E', domainColor: '#22312E', grid: true, gridColor: '#182420', gridOpacity: 0.6 };
+const noAxis = { title: null, labels: false, ticks: false, grid: false, domain: false };
+
+// ── HERO: Lake Chart ──
+vegaEmbed('#hero-lake', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 280,
+  data: { values: hours },
+  transform: [
+    { fold: ['temp', 'humidity', 'co2', 'vpd', 'light'], as: ['metric', 'value'] },
+    { calculate: "datum.metric === 'temp' ? datum.value : datum.metric === 'humidity' ? datum.value : datum.metric === 'co2' ? datum.value / 40 : datum.metric === 'vpd' ? datum.value * 20 : datum.value / 25", as: 'norm' }
+  ],
+  layer: [
+    { mark: { type: 'area', interpolate: 'monotone', opacity: 0.4, line: false }, encoding: { x: { field: 'ts', type: 'temporal', axis: darkX }, y: { field: 'norm', type: 'quantitative', axis: darkY }, color: { field: 'metric', type: 'nominal', scale: { domain: ['temp', 'humidity', 'co2', 'vpd', 'light'], range: ['#FF6B57', '#4AD7FF', '#6DFF9A', '#B56CFF', '#FFC857'] }, legend: { orient: 'top', title: null, labelColor: '#E8FFF2' } } } },
+    { mark: { type: 'line', interpolate: 'monotone', strokeWidth: 2, opacity: 0.9 }, encoding: { x: { field: 'ts', type: 'temporal', axis: null }, y: { field: 'norm', type: 'quantitative', axis: null }, color: { field: 'metric', type: 'nominal', scale: { domain: ['temp', 'humidity', 'co2', 'vpd', 'light'], range: ['#FF6B57', '#4AD7FF', '#6DFF9A', '#B56CFF', '#FFC857'] }, legend: null } } }
+  ],
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── HERO: Streamgraph ──
+vegaEmbed('#hero-stream', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 280,
+  data: { values: hours },
+  transform: [
+    { fold: ['temp', 'humidity', 'co2', 'vpd', 'light'], as: ['metric', 'value'] },
+    { calculate: "datum.metric === 'temp' ? datum.value : datum.metric === 'humidity' ? datum.value : datum.metric === 'co2' ? datum.value / 40 : datum.metric === 'vpd' ? datum.value * 20 : datum.value / 25", as: 'norm' }
+  ],
+  mark: { type: 'area', interpolate: 'monotone', opacity: 0.8, line: false },
+  encoding: {
+    x: { field: 'ts', type: 'temporal', axis: darkX },
+    y: { field: 'norm', type: 'quantitative', stack: 'center', axis: null },
+    color: { field: 'metric', type: 'nominal', scale: { domain: ['temp', 'humidity', 'co2', 'vpd', 'light'], range: ['#FF6B57', '#4AD7FF', '#6DFF9A', '#B56CFF', '#FFC857'] }, legend: { orient: 'top', title: null, labelColor: '#E8FFF2' } }
+  },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── HERO: Normalized ──
+vegaEmbed('#hero-normalized', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 280,
+  data: { values: hours },
+  transform: [
+    { fold: ['temp', 'humidity', 'co2', 'vpd', 'light'], as: ['metric', 'value'] },
+    { calculate: "datum.metric === 'temp' ? datum.value : datum.metric === 'humidity' ? datum.value : datum.metric === 'co2' ? datum.value / 40 : datum.metric === 'vpd' ? datum.value * 20 : datum.value / 25", as: 'norm' }
+  ],
+  mark: { type: 'area', interpolate: 'monotone', opacity: 0.85 },
+  encoding: {
+    x: { field: 'ts', type: 'temporal', axis: darkX },
+    y: { field: 'norm', type: 'quantitative', stack: 'normalize', axis: { ...darkY, format: '.0%' } },
+    color: { field: 'metric', type: 'nominal', scale: { domain: ['temp', 'humidity', 'co2', 'vpd', 'light'], range: ['#FF6B57', '#4AD7FF', '#6DFF9A', '#B56CFF', '#FFC857'] }, legend: { orient: 'top', title: null, labelColor: '#E8FFF2' } }
+  },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── HERO: Ridgeline ──
+vegaEmbed('#hero-ridgeline', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 280,
+  data: { values: hours },
+  transform: [{ fold: ['temp', 'humidity', 'co2', 'vpd', 'light'], as: ['metric', 'value'] }],
+  mark: { type: 'area', interpolate: 'monotone', opacity: 0.6 },
+  encoding: {
+    x: { field: 'ts', type: 'temporal', axis: darkX },
+    y: { field: 'value', type: 'quantitative', axis: null },
+    row: { field: 'metric', type: 'nominal', title: null, header: { labelColor: '#9CB8AA', labelFontSize: 10 } },
+    color: { field: 'metric', type: 'nominal', scale: { domain: ['temp', 'humidity', 'co2', 'vpd', 'light'], range: ['#FF6B57', '#4AD7FF', '#6DFF9A', '#B56CFF', '#FFC857'] }, legend: null }
+  },
+  config: { view: { stroke: 'transparent' }, facet: { spacing: 4 } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── SPARKLINES ──
+['temp', 'humidity', 'co2', 'vpd'].forEach((m, i) => {
+  const id = ['#spark-temp', '#spark-hum', '#spark-co2', '#spark-vpd'][i];
+  const color = ['#FF6B57', '#4AD7FF', '#6DFF9A', '#B56CFF'][i];
+  vegaEmbed(id, {
+    $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+    background: 'transparent', width: 'container', height: 40, padding: 0,
+    data: { values: hours },
+    mark: { type: 'area', interpolate: 'monotone', opacity: 0.3, line: { color, strokeWidth: 1.5 } },
+    encoding: {
+      x: { field: 'ts', type: 'temporal', axis: noAxis },
+      y: { field: m, type: 'quantitative', axis: noAxis },
+      color: { value: color }
+    },
+    config: { view: { stroke: 'transparent' } }
+  }, { actions: false, renderer: 'canvas' });
+});
+
+// ── CARD: Area ──
+vegaEmbed('#card-area', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 120, padding: 0,
+  data: { values: hours },
+  mark: { type: 'area', interpolate: 'monotone', opacity: 0.35, line: { color: '#4AD7FF', strokeWidth: 2 } },
+  encoding: { x: { field: 'ts', type: 'temporal', axis: noAxis }, y: { field: 'humidity', type: 'quantitative', axis: noAxis }, color: { value: '#4AD7FF' } },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── CARD: Line ──
+vegaEmbed('#card-line', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 120, padding: 0,
+  data: { values: hours },
+  mark: { type: 'line', interpolate: 'monotone', strokeWidth: 2.5, color: '#FF6B57' },
+  encoding: { x: { field: 'ts', type: 'temporal', axis: noAxis }, y: { field: 'temp', type: 'quantitative', axis: noAxis } },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── CARD: Bar ──
+vegaEmbed('#card-bar', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 120, padding: 0,
+  data: { values: hours.slice(-24) },
+  mark: { type: 'bar', color: '#6DFF9A', opacity: 0.8, cornerRadiusEnd: 2 },
+  encoding: { x: { field: 'ts', type: 'ordinal', axis: noAxis }, y: { field: 'co2', type: 'quantitative', axis: noAxis } },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── CARD: Horizon ──
+vegaEmbed('#card-horizon', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 120, padding: 0,
+  data: { values: hours },
+  mark: { type: 'area', interpolate: 'monotone', opacity: 0.6 },
+  encoding: {
+    x: { field: 'ts', type: 'temporal', axis: noAxis },
+    y: { field: 'light', type: 'quantitative', axis: noAxis, scale: { domain: [0, 1000] } },
+    color: { value: '#FFC857' }
+  },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── CARD: Heatmap ──
+vegaEmbed('#card-heatmap', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 120, padding: 0,
+  data: { values: hours },
+  mark: { type: 'rect' },
+  encoding: {
+    x: { field: 'hour', type: 'ordinal', axis: noAxis },
+    color: { field: 'temp', type: 'quantitative', scale: { scheme: 'orangered' }, legend: null }
+  },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── CARD: Step ──
+vegaEmbed('#card-step', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 120, padding: 0,
+  data: { values: hours },
+  mark: { type: 'line', interpolate: 'step-after', strokeWidth: 2.5, color: '#B56CFF' },
+  encoding: { x: { field: 'ts', type: 'temporal', axis: noAxis }, y: { field: 'vpd', type: 'quantitative', axis: noAxis } },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── GAUGE: Arc ──
+vegaEmbed('#gauge-arc', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 140, padding: 0,
+  data: { values: [{ value: 73, max: 100 }] },
+  layer: [
+    { mark: { type: 'arc', innerRadius: 50, outerRadius: 70, startAngle: -120, endAngle: 120, opacity: 0.15, color: '#6DFF9A' } },
+    { mark: { type: 'arc', innerRadius: 50, outerRadius: 70, startAngle: -120, endAngle: { expr: '-120 + (datum.value / datum.max) * 240' }, color: '#6DFF9A' } },
+    { mark: { type: 'text', text: '73%', fontSize: 22, fontWeight: 700, color: '#e8fff2', dy: 8 } }
+  ],
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── GAUGE: Radial Bar ──
+vegaEmbed('#gauge-radial', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 140, padding: 0,
+  data: { values: [
+    { metric: 'Temp', value: 82, color: '#FF6B57' },
+    { metric: 'Hum', value: 64, color: '#4AD7FF' },
+    { metric: 'CO₂', value: 45, color: '#6DFF9A' },
+    { metric: 'VPD', value: 71, color: '#B56CFF' }
+  ]},
+  mark: { type: 'arc', innerRadius: 20, outerRadius: 60, cornerRadius: 4 },
+  encoding: {
+    theta: { field: 'value', type: 'quantitative', stack: true, scale: { domain: [0, 400] } },
+    color: { field: 'metric', type: 'nominal', scale: { domain: ['Temp', 'Hum', 'CO₂', 'VPD'], range: ['#FF6B57', '#4AD7FF', '#6DFF9A', '#B56CFF'] }, legend: null },
+    tooltip: [{ field: 'metric' }, { field: 'value' }]
+  },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── GAUGE: Bullet ──
+vegaEmbed('#gauge-bullet', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 140, padding: 0,
+  data: { values: [
+    { metric: 'Temp', value: 23.4, target: 24, max: 35, color: '#FF6B57' },
+    { metric: 'Humidity', value: 58, target: 60, max: 100, color: '#4AD7FF' },
+    { metric: 'CO₂', value: 842, target: 800, max: 2000, color: '#6DFF9A' }
+  ]},
+  mark: { type: 'bar', height: 12, cornerRadius: 6 },
+  encoding: {
+    x: { field: 'max', type: 'quantitative', axis: noAxis, scale: { domain: [0, 1] } },
+    color: { value: '#182420' },
+    row: { field: 'metric', type: 'nominal', title: null, header: { labelColor: '#9CB8AA', labelFontSize: 10 } }
+  },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── GAUGE: Dot Plot ──
+vegaEmbed('#gauge-dot', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 140, padding: 0,
+  data: { values: [
+    { device: 'Grow Light', on: 1 }, { device: 'Inline Fan', on: 1 },
+    { device: 'Heater', on: 0 }, { device: 'Pump', on: 1 },
+    { device: 'Dehum', on: 0 }, { device: 'Exhaust', on: 1 }
+  ]},
+  mark: { type: 'point', size: 200, filled: true, strokeWidth: 2 },
+  encoding: {
+    x: { field: 'device', type: 'nominal', axis: { labelColor: '#9CB8AA', labelAngle: -30, grid: false, domain: false } },
+    y: { datum: 0, type: 'quantitative', axis: null },
+    color: { field: 'on', type: 'nominal', scale: { domain: [0, 1], range: ['#FF5C6C', '#6DFF9A'] }, legend: null }
+  },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── DIST: Box Plot ──
+vegaEmbed('#dist-box', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 220,
+  data: { values: dist },
+  mark: { type: 'boxplot', extent: 'min-max', median: { color: '#FFC857' }, box: { fill: '#182420', stroke: '#39524b' } },
+  encoding: {
+    x: { field: 'metric', type: 'nominal', axis: { labelColor: '#9CB8AA', domain: false, grid: false } },
+    y: { field: 'value', type: 'quantitative', axis: darkY },
+    color: { field: 'metric', type: 'nominal', scale: { domain: ['Temp', 'Humidity', 'CO₂', 'VPD', 'Light'], range: ['#FF6B57', '#4AD7FF', '#6DFF9A', '#B56CFF', '#FFC857'] }, legend: null }
+  },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── DIST: Violin ──
+vegaEmbed('#dist-violin', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 220,
+  data: { values: dist },
+  mark: { type: 'area', opacity: 0.5 },
+  encoding: {
+    x: { field: 'value', type: 'quantitative', axis: darkX, bin: { maxbins: 30 } },
+    y: { aggregate: 'count', type: 'quantitative', axis: null, stack: 'center' },
+    row: { field: 'metric', type: 'nominal', title: null, header: { labelColor: '#9CB8AA', labelFontSize: 10 } },
+    color: { field: 'metric', type: 'nominal', scale: { domain: ['Temp', 'Humidity', 'CO₂', 'VPD', 'Light'], range: ['#FF6B57', '#4AD7FF', '#6DFF9A', '#B56CFF', '#FFC857'] }, legend: null }
+  },
+  config: { view: { stroke: 'transparent' }, facet: { spacing: 2 } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── DIST: Candlestick ──
+vegaEmbed('#dist-candle', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 220,
+  data: { values: ohlc },
+  layer: [
+    { mark: { type: 'rule', strokeWidth: 2 }, encoding: { x: { field: 'ts', type: 'temporal', axis: darkX }, y: { field: 'low', type: 'quantitative', axis: darkY }, y2: { field: 'high' }, color: { value: '#9CB8AA' } } },
+    { mark: { type: 'bar', width: 8 }, encoding: { x: { field: 'ts', type: 'temporal', axis: null }, y: { field: 'open', type: 'quantitative', axis: null }, y2: { field: 'close' }, color: { condition: { test: 'datum.open < datum.close', value: '#6DFF9A' }, value: '#FF5C6C' } } }
+  ],
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── DIST: Scatter Matrix ──
+vegaEmbed('#dist-scatter', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 220,
+  data: { values: scatter },
+  mark: { type: 'point', size: 30, opacity: 0.5, filled: true },
+  encoding: {
+    x: { field: 'temp', type: 'quantitative', axis: { ...darkX, title: 'Temp °C' } },
+    y: { field: 'humidity', type: 'quantitative', axis: { ...darkY, title: 'Humidity %' } },
+    color: { field: 'vpd', type: 'quantitative', scale: { scheme: 'plasma' }, legend: { title: 'VPD', titleColor: '#9CB8AA', labelColor: '#9CB8AA' } }
+  },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── MICRO: Waffle ──
+vegaEmbed('#micro-waffle', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 100, padding: 0,
+  data: { values: Array.from({ length: 100 }, (_, i) => ({ cell: i, on: i < 73 ? 1 : 0 })) },
+  mark: { type: 'rect', width: 8, height: 8 },
+  encoding: {
+    x: { field: 'cell', type: 'ordinal', axis: noAxis },
+    y: { datum: 0, type: 'quantitative', axis: noAxis },
+    color: { field: 'on', type: 'nominal', scale: { domain: [0, 1], range: ['#182420', '#6DFF9A'] }, legend: null }
+  },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── MICRO: Pictogram ──
+vegaEmbed('#micro-picto', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 100, padding: 0,
+  data: { values: [
+    { device: 'Light', on: 1 }, { device: 'Fan', on: 1 }, { device: 'Heat', on: 0 },
+    { device: 'Pump', on: 1 }, { device: 'Dehum', on: 0 }, { device: 'Exhaust', on: 1 }
+  ]},
+  mark: { type: 'point', shape: 'square', size: 400, filled: true, strokeWidth: 2 },
+  encoding: {
+    x: { field: 'device', type: 'nominal', axis: { labelColor: '#9CB8AA', grid: false, domain: false } },
+    y: { datum: 0, type: 'quantitative', axis: null },
+    color: { field: 'on', type: 'nominal', scale: { domain: [0, 1], range: ['#FF5C6C', '#6DFF9A'] }, legend: null }
+  },
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── MICRO: Dumbbell ──
+vegaEmbed('#micro-dumbbell', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 100, padding: 0,
+  data: { values: [
+    { metric: 'Temp', min: 18, max: 32 }, { metric: 'Hum', min: 35, max: 78 },
+    { metric: 'CO₂', min: 420, max: 1400 }, { metric: 'VPD', min: 0.4, max: 2.1 }
+  ]},
+  layer: [
+    { mark: { type: 'rule', strokeWidth: 3 }, encoding: { x: { field: 'min', type: 'quantitative', axis: noAxis }, x2: { field: 'max' }, y: { field: 'metric', type: 'nominal', axis: { labelColor: '#9CB8AA', grid: false, domain: false } }, color: { value: '#39524b' } } },
+    { mark: { type: 'point', size: 100, filled: true }, encoding: { x: { field: 'min', type: 'quantitative' }, y: { field: 'metric', type: 'nominal' }, color: { value: '#4AD7FF' } } },
+    { mark: { type: 'point', size: 100, filled: true }, encoding: { x: { field: 'max', type: 'quantitative' }, y: { field: 'metric', type: 'nominal' }, color: { value: '#FF6B57' } } }
+  ],
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+
+// ── MICRO: Lollipop ──
+vegaEmbed('#micro-lollipop', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  background: 'transparent', width: 'container', height: 100, padding: 0,
+  data: { values: [
+    { metric: 'Temp', value: 23.4 }, { metric: 'Hum', value: 58 },
+    { metric: 'CO₂', value: 842 }, { metric: 'VPD', value: 1.08 }
+  ]},
+  layer: [
+    { mark: { type: 'rule', strokeWidth: 2 }, encoding: { x: { field: 'metric', type: 'nominal', axis: { labelColor: '#9CB8AA', grid: false, domain: false } }, y: { field: 'value', type: 'quantitative', axis: noAxis }, y2: { datum: 0 }, color: { value: '#39524b' } } },
+    { mark: { type: 'point', size: 150, filled: true }, encoding: { x: { field: 'metric', type: 'nominal' }, y: { field: 'value', type: 'quantitative' }, color: { field: 'metric', type: 'nominal', scale: { domain: ['Temp', 'Hum', 'CO₂', 'VPD'], range: ['#FF6B57', '#4AD7FF', '#6DFF9A', '#B56CFF'] }, legend: null } } }
+  ],
+  config: { view: { stroke: 'transparent' } }
+}, { actions: false, renderer: 'canvas' });
+</script>
+</body>
+</html>

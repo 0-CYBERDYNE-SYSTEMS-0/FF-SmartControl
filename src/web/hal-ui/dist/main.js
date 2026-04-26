@@ -1581,7 +1581,7 @@
     const to = (/* @__PURE__ */ new Date()).toISOString();
     const from = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
     const layers = [];
-    const metricKeys = ["temperature", "humidity", "co2", "light"];
+    const metricKeys = ["temperature", "humidity", "co2"];
     const [decisions] = await Promise.all([
       halApi.getDecisions(50).catch(() => []),
       ...sensors.flatMap(

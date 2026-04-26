@@ -32,7 +32,7 @@ export async function loadHeroChartData(): Promise<{ layers: HeroChartLayer[]; d
   const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const layers: HeroChartLayer[] = [];
-  const metricKeys = ['temperature', 'humidity', 'co2', 'light'];
+  const metricKeys = ['temperature', 'humidity', 'co2'];
 
   const [decisions] = await Promise.all([
     halApi.getDecisions(50).catch(() => [] as HalDecision[]),

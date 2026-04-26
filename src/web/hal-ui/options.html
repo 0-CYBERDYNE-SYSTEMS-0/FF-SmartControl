@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FarmPal — Chart Options</title>
+<script src="https://cdn.jsdelivr.net/npm/vega@5/build/vega.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #050908; color: #e8fff2; font-family: Inter, system-ui, sans-serif; padding: 28px 32px; max-width: 1300px; margin: 0 auto; }
+h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.sub { color: #9cb8aa; font-size: 13px; margin-bottom: 36px; }
+.section { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #6DFF9A; border-bottom: 1px solid #22312e; padding-bottom: 8px; margin: 40px 0 18px; }
+.section.star { color: #F59E0B; border-color: #F59E0B44; }
+.panel { background: #07100e; border: 1px solid #22312e; border-radius: 16px; padding: 20px 22px; margin-bottom: 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+.ph { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+.num { font-size: 11px; font-weight: 700; background: rgba(109,255,154,0.1); border: 1px solid rgba(109,255,154,0.25); color: #6DFF9A; border-radius: 6px; padding: 2px 9px; font-family: monospace; white-space: nowrap; }
+.num.gold { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.3); color: #F59E0B; }
+.pt { font-size: 13px; font-weight: 600; }
+.ps { font-size: 11px; color: #9cb8aa; margin-top: 2px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.vega-embed { width: 100% !important; }
+.vega-embed canvas, .vega-embed svg { display: block; width: 100%; height: auto; }
+
+/* ── f30439d exact widget ── */
+.hw-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.hw-title { font-size: 15px; font-weight: 700; }
+.hw-device { font-size: 11px; color: #9cb8aa; margin-top: 3px; }
+.hw-kpi { text-align: right; }
+.hw-kpi-val { font-size: 26px; font-weight: 700; color: #F59E0B; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+.hw-kpi-delta { font-size: 11px; color: #6DFF9A; margin-top: 3px; }
+.hw-chart { width: 100%; }
+.hw-chart svg { display: block; width: 100%; height: auto; }
+.hw-stats { border-top: 1px solid #22312e; margin-top: 14px; padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.hw-stat-metric { display: flex; justify-content: space-between; align-items: center; }
+.hw-stat-label { font-size: 13px; font-weight: 600; }
+.hw-stat-current { font-size: 15px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.hw-stat-row { display: flex; gap: 40px; }
+.hw-stat-item label { display: block; font-size: 10px; color: #9cb8aa; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.hw-stat-item strong { font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #e8fff2; }
+.hw-delta-small { font-size: 10px; color: #6DFF9A; margin-top: 2px; }
+.hw-foot { font-size: 10px; color: #9cb8aa; border-top: 1px solid #22312e; margin-top: 12px; padding-top: 10px; }
+
+/* ── Original SVG chart (711eb9f) ── */
+.og-chart { display: block; width: 100%; height: 240px; }
+.cg { stroke: #182420; stroke-width: 1; }
+.ca { fill: color-mix(in srgb, #6DFF9A 16%, transparent); }
+.cl { fill: none; stroke: #6DFF9A; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.cp { fill: #6DFF9A; stroke: #050908; stroke-width: 2; }
+.clb { fill: #9cb8aa; font-size: 11px; font-family: monospace; }
+.ccv { fill: #6DFF9A; font-size: 18px; font-weight: 700; font-family: monospace; }
+.chart-grid { stroke: #182420; stroke-width: 1; }
+</style>
+</head>
+<body>
+<h1>FarmPal — Chart Options</h1>
+<p class="sub">Pick a number. All synthetic sensor data.</p>
+
+<!-- ══ THE CHART ══ -->
+<div class="section star">★ The Chart — Dual-Axis Gradient Line · Sensors.ts exact algorithm</div>
+<div class="panel" id="f30-panel">
+  <div class="hw-head">
+    <div>
+      <div class="hw-title">Temperature <span style="color:#38BDF8">+ Humidity</span></div>
+      <div class="hw-device" id="f30-device">Loading…</div>
+    </div>
+    <div class="hw-kpi">
+      <div class="hw-kpi-val" id="f30-kpi-val">—</div>
+      <div class="hw-kpi-delta" id="f30-kpi-delta"></div>
+    </div>
+  </div>
+  <div class="hw-chart" id="f30-chart"></div>
+  <div class="hw-stats" id="f30-stats"></div>
+  <div class="hw-foot" id="f30-foot"></div>
+</div>
+
+<!-- ══ HERO CHARTS ══ -->
+<div class="section">Hero Charts — Full Width Time Series</div>
+
+<div class="panel">
+  <div class="ph"><span class="num">#1</span><div><div class="pt">Original SVG Line + Area — 711eb9f</div><div class="ps">Native SVG · no library · color-mix fill · 2.5px rounded stroke · crisp at any resolution</div></div></div>
+  <div id="v1"></div>
+</div>
+
+<div class="panel">
+  <div class="ph"><span class="num">#2</span><div><div class="pt">Dual-Axis Lake — Vega-Lite</div><div class="ps">Two metrics · independent Y-axes · area fill + line · decision dots</div></div></div>
+  <div id="v2" style="min-height:300px;"></div>
+</div>
+
+<div class="grid2">
+  <div class="panel">
+    <div class="ph"><span class="num">#3</span><div><div class="pt">Multi-Layer Overlay</div><div class="ps">3 metrics · translucent fills · glowing strokes</div></div></div>
+    <div id="v3" style="min-height:260px;"></div>
+  </div>
+  <div class="panel">
+    <div class="ph"><span class="num">#4</span><div><div class="pt">Stacked Area</div><div class="ps">Additive stack · total height = sum</div></div></div>
+    <div id="v4" style="min-height:260px;"></div>
+  </div>
+</div>
+
+<!-- ══ CARD CHARTS ══ -->
+<div class="section">Card Charts — Compact Tiles</div>
+<div class="grid3">
+  <div class="panel"><div class="ph"><span class="num">#5</span><div><div class="pt">Area Trend</div><div class="ps">Single metric · filled area</div></div></div><div id="v5" style="min-height:110px;"></div></div>
+  <div class="panel"><div class="ph"><span class="num">#6</span><div><div class="pt">Line Trend</div><div class="ps">Clean line · no fill</div></div></div><div id="v6" style="min-height:110px;"></div></div>
+  <div class="panel"><div class="ph"><span class="num">#7</span><div><div class="pt">Bar Trend</div><div class="ps">Hourly buckets · CO₂</div></div></div><div id="v7" style="min-height:110px;"></div></div>
+</div>
+<div class="grid3">
+  <div class="panel"><div class="ph"><span class="num">#8</span><div><div class="pt">Step Chart</div><div class="ps">On/off relay states</div></div></div><div id="v8" style="min-height:110px;"></div></div>
+  <div class="panel"><div class="ph"><span class="num">#9</span><div><div class="pt">Heatmap Strip</div><div class="ps">Temp by hour × day</div></div></div><div id="v9" style="min-height:110px;"></div></div>
+  <div class="panel"><div class="ph"><span class="num">#10</span><div><div class="pt">Sparklines</div><div class="ps">3 metrics · inline micro</div></div></div><div id="v10a" style="margin-bottom:6px;"></div><div id="v10b" style="margin-bottom:6px;"></div><div id="v10c"></div></div>
+</div>
+
+<!-- ══ ANALYSIS ══ -->
+<div class="section">Analysis &amp; Distribution</div>
+<div class="grid3">
+  <div class="panel"><div class="ph"><span class="num">#11</span><div><div class="pt">Box Plot</div><div class="ps">Daily distribution · quartiles</div></div></div><div id="v11" style="min-height:180px;"></div></div>
+  <div class="panel"><div class="ph"><span class="num">#12</span><div><div class="pt">Scatter Plot</div><div class="ps">Temp vs Humidity · color = CO₂</div></div></div><div id="v12" style="min-height:180px;"></div></div>
+  <div class="panel"><div class="ph"><span class="num">#13</span><div><div class="pt">Bullet Chart</div><div class="ps">Current vs target vs range</div></div></div><div id="v13" style="min-height:180px;"></div></div>
+</div>
+
+<script>
+// ── Synthetic data ──
+const NOW = Date.now();
+const rows = [];
+for (let i = 47; i >= 0; i--) {
+  const t = new Date(NOW - i * 3600000);
+  const h = t.getHours();
+  const day = Math.sin((h - 6) * Math.PI / 12);
+  rows.push({
+    ts: t.toISOString(), t: t.getTime(),
+    temp: 22 + day * 5 + (Math.random() - 0.5) * 1.2,
+    humid: 58 - day * 12 + (Math.random() - 0.5) * 3,
+    co2: 750 + (1 - day) * 200 + (Math.random() - 0.5) * 50,
+    relay: h >= 7 && h <= 19 ? 1 : 0,
+  });
+}
+const tempRows = rows.map(r => ({ ts: r.ts, value: r.temp }));
+const humidRows = rows.map(r => ({ ts: r.ts, value: r.humid }));
+const co2Rows = rows.map(r => ({ ts: r.ts, value: r.co2 }));
+const MDOM = ['temp','humid','co2'], MRNG = ['#F59E0B','#38BDF8','#6DFF9A'];
+const foldedRows = [];
+rows.forEach(r => {
+  foldedRows.push({ ts: r.ts, metric: 'temp',  value: r.temp,  lake: (r.temp - 15) / 20 * 100 });
+  foldedRows.push({ ts: r.ts, metric: 'humid', value: r.humid, lake: r.humid });
+  foldedRows.push({ ts: r.ts, metric: 'co2',   value: r.co2,   lake: (r.co2 - 300) / 1000 * 100 });
+});
+const decisions = [
+  { ts: new Date(NOW - 36 * 3600000).toISOString(), outcome: 'success' },
+  { ts: new Date(NOW - 22 * 3600000).toISOString(), outcome: 'success' },
+  { ts: new Date(NOW - 10 * 3600000).toISOString(), outcome: 'skipped' },
+  { ts: new Date(NOW - 3  * 3600000).toISOString(), outcome: 'failed'  },
+];
+const dailyRows = [];
+for (let i = 13; i >= 0; i--) {
+  const d = new Date(NOW - i * 86400000);
+  const label = (d.getMonth()+1) + '/' + d.getDate();
+  const temps = Array.from({length:24}, (_,h) => 22 + Math.sin((h-6)*Math.PI/12)*5 + (Math.random()-0.5)*2).sort((a,b)=>a-b);
+  dailyRows.push({ day: label, min: temps[0], q1: temps[5], median: temps[11], q3: temps[17], max: temps[23] });
+}
+const heatRows = [];
+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach((dow) => {
+  for (let h = 0; h < 24; h++) {
+    heatRows.push({ dow, hour: h, temp: 22 + Math.sin((h-6)*Math.PI/12)*5 + (Math.random()-0.5)*2 });
+  }
+});
+
+// ── Monotone Cubic Spline (Fritsch-Carlson, exact port from f30439d) ──
+function monotoneCubicPath(pts) {
+  if (pts.length < 2) return '';
+  if (pts.length === 2) return 'M'+pts[0].x.toFixed(1)+','+pts[0].y.toFixed(1)+' L'+pts[1].x.toFixed(1)+','+pts[1].y.toFixed(1);
+  const n = pts.length;
+  const dx = [], dy = [];
+  for (let i = 0; i < n-1; i++) { dx.push(pts[i+1].x - pts[i].x); dy.push(pts[i+1].y - pts[i].y); }
+  const sec = dx.map((d,i) => dy[i]/d);
+  const m = new Array(n);
+  m[0] = sec[0]; m[n-1] = sec[n-2];
+  for (let i = 1; i < n-1; i++) { m[i] = sec[i-1]*sec[i] <= 0 ? 0 : (sec[i-1]+sec[i])/2; }
+  for (let i = 0; i < n-1; i++) {
+    if (Math.abs(sec[i]) < 1e-10) { m[i] = 0; m[i+1] = 0; continue; }
+    const a = m[i]/sec[i], b = m[i+1]/sec[i], tau = a*a + b*b;
+    if (tau > 9) { const t = 3/Math.sqrt(tau); m[i] = t*a*sec[i]; m[i+1] = t*b*sec[i]; }
+  }
+  const parts = ['M'+pts[0].x.toFixed(1)+','+pts[0].y.toFixed(1)];
+  for (let i = 0; i < n-1; i++) {
+    const x1=(pts[i].x+dx[i]/3).toFixed(1), y1=(pts[i].y+m[i]*dx[i]/3).toFixed(1);
+    const x2=(pts[i+1].x-dx[i]/3).toFixed(1), y2=(pts[i+1].y-m[i+1]*dx[i]/3).toFixed(1);
+    parts.push('C'+x1+','+y1+' '+x2+','+y2+' '+pts[i+1].x.toFixed(1)+','+pts[i+1].y.toFixed(1));
+  }
+  return parts.join(' ');
+}
+
+// ── ★ THE CHART — exact Sensors.ts algorithm (straight-segment dual-axis SVG) ──
+(function renderF30() {
+  const layers = [
+    { label: 'Temperature', color: '#F59E0B', minAxis: 10, maxAxis: 40,  data: rows.map(r => ({ t: r.t, v: r.temp })) },
+    { label: 'Humidity',    color: '#38BDF8', minAxis: 0,  maxAxis: 100, data: rows.map(r => ({ t: r.t, v: r.humid })) },
+  ];
+
+  // Exact constants from Sensors.ts renderHeroChart()
+  const width = 900, height = 320;
+  const pad = { top: 24, right: 24, bottom: 36, left: 52 };
+
+  const allTimes = layers.flatMap(l => l.data.map(d => d.t));
+  const tMin = Math.min(...allTimes), tMax = Math.max(...allTimes);
+  const tSpan = Math.max(1, tMax - tMin);
+  const tx = t => pad.left + ((t - tMin) / tSpan) * (width - pad.left - pad.right);
+
+  const layerPaths = layers.map(layer => {
+    const axisMin = layer.minAxis, axisMax = layer.maxAxis;
+    const vSpan = Math.max(1, axisMax - axisMin);
+    const points = layer.data.map(d => {
+      const x = tx(d.t);
+      const y = pad.top + ((axisMax - d.v) / vSpan) * (height - pad.top - pad.bottom);
+      return { x, y };
+    });
+    const line = points.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+    const area = line + ' L' + points[points.length-1].x.toFixed(1) + ',' + (height - pad.bottom)
+               + ' L' + points[0].x.toFixed(1) + ',' + (height - pad.bottom) + ' Z';
+    return { layer, points, line, area, axisMin, axisMax, vSpan };
+  });
+
+  const defs = layerPaths.map((lp, i) =>
+    '<linearGradient id="hg'+i+'" x1="0" x2="0" y1="0" y2="1">'
+    + '<stop offset="0%" stop-color="'+lp.layer.color+'" stop-opacity="0.28"/>'
+    + '<stop offset="100%" stop-color="'+lp.layer.color+'" stop-opacity="0.02"/>'
+    + '</linearGradient>'
+  ).join('');
+
+  const gridLines = Array.from({length:6}, (_,i) => {
+    const y = pad.top + (i/5) * (height - pad.top - pad.bottom);
+    return '<line x1="'+pad.left+'" y1="'+y+'" x2="'+(width-pad.right)+'" y2="'+y+'" class="chart-grid"/>';
+  }).join('');
+
+  const timeSteps = 6;
+  const timeLabels = Array.from({length: timeSteps+1}, (_,i) => {
+    const t = tMin + (i/timeSteps)*tSpan;
+    const x = tx(t);
+    const label = new Date(t).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    return '<text x="'+x.toFixed(1)+'" y="'+(height-8)+'" fill="#9CB8AA" font-size="11" font-family="monospace" text-anchor="middle">'+label+'</text>';
+  }).join('');
+
+  const primary = layerPaths[0];
+  const leftAxisLabels = Array.from({length:6}, (_,i) => {
+    const y = pad.top + (i/5)*(height-pad.top-pad.bottom);
+    const v = primary.axisMax - (i/5)*primary.vSpan;
+    const prec = 1;
+    return '<text x="'+(pad.left-8)+'" y="'+(y+4)+'" fill="#9CB8AA" font-size="11" font-family="monospace" text-anchor="end">'+v.toFixed(prec)+'</text>';
+  }).join('');
+
+  const sec = layerPaths[1];
+  const rightAxisLabels = Array.from({length:6}, (_,i) => {
+    const y = pad.top + (i/5)*(height-pad.top-pad.bottom);
+    const v = sec.axisMax - (i/5)*sec.vSpan;
+    return '<text x="'+(width-pad.right+8)+'" y="'+(y+4)+'" fill="'+sec.layer.color+'" font-size="11" font-family="monospace">'+v.toFixed(1)+'</text>';
+  }).join('');
+
+  const areas = layerPaths.map((lp,i) => '<path d="'+lp.area+'" fill="url(#hg'+i+')" stroke="none"/>').join('');
+  const lines = layerPaths.map(lp => '<path d="'+lp.line+'" fill="none" stroke="'+lp.layer.color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>').join('');
+  const dots  = layerPaths.map(lp => {
+    const last = lp.points[lp.points.length-1];
+    return '<circle cx="'+last.x.toFixed(1)+'" cy="'+last.y.toFixed(1)+'" r="4" fill="'+lp.layer.color+'" stroke="#050908" stroke-width="2"/>';
+  }).join('');
+
+  document.getElementById('f30-chart').innerHTML =
+    '<svg viewBox="0 0 '+width+' '+height+'" style="width:100%;height:auto;">'
+    + '<defs>'+defs+'</defs>'
+    + gridLines + areas + lines + dots + leftAxisLabels + rightAxisLabels + timeLabels
+    + '</svg>';
+
+  // Stats (KPI readout + Min/Avg/Max rows)
+  const temps  = rows.map(r => r.temp);
+  const humids = rows.map(r => r.humid);
+  const tLast = temps[temps.length-1], tPrev = temps[temps.length-2];
+  const hLast = humids[humids.length-1];
+  const tDelta = ((tLast - tPrev) / Math.abs(tPrev) * 100);
+  const tMin2 = Math.min(...temps), tMax2 = Math.max(...temps), tAvg = temps.reduce((a,b)=>a+b,0)/temps.length;
+  const hMin  = Math.min(...humids), hMax  = Math.max(...humids), hAvg = humids.reduce((a,b)=>a+b,0)/humids.length;
+
+  document.getElementById('f30-kpi-val').textContent = tLast.toFixed(1) + '°c';
+  document.getElementById('f30-kpi-delta').textContent = (tDelta >= 0 ? '↑ ' : '↓ ') + Math.abs(tDelta).toFixed(1) + '%';
+  document.getElementById('f30-device').textContent = 'Tent Temperature #1';
+  document.getElementById('f30-stats').innerHTML =
+    '<div class="hw-stat-metric"><span class="hw-stat-label" style="color:#F59E0B">Temperature</span><span class="hw-stat-current" style="color:#F59E0B">'+tLast.toFixed(1)+'°c</span></div>'
+    + '<div class="hw-stat-row">'
+    + '<div class="hw-stat-item"><label>Min</label><strong>'+tMin2.toFixed(1)+'c</strong></div>'
+    + '<div class="hw-stat-item"><label>Avg</label><strong>'+tAvg.toFixed(1)+'c</strong></div>'
+    + '<div class="hw-stat-item"><label>Max</label><strong>'+tMax2.toFixed(1)+'c</strong></div>'
+    + '</div>'
+    + '<div class="hw-stat-metric" style="margin-top:8px"><span class="hw-stat-label" style="color:#38BDF8">Humidity</span><span class="hw-stat-current" style="color:#38BDF8">'+hLast.toFixed(1)+'%</span></div>'
+    + '<div class="hw-stat-row">'
+    + '<div class="hw-stat-item"><label>Min</label><strong>'+hMin.toFixed(1)+'%</strong></div>'
+    + '<div class="hw-stat-item"><label>Avg</label><strong>'+hAvg.toFixed(1)+'%</strong></div>'
+    + '<div class="hw-stat-item"><label>Max</label><strong>'+hMax.toFixed(1)+'%</strong></div>'
+    + '</div>';
+  document.getElementById('f30-foot').textContent = rows.length + ' readings · Air or probe temperature in Celsius';
+})();
+
+// ── Vega-Lite axis helpers ──
+const axX = { title: null, labelColor: '#9CB8AA', tickColor: '#22312E', domainColor: '#22312E', grid: false };
+const axY = { title: null, labelColor: '#9CB8AA', tickColor: '#22312E', domainColor: '#22312E', grid: true, gridColor: '#182420', gridOpacity: 0.9 };
+const cfg = { view: { stroke: 'transparent' }, font: 'Inter, system-ui, sans-serif' };
+const leg = { orient: 'top', title: null, labelColor: '#E8FFF2', symbolType: 'stroke', symbolSize: 80 };
+function E(id, spec) { vegaEmbed('#'+id, spec, { actions: false, renderer: 'canvas' }).catch(console.error); }
+
+// ── #1 Original SVG (711eb9f exact) ──
+(function() {
+  const el = document.getElementById('v1');
+  function draw() {
+    const W = el.clientWidth||900, H = 240, p = {t:24,r:24,b:34,l:54};
+    const vals = rows.map(r => r.temp);
+    const min = Math.min(...vals), max = Math.max(...vals), span = max-min||1;
+    const x = i => p.l + (i/(vals.length-1))*(W-p.l-p.r);
+    const y = v => p.t + ((max-v)/span)*(H-p.t-p.b);
+    const pts = vals.map((v,i) => x(i).toFixed(1)+','+y(v).toFixed(1)).join(' ');
+    const area = p.l+','+(H-p.b)+' '+pts+' '+(W-p.r)+','+(H-p.b);
+    const grids = [0,0.25,0.5,0.75,1].map(s => {
+      const gy=p.t+s*(H-p.t-p.b), lv=(max-s*span).toFixed(1);
+      return '<line x1="'+p.l+'" y1="'+gy+'" x2="'+(W-p.r)+'" y2="'+gy+'" class="cg"/>'
+           + '<text x="'+(p.l-8)+'" y="'+(gy+4)+'" class="clb" text-anchor="end">'+lv+'</text>';
+    }).join('');
+    const lx=x(vals.length-1).toFixed(1), ly=y(vals[vals.length-1]).toFixed(1);
+    const t0=new Date(rows[0].ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const t1=new Date(rows[rows.length-1].ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    el.innerHTML='<svg class="og-chart" viewBox="0 0 '+W+' '+H+'">'
+      +grids
+      +'<polygon points="'+area+'" class="ca"/>'
+      +'<polyline points="'+pts+'" class="cl"/>'
+      +'<circle cx="'+lx+'" cy="'+ly+'" r="4" class="cp"/>'
+      +'<text x="'+p.l+'" y="'+(H-10)+'" class="clb">'+t0+'</text>'
+      +'<text x="'+(W-p.r)+'" y="'+(H-10)+'" class="clb" text-anchor="end">'+t1+'</text>'
+      +'<text x="'+(W-p.r)+'" y="22" class="ccv" text-anchor="end">'+vals[vals.length-1].toFixed(2)+'c</text>'
+      +'</svg>';
+  }
+  draw(); window.addEventListener('resize', draw);
+})();
+
+// ── #2 Dual-Axis Vega-Lite ──
+E('v2', { $schema:'https://vega.github.io/schema/vega-lite/v5.json', background:'transparent', width:'container', height:300,
+  layer:[
+    { data:{values:tempRows}, mark:{type:'area',interpolate:'monotone',color:'#F59E0B',opacity:0.32,line:{color:'#F59E0B',strokeWidth:2.2}},
+      encoding:{ x:{field:'ts',type:'temporal',axis:axX}, y:{field:'value',type:'quantitative',axis:{...axY,title:'Temp °C',titleColor:'#F59E0B'}} } },
+    { data:{values:humidRows}, mark:{type:'line',interpolate:'monotone',color:'#38BDF8',strokeWidth:2.2},
+      encoding:{ x:{field:'ts',type:'temporal',axis:null}, y:{field:'value',type:'quantitative',axis:{orient:'right',title:'Humidity %',titleColor:'#38BDF8',labelColor:'#9CB8AA',tickColor:'#22312E',domainColor:'#22312E',grid:false}} } },
+    { data:{values:decisions}, mark:{type:'point',filled:true,size:80,stroke:'#050908',strokeWidth:2},
+      encoding:{ x:{field:'ts',type:'temporal'}, y:{value:20}, color:{field:'outcome',type:'nominal',scale:{domain:['success','skipped','failed'],range:['#6DFF9A','#FFC857','#FF5C6C']},legend:null} } }
+  ],
+  resolve:{scale:{y:'independent'}}, config:cfg });
+
+// ── #3 Multi-Layer Overlay ──
+E('v3', { $schema:'https://vega.github.io/schema/vega-lite/v5.json', background:'transparent', width:'container', height:260,
+  layer:[
+    { data:{values:foldedRows}, mark:{type:'area',interpolate:'monotone',opacity:0.38,line:false},
+      encoding:{ x:{field:'ts',type:'temporal',axis:axX}, y:{field:'lake',type:'quantitative',axis:axY}, color:{field:'metric',type:'nominal',scale:{domain:MDOM,range:MRNG},legend:leg} } },
+    { data:{values:foldedRows}, mark:{type:'line',interpolate:'monotone',strokeWidth:2.2,opacity:0.95},
+      encoding:{ x:{field:'ts',type:'temporal',axis:null}, y:{field:'lake',type:'quantitative',axis:null}, color:{field:'metric',type:'nominal',scale:{domain:MDOM,range:MRNG},legend:null} } },
+    { data:{values:decisions}, mark:{type:'point',filled:true,size:80,stroke:'#050908',strokeWidth:2},
+      encoding:{ x:{field:'ts',type:'temporal'}, y:{value:20}, color:{field:'outcome',type:'nominal',scale:{domain:['success','skipped','failed'],range:['#6DFF9A','#FFC857','#FF5C6C']},legend:null} } }
+  ], config:cfg });
+
+// ── #4 Stacked Area ──
+E('v4', { $schema:'https://vega.github.io/schema/vega-lite/v5.json', background:'transparent', width:'container', height:260,
+  data:{values:foldedRows}, mark:{type:'area',interpolate:'monotone',opacity:0.88},
+  encoding:{ x:{field:'ts',type:'temporal',axis:axX}, y:{field:'lake',type:'quantitative',stack:'zero',axis:axY}, color:{field:'metric',type:'nominal',scale:{domain:MDOM,range:MRNG},legend:leg}, order:{field:'metric',type:'nominal'} }, config:cfg });
+
+// ── #5-7 Card charts ──
+E('v5', { $schema:'https://vega.github.io/schema/vega-lite/v5.json', background:'transparent', width:'container', height:100, data:{values:tempRows}, mark:{type:'area',interpolate:'monotone',color:'#F59E0B',opacity:0.7,line:{strokeWidth:2,color:'#F59E0B'}}, encoding:{ x:{field:'ts',type:'temporal',axis:axX}, y:{field:'value',type:'quantitative',axis:axY} }, config:cfg });
+E('v6', { $schema:'https://vega.github.io/schema/vega-lite/v5.json', background:'transparent', width:'container', height:100, data:{values:humidRows}, mark:{type:'line',interpolate:'monotone',color:'#38BDF8',strokeWidth:2.2}, encoding:{ x:{field:'ts',type:'temporal',axis:axX}, y:{field:'value',type:'quantitative',axis:axY} }, config:cfg });
+E('v7', { $schema:'https://vega.github.io/schema/vega-lite/v5.json', background:'transparent', width:'container', height:100, data:{values:co2Rows}, mark:{type:'bar',color:'#6DFF9A',opacity:0.75,cornerRadiusTopLeft:2,cornerRadiusTopRight:2}, encoding:{ x:{field:'ts',type:'temporal',axis:axX}, y:{field:'value',type:'quantitative',axis:axY} }, config:cfg });
+
+// ── #8 Step ──
+E('v8', { $schema:'https://vega.github.io/schema/vega-lite/v5.json', background:'transparent', width:'container', height:100,
+  data:{values:rows.map(r=>({ts:r.ts,value:r.relay}))}, mark:{type:'line',interpolate:'step-after',color:'#FACC15',strokeWidth:2},
+  encoding:{ x:{field:'ts',type:'temporal',axis:axX}, y:{field:'value',type:'quantitative',axis:{...axY,values:[0,1]}} }, config:cfg });
+
+// ── #9 Heatmap ──
+E('v9', { $schema:'https://vega.github.io/schema/vega-lite/v5.json', background:'transparent', width:'container', height:100, data:{values:heatRows}, mark:{type:'rect',cornerRadius:1},
+  encoding:{ x:{field:'hour',type:'ordinal',axis:{...axX,labelFontSize:9}}, y:{field:'dow',type:'ordinal',axis:{...axY,grid:false,labelFontSize:10,ticks:false}}, color:{field:'temp',type:'quantitative',scale:{range:['#0a1a12','#1a4030','#4aB070','#F59E0B']},legend:null} }, config:cfg });
+
+// ── #10 Sparklines ──
+const axS={title:null,labels:false,ticks:false,domain:false,grid:false};
+const spk={background:'transparent',width:'container',height:24,config:cfg};
+E('v10a',{...spk,$schema:'https://vega.github.io/schema/vega-lite/v5.json',data:{values:tempRows}, mark:{type:'line',interpolate:'monotone',color:'#F59E0B',strokeWidth:1.5},encoding:{x:{field:'ts',type:'temporal',axis:axS},y:{field:'value',type:'quantitative',axis:axS}}});
+E('v10b',{...spk,$schema:'https://vega.github.io/schema/vega-lite/v5.json',data:{values:humidRows},mark:{type:'line',interpolate:'monotone',color:'#38BDF8',strokeWidth:1.5},encoding:{x:{field:'ts',type:'temporal',axis:axS},y:{field:'value',type:'quantitative',axis:axS}}});
+E('v10c',{...spk,$schema:'https://vega.github.io/schema/vega-lite/v5.json',data:{values:co2Rows},  mark:{type:'line',interpolate:'monotone',color:'#6DFF9A',strokeWidth:1.5},encoding:{x:{field:'ts',type:'temporal',axis:axS},y:{field:'value',type:'quantitative',axis:axS}}});
+
+// ── #11 Box Plot ──
+E('v11',{ $schema:'https://vega.github.io/schema/vega-lite/v5.json', background:'transparent', width:'container', height:180, data:{values:dailyRows},
+  layer:[
+    { mark:{type:'rule',color:'#9CB8AA'}, encoding:{x:{field:'day',type:'ordinal',axis:{...axX,labelAngle:-40,labelFontSize:9}},y:{field:'min',type:'quantitative',axis:axY},y2:{field:'max'}} },
+    { mark:{type:'bar',color:'#F59E0B',opacity:0.55,width:12}, encoding:{x:{field:'day',type:'ordinal'},y:{field:'q1',type:'quantitative'},y2:{field:'q3'}} },
+    { mark:{type:'tick',color:'#fff',thickness:2,bandSize:14}, encoding:{x:{field:'day',type:'ordinal'},y:{field:'median',type:'quantitative'}} }
+  ], config:cfg });
+
+// ── #12 Scatter ──
+E('v12',{ $schema:'https://vega.github.io/schema/vega-lite/v5.json', background:'transparent', width:'container', height:180, data:{values:rows}, mark:{type:'circle',opacity:0.7,size:55},
+  encoding:{ x:{field:'temp',type:'quantitative',axis:{...axX,title:'Temp °C',titleColor:'#9CB8AA',labels:true,labelColor:'#9CB8AA',domainColor:'#22312E',tickColor:'#22312E',grid:false}}, y:{field:'humid',type:'quantitative',axis:{...axY,title:'Humidity %',titleColor:'#9CB8AA'}}, color:{field:'co2',type:'quantitative',scale:{range:['#1a4030','#6DFF9A']},legend:{title:'CO₂',labelColor:'#9CB8AA',titleColor:'#9CB8AA'}} }, config:cfg });
+
+// ── #13 Bullet ──
+const bRows=[{metric:'Temp',pct:(22.4-18)/12,targetPct:(24-18)/12,label:'22.4°C'},{metric:'Humid',pct:(58-30)/60,targetPct:(60-30)/60,label:'58%'},{metric:'CO₂',pct:(750-400)/900,targetPct:(800-400)/900,label:'750ppm'}];
+E('v13',{ $schema:'https://vega.github.io/schema/vega-lite/v5.json', background:'transparent', width:'container', height:180, data:{values:bRows},
+  layer:[
+    { mark:{type:'bar',color:'#182420',height:20}, encoding:{x:{field:'pct',type:'quantitative',scale:{domain:[0,1]},axis:null},x2:{datum:0},y:{field:'metric',type:'nominal',axis:{...axY,grid:false,labelColor:'#9CB8AA',ticks:false,domain:false}}} },
+    { mark:{type:'bar',color:'#6DFF9A',opacity:0.5,height:12}, encoding:{x:{field:'pct',type:'quantitative',scale:{domain:[0,1]}},x2:{datum:0},y:{field:'metric',type:'nominal',axis:null}} },
+    { mark:{type:'tick',color:'#F59E0B',thickness:3,bandSize:24}, encoding:{x:{field:'targetPct',type:'quantitative',scale:{domain:[0,1]}},y:{field:'metric',type:'nominal',axis:null}} },
+    { mark:{type:'text',align:'right',dx:-6,fontSize:11,fontFamily:'monospace',color:'#e8fff2'}, encoding:{x:{datum:1},y:{field:'metric',type:'nominal',axis:null},text:{field:'label',type:'nominal'}} }
+  ], config:cfg });
+</script>
+</body>
+</html>

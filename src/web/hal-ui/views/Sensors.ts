@@ -238,23 +238,159 @@ function getRangeBounds(range: typeof viewState.range): { from: string; to: stri
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-/* ─────────────── Hero Chart (Vega-Lite) ─────────────── */
+/* ─────────────── Hero Chart (native SVG) ─────────────── */
+
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 function renderHeroChart(layers: SeriesLayer[], decisions: HalDecision[] = []): void {
-  const { renderVegaHeroChart } = (window as unknown as Record<string, unknown>).__vegaCache || {};
-  if (typeof renderVegaHeroChart === 'function') {
-    // Already loaded via dynamic import
-    renderVegaHeroChart(layers, 'hero-chart', decisions);
+  const container = document.getElementById('hero-chart');
+  const legend = document.getElementById('hero-legend');
+  if (!container) return;
+
+  if (layers.length === 0) {
+    container.textContent = '';
+    const empty = document.createElement('div');
+    empty.className = 'chart-empty';
+    empty.textContent = 'No data for selection';
+    container.appendChild(empty);
+    if (legend) legend.textContent = '';
     return;
   }
-  // Lazy-load VegaChart module
-  void import('../components/VegaChart.js').then(m => {
-    m.renderVegaHeroChart(
-      layers.map(l => ({ deviceId: l.deviceId, deviceName: l.deviceName, metric: l.metric.key, color: l.metric.color, data: l.data })),
-      'hero-chart',
-      decisions
-    );
+
+  const store = getStore();
+  const width = 900;
+  const height = 320;
+  const pad = { top: 24, right: 24, bottom: 36, left: 52 };
+
+  const allTimes = layers.flatMap(l => l.data.map(d => new Date(d.timestamp).getTime()));
+  const tMin = Math.min(...allTimes);
+  const tMax = Math.max(...allTimes);
+  const tSpan = Math.max(1, tMax - tMin);
+
+  const tx = (t: number) => pad.left + ((t - tMin) / tSpan) * (width - pad.left - pad.right);
+
+  const layerPaths = layers.map(layer => {
+    const cfg = layer.metric;
+    let axisMin = cfg.minAxis;
+    let axisMax = cfg.maxAxis;
+    if (cfg.key === 'temperature' && store.unitSystem === 'imperial') {
+      axisMin = (axisMin * 9 / 5) + 32;
+      axisMax = (axisMax * 9 / 5) + 32;
+    }
+    if (cfg.key === 'weight' && store.unitSystem === 'imperial') {
+      axisMin = axisMin * 2.20462;
+      axisMax = axisMax * 2.20462;
+    }
+    const vSpan = Math.max(1, axisMax - axisMin);
+
+    const points = layer.data.map(d => {
+      const v = formatSensorValue(d.value, cfg.key, store.unitSystem).value;
+      const t = new Date(d.timestamp).getTime();
+      const x = tx(t);
+      const y = pad.top + ((axisMax - v) / vSpan) * (height - pad.top - pad.bottom);
+      return { x, y, v, t, raw: d };
+    });
+
+    const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const area = `${line} L${points[points.length - 1].x.toFixed(1)},${height - pad.bottom} L${points[0].x.toFixed(1)},${height - pad.bottom} Z`;
+
+    return { layer, points, line, area, axisMin, axisMax, vSpan };
   });
+
+  const gridLines = [];
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
+    gridLines.push(`<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid" />`);
+  }
+
+  const timeLabels = [];
+  const timeSteps = 6;
+  for (let i = 0; i <= timeSteps; i++) {
+    const t = tMin + (i / timeSteps) * tSpan;
+    const x = tx(t);
+    const label = formatTimeValue(new Date(t), store.timeFormat);
+    timeLabels.push(`<text x="${x}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`);
+  }
+
+  const primary = layerPaths[0];
+  const leftAxisLabels = [];
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
+    const v = primary.axisMax - (i / 5) * primary.vSpan;
+    const precision = primary.layer.metric.key === 'co2' ? 0 : 1;
+    leftAxisLabels.push(`<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(precision)}</text>`);
+  }
+
+  let rightAxisLabels = '';
+  if (layerPaths.length > 1 && layerPaths[1].layer.metric.key !== primary.layer.metric.key) {
+    const sec = layerPaths[1];
+    const labels = [];
+    for (let i = 0; i <= 5; i++) {
+      const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
+      const v = sec.axisMax - (i / 5) * sec.vSpan;
+      const precision = sec.layer.metric.key === 'co2' ? 0 : 1;
+      labels.push(`<text x="${width - pad.right + 8}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.metric.color}">${v.toFixed(precision)}</text>`);
+    }
+    rightAxisLabels = labels.join('');
+  }
+
+  const defs = layerPaths.map((lp, i) => `
+    <linearGradient id="hero-grad-${i}" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${lp.layer.metric.color}" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="${lp.layer.metric.color}" stop-opacity="0.02" />
+    </linearGradient>`).join('');
+
+  const areas = layerPaths.map((lp, i) =>
+    `<path d="${lp.area}" fill="url(#hero-grad-${i})" stroke="none" />`
+  ).join('');
+
+  const lines = layerPaths.map(lp =>
+    `<path d="${lp.line}" fill="none" stroke="${lp.layer.metric.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />`
+  ).join('');
+
+  const dots = layerPaths.map(lp => {
+    const last = lp.points[lp.points.length - 1];
+    return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.metric.color}" stroke="var(--bg-primary)" stroke-width="2" />`;
+  }).join('');
+
+  const decisionMarkers = decisions
+    .filter(d => {
+      const t = new Date(d.timestamp).getTime();
+      return t >= tMin && t <= tMax;
+    })
+    .map(d => {
+      const x = tx(new Date(d.timestamp).getTime()).toFixed(1);
+      const color = DECISION_COLORS[d.status || 'pending'] ?? DECISION_COLORS['pending'];
+      const opacity = (0.35 + (d.confidence ?? 0.5) * 0.65).toFixed(2);
+      const label = escapeAttr(d.decision.slice(0, 60));
+      const conf = ((d.confidence ?? 0) * 100).toFixed(0);
+      return `<line x1="${x}" y1="${pad.top}" x2="${x}" y2="${height - pad.bottom}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="${opacity}"><title>${label} (${conf}%)</title></line><circle cx="${x}" cy="${pad.top + 10}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="1.5" opacity="${opacity}"><title>${label}</title></circle>`;
+    }).join('');
+
+  container.innerHTML = [
+    `<svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">`,
+    `<defs>${defs}</defs>`,
+    gridLines.join(''),
+    areas,
+    decisionMarkers,
+    lines,
+    dots,
+    leftAxisLabels.join(''),
+    rightAxisLabels,
+    timeLabels.join(''),
+    '</svg>',
+  ].join('');
+
+  if (legend) {
+    legend.innerHTML = layerPaths.map(lp => [
+      `<span class="legend-item" style="--metric-color:${lp.layer.metric.color}">`,
+      `<span class="legend-dot"></span>`,
+      `${escapeHtml(lp.layer.metric.label)} (${escapeHtml(lp.layer.deviceName)})`,
+      '</span>',
+    ].join('')).join('');
+  }
 }
 
 /* ─────────────── Detail table ─────────────── */

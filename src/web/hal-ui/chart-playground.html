@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FarmPal Lake Chart Playground</title>
+<script src="https://cdn.jsdelivr.net/npm/vega@5/build/vega.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #050908;
+  color: #e8fff2;
+  font-family: Inter, system-ui, sans-serif;
+  padding: 24px;
+}
+.chart-panel {
+  background: #07100e;
+  border: 1px solid #22312e;
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 32px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.42), inset 0 0 40px rgba(109,255,154,0.025);
+}
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.chart-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e8fff2;
+}
+.chart-subtitle {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #9cb8aa;
+}
+.chart-button {
+  background: #101918;
+  border: 1px solid #39524b;
+  border-radius: 10px;
+  color: #e8fff2;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.chart-wrap {
+  width: 100%;
+  min-height: 300px;
+}
+.chart-wrap .vega-embed { width: 100% !important; }
+.chart-wrap .vega-embed canvas, .chart-wrap .vega-embed svg {
+  display: block; width: 100%; height: auto;
+}
+</style>
+</head>
+<body>
+
+<!-- VERSION 1: Reference spec — layered translucent areas + glowing lines + floating decision markers -->
+<div class="chart-panel">
+  <div class="chart-header">
+    <div>
+      <div class="chart-title">Environmental Telemetry — Reference Spec</div>
+      <div class="chart-subtitle">Layered lake chart with glowing outlines, no vertical lines</div>
+    </div>
+    <button class="chart-button">24H</button>
+  </div>
+  <div id="chart-ref" class="chart-wrap"></div>
+</div>
+
+<!-- VERSION 2: Higher opacity fills (0.55) for more vivid color -->
+<div class="chart-panel">
+  <div class="chart-header">
+    <div>
+      <div class="chart-title">Vivid Lake — Higher Opacity (0.55)</div>
+      <div class="chart-subtitle">More saturated, less see-through</div>
+    </div>
+    <button class="chart-button">24H</button>
+  </div>
+  <div id="chart-vivid" class="chart-wrap"></div>
+</div>
+
+<!-- VERSION 3: Stacked area (zero stack) — additive bands -->
+<div class="chart-panel">
+  <div class="chart-header">
+    <div>
+      <div class="chart-title">Stacked Lake — Additive Bands</div>
+      <div class="chart-subtitle">Metrics stack on top of each other</div>
+    </div>
+    <button class="chart-button">24H</button>
+  </div>
+  <div id="chart-stacked" class="chart-wrap"></div>
+</div>
+
+<!-- VERSION 4: Streamgraph (centered) — organic flowing shape -->
+<div class="chart-panel">
+  <div class="chart-header">
+    <div>
+      <div class="chart-title">Streamgraph — Centered Flow</div>
+      <div class="chart-subtitle">No flat baseline, organic shape</div>
+    </div>
+    <button class="chart-button">24H</button>
+  </div>
+  <div id="chart-stream" class="chart-wrap"></div>
+</div>
+
+<!-- VERSION 5: Power stack chart (secondary from spec) -->
+<div class="chart-panel">
+  <div class="chart-header">
+    <div>
+      <div class="chart-title">Power Usage — Stacked Area</div>
+      <div class="chart-subtitle">Device-level power contribution</div>
+    </div>
+    <button class="chart-button">24H</button>
+  </div>
+  <div id="chart-power" class="chart-wrap"></div>
+</div>
+
+<script>
+// ── Generate demo data ──
+const metrics = [
+  { key: 'temperature', label: 'Temp', unit: '°C', color: '#FF6B57', base: 22, var: 6, norm: v => v },
+  { key: 'humidity', label: 'Humidity', unit: '%', color: '#4AD7FF', base: 55, var: 18, norm: v => v },
+  { key: 'co2', label: 'CO₂', unit: 'ppm', color: '#6DFF9A', base: 820, var: 300, norm: v => v / 40 },
+  { key: 'vpd', label: 'VPD', unit: 'kPa', color: '#B56CFF', base: 1.1, var: 0.7, norm: v => v * 20 },
+  { key: 'light', label: 'Light', unit: 'µmol', color: '#FFC857', base: 600, var: 500, norm: v => v / 25 },
+  { key: 'power', label: 'Power', unit: 'W', color: '#7CFFB2', base: 180, var: 120, norm: v => v / 10 },
+];
+
+function generateTelemetry() {
+  const rows = [];
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  for (let i = 47; i >= 0; i--) {
+    const t = new Date(now.getTime() - i * 3600000);
+    const hour = t.getHours();
+    const dayCycle = Math.sin((hour - 6) * Math.PI / 12);
+    for (const m of metrics) {
+      let v = m.base;
+      if (m.key === 'temperature') v += dayCycle * m.var + (Math.random() - 0.5) * 2;
+      else if (m.key === 'humidity') v -= dayCycle * m.var * 0.5 + (Math.random() - 0.5) * 5;
+      else if (m.key === 'light') v = Math.max(0, dayCycle * m.var * 2 + (Math.random() - 0.5) * 200);
+      else if (m.key === 'co2') v += (1 - dayCycle) * m.var * 0.3 + (Math.random() - 0.5) * 40;
+      else if (m.key === 'power') v = Math.max(20, dayCycle * m.var * 1.5 + m.base * 0.5 + (Math.random() - 0.5) * 30);
+      else v += (Math.random() - 0.5) * m.var;
+      rows.push({ ts: t.toISOString(), metric: m.key, value: Math.max(0, v), unit: m.unit, lakeValue: m.norm(Math.max(0, v)) });
+    }
+  }
+  return rows;
+}
+
+function generatePower() {
+  const devices = [
+    { id: 'grow-light', label: 'Grow Light', color: '#6DFF9A' },
+    { id: 'inline-fan', label: 'Inline Fan', color: '#4AD7FF' },
+    { id: 'heater', label: 'Heater', color: '#FF6B57' },
+    { id: 'pump', label: 'Pump', color: '#B56CFF' },
+    { id: 'dehumidifier', label: 'Dehumidifier', color: '#FFC857' },
+    { id: 'exhaust', label: 'Exhaust Fan', color: '#7CFFB2' },
+  ];
+  const rows = [];
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  for (let i = 47; i >= 0; i--) {
+    const t = new Date(now.getTime() - i * 3600000);
+    const hour = t.getHours();
+    const dayCycle = Math.max(0, Math.sin((hour - 6) * Math.PI / 12));
+    for (const d of devices) {
+      let watts = 0;
+      if (d.id === 'grow-light') watts = dayCycle * 320;
+      else if (d.id === 'heater') watts = (1 - dayCycle) * 200 * (Math.random() * 0.5 + 0.5);
+      else if (d.id === 'inline-fan') watts = 35 + Math.random() * 15;
+      else if (d.id === 'pump') watts = (hour % 6 < 2) ? 80 : 0;
+      else if (d.id === 'dehumidifier') watts = (Math.random() > 0.6) ? 150 : 0;
+      else watts = 20 + Math.random() * 10;
+      rows.push({ ts: t.toISOString(), deviceId: d.id, label: d.label, watts: Math.round(watts) });
+    }
+  }
+  return rows;
+}
+
+const telemetryRows = generateTelemetry();
+const powerRows = generatePower();
+
+const decisionRows = [
+  { ts: new Date(Date.now() - 36 * 3600000).toISOString(), label: 'Decision 08:47', action: 'Turned ON grow light', reason: 'Light below target', confidence: 0.92, outcome: 'success' },
+  { ts: new Date(Date.now() - 24 * 3600000).toISOString(), label: 'Decision 07:13', action: 'Turned OFF heater', reason: 'Temperature reached target', confidence: 0.86, outcome: 'success' },
+  { ts: new Date(Date.now() - 12 * 3600000).toISOString(), label: 'Decision 06:07', action: 'Increased fan speed', reason: 'VPD rising', confidence: 0.78, outcome: 'success' },
+  { ts: new Date(Date.now() - 4 * 3600000).toISOString(), label: 'Decision 05:41', action: 'Dimmed lights', reason: 'Heat stress detected', confidence: 0.65, outcome: 'skipped' },
+];
+
+const darkAxisX = {
+  title: null, labelColor: '#9CB8AA', tickColor: '#22312E', domainColor: '#22312E', grid: false
+};
+const darkAxisY = {
+  title: null, labelColor: '#9CB8AA', tickColor: '#22312E', domainColor: '#22312E',
+  grid: true, gridColor: '#182420', gridOpacity: 0.8
+};
+
+const metricDomain = ['temperature', 'humidity', 'vpd', 'co2', 'light', 'power'];
+const metricRange = ['#FF6B57', '#4AD7FF', '#B56CFF', '#6DFF9A', '#FFC857', '#7CFFB2'];
+
+// ── REFERENCE SPEC ──
+function buildRefSpec() {
+  return {
+    $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+    background: 'transparent', width: 'container', height: 280,
+    layer: [
+      // Area fills — translucent, no line
+      {
+        data: { values: telemetryRows },
+        mark: { type: 'area', interpolate: 'monotone', opacity: 0.38, line: false },
+        encoding: {
+          x: { field: 'ts', type: 'temporal', axis: darkAxisX },
+          y: { field: 'lakeValue', type: 'quantitative', axis: darkAxisY },
+          color: { field: 'metric', type: 'nominal', scale: { domain: metricDomain, range: metricRange }, legend: { orient: 'top', title: null, labelColor: '#E8FFF2', symbolType: 'stroke', symbolSize: 80 } },
+          tooltip: [
+            { field: 'ts', type: 'temporal', title: 'Time' },
+            { field: 'metric', type: 'nominal', title: 'Metric' },
+            { field: 'value', type: 'quantitative', title: 'Value' },
+            { field: 'unit', type: 'nominal', title: 'Unit' }
+          ]
+        }
+      },
+      // Line outlines — glowing strokes
+      {
+        data: { values: telemetryRows },
+        mark: { type: 'line', interpolate: 'monotone', strokeWidth: 2.2, opacity: 0.95 },
+        encoding: {
+          x: { field: 'ts', type: 'temporal', axis: null },
+          y: { field: 'lakeValue', type: 'quantitative', axis: null },
+          color: { field: 'metric', type: 'nominal', scale: { domain: metricDomain, range: metricRange }, legend: null }
+        }
+      },
+      // Decision circles
+      {
+        data: { values: decisionRows },
+        mark: { type: 'point', filled: true, size: 95, stroke: '#050908', strokeWidth: 2 },
+        encoding: {
+          x: { field: 'ts', type: 'temporal' },
+          y: { value: 24 },
+          color: { field: 'outcome', type: 'nominal', scale: { domain: ['success', 'skipped', 'failed'], range: ['#6DFF9A', '#FFC857', '#FF5C6C'] }, legend: null },
+          tooltip: [
+            { field: 'label', type: 'nominal', title: 'Event' },
+            { field: 'action', type: 'nominal', title: 'Action' },
+            { field: 'reason', type: 'nominal', title: 'Reason' },
+            { field: 'confidence', type: 'quantitative', title: 'Confidence' },
+            { field: 'outcome', type: 'nominal', title: 'Outcome' }
+          ]
+        }
+      },
+      // Decision labels
+      {
+        data: { values: decisionRows },
+        mark: { type: 'text', dy: -14, fontSize: 10, font: 'JetBrains Mono, IBM Plex Mono, monospace', color: '#FFC857' },
+        encoding: {
+          x: { field: 'ts', type: 'temporal' },
+          y: { value: 24 },
+          text: { field: 'label' }
+        }
+      }
+    ],
+    config: { view: { stroke: 'transparent' }, axis: { grid: false }, font: 'Inter, system-ui, sans-serif' }
+  };
+}
+
+// ── VIVID SPEC — higher opacity ──
+function buildVividSpec() {
+  const s = buildRefSpec();
+  s.layer[0].mark.opacity = 0.55;
+  s.layer[1].mark.strokeWidth = 2.5;
+  s.layer[1].mark.opacity = 1;
+  return s;
+}
+
+// ── STACKED SPEC ──
+function buildStackedSpec() {
+  return {
+    $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+    background: 'transparent', width: 'container', height: 280,
+    data: { values: telemetryRows },
+    mark: { type: 'area', interpolate: 'monotone', opacity: 0.88, line: false },
+    encoding: {
+      x: { field: 'ts', type: 'temporal', axis: darkAxisX },
+      y: { field: 'lakeValue', type: 'quantitative', stack: 'zero', axis: darkAxisY },
+      color: { field: 'metric', type: 'nominal', scale: { domain: metricDomain, range: metricRange }, legend: { orient: 'top', title: null, labelColor: '#E8FFF2' } },
+      order: { field: 'metric', type: 'nominal' }
+    },
+    config: { view: { stroke: 'transparent' }, font: 'Inter, system-ui, sans-serif' }
+  };
+}
+
+// ── STREAMGRAPH SPEC ──
+function buildStreamSpec() {
+  return {
+    $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+    background: 'transparent', width: 'container', height: 280,
+    data: { values: telemetryRows },
+    mark: { type: 'area', interpolate: 'monotone', opacity: 0.85 },
+    encoding: {
+      x: { field: 'ts', type: 'temporal', axis: darkAxisX },
+      y: { field: 'lakeValue', type: 'quantitative', stack: 'center', axis: null },
+      color: { field: 'metric', type: 'nominal', scale: { domain: metricDomain, range: metricRange }, legend: { orient: 'top', title: null, labelColor: '#E8FFF2' } },
+      order: { field: 'metric', type: 'nominal' }
+    },
+    config: { view: { stroke: 'transparent' }, font: 'Inter, system-ui, sans-serif' }
+  };
+}
+
+// ── POWER STACK SPEC ──
+function buildPowerSpec() {
+  return {
+    $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+    background: 'transparent', width: 'container', height: 160,
+    data: { values: powerRows },
+    mark: { type: 'area', interpolate: 'monotone', opacity: 0.82, line: { strokeWidth: 1.6, opacity: 0.9 } },
+    encoding: {
+      x: { field: 'ts', type: 'temporal', axis: { title: null, labelColor: '#9CB8AA', grid: false, domainColor: '#22312E', tickColor: '#22312E' } },
+      y: { field: 'watts', type: 'quantitative', stack: 'zero', axis: { title: 'power watts', titleColor: '#9CB8AA', labelColor: '#9CB8AA', grid: true, gridColor: '#182420', gridOpacity: 0.7 } },
+      color: { field: 'label', type: 'nominal', scale: { range: ['#6DFF9A', '#4AD7FF', '#FF6B57', '#B56CFF', '#FFC857', '#7CFFB2'] }, legend: { orient: 'top', title: null, labelColor: '#E8FFF2' } },
+      tooltip: [
+        { field: 'ts', type: 'temporal', title: 'Time' },
+        { field: 'label', type: 'nominal', title: 'Device' },
+        { field: 'watts', type: 'quantitative', title: 'Watts' }
+      ]
+    },
+    config: { view: { stroke: 'transparent' }, font: 'Inter, system-ui, sans-serif' }
+  };
+}
+
+// Render all
+vegaEmbed('#chart-ref', buildRefSpec(), { actions: false, renderer: 'canvas' });
+vegaEmbed('#chart-vivid', buildVividSpec(), { actions: false, renderer: 'canvas' });
+vegaEmbed('#chart-stacked', buildStackedSpec(), { actions: false, renderer: 'canvas' });
+vegaEmbed('#chart-stream', buildStreamSpec(), { actions: false, renderer: 'canvas' });
+vegaEmbed('#chart-power', buildPowerSpec(), { actions: false, renderer: 'canvas' });
+</script>
+</body>
+</html>
