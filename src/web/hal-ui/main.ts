@@ -17,6 +17,7 @@ import { renderDevices } from './views/Devices.js';
 import { renderSensors } from './views/Sensors.js';
 import { renderDecisions } from './views/Decisions.js';
 import { renderCameras } from './views/Cameras.js';
+import { renderTerminalView } from './views/Terminal.js';
 
 import { halApi } from './api.js';
 import type { HalState } from './api.js';
@@ -32,7 +33,7 @@ const views: Record<ViewId, AsyncViewRenderer> = {
   decisions:  renderDecisions,
   cameras:    renderCameras,
   system:     renderDashboard,
-  terminal:   renderDashboard,
+  terminal:   renderTerminalView,
 };
 
 // Uptime tracking

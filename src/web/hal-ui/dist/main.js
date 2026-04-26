@@ -195,25 +195,30 @@
       return;
     }
     const store = getStore();
-    const values = [];
+    const timeMap = /* @__PURE__ */ new Map();
+    const allMetrics = /* @__PURE__ */ new Set();
     for (const layer of layers) {
+      allMetrics.add(layer.metric);
       for (const reading of layer.data) {
         const converted = formatSensorValue(reading.value, layer.metric, store.unitSystem);
-        values.push({
-          timestamp: reading.timestamp,
-          time: new Date(reading.timestamp).getTime(),
-          value: converted.value,
-          metric: layer.metric,
-          metricLabel: metricConfig[layer.metric]?.label || layer.metric,
-          device: layer.deviceName,
-          color: layer.color
-        });
+        const t = new Date(reading.timestamp).getTime();
+        if (!timeMap.has(t)) {
+          timeMap.set(t, { timestamp: reading.timestamp, time: t });
+        }
+        const row = timeMap.get(t);
+        const existing = row[layer.metric];
+        if (existing !== void 0) {
+          row[layer.metric] = (existing + converted.value) / 2;
+        } else {
+          row[layer.metric] = converted.value;
+        }
       }
     }
+    const values = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
     const allTimes = values.map((v) => v.time);
     const tMin = Math.min(...allTimes);
     const tMax = Math.max(...allTimes);
-    const decisionRules = decisions.filter((d) => {
+    const decisionPoints = decisions.filter((d) => {
       const t = new Date(d.timestamp).getTime();
       return t >= tMin && t <= tMax;
     }).map((d) => ({
@@ -222,6 +227,10 @@
       status: d.status || "pending",
       confidence: d.confidence ?? 0.5
     }));
+    const metricList = [...allMetrics];
+    const colorDomain = metricList;
+    const colorRange = metricList.map((m) => metricConfig[m]?.color || "#888");
+    const foldFields = metricList;
     const spec = {
       $schema: "https://vega.github.io/schema/vega-lite/v5.json",
       width: "container",
@@ -229,37 +238,76 @@
       background: "transparent",
       padding: { left: 10, right: 10, top: 10, bottom: 10 },
       data: { values },
+      transform: [
+        { fold: foldFields, as: ["metric", "value"] },
+        { filter: "datum.value != null" }
+      ],
       layer: [
-        // Area fills
+        // Stacked area — solid fills, no lines between layers
         {
-          mark: { type: "area", opacity: 0.15, line: false },
+          mark: { type: "area", opacity: 0.85, line: false },
           encoding: {
-            x: { field: "time", type: "temporal", title: null, axis: { grid: false, labels: false, ticks: false } },
-            y: { field: "value", type: "quantitative", title: null, axis: { grid: true, gridColor: "#30363D", gridDash: [2, 3], labelColor: "#484F58", tickColor: "#30363D" } },
-            color: { field: "metric", type: "nominal", scale: null, legend: null },
-            detail: { field: "device", type: "nominal" }
-          },
-          transform: [
-            { calculate: "datum.color", as: "metricColor" }
-          ]
-        },
-        // Line strokes
-        {
-          mark: { type: "line", strokeWidth: 2, interpolate: "monotone" },
-          encoding: {
-            x: { field: "time", type: "temporal", title: null, axis: { grid: false, labelColor: "#484F58", tickColor: "#30363D", format: "%H:%M" } },
-            y: { field: "value", type: "quantitative", title: null, axis: { grid: true, gridColor: "#30363D", gridDash: [2, 3], labelColor: "#484F58", tickColor: "#30363D" } },
-            color: { field: "metric", type: "nominal", legend: { orient: "bottom", labelColor: "#8B949E", title: null } },
-            detail: { field: "device", type: "nominal" }
+            x: {
+              field: "time",
+              type: "temporal",
+              title: null,
+              axis: {
+                grid: false,
+                labelColor: "#484F58",
+                tickColor: "#30363D",
+                format: "%H:%M",
+                domain: false
+              }
+            },
+            y: {
+              field: "value",
+              type: "quantitative",
+              title: null,
+              stack: "zero",
+              axis: {
+                grid: true,
+                gridColor: "#30363D",
+                gridDash: [2, 3],
+                labelColor: "#484F58",
+                tickColor: "#30363D",
+                domain: false
+              }
+            },
+            color: {
+              field: "metric",
+              type: "nominal",
+              scale: { domain: colorDomain, range: colorRange },
+              legend: { orient: "bottom", labelColor: "#8B949E", title: null, symbolType: "circle" }
+            },
+            order: { field: "metric", type: "nominal" }
           }
         },
-        // Decision markers
-        ...decisionRules.length > 0 ? [{
-          data: { values: decisionRules },
-          mark: { type: "rule", strokeWidth: 1.5, strokeDash: [4, 3], opacity: 0.5 },
+        // Top line stroke for each layer (subtle, not dominant)
+        {
+          mark: { type: "line", strokeWidth: 1, interpolate: "monotone" },
+          encoding: {
+            x: { field: "time", type: "temporal", title: null, axis: null },
+            y: { field: "value", type: "quantitative", title: null, stack: "zero", axis: null },
+            color: { field: "metric", type: "nominal", scale: { domain: colorDomain, range: colorRange }, legend: null },
+            order: { field: "metric", type: "nominal" }
+          }
+        },
+        // Decision markers — small dots on top, NO vertical rules
+        ...decisionPoints.length > 0 ? [{
+          data: { values: decisionPoints },
+          mark: { type: "point", shape: "circle", size: 60, filled: true, opacity: 0.9, stroke: "#0D1117", strokeWidth: 2 },
           encoding: {
             x: { field: "timestamp", type: "temporal" },
-            color: { field: "status", type: "nominal", scale: { domain: ["success", "failure", "pending"], range: [DECISION_COLORS.success, DECISION_COLORS.failure, DECISION_COLORS.pending] }, legend: null },
+            y: { datum: 0, type: "quantitative" },
+            color: {
+              field: "status",
+              type: "nominal",
+              scale: {
+                domain: ["success", "failure", "pending"],
+                range: [DECISION_COLORS.success, DECISION_COLORS.failure, DECISION_COLORS.pending]
+              },
+              legend: null
+            },
             tooltip: [
               { field: "decision", type: "nominal" },
               { field: "status", type: "nominal" },
@@ -270,15 +318,10 @@
       ],
       config: {
         view: { stroke: "transparent" },
-        axis: { domain: false, domainColor: "#30363D" },
-        legend: { labelFont: "Inter, sans-serif", labelFontSize: 11 }
+        axis: { domain: false },
+        legend: { labelFont: "Inter, sans-serif", labelFontSize: 11 },
+        area: { line: false }
       }
-    };
-    const colorDomain = [...new Set(values.map((v) => v.metric))];
-    const colorRange = colorDomain.map((m) => metricConfig[m]?.color || "#888");
-    spec.layer[1].encoding = {
-      ...spec.layer[1].encoding,
-      color: { field: "metric", type: "nominal", scale: { domain: colorDomain, range: colorRange }, legend: { orient: "bottom", labelColor: "#8B949E", title: null } }
     };
     embedVega(container, spec, containerId);
   }
@@ -4683,6 +4726,21 @@
     document.head.appendChild(style);
   }
 
+  // src/web/hal-ui/views/Terminal.ts
+  init_store();
+  async function renderTerminalView(container) {
+    injectTerminalStyles();
+    const store = getStore();
+    const entries = buildLogEntries(store.decisions);
+    container.innerHTML = `
+    <div class="page-header">
+      <h1 class="page-title">Terminal</h1>
+      <p class="page-subtitle">System log and diagnostics</p>
+    </div>
+    ${renderTerminal(entries)}
+  `;
+  }
+
   // src/web/hal-ui/main.ts
   init_store();
   var views = {
@@ -4692,7 +4750,7 @@
     decisions: renderDecisions,
     cameras: renderCameras,
     system: renderDashboard,
-    terminal: renderDashboard
+    terminal: renderTerminalView
   };
   var pageLoadTime = Date.now();
   async function init() {
