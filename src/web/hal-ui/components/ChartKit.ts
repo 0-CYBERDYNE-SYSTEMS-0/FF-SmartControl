@@ -276,6 +276,171 @@ export function renderDualAxisCard(
   container.innerHTML = `${titleHtml}<div class="ck-chart">${svg}</div>${statsHtml}${footHtml}`;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DASHBOARD HERO CARD — Ref Code 1 Style (FarmPal themed)
+   Toggle-able temp/humidity/CO₂ with exact card structure from user HTML.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export interface DashboardHeroMetric {
+  key: string;
+  label: string;
+  color: string;
+  unit: string;
+  data: Array<{ t: number; v: number }>;
+}
+
+export function renderDashboardHeroCard(
+  metrics: DashboardHeroMetric[],
+  containerId: string,
+  opts: {
+    title?: string;
+    subtitle?: string;
+    activeKeys?: Set<string>;
+    onToggle?: (key: string) => void;
+  } = {}
+): void {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const activeKeys = opts.activeKeys ?? new Set(metrics.map(m => m.key));
+  const activeMetrics = metrics.filter(m => activeKeys.has(m.key));
+
+  if (activeMetrics.length === 0) {
+    container.innerHTML = '<div class="chart-empty">Select a metric</div>';
+    return;
+  }
+
+  const w = 566;
+  const h = 210;
+  const pad = { l: 100, r: 80, t: 30, b: 40 };
+  const cw = w - pad.l - pad.r;
+  const ch = h - pad.t - pad.b;
+
+  const allTimes = activeMetrics.flatMap(m => m.data.map(d => d.t));
+  const tMin = Math.min(...allTimes);
+  const tMax = Math.max(...allTimes);
+  const tSpan = Math.max(1, tMax - tMin);
+
+  const x = (i: number, len: number) => pad.l + (i / (len - 1)) * cw;
+
+  // Compute min/max from actual data for each metric
+  const computed = activeMetrics.map(m => {
+    const values = m.data.map(d => d.v);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    return { ...m, min, max, vSpan: max - min || 1 };
+  });
+
+  // Y scale functions
+  const yScales = computed.map(m => (v: number) =>
+    pad.t + ((m.max - v) / m.vSpan) * ch
+  );
+
+  // Path builder (straight lines)
+  function path(data: Array<{ v: number }>, yFn: (v: number) => number) {
+    return data.map((d, i) => `${i ? 'L' : 'M'}${x(i, data.length)},${yFn(d.v)}`).join(' ');
+  }
+
+  // Grid lines (3 lines: max, mid, min of primary metric)
+  const primary = computed[0];
+  const gridValues = [primary.max, primary.min + primary.vSpan / 2, primary.min];
+  const gridLines = gridValues.map(v => {
+    const y = yScales[0](v);
+    return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 20%, var(--border))"/>`;
+  }).join('');
+
+  // Area fill under primary metric only
+  const primaryPath = path(computed[0].data, yScales[0]);
+  const areaPath = primaryPath +
+    ` L${x(computed[0].data.length - 1, computed[0].data.length)},${pad.t + ch}` +
+    ` L${x(0, computed[0].data.length)},${pad.t + ch} Z`;
+
+  // Lines for all metrics
+  const linePaths = computed.map((m, i) =>
+    `<path d="${path(m.data, yScales[i])}" stroke="${m.color}" fill="none" stroke-width="${i === 0 ? 2.5 : 2}"/>`
+  ).join('');
+
+  // End dots
+  const dots = computed.map((m, i) => {
+    const lastIdx = m.data.length - 1;
+    return `<circle cx="${x(lastIdx, m.data.length)}" cy="${yScales[i](m.data[lastIdx].v)}" r="4" fill="${m.color}"/>`;
+  }).join('');
+
+  const svg = `
+    <svg class="hero-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
+      ${gridLines}
+      <path d="${areaPath}" fill="color-mix(in srgb, ${primary.color} 15%, transparent)"/>
+      ${linePaths}
+      ${dots}
+    </svg>
+  `;
+
+  // Stats
+  const statsHtml = computed.map(m => {
+    const values = m.data.map(d => d.v);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    const current = m.data[m.data.length - 1].v;
+    return `
+      <div class="dhc-stats-row">
+        <div class="dhc-stats-metric" style="color:${m.color}">${escapeHtml(m.label)}</div>
+        <div class="dhc-stats-current">${current.toFixed(1)}${m.unit}</div>
+      </div>
+      <div class="dhc-stats-grid">
+        <div><div class="dhc-muted">Min</div><strong>${min.toFixed(1)}${m.unit}</strong></div>
+        <div><div class="dhc-muted">Avg</div><strong>${avg.toFixed(1)}${m.unit}</strong></div>
+        <div><div class="dhc-muted">Max</div><strong>${max.toFixed(1)}${m.unit}</strong></div>
+      </div>
+    `;
+  }).join('');
+
+  // Title row with KPI
+  const primaryCurrent = computed[0].data[computed[0].data.length - 1].v;
+  const primaryPrev = computed[0].data[computed[0].data.length - 2]?.v ?? primaryCurrent;
+  const delta = primaryPrev ? ((primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100) : 0;
+
+  const titleColors = computed.map(m => `<span style="color:${m.color}">${escapeHtml(m.label)}</span>`).join(' <span style="color:var(--text-secondary)">+</span> ');
+
+  // Toggle pills
+  const allMetricKeys = ['temperature', 'humidity', 'co2'] as const;
+  const toggleHtml = allMetricKeys.map(k => {
+    const m = metrics.find(x => x.key === k);
+    if (!m) return '';
+    const isActive = activeKeys.has(k);
+    return `<button class="dhc-toggle ${isActive ? 'active' : ''}" data-metric="${k}" style="--toggle-color:${m.color}">${escapeHtml(m.label)}</button>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="dhc-card">
+      <div class="dhc-head">
+        <div>
+          <div class="dhc-title">${titleColors}</div>
+          ${opts.subtitle ? `<div class="dhc-subtitle">${escapeHtml(opts.subtitle)}</div>` : ''}
+        </div>
+        <div class="dhc-kpi">
+          <div class="dhc-kpi-val" style="color:${primary.color}">${primaryCurrent.toFixed(1)}${primary.unit}</div>
+          <div class="dhc-kpi-delta">${delta >= 0 ? '↑' : '↓'} ${Math.abs(delta).toFixed(1)}%</div>
+        </div>
+      </div>
+      <div class="dhc-toggles">${toggleHtml}</div>
+      <div class="dhc-chart">${svg}</div>
+      <div class="dhc-stats">${statsHtml}</div>
+      <div class="dhc-foot">${computed[0].data.length} readings · ${escapeHtml(opts.subtitle || '')}</div>
+    </div>
+  `;
+
+  // Attach toggle handlers
+  if (opts.onToggle) {
+    container.querySelectorAll('.dhc-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = (btn as HTMLElement).dataset.metric;
+        if (key) opts.onToggle!(key);
+      });
+    });
+  }
+}
+
 function straightLinePath(pts: SplinePoint[]): string {
   if (pts.length < 2) return '';
   return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
@@ -892,6 +1057,119 @@ export function injectChartKitStyles(): void {
   justify-content: center;
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+/* ── Dashboard Hero Card (ref code 1 style) ── */
+.dhc-card {
+  background: linear-gradient(135deg, var(--bg-secondary), var(--bg-primary) 55%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  color: var(--text-primary);
+}
+.dhc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-3);
+}
+.dhc-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+.dhc-subtitle {
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-top: 2px;
+}
+.dhc-kpi {
+  text-align: right;
+}
+.dhc-kpi-val {
+  font-weight: 800;
+  font-size: 22px;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+.dhc-kpi-delta {
+  color: var(--success);
+  font-size: 10px;
+  margin-top: 2px;
+}
+.dhc-toggles {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.dhc-toggle {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--toggle-color) 30%, var(--border));
+  background: color-mix(in srgb, var(--toggle-color) 8%, var(--bg-secondary));
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.dhc-toggle.active {
+  background: color-mix(in srgb, var(--toggle-color) 20%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--toggle-color) 60%, var(--border));
+  color: var(--text-primary);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--toggle-color) 15%, transparent);
+}
+.dhc-chart {
+  width: 100%;
+}
+.dhc-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.dhc-stats {
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.dhc-stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.dhc-stats-metric {
+  font-weight: 700;
+  font-size: 13px;
+}
+.dhc-stats-current {
+  font-weight: 800;
+  font-size: 14px;
+  font-family: var(--font-mono);
+}
+.dhc-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  font-size: 11px;
+}
+.dhc-stats-grid strong {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.dhc-muted {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+.dhc-foot {
+  font-size: 10px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-subtle);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
 }
 
 /* ── Viz card headers ── */

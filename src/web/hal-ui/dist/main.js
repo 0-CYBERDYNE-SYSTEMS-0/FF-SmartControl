@@ -187,6 +187,7 @@
     renderBarCard: () => renderBarCard,
     renderBoxPlot: () => renderBoxPlot,
     renderBulletChart: () => renderBulletChart,
+    renderDashboardHeroCard: () => renderDashboardHeroCard,
     renderDecisionMarkers: () => renderDecisionMarkers,
     renderDualAxisCard: () => renderDualAxisCard,
     renderHeatmap: () => renderHeatmap,
@@ -371,6 +372,116 @@
        </div>` : "";
     const footHtml = `<div class="ck-foot">${layers[0].data.length} readings</div>`;
     container.innerHTML = `${titleHtml}<div class="ck-chart">${svg}</div>${statsHtml}${footHtml}`;
+  }
+  function renderDashboardHeroCard(metrics2, containerId, opts = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const activeKeys = opts.activeKeys ?? new Set(metrics2.map((m) => m.key));
+    const activeMetrics = metrics2.filter((m) => activeKeys.has(m.key));
+    if (activeMetrics.length === 0) {
+      container.innerHTML = '<div class="chart-empty">Select a metric</div>';
+      return;
+    }
+    const w = 566;
+    const h = 210;
+    const pad = { l: 100, r: 80, t: 30, b: 40 };
+    const cw = w - pad.l - pad.r;
+    const ch = h - pad.t - pad.b;
+    const allTimes = activeMetrics.flatMap((m) => m.data.map((d) => d.t));
+    const tMin = Math.min(...allTimes);
+    const tMax = Math.max(...allTimes);
+    const tSpan = Math.max(1, tMax - tMin);
+    const x = (i, len) => pad.l + i / (len - 1) * cw;
+    const computed = activeMetrics.map((m) => {
+      const values = m.data.map((d) => d.v);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      return { ...m, min, max, vSpan: max - min || 1 };
+    });
+    const yScales = computed.map(
+      (m) => (v) => pad.t + (m.max - v) / m.vSpan * ch
+    );
+    function path(data, yFn) {
+      return data.map((d, i) => `${i ? "L" : "M"}${x(i, data.length)},${yFn(d.v)}`).join(" ");
+    }
+    const primary = computed[0];
+    const gridValues = [primary.max, primary.min + primary.vSpan / 2, primary.min];
+    const gridLines = gridValues.map((v) => {
+      const y = yScales[0](v);
+      return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 20%, var(--border))"/>`;
+    }).join("");
+    const primaryPath = path(computed[0].data, yScales[0]);
+    const areaPath = primaryPath + ` L${x(computed[0].data.length - 1, computed[0].data.length)},${pad.t + ch} L${x(0, computed[0].data.length)},${pad.t + ch} Z`;
+    const linePaths = computed.map(
+      (m, i) => `<path d="${path(m.data, yScales[i])}" stroke="${m.color}" fill="none" stroke-width="${i === 0 ? 2.5 : 2}"/>`
+    ).join("");
+    const dots = computed.map((m, i) => {
+      const lastIdx = m.data.length - 1;
+      return `<circle cx="${x(lastIdx, m.data.length)}" cy="${yScales[i](m.data[lastIdx].v)}" r="4" fill="${m.color}"/>`;
+    }).join("");
+    const svg = `
+    <svg class="hero-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
+      ${gridLines}
+      <path d="${areaPath}" fill="color-mix(in srgb, ${primary.color} 15%, transparent)"/>
+      ${linePaths}
+      ${dots}
+    </svg>
+  `;
+    const statsHtml = computed.map((m) => {
+      const values = m.data.map((d) => d.v);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const current = m.data[m.data.length - 1].v;
+      return `
+      <div class="dhc-stats-row">
+        <div class="dhc-stats-metric" style="color:${m.color}">${escapeHtml3(m.label)}</div>
+        <div class="dhc-stats-current">${current.toFixed(1)}${m.unit}</div>
+      </div>
+      <div class="dhc-stats-grid">
+        <div><div class="dhc-muted">Min</div><strong>${min.toFixed(1)}${m.unit}</strong></div>
+        <div><div class="dhc-muted">Avg</div><strong>${avg.toFixed(1)}${m.unit}</strong></div>
+        <div><div class="dhc-muted">Max</div><strong>${max.toFixed(1)}${m.unit}</strong></div>
+      </div>
+    `;
+    }).join("");
+    const primaryCurrent = computed[0].data[computed[0].data.length - 1].v;
+    const primaryPrev = computed[0].data[computed[0].data.length - 2]?.v ?? primaryCurrent;
+    const delta = primaryPrev ? (primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100 : 0;
+    const titleColors = computed.map((m) => `<span style="color:${m.color}">${escapeHtml3(m.label)}</span>`).join(' <span style="color:var(--text-secondary)">+</span> ');
+    const allMetricKeys = ["temperature", "humidity", "co2"];
+    const toggleHtml = allMetricKeys.map((k) => {
+      const m = metrics2.find((x2) => x2.key === k);
+      if (!m) return "";
+      const isActive = activeKeys.has(k);
+      return `<button class="dhc-toggle ${isActive ? "active" : ""}" data-metric="${k}" style="--toggle-color:${m.color}">${escapeHtml3(m.label)}</button>`;
+    }).join("");
+    container.innerHTML = `
+    <div class="dhc-card">
+      <div class="dhc-head">
+        <div>
+          <div class="dhc-title">${titleColors}</div>
+          ${opts.subtitle ? `<div class="dhc-subtitle">${escapeHtml3(opts.subtitle)}</div>` : ""}
+        </div>
+        <div class="dhc-kpi">
+          <div class="dhc-kpi-val" style="color:${primary.color}">${primaryCurrent.toFixed(1)}${primary.unit}</div>
+          <div class="dhc-kpi-delta">${delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(delta).toFixed(1)}%</div>
+        </div>
+      </div>
+      <div class="dhc-toggles">${toggleHtml}</div>
+      <div class="dhc-chart">${svg}</div>
+      <div class="dhc-stats">${statsHtml}</div>
+      <div class="dhc-foot">${computed[0].data.length} readings \xB7 ${escapeHtml3(opts.subtitle || "")}</div>
+    </div>
+  `;
+    if (opts.onToggle) {
+      container.querySelectorAll(".dhc-toggle").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const key = btn.dataset.metric;
+          if (key) opts.onToggle(key);
+        });
+      });
+    }
   }
   function straightLinePath(pts) {
     if (pts.length < 2) return "";
@@ -799,6 +910,119 @@
   justify-content: center;
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+/* \u2500\u2500 Dashboard Hero Card (ref code 1 style) \u2500\u2500 */
+.dhc-card {
+  background: linear-gradient(135deg, var(--bg-secondary), var(--bg-primary) 55%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  color: var(--text-primary);
+}
+.dhc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-3);
+}
+.dhc-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+.dhc-subtitle {
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-top: 2px;
+}
+.dhc-kpi {
+  text-align: right;
+}
+.dhc-kpi-val {
+  font-weight: 800;
+  font-size: 22px;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+.dhc-kpi-delta {
+  color: var(--success);
+  font-size: 10px;
+  margin-top: 2px;
+}
+.dhc-toggles {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.dhc-toggle {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--toggle-color) 30%, var(--border));
+  background: color-mix(in srgb, var(--toggle-color) 8%, var(--bg-secondary));
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.dhc-toggle.active {
+  background: color-mix(in srgb, var(--toggle-color) 20%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--toggle-color) 60%, var(--border));
+  color: var(--text-primary);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--toggle-color) 15%, transparent);
+}
+.dhc-chart {
+  width: 100%;
+}
+.dhc-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.dhc-stats {
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.dhc-stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.dhc-stats-metric {
+  font-weight: 700;
+  font-size: 13px;
+}
+.dhc-stats-current {
+  font-weight: 800;
+  font-size: 14px;
+  font-family: var(--font-mono);
+}
+.dhc-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  font-size: 11px;
+}
+.dhc-stats-grid strong {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.dhc-muted {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+.dhc-foot {
+  font-size: 10px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-subtle);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
 }
 
 /* \u2500\u2500 Viz card headers \u2500\u2500 */
@@ -1950,34 +2174,6 @@
     ]);
     return { layers, decisions };
   }
-  function renderHeroChart(layers, containerId, decisions = []) {
-    if (layers.length === 0) {
-      const container = document.getElementById(containerId);
-      if (container) container.innerHTML = '<div class="chart-empty">No sensor data</div>';
-      return;
-    }
-    const dualLayers = layers.map((l) => {
-      const cfg = metricConfig2[l.metric] || { label: l.metric, color: l.color, unit: "", minAxis: 0, maxAxis: 100 };
-      return {
-        label: cfg.label,
-        color: cfg.color,
-        minAxis: cfg.minAxis,
-        maxAxis: cfg.maxAxis,
-        unit: cfg.unit,
-        data: l.data.map((d) => ({ t: new Date(d.timestamp).getTime(), v: d.value }))
-      };
-    });
-    const title = dualLayers.map((l) => l.label).join(" + ");
-    const firstDevice = layers[0]?.deviceName || "";
-    renderDualAxisCard(dualLayers, containerId, {
-      title,
-      subtitle: "24h Overview",
-      deviceName: firstDevice,
-      showStats: true,
-      showGrid: true,
-      smooth: false
-    });
-  }
   function injectHeroChartStyles() {
     injectChartKitStyles();
     if (document.getElementById("hal-hero-chart-styles")) return;
@@ -2919,13 +3115,8 @@
           </div>
         </div>
 
-        <div class="hero-chart-wrap calm-chart">
-          <div class="dash-hero-header">
-            <h2 class="section-title">24h Overview</h2>
-          </div>
-          <div class="hero-chart" id="dash-hero-chart">
-            <div class="chart-empty">Loading\u2026</div>
-          </div>
+        <div id="dash-hero-card">
+          <div class="chart-empty">Loading\u2026</div>
         </div>
 
         <div class="calm-devices">
@@ -2943,7 +3134,7 @@
     </div>
   `;
     injectDashboardStyles();
-    await loadDashboardChart();
+    await loadDashboardHeroCard();
   }
   function renderCalmKpi(label, value, unit, color) {
     const val = typeof value === "number" ? value.toFixed(1) : value;
@@ -2964,6 +3155,7 @@
     </div>
   `).join("");
   }
+  var dashActiveMetrics = /* @__PURE__ */ new Set(["temperature", "humidity"]);
   async function renderOperatorDashboard(container) {
     const store = getStore();
     container.innerHTML = `
@@ -2971,14 +3163,8 @@
       <div class="dash-main">
         ${renderKpiStrip(await buildKpiData())}
 
-        <div class="hero-chart-wrap">
-          <div class="dash-hero-header">
-            <h2 class="section-title">Environment Overview</h2>
-            <div class="dash-live-bar" id="dash-live-bar">Loading\u2026</div>
-          </div>
-          <div class="hero-chart" id="dash-hero-chart">
-            <div class="chart-empty">Loading sensor data\u2026</div>
-          </div>
+        <div id="dash-hero-card">
+          <div class="chart-empty">Loading sensor data\u2026</div>
         </div>
 
         ${await renderOperatorPanels()}
@@ -2994,7 +3180,62 @@
     injectOperatorPanelStyles();
     attachDashboardHandlers();
     attachOperatorPanelHandlers();
-    await loadDashboardChart();
+    await loadDashboardHeroCard();
+  }
+  async function loadDashboardHeroCard() {
+    const container = document.getElementById("dash-hero-card");
+    if (!container) return;
+    try {
+      const { layers } = await loadHeroChartData();
+      const store = getStore();
+      const allMetrics = layers.map((l) => {
+        const cfg = {
+          temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C" },
+          humidity: { label: "Humidity", color: "#38BDF8", unit: "%" },
+          co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm" },
+          light: { label: "Light", color: "#FACC15", unit: "lux" },
+          soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%" },
+          water_level: { label: "Water Level", color: "#2563EB", unit: "%" },
+          ph: { label: "pH", color: "#A855F7", unit: "" },
+          weight: { label: "Weight", color: "#94A3B8", unit: "kg" }
+        }[l.metric] || { label: l.metric, color: l.color, unit: "" };
+        return {
+          key: l.metric,
+          label: cfg.label,
+          color: cfg.color,
+          unit: cfg.unit,
+          data: l.data.map((d) => ({
+            t: new Date(d.timestamp).getTime(),
+            v: formatSensorValue(d.value, l.metric, store.unitSystem).value
+          }))
+        };
+      });
+      const keyMetrics = ["temperature", "humidity", "co2"];
+      for (const key of keyMetrics) {
+        if (!allMetrics.find((m) => m.key === key)) {
+          const cfg = {
+            temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C" },
+            humidity: { label: "Humidity", color: "#38BDF8", unit: "%" },
+            co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm" }
+          }[key];
+          allMetrics.push({ key, label: cfg.label, color: cfg.color, unit: cfg.unit, data: [] });
+        }
+      }
+      const heroMetrics = allMetrics.filter((m) => keyMetrics.includes(m.key));
+      renderDashboardHeroCard(heroMetrics, "dash-hero-card", {
+        subtitle: "Environment Overview",
+        activeKeys: new Set(dashActiveMetrics),
+        onToggle: (key) => {
+          if (dashActiveMetrics.has(key) && dashActiveMetrics.size <= 1) return;
+          if (dashActiveMetrics.has(key)) dashActiveMetrics.delete(key);
+          else dashActiveMetrics.add(key);
+          void loadDashboardHeroCard();
+        }
+      });
+    } catch (err) {
+      console.error("Dashboard hero card load failed:", err);
+      container.innerHTML = '<div class="chart-empty">Failed to load</div>';
+    }
   }
   async function renderDiagnosticDashboard(container) {
     const store = getStore();
@@ -3003,14 +3244,8 @@
       <div class="dash-main">
         ${renderKpiStrip(await buildKpiData())}
 
-        <div class="hero-chart-wrap">
-          <div class="dash-hero-header">
-            <h2 class="section-title">Environment Overview \u2014 All Metrics</h2>
-            <div class="dash-live-bar" id="dash-live-bar">Loading\u2026</div>
-          </div>
-          <div class="hero-chart" id="dash-hero-chart">
-            <div class="chart-empty">Loading sensor data\u2026</div>
-          </div>
+        <div id="dash-hero-card">
+          <div class="chart-empty">Loading sensor data\u2026</div>
         </div>
 
         ${renderTerminal(buildLogEntries(store.decisions))}
@@ -3048,7 +3283,7 @@
     injectDashboardStyles();
     injectTerminalStyles();
     attachDashboardHandlers();
-    await loadDashboardChart();
+    await loadDashboardHeroCard();
   }
   function renderRawSnapshots(sensors, devices) {
     const entries = Object.entries(sensors);
@@ -3153,46 +3388,6 @@
     </div>
   `;
   }
-  async function loadDashboardChart() {
-    const hero = document.getElementById("dash-hero-chart");
-    const liveBar = document.getElementById("dash-live-bar");
-    if (!hero) return;
-    try {
-      const { layers, decisions } = await loadHeroChartData();
-      renderHeroChart(layers, "dash-hero-chart", decisions);
-      if (liveBar) liveBar.innerHTML = buildLiveBar(layers);
-    } catch (err) {
-      console.error("Dashboard chart load failed:", err);
-      if (hero) hero.innerHTML = '<div class="chart-empty">Failed to load</div>';
-    }
-  }
-  function buildLiveBar(layers) {
-    const store = getStore();
-    const latest = {};
-    const metricColors = {
-      temperature: "#F59E0B",
-      humidity: "#38BDF8",
-      co2: "#22C55E",
-      light: "#FACC15",
-      soil_moisture: "#EF4444",
-      water_level: "#2563EB",
-      ph: "#A855F7",
-      weight: "#94A3B8"
-    };
-    for (const layer of layers) {
-      if (!layer.data.length) continue;
-      const last = layer.data[layer.data.length - 1];
-      const converted = formatSensorValue(last.value, layer.metric, store.unitSystem);
-      const unit = converted.unit || getMetricUnit2(layer.metric);
-      latest[layer.metric] = { value: converted.value, unit, color: metricColors[layer.metric] };
-    }
-    const items = Object.entries(latest).map(([metric, info]) => {
-      const label = metric.charAt(0).toUpperCase() + metric.slice(1).replace("_", " ");
-      const precision = Math.abs(info.value) >= 100 ? 0 : info.value % 1 === 0 ? 0 : 1;
-      return `<span class="live-item" style="--live-color:${info.color}"><span class="live-dot"></span><span class="live-label">${label}</span><span class="live-val text-mono">${info.value.toFixed(precision)}${info.unit}</span></span>`;
-    });
-    return items.join("") || '<span class="text-secondary text-xs">No live data</span>';
-  }
   function getLatestTemp() {
     const store = getStore();
     let sum = 0, count = 0;
@@ -3216,24 +3411,6 @@
       }
     }
     return count > 0 ? sum / count : 0;
-  }
-  function getMetricUnit2(metric) {
-    switch (metric) {
-      case "humidity":
-      case "soil_moisture":
-      case "water_level":
-        return "%";
-      case "co2":
-        return "ppm";
-      case "light":
-        return "lux";
-      case "ph":
-        return "";
-      case "weight":
-        return "kg";
-      default:
-        return "";
-    }
   }
   function renderDeviceGrid(devices) {
     if (devices.length === 0) {
@@ -3896,11 +4073,6 @@
     decisions: []
   };
   var loadSequence = 0;
-  var DECISION_COLORS2 = {
-    success: "#6DFF9A",
-    failure: "#FF5C6C",
-    pending: "#FFC857"
-  };
   async function renderSensors(container) {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
@@ -4081,9 +4253,6 @@
     }
     return { from: from.toISOString(), to: to.toISOString() };
   }
-  function escapeAttr2(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
   function renderHeroChart2(layers, decisions = []) {
     const container = document.getElementById("hero-chart");
     const legend = document.getElementById("hero-legend");
@@ -4178,23 +4347,11 @@
       const last = lp.points[lp.points.length - 1];
       return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.metric.color}" stroke="var(--bg-primary)" stroke-width="2" />`;
     }).join("");
-    const decisionMarkers = decisions.filter((d) => {
-      const t = new Date(d.timestamp).getTime();
-      return t >= tMin && t <= tMax;
-    }).map((d) => {
-      const x = tx(new Date(d.timestamp).getTime()).toFixed(1);
-      const color = DECISION_COLORS2[d.status || "pending"] ?? DECISION_COLORS2["pending"];
-      const opacity = (0.35 + (d.confidence ?? 0.5) * 0.65).toFixed(2);
-      const label = escapeAttr2(d.decision.slice(0, 60));
-      const conf = ((d.confidence ?? 0) * 100).toFixed(0);
-      return `<line x1="${x}" y1="${pad.top}" x2="${x}" y2="${height - pad.bottom}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="${opacity}"><title>${label} (${conf}%)</title></line><circle cx="${x}" cy="${pad.top + 10}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="1.5" opacity="${opacity}"><title>${label}</title></circle>`;
-    }).join("");
     container.innerHTML = [
       `<svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">`,
       `<defs>${defs}</defs>`,
       gridLines.join(""),
       areas,
-      decisionMarkers,
       lines,
       dots,
       leftAxisLabels.join(""),

@@ -355,26 +355,11 @@ function renderHeroChart(layers: SeriesLayer[], decisions: HalDecision[] = []): 
     return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.metric.color}" stroke="var(--bg-primary)" stroke-width="2" />`;
   }).join('');
 
-  const decisionMarkers = decisions
-    .filter(d => {
-      const t = new Date(d.timestamp).getTime();
-      return t >= tMin && t <= tMax;
-    })
-    .map(d => {
-      const x = tx(new Date(d.timestamp).getTime()).toFixed(1);
-      const color = DECISION_COLORS[d.status || 'pending'] ?? DECISION_COLORS['pending'];
-      const opacity = (0.35 + (d.confidence ?? 0.5) * 0.65).toFixed(2);
-      const label = escapeAttr(d.decision.slice(0, 60));
-      const conf = ((d.confidence ?? 0) * 100).toFixed(0);
-      return `<line x1="${x}" y1="${pad.top}" x2="${x}" y2="${height - pad.bottom}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="${opacity}"><title>${label} (${conf}%)</title></line><circle cx="${x}" cy="${pad.top + 10}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="1.5" opacity="${opacity}"><title>${label}</title></circle>`;
-    }).join('');
-
   container.innerHTML = [
     `<svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">`,
     `<defs>${defs}</defs>`,
     gridLines.join(''),
     areas,
-    decisionMarkers,
     lines,
     dots,
     leftAxisLabels.join(''),

@@ -7,7 +7,7 @@ import { renderSystemStatus, injectSystemStatusStyles } from '../components/Syst
 import { renderLatestDecision, injectLatestDecisionStyles } from '../components/LatestDecision.js';
 import { renderKpiStrip, buildKpiData, injectKpiStyles } from '../components/KpiStrip.js';
 import { loadHeroChartData, renderHeroChart, injectHeroChartStyles, renderSparkline } from '../components/HeroChart.js';
-import { injectChartKitStyles } from '../components/ChartKit.js';
+import { renderDashboardHeroCard, type DashboardHeroMetric, injectChartKitStyles } from '../components/ChartKit.js';
 import { renderOperatorPanels, injectOperatorPanelStyles } from '../components/OperatorPanels.js';
 import { renderTerminal, buildLogEntries, injectTerminalStyles } from '../components/Terminal.js';
 
@@ -47,13 +47,8 @@ async function renderCalmDashboard(container: HTMLElement): Promise<void> {
           </div>
         </div>
 
-        <div class="hero-chart-wrap calm-chart">
-          <div class="dash-hero-header">
-            <h2 class="section-title">24h Overview</h2>
-          </div>
-          <div class="hero-chart" id="dash-hero-chart">
-            <div class="chart-empty">Loading…</div>
-          </div>
+        <div id="dash-hero-card">
+          <div class="chart-empty">Loading…</div>
         </div>
 
         <div class="calm-devices">
@@ -72,7 +67,7 @@ async function renderCalmDashboard(container: HTMLElement): Promise<void> {
   `;
 
   injectDashboardStyles();
-  await loadDashboardChart();
+  await loadDashboardHeroCard();
 }
 
 function renderCalmKpi(label: string, value: number | string, unit: string, color: string): string {
@@ -98,6 +93,9 @@ function renderCalmDeviceList(devices: ReturnType<typeof getStore>['devices']): 
 
 /* ═══════════════ OPERATOR MODE — Full controls, all data ═══════════════ */
 
+// Dashboard active metrics state (persisted in session)
+const dashActiveMetrics = new Set<string>(['temperature', 'humidity']);
+
 async function renderOperatorDashboard(container: HTMLElement): Promise<void> {
   const store = getStore();
 
@@ -106,14 +104,8 @@ async function renderOperatorDashboard(container: HTMLElement): Promise<void> {
       <div class="dash-main">
         ${renderKpiStrip(await buildKpiData())}
 
-        <div class="hero-chart-wrap">
-          <div class="dash-hero-header">
-            <h2 class="section-title">Environment Overview</h2>
-            <div class="dash-live-bar" id="dash-live-bar">Loading…</div>
-          </div>
-          <div class="hero-chart" id="dash-hero-chart">
-            <div class="chart-empty">Loading sensor data…</div>
-          </div>
+        <div id="dash-hero-card">
+          <div class="chart-empty">Loading sensor data…</div>
         </div>
 
         ${await renderOperatorPanels()}
@@ -130,7 +122,73 @@ async function renderOperatorDashboard(container: HTMLElement): Promise<void> {
   injectOperatorPanelStyles();
   attachDashboardHandlers();
   attachOperatorPanelHandlers();
-  await loadDashboardChart();
+  await loadDashboardHeroCard();
+}
+
+async function loadDashboardHeroCard(): Promise<void> {
+  const container = document.getElementById('dash-hero-card');
+  if (!container) return;
+
+  try {
+    const { layers } = await loadHeroChartData();
+    const store = getStore();
+
+    // Build DashboardHeroMetric[] from layers
+    const allMetrics: DashboardHeroMetric[] = layers.map(l => {
+      const cfg = {
+        temperature: { label: 'Temperature', color: '#F59E0B', unit: '°C' },
+        humidity: { label: 'Humidity', color: '#38BDF8', unit: '%' },
+        co2: { label: 'CO₂', color: '#22C55E', unit: 'ppm' },
+        light: { label: 'Light', color: '#FACC15', unit: 'lux' },
+        soil_moisture: { label: 'Soil Moisture', color: '#EF4444', unit: '%' },
+        water_level: { label: 'Water Level', color: '#2563EB', unit: '%' },
+        ph: { label: 'pH', color: '#A855F7', unit: '' },
+        weight: { label: 'Weight', color: '#94A3B8', unit: 'kg' },
+      }[l.metric] || { label: l.metric, color: l.color, unit: '' };
+
+      return {
+        key: l.metric,
+        label: cfg.label,
+        color: cfg.color,
+        unit: cfg.unit,
+        data: l.data.map(d => ({
+          t: new Date(d.timestamp).getTime(),
+          v: formatSensorValue(d.value, l.metric, store.unitSystem).value,
+        })),
+      };
+    });
+
+    // Ensure we have all three key metrics even if no data
+    const keyMetrics = ['temperature', 'humidity', 'co2'];
+    for (const key of keyMetrics) {
+      if (!allMetrics.find(m => m.key === key)) {
+        const cfg = {
+          temperature: { label: 'Temperature', color: '#F59E0B', unit: '°C' },
+          humidity: { label: 'Humidity', color: '#38BDF8', unit: '%' },
+          co2: { label: 'CO₂', color: '#22C55E', unit: 'ppm' },
+        }[key]!;
+        allMetrics.push({ key, label: cfg.label, color: cfg.color, unit: cfg.unit, data: [] });
+      }
+    }
+
+    // Filter to only the three main metrics
+    const heroMetrics = allMetrics.filter(m => keyMetrics.includes(m.key));
+
+    renderDashboardHeroCard(heroMetrics, 'dash-hero-card', {
+      subtitle: 'Environment Overview',
+      activeKeys: new Set(dashActiveMetrics),
+      onToggle: (key) => {
+        // Prevent turning off the last active metric
+        if (dashActiveMetrics.has(key) && dashActiveMetrics.size <= 1) return;
+        if (dashActiveMetrics.has(key)) dashActiveMetrics.delete(key);
+        else dashActiveMetrics.add(key);
+        void loadDashboardHeroCard();
+      },
+    });
+  } catch (err: any) {
+    console.error('Dashboard hero card load failed:', err);
+    container.innerHTML = '<div class="chart-empty">Failed to load</div>';
+  }
 }
 
 /* ═══════════════ DIAGNOSTIC MODE — Deep system metrics, raw data ═══════════════ */
@@ -143,14 +201,8 @@ async function renderDiagnosticDashboard(container: HTMLElement): Promise<void> 
       <div class="dash-main">
         ${renderKpiStrip(await buildKpiData())}
 
-        <div class="hero-chart-wrap">
-          <div class="dash-hero-header">
-            <h2 class="section-title">Environment Overview — All Metrics</h2>
-            <div class="dash-live-bar" id="dash-live-bar">Loading…</div>
-          </div>
-          <div class="hero-chart" id="dash-hero-chart">
-            <div class="chart-empty">Loading sensor data…</div>
-          </div>
+        <div id="dash-hero-card">
+          <div class="chart-empty">Loading sensor data…</div>
         </div>
 
         ${renderTerminal(buildLogEntries(store.decisions))}
@@ -189,7 +241,7 @@ async function renderDiagnosticDashboard(container: HTMLElement): Promise<void> 
   injectDashboardStyles();
   injectTerminalStyles();
   attachDashboardHandlers();
-  await loadDashboardChart();
+  await loadDashboardHeroCard();
 }
 
 function renderRawSnapshots(
