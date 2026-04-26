@@ -238,173 +238,23 @@ function getRangeBounds(range: typeof viewState.range): { from: string; to: stri
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-/* ─────────────── Hero Chart (single multi-layer SVG) ─────────────── */
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+/* ─────────────── Hero Chart (Vega-Lite) ─────────────── */
 
 function renderHeroChart(layers: SeriesLayer[], decisions: HalDecision[] = []): void {
-  const container = document.getElementById('hero-chart');
-  const legend = document.getElementById('hero-legend');
-  if (!container) return;
-
-  if (layers.length === 0) {
-    container.textContent = '';
-    const empty = document.createElement('div');
-    empty.className = 'chart-empty';
-    empty.textContent = 'No data for selection';
-    container.appendChild(empty);
-    if (legend) legend.textContent = '';
+  const { renderVegaHeroChart } = (window as unknown as Record<string, unknown>).__vegaCache || {};
+  if (typeof renderVegaHeroChart === 'function') {
+    // Already loaded via dynamic import
+    renderVegaHeroChart(layers, 'hero-chart', decisions);
     return;
   }
-
-  const store = getStore();
-  const width = 900;
-  const height = 320;
-  const pad = { top: 24, right: 24, bottom: 36, left: 52 };
-
-  // Determine unified time domain across all layers
-  const allTimes = layers.flatMap(l => l.data.map(d => new Date(d.timestamp).getTime()));
-  const tMin = Math.min(...allTimes);
-  const tMax = Math.max(...allTimes);
-  const tSpan = Math.max(1, tMax - tMin);
-
-  const tx = (t: number) => pad.left + ((t - tMin) / tSpan) * (width - pad.left - pad.right);
-
-  // Build each layer's normalized path (0-1 based on its metric's axis)
-  const layerPaths = layers.map(layer => {
-    const cfg = layer.metric;
-    let axisMin = cfg.minAxis;
-    let axisMax = cfg.maxAxis;
-    if (cfg.key === 'temperature' && store.unitSystem === 'imperial') {
-      axisMin = (axisMin * 9 / 5) + 32;
-      axisMax = (axisMax * 9 / 5) + 32;
-    }
-    if (cfg.key === 'weight' && store.unitSystem === 'imperial') {
-      axisMin = axisMin * 2.20462;
-      axisMax = axisMax * 2.20462;
-    }
-    const vSpan = Math.max(1, axisMax - axisMin);
-
-    const points = layer.data.map(d => {
-      const v = formatSensorValue(d.value, cfg.key, store.unitSystem).value;
-      const t = new Date(d.timestamp).getTime();
-      const x = tx(t);
-      const y = pad.top + ((axisMax - v) / vSpan) * (height - pad.top - pad.bottom);
-      return { x, y, v, t, raw: d };
-    });
-
-    const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-    const area = `${line} L${points[points.length - 1].x.toFixed(1)},${height - pad.bottom} L${points[0].x.toFixed(1)},${height - pad.bottom} Z`;
-
-    return { layer, points, line, area, axisMin, axisMax, vSpan };
+  // Lazy-load VegaChart module
+  void import('../components/VegaChart.js').then(m => {
+    m.renderVegaHeroChart(
+      layers.map(l => ({ deviceId: l.deviceId, deviceName: l.deviceName, metric: l.metric.key, color: l.metric.color, data: l.data })),
+      'hero-chart',
+      decisions
+    );
   });
-
-  // Grid lines (5 horizontal)
-  const gridLines = [];
-  for (let i = 0; i <= 5; i++) {
-    const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
-    gridLines.push(`<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid" />`);
-  }
-
-  // Time axis labels
-  const timeLabels = [];
-  const timeSteps = 6;
-  for (let i = 0; i <= timeSteps; i++) {
-    const t = tMin + (i / timeSteps) * tSpan;
-    const x = tx(t);
-    const label = formatTimeValue(new Date(t), store.timeFormat);
-    timeLabels.push(`<text x="${x}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`);
-  }
-
-  // Left axis label (first active metric)
-  const primary = layerPaths[0];
-  const leftAxisLabels = [];
-  for (let i = 0; i <= 5; i++) {
-    const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
-    const v = primary.axisMax - (i / 5) * primary.vSpan;
-    const precision = primary.layer.metric.key === 'co2' ? 0 : 1;
-    leftAxisLabels.push(`<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(precision)}</text>`);
-  }
-
-  // Right axis label (if second metric differs)
-  let rightAxisLabels = '';
-  if (layerPaths.length > 1 && layerPaths[1].layer.metric.key !== primary.layer.metric.key) {
-    const sec = layerPaths[1];
-    const labels = [];
-    for (let i = 0; i <= 5; i++) {
-      const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
-      const v = sec.axisMax - (i / 5) * sec.vSpan;
-      const precision = sec.layer.metric.key === 'co2' ? 0 : 1;
-      labels.push(`<text x="${width - pad.right + 8}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.metric.color}">${v.toFixed(precision)}</text>`);
-    }
-    rightAxisLabels = labels.join('');
-  }
-
-  // SVG content
-  const defs = layerPaths.map((lp, i) => {
-    const gradId = `hero-grad-${i}`;
-    return `
-      <linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1">
-        <stop offset="0%" stop-color="${lp.layer.metric.color}" stop-opacity="0.28" />
-        <stop offset="100%" stop-color="${lp.layer.metric.color}" stop-opacity="0.02" />
-      </linearGradient>
-    `;
-  }).join('');
-
-  const areas = layerPaths.map((lp, i) =>
-    `<path d="${lp.area}" fill="url(#hero-grad-${i})" stroke="none" />`
-  ).join('');
-
-  const lines = layerPaths.map(lp =>
-    `<path d="${lp.line}" fill="none" stroke="${lp.layer.metric.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />`
-  ).join('');
-
-  const dots = layerPaths.flatMap(lp => {
-    const last = lp.points[lp.points.length - 1];
-    return [
-      `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.metric.color}" stroke="var(--bg-primary)" stroke-width="2" />`,
-    ];
-  }).join('');
-
-  const decisionMarkers = decisions
-    .filter(d => {
-      const t = new Date(d.timestamp).getTime();
-      return t >= tMin && t <= tMax;
-    })
-    .map(d => {
-      const x = tx(new Date(d.timestamp).getTime()).toFixed(1);
-      const color = DECISION_COLORS[d.status || 'pending'] ?? DECISION_COLORS.pending;
-      const opacity = (0.35 + (d.confidence ?? 0.5) * 0.65).toFixed(2);
-      const label = escapeAttr(d.decision.slice(0, 60));
-      const conf = ((d.confidence ?? 0) * 100).toFixed(0);
-      return `<line x1="${x}" y1="${pad.top}" x2="${x}" y2="${height - pad.bottom}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="${opacity}"><title>${label} (${conf}%)</title></line><circle cx="${x}" cy="${pad.top + 10}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="1.5" opacity="${opacity}"><title>${label}</title></circle>`;
-    }).join('');
-
-  container.innerHTML = `
-    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
-      <defs>${defs}</defs>
-      ${gridLines.join('')}
-      ${areas}
-      ${decisionMarkers}
-      ${lines}
-      ${dots}
-      ${leftAxisLabels.join('')}
-      ${rightAxisLabels}
-      ${timeLabels.join('')}
-    </svg>
-  `;
-
-  // Legend
-  if (legend) {
-    legend.innerHTML = layerPaths.map(lp => `
-      <span class="legend-item" style="--metric-color:${lp.layer.metric.color}">
-        <span class="legend-dot"></span>
-        ${escapeHtml(lp.layer.metric.label)} (${escapeHtml(lp.layer.deviceName)})
-      </span>
-    `).join('');
-  }
 }
 
 /* ─────────────── Detail table ─────────────── */
@@ -557,93 +407,62 @@ function renderVizCards(allLayers: SeriesLayer[], decisions: HalDecision[] = [])
 function renderAreaCard(layer: SeriesLayer, title: string): string {
   const { data, metric } = layer;
   const store = getStore();
-  const w = 340, h = 120, pad = { t: 8, r: 8, b: 20, l: 32 };
-  const times = data.map(d => new Date(d.timestamp).getTime());
-  const tMin = Math.min(...times), tMax = Math.max(...times);
-  const tSpan = Math.max(1, tMax - tMin);
-  const tx = (t: number) => pad.l + ((t - tMin) / tSpan) * (w - pad.l - pad.r);
-  let axisMin = metric.minAxis, axisMax = metric.maxAxis;
-  if (metric.key === 'temperature' && store.unitSystem === 'imperial') { axisMin = (axisMin * 9 / 5) + 32; axisMax = (axisMax * 9 / 5) + 32; }
-  const vSpan = Math.max(1, axisMax - axisMin);
-  const points = data.map(d => {
-    const v = formatSensorValue(d.value, metric.key, store.unitSystem).value;
-    return { x: tx(new Date(d.timestamp).getTime()), y: pad.t + ((axisMax - v) / vSpan) * (h - pad.t - pad.b) };
-  });
-  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const area = `${line} L${points[points.length - 1].x.toFixed(1)},${h - pad.b} L${points[0].x.toFixed(1)},${h - pad.b} Z`;
-  const latest = data[data.length - 1];
-  const latestVal = formatSensorValue(latest.value, metric.key, store.unitSystem);
-  const unit = latestVal.unit || metric.fallbackUnit;
-  return `
-    <div class="viz-card">
-      <div class="viz-card-header">
-        <span class="viz-card-title">${escapeHtml(title)}</span>
-        <span class="viz-card-value text-mono" style="color:${metric.color}">${latestVal.value.toFixed(1)}${unit}</span>
-      </div>
-      <svg viewBox="0 0 ${w} ${h}" class="viz-svg">
-        <defs><linearGradient id="area-grad-${metric.key}" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${metric.color}" stop-opacity="0.25"/><stop offset="100%" stop-color="${metric.color}" stop-opacity="0.02"/></linearGradient></defs>
-        <path d="${area}" fill="url(#area-grad-${metric.key})" stroke="none"/>
-        <path d="${line}" fill="none" stroke="${metric.color}" stroke-width="1.5" stroke-linejoin="round"/>
-      </svg>
-    </div>`;
+  const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+  const unit = latest.unit || metric.fallbackUnit;
+  const id = `area-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
+  // Schedule Vega render
+  setTimeout(() => {
+    void import('../components/VegaChart.js').then(m => {
+      m.renderVegaAreaCard(data, metric.key, id, title);
+    });
+  }, 0);
+  return `<div class="viz-card" id="${id}">
+    <div class="viz-card-header">
+      <span class="viz-card-title">${escapeHtml(title)}</span>
+      <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(1)}${unit}</span>
+    </div>
+    <div class="viz-chart-placeholder" style="height:100px;"></div>
+  </div>`;
 }
 
 function renderLineCard(layer: SeriesLayer, title: string): string {
   const { data, metric } = layer;
   const store = getStore();
-  const w = 340, h = 120, pad = { t: 8, r: 8, b: 20, l: 32 };
-  const times = data.map(d => new Date(d.timestamp).getTime());
-  const tMin = Math.min(...times), tMax = Math.max(...times);
-  const tSpan = Math.max(1, tMax - tMin);
-  const tx = (t: number) => pad.l + ((t - tMin) / tSpan) * (w - pad.l - pad.r);
-  const axisMin = metric.minAxis, axisMax = metric.maxAxis;
-  const vSpan = Math.max(1, axisMax - axisMin);
-  const pts = data.map(d => {
-    const v = formatSensorValue(d.value, metric.key, store.unitSystem).value;
-    return `${tx(new Date(d.timestamp).getTime()).toFixed(1)},${(pad.t + ((axisMax - v) / vSpan) * (h - pad.t - pad.b)).toFixed(1)}`;
-  }).join(' ');
-  const latest = data[data.length - 1];
-  const latestVal = formatSensorValue(latest.value, metric.key, store.unitSystem);
-  const unit = latestVal.unit || metric.fallbackUnit;
-  return `
-    <div class="viz-card">
-      <div class="viz-card-header">
-        <span class="viz-card-title">${escapeHtml(title)}</span>
-        <span class="viz-card-value text-mono" style="color:${metric.color}">${latestVal.value.toFixed(0)}${unit}</span>
-      </div>
-      <svg viewBox="0 0 ${w} ${h}" class="viz-svg">
-        <polyline points="${pts}" fill="none" stroke="${metric.color}" stroke-width="1.5" stroke-linejoin="round"/>
-      </svg>
-    </div>`;
+  const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+  const unit = latest.unit || metric.fallbackUnit;
+  const id = `line-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
+  setTimeout(() => {
+    void import('../components/VegaChart.js').then(m => {
+      m.renderVegaLineCard(data, metric.key, id, title);
+    });
+  }, 0);
+  return `<div class="viz-card" id="${id}">
+    <div class="viz-card-header">
+      <span class="viz-card-title">${escapeHtml(title)}</span>
+      <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(0)}${unit}</span>
+    </div>
+    <div class="viz-chart-placeholder" style="height:100px;"></div>
+  </div>`;
 }
 
 function renderBarCard(layer: SeriesLayer, title: string): string {
   const { data, metric } = layer;
   const store = getStore();
-  const w = 340, h = 120, pad = { t: 8, r: 8, b: 20, l: 32 };
-  const bars = Math.min(data.length, 24);
-  const step = (w - pad.l - pad.r) / bars;
-  const barW = step * 0.7;
-  const axisMin = metric.minAxis, axisMax = metric.maxAxis;
-  const vSpan = Math.max(1, axisMax - axisMin);
-  const rects = data.slice(-bars).map((d, i) => {
-    const v = formatSensorValue(d.value, metric.key, store.unitSystem).value;
-    const bh = ((v - axisMin) / vSpan) * (h - pad.t - pad.b);
-    const x = pad.l + i * step + (step - barW) / 2;
-    const y = h - pad.b - bh;
-    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${metric.color}" opacity="0.7" rx="2"/>`;
-  }).join('');
-  const latest = data[data.length - 1];
-  const latestVal = formatSensorValue(latest.value, metric.key, store.unitSystem);
-  const unit = latestVal.unit || metric.fallbackUnit;
-  return `
-    <div class="viz-card">
-      <div class="viz-card-header">
-        <span class="viz-card-title">${escapeHtml(title)}</span>
-        <span class="viz-card-value text-mono" style="color:${metric.color}">${latestVal.value.toFixed(0)}${unit}</span>
-      </div>
-      <svg viewBox="0 0 ${w} ${h}" class="viz-svg">${rects}</svg>
-    </div>`;
+  const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+  const unit = latest.unit || metric.fallbackUnit;
+  const id = `bar-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
+  setTimeout(() => {
+    void import('../components/VegaChart.js').then(m => {
+      m.renderVegaBarCard(data, metric.key, id, title);
+    });
+  }, 0);
+  return `<div class="viz-card" id="${id}">
+    <div class="viz-card-header">
+      <span class="viz-card-title">${escapeHtml(title)}</span>
+      <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(0)}${unit}</span>
+    </div>
+    <div class="viz-chart-placeholder" style="height:100px;"></div>
+  </div>`;
 }
 
 function renderGaugeCard(layer: SeriesLayer, title: string): string {
