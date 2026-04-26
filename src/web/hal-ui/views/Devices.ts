@@ -1,13 +1,15 @@
 // Devices view — 3-col card grid, filter bar, power toggle, add device
 
-import { getStore, setStore } from '../store.js';
+import { getStore, setStore, formatSensorValue } from '../store.js';
 import { halApi, HalDevice } from '../api.js';
 import { createToggle, setToggleState } from '../components/Toggle.js';
 import { showToast } from '../components/Toast.js';
+import { renderBulletChart, type BulletMetric, injectChartKitStyles } from '../components/ChartKit.js';
 
 export async function renderDevices(container: HTMLElement): Promise<void> {
   const store = getStore();
   injectDevicesStyles();
+  injectChartKitStyles();
 
   container.innerHTML = `
     <div class="page-header">
@@ -36,6 +38,45 @@ export async function renderDevices(container: HTMLElement): Promise<void> {
   `;
 
   attachDevicesHandlers();
+  renderDeviceBulletCharts(store.devices);
+}
+
+function renderDeviceBulletCharts(devices: HalDevice[]): void {
+  const sensors = devices.filter(d => d.type === 'sensor');
+  if (sensors.length === 0) return;
+
+  const store = getStore();
+  const metrics: BulletMetric[] = [];
+
+  for (const s of sensors) {
+    const snap = store.sensors[s.id];
+    if (snap?.temperature) {
+      metrics.push({
+        label: s.name,
+        current: snap.temperature.value,
+        target: 24,
+        min: 10,
+        max: 40,
+        color: '#F59E0B',
+        unit: '°C',
+      });
+    }
+  }
+
+  if (metrics.length === 0) return;
+
+  // Find first sensor card and append bullet chart
+  const firstSensor = sensors[0];
+  const card = document.querySelector(`[data-device-id="${firstSensor.id}"]`);
+  if (!card) return;
+
+  const bulletId = `bullet-${firstSensor.id}`;
+  const bulletDiv = document.createElement('div');
+  bulletDiv.id = bulletId;
+  bulletDiv.className = 'device-bullet-chart';
+  card.appendChild(bulletDiv);
+
+  setTimeout(() => renderBulletChart(metrics.slice(0, 3), bulletId), 0);
 }
 
 function renderDeviceCards(devices: HalDevice[]): string {
@@ -197,6 +238,11 @@ function injectDevicesStyles(): void {
   border-top: 1px solid var(--border);
 }
 .col-span-3 { grid-column: 1 / -1; }
+.device-bullet-chart {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
 `;
   document.head.appendChild(style);
 }

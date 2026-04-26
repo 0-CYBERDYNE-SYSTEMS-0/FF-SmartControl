@@ -2,6 +2,7 @@
 
 import { getStore } from '../store.js';
 import { HalDecision } from '../api.js';
+import { renderBoxPlot, type BoxPlotDay, injectChartKitStyles } from '../components/ChartKit.js';
 
 const expandedDecisionIds = new Set<string>();
 let statusFilter: 'all' | 'success' | 'failure' | 'pending' = 'all';
@@ -17,6 +18,13 @@ export async function renderDecisions(container: HTMLElement): Promise<void> {
     <div class="page-header">
       <h1 class="page-title">Decisions</h1>
       <p class="page-subtitle">HAL autonomous decision log</p>
+    </div>
+
+    <div class="decisions-chart-section mb-4">
+      <div class="hal-card" style="padding: var(--space-3)">
+        <div class="section-title mb-3">Confidence Distribution (14 Days)</div>
+        <div id="decisions-boxplot" style="min-height: 180px;"></div>
+      </div>
     </div>
 
     <div class="decisions-toolbar mb-4">
@@ -38,8 +46,46 @@ export async function renderDecisions(container: HTMLElement): Promise<void> {
   `;
 
   injectDecisionsStyles();
+  injectChartKitStyles();
   attachDecisionHandlers();
   attachFilterHandlers();
+  renderDecisionsBoxPlot(store.decisions);
+}
+
+function renderDecisionsBoxPlot(decisions: HalDecision[]): void {
+  if (decisions.length < 3) return;
+
+  // Group decisions by day, calculate quartiles
+  const byDay = new Map<string, number[]>();
+  const now = Date.now();
+
+  for (const d of decisions) {
+    const day = new Date(d.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const list = byDay.get(day) || [];
+    list.push(d.confidence);
+    byDay.set(day, list);
+  }
+
+  // Take last 14 days
+  const days: BoxPlotDay[] = Array.from(byDay.entries())
+    .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+    .slice(-14)
+    .map(([day, confs]) => {
+      const sorted = confs.sort((a, b) => a - b);
+      const n = sorted.length;
+      return {
+        day,
+        min: sorted[0],
+        q1: sorted[Math.floor(n * 0.25)],
+        median: sorted[Math.floor(n * 0.5)],
+        q3: sorted[Math.floor(n * 0.75)],
+        max: sorted[n - 1],
+      };
+    });
+
+  if (days.length > 0) {
+    setTimeout(() => renderBoxPlot(days, 'decisions-boxplot', { color: '#6DFF9A' }), 0);
+  }
 }
 
 function attachFilterHandlers(): void {

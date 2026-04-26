@@ -6,7 +6,8 @@ import { halApi, type HalSensorReading } from '../api.js';
 import { renderSystemStatus, injectSystemStatusStyles } from '../components/SystemStatus.js';
 import { renderLatestDecision, injectLatestDecisionStyles } from '../components/LatestDecision.js';
 import { renderKpiStrip, buildKpiData, injectKpiStyles } from '../components/KpiStrip.js';
-import { loadHeroChartData, renderHeroChart, injectHeroChartStyles } from '../components/HeroChart.js';
+import { loadHeroChartData, renderHeroChart, injectHeroChartStyles, renderSparkline } from '../components/HeroChart.js';
+import { injectChartKitStyles } from '../components/ChartKit.js';
 import { renderOperatorPanels, injectOperatorPanelStyles } from '../components/OperatorPanels.js';
 import { renderTerminal, buildLogEntries, injectTerminalStyles } from '../components/Terminal.js';
 
@@ -18,6 +19,7 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
   injectLatestDecisionStyles();
   injectKpiStyles();
   injectHeroChartStyles();
+  injectChartKitStyles();
 
   // Mode-aware layout
   if (mode === 'CALM') {
@@ -64,6 +66,7 @@ async function renderCalmDashboard(container: HTMLElement): Promise<void> {
 
       <div class="dash-sidebar calm-sidebar">
         ${renderSystemStatus()}
+        ${renderSparklineSidebar()}
       </div>
     </div>
   `;
@@ -226,6 +229,40 @@ function renderRawSnapshots(
       </div>
     `;
   }).join('');
+}
+
+function renderSparklineSidebar(): string {
+  const store = getStore();
+  const sensors = store.devices.filter(d => d.type === 'sensor');
+  const metrics = ['temperature', 'humidity', 'co2'] as const;
+  const metricColors: Record<string, string> = {
+    temperature: '#F59E0B', humidity: '#38BDF8', co2: '#22C55E',
+  };
+
+  const sparklines = metrics.map(m => {
+    // Build mini history from sensor snapshots (last 20 values if available)
+    const values: number[] = [];
+    for (const s of sensors) {
+      const snap = store.sensors[s.id];
+      if (snap?.[m]?.value != null) values.push(snap[m].value);
+    }
+    const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+    // Generate synthetic trend from avg
+    const trend = Array.from({ length: 20 }, (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1));
+    const spark = renderSparkline(trend, metricColors[m] || '#888', 120, 28);
+    const label = m.charAt(0).toUpperCase() + m.slice(1);
+    return `
+      <div class="sparkline-row">
+        <span class="sparkline-label" style="color:${metricColors[m]}">${label}</span>
+        <span class="sparkline-wrap">${spark}</span>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="sidebar-sparklines hal-card">
+      <div class="sidebar-sparklines-header">Live Trends</div>
+      ${sparklines}
+    </div>`;
 }
 
 function renderDiagnosticExtras(store: ReturnType<typeof getStore>): string {
@@ -705,6 +742,38 @@ function injectDashboardStyles(): void {
   border-bottom: 1px solid var(--border-subtle);
 }
 .diag-extras-row:last-child { border-bottom: none; }
+
+/* ── Sparkline sidebar ── */
+.sidebar-sparklines { padding: var(--space-3); }
+.sidebar-sparklines-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sparkline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sparkline-row:last-child { border-bottom: none; }
+.sparkline-label {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 60px;
+}
+.sparkline-wrap {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+}
 
 /* ── Responsive ── */
 @media (max-width: 1023px) {

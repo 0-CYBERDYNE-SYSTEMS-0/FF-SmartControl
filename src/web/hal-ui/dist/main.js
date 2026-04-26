@@ -178,314 +178,665 @@
     }
   });
 
-  // src/web/hal-ui/components/VegaChart.ts
-  var VegaChart_exports = {};
-  __export(VegaChart_exports, {
-    renderVegaAreaCard: () => renderVegaAreaCard,
-    renderVegaBarCard: () => renderVegaBarCard,
-    renderVegaHeroChart: () => renderVegaHeroChart,
-    renderVegaLineCard: () => renderVegaLineCard,
-    renderVegaSparkline: () => renderVegaSparkline
+  // src/web/hal-ui/components/ChartKit.ts
+  var ChartKit_exports = {};
+  __export(ChartKit_exports, {
+    injectChartKitStyles: () => injectChartKitStyles,
+    monotoneCubicPath: () => monotoneCubicPath,
+    renderAreaCard: () => renderAreaCard,
+    renderBarCard: () => renderBarCard,
+    renderBoxPlot: () => renderBoxPlot,
+    renderBulletChart: () => renderBulletChart,
+    renderDecisionMarkers: () => renderDecisionMarkers,
+    renderDualAxisCard: () => renderDualAxisCard,
+    renderHeatmap: () => renderHeatmap,
+    renderLineCard: () => renderLineCard,
+    renderOriginalAreaChart: () => renderOriginalAreaChart,
+    renderSparkline: () => renderSparkline,
+    renderStepChart: () => renderStepChart
   });
-  function renderVegaHeroChart(layers, containerId, decisions = []) {
+  function escapeHtml3(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function escapeAttr(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function monotoneCubicPath(pts) {
+    if (pts.length < 2) return "";
+    if (pts.length === 2) {
+      return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} L${pts[1].x.toFixed(1)},${pts[1].y.toFixed(1)}`;
+    }
+    const n = pts.length;
+    const dx = [];
+    const dy = [];
+    for (let i = 0; i < n - 1; i++) {
+      dx.push(pts[i + 1].x - pts[i].x);
+      dy.push(pts[i + 1].y - pts[i].y);
+    }
+    const sec = [];
+    for (let i = 0; i < n - 1; i++) sec.push(dy[i] / dx[i]);
+    const m = new Array(n);
+    m[0] = sec[0];
+    m[n - 1] = sec[n - 2];
+    for (let i = 1; i < n - 1; i++) {
+      m[i] = sec[i - 1] * sec[i] <= 0 ? 0 : (sec[i - 1] + sec[i]) / 2;
+    }
+    for (let i = 0; i < n - 1; i++) {
+      if (Math.abs(sec[i]) < 1e-10) {
+        m[i] = 0;
+        m[i + 1] = 0;
+        continue;
+      }
+      const alpha = m[i] / sec[i];
+      const beta = m[i + 1] / sec[i];
+      const tau = alpha * alpha + beta * beta;
+      if (tau > 9) {
+        const t = 3 / Math.sqrt(tau);
+        m[i] = t * alpha * sec[i];
+        m[i + 1] = t * beta * sec[i];
+      }
+    }
+    const parts = [`M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`];
+    for (let i = 0; i < n - 1; i++) {
+      const x1 = pts[i].x + dx[i] / 3;
+      const y1 = pts[i].y + m[i] * dx[i] / 3;
+      const x2 = pts[i + 1].x - dx[i] / 3;
+      const y2 = pts[i + 1].y - m[i + 1] * dx[i] / 3;
+      parts.push(`C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`);
+    }
+    return parts.join(" ");
+  }
+  function renderDualAxisCard(layers, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container) return;
     if (layers.length === 0) {
-      container.innerHTML = '<div class="chart-empty">No sensor data</div>';
+      container.innerHTML = '<div class="chart-empty">No data</div>';
       return;
     }
-    const store = getStore();
-    const timeMap = /* @__PURE__ */ new Map();
-    const allMetrics = /* @__PURE__ */ new Set();
-    for (const layer of layers) {
-      allMetrics.add(layer.metric);
-      for (const reading of layer.data) {
-        const converted = formatSensorValue(reading.value, layer.metric, store.unitSystem);
-        const t = new Date(reading.timestamp).getTime();
-        if (!timeMap.has(t)) {
-          timeMap.set(t, { timestamp: reading.timestamp, time: t });
-        }
-        const row = timeMap.get(t);
-        const existing = row[layer.metric];
-        if (existing !== void 0) {
-          row[layer.metric] = (existing + converted.value) / 2;
-        } else {
-          row[layer.metric] = converted.value;
-        }
-      }
-    }
-    const values = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
-    const allTimes = values.map((v) => v.time);
+    const width = opts.width ?? 900;
+    const height = opts.height ?? 320;
+    const pad = { top: 24, right: 52, bottom: 36, left: 52 };
+    const allTimes = layers.flatMap((l) => l.data.map((d) => d.t));
     const tMin = Math.min(...allTimes);
     const tMax = Math.max(...allTimes);
-    const decisionPoints = decisions.filter((d) => {
+    const tSpan = Math.max(1, tMax - tMin);
+    const tx = (t) => pad.left + (t - tMin) / tSpan * (width - pad.left - pad.right);
+    const layerPaths = layers.map((layer) => {
+      const axisMin = layer.minAxis;
+      const axisMax = layer.maxAxis;
+      const vSpan = Math.max(1, axisMax - axisMin);
+      const points = layer.data.map((d) => {
+        const x = tx(d.t);
+        const y = pad.top + (axisMax - d.v) / vSpan * (height - pad.top - pad.bottom);
+        return { x, y, v: d.v };
+      });
+      const lineFn = opts.smooth ? monotoneCubicPath : straightLinePath;
+      const line = lineFn(points.map((p) => ({ x: p.x, y: p.y })));
+      const area = line ? `${line} L${points[points.length - 1].x.toFixed(1)},${height - pad.bottom} L${points[0].x.toFixed(1)},${height - pad.bottom} Z` : "";
+      return { layer, points, line, area, axisMin, axisMax, vSpan };
+    });
+    let gridLines = "";
+    if (opts.showGrid !== false) {
+      gridLines = Array.from({ length: 6 }, (_, i) => {
+        const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+        return `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid"/>`;
+      }).join("");
+    }
+    const timeSteps = 6;
+    const timeLabels = Array.from({ length: timeSteps + 1 }, (_, i) => {
+      const t = tMin + i / timeSteps * tSpan;
+      const x = tx(t);
+      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return `<text x="${x.toFixed(1)}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`;
+    }).join("");
+    const primary = layerPaths[0];
+    const leftAxisLabels = Array.from({ length: 6 }, (_, i) => {
+      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+      const v = primary.axisMax - i / 5 * primary.vSpan;
+      const prec = primary.layer.label === "CO\u2082" ? 0 : 1;
+      return `<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(prec)}</text>`;
+    }).join("");
+    let rightAxisLabels = "";
+    if (layerPaths.length > 1) {
+      const sec = layerPaths[1];
+      rightAxisLabels = Array.from({ length: 6 }, (_, i) => {
+        const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+        const v = sec.axisMax - i / 5 * sec.vSpan;
+        return `<text x="${width - pad.right + 8}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.color}">${v.toFixed(1)}</text>`;
+      }).join("");
+    }
+    const defs = layerPaths.map((lp, i) => `
+    <linearGradient id="ck-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.02"/>
+    </linearGradient>
+  `).join("");
+    const areas = layerPaths.map(
+      (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#ck-grad-${containerId}-${i})" stroke="none"/>` : ""
+    ).join("");
+    const lines = layerPaths.map(
+      (lp) => lp.line ? `<path d="${lp.line}" fill="none" stroke="${lp.layer.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : ""
+    ).join("");
+    const dots = layerPaths.map((lp) => {
+      const last = lp.points[lp.points.length - 1];
+      return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.color}" stroke="var(--bg-primary)" stroke-width="2"/>`;
+    }).join("");
+    const svg = `
+    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+      <defs>${defs}</defs>
+      ${gridLines}${areas}${lines}${dots}${leftAxisLabels}${rightAxisLabels}${timeLabels}
+    </svg>
+  `;
+    const latestValues = layers.map((l) => {
+      const last = l.data[l.data.length - 1];
+      const prev = l.data[l.data.length - 2];
+      const delta = prev ? (last.v - prev.v) / Math.abs(prev.v) * 100 : 0;
+      const values = l.data.map((d) => d.v);
+      return {
+        ...l,
+        current: last.v,
+        delta,
+        min: Math.min(...values),
+        max: Math.max(...values),
+        avg: values.reduce((a, b) => a + b, 0) / values.length
+      };
+    });
+    const primaryMetric = latestValues[0];
+    const kpiVal = `${primaryMetric.current.toFixed(1)}${primaryMetric.unit}`;
+    const kpiDelta = `${primaryMetric.delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(primaryMetric.delta).toFixed(1)}%`;
+    let statsHtml = "";
+    if (opts.showStats !== false) {
+      statsHtml = `<div class="ck-stats">` + latestValues.map((l) => `
+        <div class="ck-stat-metric">
+          <span class="ck-stat-label" style="color:${l.color}">${escapeHtml3(l.label)}</span>
+          <span class="ck-stat-current" style="color:${l.color}">${l.current.toFixed(1)}${l.unit}</span>
+        </div>
+        <div class="ck-stat-row">
+          <div class="ck-stat-item"><label>Min</label><strong>${l.min.toFixed(1)}${l.unit}</strong></div>
+          <div class="ck-stat-item"><label>Avg</label><strong>${l.avg.toFixed(1)}${l.unit}</strong></div>
+          <div class="ck-stat-item"><label>Max</label><strong>${l.max.toFixed(1)}${l.unit}</strong></div>
+        </div>
+      `).join("") + `</div>`;
+    }
+    const titleHtml = opts.title ? `<div class="ck-head">
+         <div>
+           <div class="ck-title">${escapeHtml3(opts.title)}</div>
+           ${opts.subtitle ? `<div class="ck-subtitle">${escapeHtml3(opts.subtitle)}</div>` : ""}
+           ${opts.deviceName ? `<div class="ck-device">${escapeHtml3(opts.deviceName)}</div>` : ""}
+         </div>
+         <div class="ck-kpi">
+           <div class="ck-kpi-val" style="color:${primaryMetric.color}">${kpiVal}</div>
+           <div class="ck-kpi-delta">${kpiDelta}</div>
+         </div>
+       </div>` : "";
+    const footHtml = `<div class="ck-foot">${layers[0].data.length} readings</div>`;
+    container.innerHTML = `${titleHtml}<div class="ck-chart">${svg}</div>${statsHtml}${footHtml}`;
+  }
+  function straightLinePath(pts) {
+    if (pts.length < 2) return "";
+    return pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  }
+  function renderOriginalAreaChart(data, containerId, opts = {}) {
+    const container = document.getElementById(containerId);
+    if (!container || data.length < 2) return;
+    const color = opts.color ?? "#6DFF9A";
+    const W = opts.width ?? (container.clientWidth || 900);
+    const H = opts.height ?? 240;
+    const p = { t: 24, r: 24, b: 34, l: 54 };
+    const vals = data.map((d) => d.value);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const span = max - min || 1;
+    const x = (i) => p.l + i / (vals.length - 1) * (W - p.l - p.r);
+    const y = (v) => p.t + (max - v) / span * (H - p.t - p.b);
+    const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    const area = `${p.l},${H - p.b} ${pts} ${W - p.r},${H - p.b}`;
+    const grids = [0, 0.25, 0.5, 0.75, 1].map((s) => {
+      const gy = p.t + s * (H - p.t - p.b);
+      const lv = (max - s * span).toFixed(1);
+      return `<line x1="${p.l}" y1="${gy}" x2="${W - p.r}" y2="${gy}" class="chart-grid"/><text x="${p.l - 8}" y="${gy + 4}" class="chart-label" text-anchor="end">${lv}</text>`;
+    }).join("");
+    const lx = x(vals.length - 1).toFixed(1);
+    const ly = y(vals[vals.length - 1]).toFixed(1);
+    const t0 = new Date(data[0].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    container.innerHTML = `
+    <svg class="og-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+      ${grids}
+      <polygon points="${area}" fill="color-mix(in srgb, ${color} 16%, transparent)"/>
+      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${lx}" cy="${ly}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="2"/>
+      <text x="${p.l}" y="${H - 10}" class="chart-label">${t0}</text>
+      <text x="${W - p.r}" y="${H - 10}" class="chart-label" text-anchor="end">${t1}</text>
+      <text x="${W - p.r}" y="22" fill="${color}" font-size="18" font-weight="700" font-family="var(--font-mono)" text-anchor="end">${vals[vals.length - 1].toFixed(2)}</text>
+    </svg>
+  `;
+  }
+  function renderAreaCard(data, metricKey, containerId, title) {
+    const container = document.getElementById(containerId);
+    if (!container || data.length < 2) return;
+    const store = getStore();
+    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
+    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const unit = latest.unit || cfg.unit;
+    const w = 340, h = 120;
+    const pad = { t: 8, r: 8, b: 20, l: 32 };
+    const times = data.map((d) => new Date(d.timestamp).getTime());
+    const tMin = Math.min(...times), tMax = Math.max(...times);
+    const tSpan = Math.max(1, tMax - tMin);
+    const tx = (t) => pad.l + (t - tMin) / tSpan * (w - pad.l - pad.r);
+    let axisMin = cfg.minAxis, axisMax = cfg.maxAxis;
+    if (metricKey === "temperature" && store.unitSystem === "imperial") {
+      axisMin = axisMin * 9 / 5 + 32;
+      axisMax = axisMax * 9 / 5 + 32;
+    }
+    const vSpan = Math.max(1, axisMax - axisMin);
+    const points = data.map((d) => {
+      const v = formatSensorValue(d.value, metricKey, store.unitSystem).value;
+      return { x: tx(new Date(d.timestamp).getTime()), y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b) };
+    });
+    const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+    const area = `${line} L${points[points.length - 1].x.toFixed(1)},${h - pad.b} L${points[0].x.toFixed(1)},${h - pad.b} Z`;
+    container.innerHTML = `
+    <div class="viz-card-header">
+      <span class="viz-card-title">${escapeHtml3(title)}</span>
+      <span class="viz-card-value text-mono" style="color:${cfg.color}">${latest.value.toFixed(1)}${unit}</span>
+    </div>
+    <svg viewBox="0 0 ${w} ${h}" class="viz-svg">
+      <defs><linearGradient id="area-grad-${metricKey}" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="${cfg.color}" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="${cfg.color}" stop-opacity="0.02"/>
+      </linearGradient></defs>
+      <path d="${area}" fill="url(#area-grad-${metricKey})" stroke="none"/>
+      <path d="${line}" fill="none" stroke="${cfg.color}" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>
+  `;
+  }
+  function renderLineCard(data, metricKey, containerId, title) {
+    const container = document.getElementById(containerId);
+    if (!container || data.length < 2) return;
+    const store = getStore();
+    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
+    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const unit = latest.unit || cfg.unit;
+    const w = 340, h = 120;
+    const pad = { t: 8, r: 8, b: 20, l: 32 };
+    const times = data.map((d) => new Date(d.timestamp).getTime());
+    const tMin = Math.min(...times), tMax = Math.max(...times);
+    const tSpan = Math.max(1, tMax - tMin);
+    const tx = (t) => pad.l + (t - tMin) / tSpan * (w - pad.l - pad.r);
+    const axisMin = cfg.minAxis, axisMax = cfg.maxAxis;
+    const vSpan = Math.max(1, axisMax - axisMin);
+    const pts = data.map((d) => {
+      const v = formatSensorValue(d.value, metricKey, store.unitSystem).value;
+      return `${tx(new Date(d.timestamp).getTime()).toFixed(1)},${(pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b)).toFixed(1)}`;
+    }).join(" ");
+    container.innerHTML = `
+    <div class="viz-card-header">
+      <span class="viz-card-title">${escapeHtml3(title)}</span>
+      <span class="viz-card-value text-mono" style="color:${cfg.color}">${latest.value.toFixed(0)}${unit}</span>
+    </div>
+    <svg viewBox="0 0 ${w} ${h}" class="viz-svg">
+      <polyline points="${pts}" fill="none" stroke="${cfg.color}" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>
+  `;
+  }
+  function renderBarCard(data, metricKey, containerId, title) {
+    const container = document.getElementById(containerId);
+    if (!container || data.length < 2) return;
+    const store = getStore();
+    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
+    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const unit = latest.unit || cfg.unit;
+    const w = 340, h = 120;
+    const pad = { t: 8, r: 8, b: 20, l: 32 };
+    const bars = Math.min(data.length, 24);
+    const step = (w - pad.l - pad.r) / bars;
+    const barW = step * 0.7;
+    const axisMin = cfg.minAxis, axisMax = cfg.maxAxis;
+    const vSpan = Math.max(1, axisMax - axisMin);
+    const rects = data.slice(-bars).map((d, i) => {
+      const v = formatSensorValue(d.value, metricKey, store.unitSystem).value;
+      const bh = (v - axisMin) / vSpan * (h - pad.t - pad.b);
+      const x = pad.l + i * step + (step - barW) / 2;
+      const y = h - pad.b - bh;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${cfg.color}" opacity="0.7" rx="2"/>`;
+    }).join("");
+    container.innerHTML = `
+    <div class="viz-card-header">
+      <span class="viz-card-title">${escapeHtml3(title)}</span>
+      <span class="viz-card-value text-mono" style="color:${cfg.color}">${latest.value.toFixed(0)}${unit}</span>
+    </div>
+    <svg viewBox="0 0 ${w} ${h}" class="viz-svg">${rects}</svg>
+  `;
+  }
+  function renderSparkline(data, color, width = 80, height = 24) {
+    if (data.length < 2) return '<span class="text-xs text-secondary">--</span>';
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const span = Math.max(1e-3, max - min);
+    const pad = 2;
+    const step = (width - pad * 2) / (data.length - 1);
+    const points = data.map((v, i) => {
+      const x = pad + i * step;
+      const y = pad + (max - v) / span * (height - pad * 2);
+      return { x, y };
+    });
+    const smoothPath = monotoneCubicPath(points);
+    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" class="sparkline-svg">
+    <path d="${smoothPath}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+  }
+  function renderStepChart(data, containerId, opts = {}) {
+    const container = document.getElementById(containerId);
+    if (!container || data.length < 2) return;
+    const color = opts.color ?? "#FACC15";
+    const W = opts.width ?? (container.clientWidth || 340);
+    const H = opts.height ?? 100;
+    const p = { t: 8, r: 8, b: 20, l: 32 };
+    const times = data.map((d) => new Date(d.ts).getTime());
+    const tMin = Math.min(...times), tMax = Math.max(...times);
+    const tSpan = Math.max(1, tMax - tMin);
+    const tx = (t) => p.l + (t - tMin) / tSpan * (W - p.l - p.r);
+    let path = "";
+    for (let i = 0; i < data.length; i++) {
+      const x = tx(new Date(data[i].ts).getTime());
+      const y = p.t + (1 - data[i].value) * (H - p.t - p.b);
+      if (i === 0) {
+        path = `M${x.toFixed(1)},${y.toFixed(1)}`;
+      } else {
+        const prevX = tx(new Date(data[i - 1].ts).getTime());
+        const prevY = p.t + (1 - data[i - 1].value) * (H - p.t - p.b);
+        path += ` L${x.toFixed(1)},${prevY.toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)}`;
+      }
+    }
+    container.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" class="viz-svg">
+      <path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
+    </svg>
+  `;
+  }
+  function renderBulletChart(metrics2, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container || metrics2.length === 0) return;
+    const W = container.clientWidth || 340;
+    const H = metrics2.length * 40 + 20;
+    const trackH = 20;
+    const pad = { t: 10, r: 16, b: 10, l: 80 };
+    const rows = metrics2.map((m, i) => {
+      const y = pad.t + i * 40 + 10;
+      const pct = (v) => Math.max(0, Math.min(1, (v - m.min) / (m.max - m.min)));
+      const curPct = pct(m.current);
+      const tgtPct = pct(m.target);
+      const barW = W - pad.l - pad.r;
+      return `
+      <text x="${pad.l - 8}" y="${y + 14}" text-anchor="end" fill="#9CB8AA" font-size="11" font-family="var(--font-mono)">${escapeHtml3(m.label)}</text>
+      <rect x="${pad.l}" y="${y}" width="${barW}" height="${trackH}" fill="#182420" rx="3"/>
+      <rect x="${pad.l}" y="${y + 4}" width="${curPct * barW}" height="${trackH - 8}" fill="${m.color}" opacity="0.6" rx="2"/>
+      <line x1="${pad.l + tgtPct * barW}" y1="${y - 2}" x2="${pad.l + tgtPct * barW}" y2="${y + trackH + 2}" stroke="#F59E0B" stroke-width="3"/>
+      <text x="${pad.l + barW + 8}" y="${y + 14}" fill="#E8FFF2" font-size="11" font-family="var(--font-mono)">${m.current.toFixed(1)}${m.unit}</text>
+    `;
+    }).join("");
+    container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="viz-svg">${rows}</svg>`;
+  }
+  function renderBoxPlot(days, containerId, opts = {}) {
+    const container = document.getElementById(containerId);
+    if (!container || days.length === 0) return;
+    const color = opts.color ?? "#F59E0B";
+    const W = opts.width ?? (container.clientWidth || 600);
+    const H = opts.height ?? 180;
+    const pad = { t: 20, r: 16, b: 40, l: 40 };
+    const allValues = days.flatMap((d) => [d.min, d.max]);
+    const vMin = Math.min(...allValues);
+    const vMax = Math.max(...allValues);
+    const vSpan = Math.max(1e-3, vMax - vMin);
+    const barW = (W - pad.l - pad.r) / days.length * 0.6;
+    const step = (W - pad.l - pad.r) / days.length;
+    const vy = (v) => pad.t + (vMax - v) / vSpan * (H - pad.t - pad.b);
+    const elements = days.map((d, i) => {
+      const cx = pad.l + i * step + step / 2;
+      const yMin = vy(d.max);
+      const yMax = vy(d.min);
+      const yQ1 = vy(d.q3);
+      const yQ3 = vy(d.q1);
+      const yMed = vy(d.median);
+      return `
+      <line x1="${cx}" y1="${yMin}" x2="${cx}" y2="${yMax}" stroke="#9CB8AA" stroke-width="1"/>
+      <rect x="${cx - barW / 2}" y="${yQ1}" width="${barW}" height="${yQ3 - yQ1}" fill="${color}" opacity="0.55" rx="2"/>
+      <line x1="${cx - barW / 2}" y1="${yMed}" x2="${cx + barW / 2}" y2="${yMed}" stroke="#fff" stroke-width="2"/>
+      <text x="${cx}" y="${H - 10}" text-anchor="middle" fill="#9CB8AA" font-size="9" font-family="var(--font-mono)">${escapeHtml3(d.day)}</text>
+    `;
+    }).join("");
+    const grids = [0, 0.25, 0.5, 0.75, 1].map((s) => {
+      const y = pad.t + s * (H - pad.t - pad.b);
+      const v = (vMax - s * vSpan).toFixed(1);
+      return `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#182420" stroke-width="1"/><text x="${pad.l - 6}" y="${y + 3}" text-anchor="end" fill="#9CB8AA" font-size="9" font-family="var(--font-mono)">${v}</text>`;
+    }).join("");
+    container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="viz-svg">${grids}${elements}</svg>`;
+  }
+  function renderHeatmap(cells, containerId, opts = {}) {
+    const container = document.getElementById(containerId);
+    if (!container || cells.length === 0) return;
+    const W = opts.width ?? (container.clientWidth || 600);
+    const H = opts.height ?? 100;
+    const colorRange = opts.colorRange ?? ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B"];
+    const dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    const cellW = (W - 40) / 24;
+    const cellH = (H - 30) / 7;
+    const allValues = cells.map((c) => c.value);
+    const vMin = Math.min(...allValues);
+    const vMax = Math.max(...allValues);
+    const vSpan = Math.max(1e-3, vMax - vMin);
+    const colorFor = (v) => {
+      const t = (v - vMin) / vSpan;
+      const idx = Math.min(colorRange.length - 1, Math.floor(t * colorRange.length));
+      return colorRange[idx];
+    };
+    const rects = cells.map((c) => {
+      const col = c.hour;
+      const row = dows.indexOf(c.dow);
+      if (row < 0) return "";
+      const x = 30 + col * cellW;
+      const y = 20 + row * cellH;
+      return `<rect x="${x}" y="${y}" width="${cellW - 1}" height="${cellH - 1}" fill="${colorFor(c.value)}" rx="1"/>`;
+    }).join("");
+    const hourLabels = hours.filter((h) => h % 4 === 0).map((h) => {
+      const x = 30 + h * cellW + cellW / 2;
+      return `<text x="${x}" y="${H - 4}" text-anchor="middle" fill="#9CB8AA" font-size="8">${h}</text>`;
+    }).join("");
+    const dayLabels = dows.map((d, i) => {
+      const y = 20 + i * cellH + cellH / 2 + 3;
+      return `<text x="26" y="${y}" text-anchor="end" fill="#9CB8AA" font-size="8">${d}</text>`;
+    }).join("");
+    container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="viz-svg">${rects}${hourLabels}${dayLabels}</svg>`;
+  }
+  function renderDecisionMarkers(decisions, tMin, tMax, tx, yTop, yBottom) {
+    if (!decisions.length) return "";
+    return decisions.filter((d) => {
       const t = new Date(d.timestamp).getTime();
       return t >= tMin && t <= tMax;
-    }).map((d) => ({
-      timestamp: d.timestamp,
-      decision: d.decision.slice(0, 40),
-      status: d.status || "pending",
-      confidence: d.confidence ?? 0.5
-    }));
-    const metricList = [...allMetrics];
-    const colorDomain = metricList;
-    const colorRange = metricList.map((m) => metricConfig[m]?.color || "#888");
-    const foldFields = metricList;
-    const spec = {
-      $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-      width: "container",
-      height: 280,
-      background: "transparent",
-      padding: { left: 10, right: 10, top: 10, bottom: 10 },
-      data: { values },
-      transform: [
-        { fold: foldFields, as: ["metric", "value"] },
-        { filter: "datum.value != null" }
-      ],
-      layer: [
-        // Stacked area — solid fills, no lines between layers
-        {
-          mark: { type: "area", opacity: 0.85, line: false },
-          encoding: {
-            x: {
-              field: "time",
-              type: "temporal",
-              title: null,
-              axis: {
-                grid: false,
-                labelColor: "#484F58",
-                tickColor: "#30363D",
-                format: "%H:%M",
-                domain: false
-              }
-            },
-            y: {
-              field: "value",
-              type: "quantitative",
-              title: null,
-              stack: "zero",
-              axis: {
-                grid: true,
-                gridColor: "#30363D",
-                gridDash: [2, 3],
-                labelColor: "#484F58",
-                tickColor: "#30363D",
-                domain: false
-              }
-            },
-            color: {
-              field: "metric",
-              type: "nominal",
-              scale: { domain: colorDomain, range: colorRange },
-              legend: { orient: "bottom", labelColor: "#8B949E", title: null, symbolType: "circle" }
-            },
-            order: { field: "metric", type: "nominal" }
-          }
-        },
-        // Top line stroke for each layer (subtle, not dominant)
-        {
-          mark: { type: "line", strokeWidth: 1, interpolate: "monotone" },
-          encoding: {
-            x: { field: "time", type: "temporal", title: null, axis: null },
-            y: { field: "value", type: "quantitative", title: null, stack: "zero", axis: null },
-            color: { field: "metric", type: "nominal", scale: { domain: colorDomain, range: colorRange }, legend: null },
-            order: { field: "metric", type: "nominal" }
-          }
-        },
-        // Decision markers — small dots on top, NO vertical rules
-        ...decisionPoints.length > 0 ? [{
-          data: { values: decisionPoints },
-          mark: { type: "point", shape: "circle", size: 60, filled: true, opacity: 0.9, stroke: "#0D1117", strokeWidth: 2 },
-          encoding: {
-            x: { field: "timestamp", type: "temporal" },
-            y: { datum: 0, type: "quantitative" },
-            color: {
-              field: "status",
-              type: "nominal",
-              scale: {
-                domain: ["success", "failure", "pending"],
-                range: [DECISION_COLORS.success, DECISION_COLORS.failure, DECISION_COLORS.pending]
-              },
-              legend: null
-            },
-            tooltip: [
-              { field: "decision", type: "nominal" },
-              { field: "status", type: "nominal" },
-              { field: "confidence", type: "quantitative", format: ".0%" }
-            ]
-          }
-        }] : []
-      ],
-      config: {
-        view: { stroke: "transparent" },
-        axis: { domain: false },
-        legend: { labelFont: "Inter, sans-serif", labelFontSize: 11 },
-        area: { line: false }
-      }
-    };
-    embedVega(container, spec, containerId);
+    }).map((d) => {
+      const x = tx(new Date(d.timestamp).getTime()).toFixed(1);
+      const color = DECISION_COLORS[d.status || "pending"] ?? DECISION_COLORS.pending;
+      const opacity = (0.35 + (d.confidence ?? 0.5) * 0.65).toFixed(2);
+      const label = escapeAttr(d.decision.slice(0, 60));
+      const conf = ((d.confidence ?? 0) * 100).toFixed(0);
+      return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${yBottom}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="${opacity}"><title>${label} (${conf}%)</title></line><circle cx="${x}" cy="${yTop + 10}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="1.5" opacity="${opacity}"><title>${label}</title></circle>`;
+    }).join("");
   }
-  function renderVegaAreaCard(data, metricKey, containerId, title) {
-    const container = document.getElementById(containerId);
-    if (!container || data.length < 2) return;
-    const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "" };
-    const values = data.map((d) => {
-      const converted = formatSensorValue(d.value, metricKey, store.unitSystem);
-      return { time: new Date(d.timestamp).getTime(), value: converted.value };
-    });
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
-    const spec = {
-      $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-      width: "container",
-      height: 100,
-      background: "transparent",
-      padding: 0,
-      data: { values },
-      mark: { type: "area", line: { color: cfg.color, strokeWidth: 1.5 }, color: cfg.color, opacity: 0.2, interpolate: "monotone" },
-      encoding: {
-        x: { field: "time", type: "temporal", title: null, axis: null },
-        y: { field: "value", type: "quantitative", title: null, axis: null }
-      },
-      config: { view: { stroke: "transparent" } }
-    };
-    container.innerHTML = `
-    <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml3(title)}</span>
-      <span class="viz-card-value text-mono" style="color:${cfg.color}">${latest.value.toFixed(1)}${latest.unit || cfg.unit}</span>
-    </div>
-    <div id="${containerId}-chart"></div>
-  `;
-    const chartEl = document.getElementById(`${containerId}-chart`);
-    if (chartEl) embedVega(chartEl, spec, containerId);
-  }
-  function renderVegaLineCard(data, metricKey, containerId, title) {
-    const container = document.getElementById(containerId);
-    if (!container || data.length < 2) return;
-    const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "" };
-    const values = data.map((d) => {
-      const converted = formatSensorValue(d.value, metricKey, store.unitSystem);
-      return { time: new Date(d.timestamp).getTime(), value: converted.value };
-    });
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
-    const spec = {
-      $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-      width: "container",
-      height: 100,
-      background: "transparent",
-      padding: 0,
-      data: { values },
-      mark: { type: "line", color: cfg.color, strokeWidth: 1.5, interpolate: "monotone" },
-      encoding: {
-        x: { field: "time", type: "temporal", title: null, axis: null },
-        y: { field: "value", type: "quantitative", title: null, axis: null }
-      },
-      config: { view: { stroke: "transparent" } }
-    };
-    container.innerHTML = `
-    <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml3(title)}</span>
-      <span class="viz-card-value text-mono" style="color:${cfg.color}">${latest.value.toFixed(0)}${latest.unit || cfg.unit}</span>
-    </div>
-    <div id="${containerId}-chart"></div>
-  `;
-    const chartEl = document.getElementById(`${containerId}-chart`);
-    if (chartEl) embedVega(chartEl, spec, containerId);
-  }
-  function renderVegaBarCard(data, metricKey, containerId, title) {
-    const container = document.getElementById(containerId);
-    if (!container || data.length < 2) return;
-    const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "" };
-    const values = data.slice(-24).map((d, i) => {
-      const converted = formatSensorValue(d.value, metricKey, store.unitSystem);
-      return { bucket: i, value: converted.value };
-    });
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
-    const spec = {
-      $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-      width: "container",
-      height: 100,
-      background: "transparent",
-      padding: 0,
-      data: { values },
-      mark: { type: "bar", color: cfg.color, opacity: 0.7, cornerRadiusEnd: 2 },
-      encoding: {
-        x: { field: "bucket", type: "ordinal", title: null, axis: null },
-        y: { field: "value", type: "quantitative", title: null, axis: null }
-      },
-      config: { view: { stroke: "transparent" } }
-    };
-    container.innerHTML = `
-    <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml3(title)}</span>
-      <span class="viz-card-value text-mono" style="color:${cfg.color}">${latest.value.toFixed(0)}${latest.unit || cfg.unit}</span>
-    </div>
-    <div id="${containerId}-chart"></div>
-  `;
-    const chartEl = document.getElementById(`${containerId}-chart`);
-    if (chartEl) embedVega(chartEl, spec, containerId);
-  }
-  function renderVegaSparkline(data, color, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container || data.length < 2) {
-      if (container) container.innerHTML = '<span class="text-xs text-secondary">--</span>';
-      return;
-    }
-    const values = data.map((v, i) => ({ x: i, y: v }));
-    const spec = {
-      $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-      width: 80,
-      height: 24,
-      background: "transparent",
-      padding: 0,
-      data: { values },
-      mark: { type: "line", color, strokeWidth: 1.5, interpolate: "monotone" },
-      encoding: {
-        x: { field: "x", type: "quantitative", title: null, axis: null },
-        y: { field: "y", type: "quantitative", title: null, axis: null }
-      },
-      config: { view: { stroke: "transparent" } }
-    };
-    embedVega(container, spec, containerId);
-  }
-  function embedVega(el, spec, id) {
-    const embedId = `vega-${id}`;
-    el.id = embedId;
-    if (typeof window.vegaEmbed === "undefined") {
-      el.innerHTML = '<div class="chart-empty">Loading chart library...</div>';
-      setTimeout(() => embedVega(el, spec, id), 500);
-      return;
-    }
-    const vegaEmbed = window.vegaEmbed;
-    void vegaEmbed(`#${embedId}`, spec, {
-      actions: false,
-      renderer: "svg",
-      logLevel: 0
-    }).catch((err) => {
-      console.error("Vega embed failed:", err);
-      el.innerHTML = '<div class="chart-empty">Chart failed to render</div>';
-    });
-  }
-  function escapeHtml3(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  function injectChartKitStyles() {
+    if (document.getElementById("hal-chartkit-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-chartkit-styles";
+    style.textContent = `
+/* \u2500\u2500 ChartKit base \u2500\u2500 */
+.ck-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+.ck-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.ck-subtitle {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+.ck-device {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+.ck-kpi {
+  text-align: right;
+}
+.ck-kpi-val {
+  font-size: 26px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+.ck-kpi-delta {
+  font-size: 11px;
+  color: var(--success);
+  margin-top: 3px;
+}
+.ck-chart {
+  width: 100%;
+}
+.ck-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.ck-stats {
+  border-top: 1px solid var(--border);
+  margin-top: 14px;
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ck-stat-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.ck-stat-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.ck-stat-current {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+.ck-stat-row {
+  display: flex;
+  gap: 40px;
+}
+.ck-stat-item label {
+  display: block;
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.ck-stat-item strong {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+.ck-foot {
+  font-size: 10px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+/* \u2500\u2500 SVG chart elements \u2500\u2500 */
+.hero-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.og-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.viz-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chart-grid {
+  stroke: color-mix(in srgb, var(--text-tertiary) 30%, var(--border));
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.chart-label {
+  fill: var(--text-tertiary);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+.sparkline-svg {
+  display: inline-block;
+  vertical-align: middle;
+}
+.chart-empty {
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* \u2500\u2500 Viz card headers \u2500\u2500 */
+.viz-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+.viz-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.viz-card-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+`;
+    document.head.appendChild(style);
   }
   var metricConfig, DECISION_COLORS;
-  var init_VegaChart = __esm({
-    "src/web/hal-ui/components/VegaChart.ts"() {
+  var init_ChartKit = __esm({
+    "src/web/hal-ui/components/ChartKit.ts"() {
       "use strict";
       init_store();
       metricConfig = {
-        temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C" },
-        humidity: { label: "Humidity", color: "#38BDF8", unit: "%" },
-        soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%" },
-        water_level: { label: "Water Level", color: "#2563EB", unit: "%" },
-        ph: { label: "pH", color: "#A855F7", unit: "" },
-        co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm" },
-        light: { label: "Light", color: "#FACC15", unit: "lux" },
-        weight: { label: "Weight", color: "#94A3B8", unit: "kg" },
-        vpd: { label: "VPD", color: "#A855F7", unit: "kPa" }
+        temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
+        humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
+        soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
+        water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
+        ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
+        co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
+        light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
+        weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
+        vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
       };
       DECISION_COLORS = {
         success: "#6DFF9A",
@@ -1563,17 +1914,17 @@
   };
 
   // src/web/hal-ui/components/HeroChart.ts
-  init_VegaChart();
+  init_ChartKit();
   var metricConfig2 = {
-    temperature: { label: "Temperature", color: "#F59E0B" },
-    humidity: { label: "Humidity", color: "#38BDF8" },
-    soil_moisture: { label: "Soil Moisture", color: "#EF4444" },
-    water_level: { label: "Water Level", color: "#2563EB" },
-    ph: { label: "pH", color: "#A855F7" },
-    co2: { label: "CO\u2082", color: "#22C55E" },
-    light: { label: "Light", color: "#FACC15" },
-    weight: { label: "Weight", color: "#94A3B8" },
-    vpd: { label: "VPD", color: "#A855F7" }
+    temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
+    humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
+    soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
+    water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
+    ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
+    co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
+    light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
+    weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
+    vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
   };
   async function loadHeroChartData() {
     const store = (await Promise.resolve().then(() => (init_store(), store_exports))).getStore();
@@ -1600,15 +1951,35 @@
     return { layers, decisions };
   }
   function renderHeroChart(layers, containerId, decisions = []) {
-    renderVegaHeroChart(layers, containerId, decisions);
-  }
-  function renderSparkline(data, color, _width = 80, _height = 24) {
-    if (data.length < 2) return '<span class="text-xs text-secondary">--</span>';
-    const id = `spark-${Math.random().toString(36).slice(2, 9)}`;
-    setTimeout(() => renderVegaSparkline(data, color, id), 0);
-    return `<span id="${id}" class="sparkline-svg" style="display:inline-block;width:80px;height:24px;"></span>`;
+    if (layers.length === 0) {
+      const container = document.getElementById(containerId);
+      if (container) container.innerHTML = '<div class="chart-empty">No sensor data</div>';
+      return;
+    }
+    const dualLayers = layers.map((l) => {
+      const cfg = metricConfig2[l.metric] || { label: l.metric, color: l.color, unit: "", minAxis: 0, maxAxis: 100 };
+      return {
+        label: cfg.label,
+        color: cfg.color,
+        minAxis: cfg.minAxis,
+        maxAxis: cfg.maxAxis,
+        unit: cfg.unit,
+        data: l.data.map((d) => ({ t: new Date(d.timestamp).getTime(), v: d.value }))
+      };
+    });
+    const title = dualLayers.map((l) => l.label).join(" + ");
+    const firstDevice = layers[0]?.deviceName || "";
+    renderDualAxisCard(dualLayers, containerId, {
+      title,
+      subtitle: "24h Overview",
+      deviceName: firstDevice,
+      showStats: true,
+      showGrid: true,
+      smooth: false
+    });
   }
   function injectHeroChartStyles() {
+    injectChartKitStyles();
     if (document.getElementById("hal-hero-chart-styles")) return;
     const style = document.createElement("style");
     style.id = "hal-hero-chart-styles";
@@ -1624,14 +1995,6 @@
   width: 100%;
   min-height: 280px;
 }
-.hero-chart .vega-embed {
-  width: 100% !important;
-}
-.hero-chart .vega-embed svg {
-  display: block;
-  width: 100%;
-  height: auto;
-}
 .chart-empty {
   min-height: 280px;
   display: flex;
@@ -1639,9 +2002,6 @@
   justify-content: center;
   color: var(--text-secondary);
   font-size: 13px;
-}
-.sparkline-svg {
-  display: inline-block;
 }
 `;
     document.head.appendChild(style);
@@ -1915,6 +2275,9 @@
 `;
     document.head.appendChild(style);
   }
+
+  // src/web/hal-ui/views/Dashboard.ts
+  init_ChartKit();
 
   // src/web/hal-ui/components/OperatorPanels.ts
   init_store();
@@ -2534,6 +2897,7 @@
     injectLatestDecisionStyles();
     injectKpiStyles();
     injectHeroChartStyles();
+    injectChartKitStyles();
     if (mode === "CALM") {
       await renderCalmDashboard(container);
     } else if (mode === "OPERATOR") {
@@ -2574,6 +2938,7 @@
 
       <div class="dash-sidebar calm-sidebar">
         ${renderSystemStatus()}
+        ${renderSparklineSidebar()}
       </div>
     </div>
   `;
@@ -2718,6 +3083,37 @@
       </div>
     `;
     }).join("");
+  }
+  function renderSparklineSidebar() {
+    const store = getStore();
+    const sensors = store.devices.filter((d) => d.type === "sensor");
+    const metrics2 = ["temperature", "humidity", "co2"];
+    const metricColors = {
+      temperature: "#F59E0B",
+      humidity: "#38BDF8",
+      co2: "#22C55E"
+    };
+    const sparklines = metrics2.map((m) => {
+      const values = [];
+      for (const s of sensors) {
+        const snap = store.sensors[s.id];
+        if (snap?.[m]?.value != null) values.push(snap[m].value);
+      }
+      const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+      const trend = Array.from({ length: 20 }, (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1));
+      const spark = renderSparkline(trend, metricColors[m] || "#888", 120, 28);
+      const label = m.charAt(0).toUpperCase() + m.slice(1);
+      return `
+      <div class="sparkline-row">
+        <span class="sparkline-label" style="color:${metricColors[m]}">${label}</span>
+        <span class="sparkline-wrap">${spark}</span>
+      </div>`;
+    }).join("");
+    return `
+    <div class="sidebar-sparklines hal-card">
+      <div class="sidebar-sparklines-header">Live Trends</div>
+      ${sparklines}
+    </div>`;
   }
   function renderDiagnosticExtras(store) {
     const sensors = store.devices.filter((d) => d.type === "sensor");
@@ -3198,6 +3594,38 @@
 }
 .diag-extras-row:last-child { border-bottom: none; }
 
+/* \u2500\u2500 Sparkline sidebar \u2500\u2500 */
+.sidebar-sparklines { padding: var(--space-3); }
+.sidebar-sparklines-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sparkline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sparkline-row:last-child { border-bottom: none; }
+.sparkline-label {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 60px;
+}
+.sparkline-wrap {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* \u2500\u2500 Responsive \u2500\u2500 */
 @media (max-width: 1023px) {
   .dash-layout, .calm-layout, .diag-layout { grid-template-columns: 1fr; }
@@ -3220,9 +3648,11 @@
 
   // src/web/hal-ui/views/Devices.ts
   init_store();
+  init_ChartKit();
   async function renderDevices(container) {
     const store = getStore();
     injectDevicesStyles();
+    injectChartKitStyles();
     container.innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Devices</h1>
@@ -3249,6 +3679,37 @@
     </div>
   `;
     attachDevicesHandlers();
+    renderDeviceBulletCharts(store.devices);
+  }
+  function renderDeviceBulletCharts(devices) {
+    const sensors = devices.filter((d) => d.type === "sensor");
+    if (sensors.length === 0) return;
+    const store = getStore();
+    const metrics2 = [];
+    for (const s of sensors) {
+      const snap = store.sensors[s.id];
+      if (snap?.temperature) {
+        metrics2.push({
+          label: s.name,
+          current: snap.temperature.value,
+          target: 24,
+          min: 10,
+          max: 40,
+          color: "#F59E0B",
+          unit: "\xB0C"
+        });
+      }
+    }
+    if (metrics2.length === 0) return;
+    const firstSensor = sensors[0];
+    const card = document.querySelector(`[data-device-id="${firstSensor.id}"]`);
+    if (!card) return;
+    const bulletId = `bullet-${firstSensor.id}`;
+    const bulletDiv = document.createElement("div");
+    bulletDiv.id = bulletId;
+    bulletDiv.className = "device-bullet-chart";
+    card.appendChild(bulletDiv);
+    setTimeout(() => renderBulletChart(metrics2.slice(0, 3), bulletId), 0);
   }
   function renderDeviceCards(devices) {
     if (devices.length === 0) {
@@ -3407,6 +3868,11 @@
   border-top: 1px solid var(--border);
 }
 .col-span-3 { grid-column: 1 / -1; }
+.device-bullet-chart {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
 `;
     document.head.appendChild(style);
   }
@@ -3430,6 +3896,11 @@
     decisions: []
   };
   var loadSequence = 0;
+  var DECISION_COLORS2 = {
+    success: "#6DFF9A",
+    failure: "#FF5C6C",
+    pending: "#FFC857"
+  };
   async function renderSensors(container) {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
@@ -3610,19 +4081,135 @@
     }
     return { from: from.toISOString(), to: to.toISOString() };
   }
+  function escapeAttr2(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
   function renderHeroChart2(layers, decisions = []) {
-    const { renderVegaHeroChart: renderVegaHeroChart2 } = window.__vegaCache || {};
-    if (typeof renderVegaHeroChart2 === "function") {
-      renderVegaHeroChart2(layers, "hero-chart", decisions);
+    const container = document.getElementById("hero-chart");
+    const legend = document.getElementById("hero-legend");
+    if (!container) return;
+    if (layers.length === 0) {
+      container.textContent = "";
+      const empty = document.createElement("div");
+      empty.className = "chart-empty";
+      empty.textContent = "No data for selection";
+      container.appendChild(empty);
+      if (legend) legend.textContent = "";
       return;
     }
-    void Promise.resolve().then(() => (init_VegaChart(), VegaChart_exports)).then((m) => {
-      m.renderVegaHeroChart(
-        layers.map((l) => ({ deviceId: l.deviceId, deviceName: l.deviceName, metric: l.metric.key, color: l.metric.color, data: l.data })),
-        "hero-chart",
-        decisions
-      );
+    const store = getStore();
+    const width = 900;
+    const height = 320;
+    const pad = { top: 24, right: 24, bottom: 36, left: 52 };
+    const allTimes = layers.flatMap((l) => l.data.map((d) => new Date(d.timestamp).getTime()));
+    const tMin = Math.min(...allTimes);
+    const tMax = Math.max(...allTimes);
+    const tSpan = Math.max(1, tMax - tMin);
+    const tx = (t) => pad.left + (t - tMin) / tSpan * (width - pad.left - pad.right);
+    const layerPaths = layers.map((layer) => {
+      const cfg = layer.metric;
+      let axisMin = cfg.minAxis;
+      let axisMax = cfg.maxAxis;
+      if (cfg.key === "temperature" && store.unitSystem === "imperial") {
+        axisMin = axisMin * 9 / 5 + 32;
+        axisMax = axisMax * 9 / 5 + 32;
+      }
+      if (cfg.key === "weight" && store.unitSystem === "imperial") {
+        axisMin = axisMin * 2.20462;
+        axisMax = axisMax * 2.20462;
+      }
+      const vSpan = Math.max(1, axisMax - axisMin);
+      const points = layer.data.map((d) => {
+        const v = formatSensorValue(d.value, cfg.key, store.unitSystem).value;
+        const t = new Date(d.timestamp).getTime();
+        const x = tx(t);
+        const y = pad.top + (axisMax - v) / vSpan * (height - pad.top - pad.bottom);
+        return { x, y, v, t, raw: d };
+      });
+      const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const area = `${line} L${points[points.length - 1].x.toFixed(1)},${height - pad.bottom} L${points[0].x.toFixed(1)},${height - pad.bottom} Z`;
+      return { layer, points, line, area, axisMin, axisMax, vSpan };
     });
+    const gridLines = [];
+    for (let i = 0; i <= 5; i++) {
+      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+      gridLines.push(`<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid" />`);
+    }
+    const timeLabels = [];
+    const timeSteps = 6;
+    for (let i = 0; i <= timeSteps; i++) {
+      const t = tMin + i / timeSteps * tSpan;
+      const x = tx(t);
+      const label = formatTimeValue(new Date(t), store.timeFormat);
+      timeLabels.push(`<text x="${x}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`);
+    }
+    const primary = layerPaths[0];
+    const leftAxisLabels = [];
+    for (let i = 0; i <= 5; i++) {
+      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+      const v = primary.axisMax - i / 5 * primary.vSpan;
+      const precision = primary.layer.metric.key === "co2" ? 0 : 1;
+      leftAxisLabels.push(`<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(precision)}</text>`);
+    }
+    let rightAxisLabels = "";
+    if (layerPaths.length > 1 && layerPaths[1].layer.metric.key !== primary.layer.metric.key) {
+      const sec = layerPaths[1];
+      const labels = [];
+      for (let i = 0; i <= 5; i++) {
+        const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+        const v = sec.axisMax - i / 5 * sec.vSpan;
+        const precision = sec.layer.metric.key === "co2" ? 0 : 1;
+        labels.push(`<text x="${width - pad.right + 8}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.metric.color}">${v.toFixed(precision)}</text>`);
+      }
+      rightAxisLabels = labels.join("");
+    }
+    const defs = layerPaths.map((lp, i) => `
+    <linearGradient id="hero-grad-${i}" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${lp.layer.metric.color}" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="${lp.layer.metric.color}" stop-opacity="0.02" />
+    </linearGradient>`).join("");
+    const areas = layerPaths.map(
+      (lp, i) => `<path d="${lp.area}" fill="url(#hero-grad-${i})" stroke="none" />`
+    ).join("");
+    const lines = layerPaths.map(
+      (lp) => `<path d="${lp.line}" fill="none" stroke="${lp.layer.metric.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />`
+    ).join("");
+    const dots = layerPaths.map((lp) => {
+      const last = lp.points[lp.points.length - 1];
+      return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.metric.color}" stroke="var(--bg-primary)" stroke-width="2" />`;
+    }).join("");
+    const decisionMarkers = decisions.filter((d) => {
+      const t = new Date(d.timestamp).getTime();
+      return t >= tMin && t <= tMax;
+    }).map((d) => {
+      const x = tx(new Date(d.timestamp).getTime()).toFixed(1);
+      const color = DECISION_COLORS2[d.status || "pending"] ?? DECISION_COLORS2["pending"];
+      const opacity = (0.35 + (d.confidence ?? 0.5) * 0.65).toFixed(2);
+      const label = escapeAttr2(d.decision.slice(0, 60));
+      const conf = ((d.confidence ?? 0) * 100).toFixed(0);
+      return `<line x1="${x}" y1="${pad.top}" x2="${x}" y2="${height - pad.bottom}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="${opacity}"><title>${label} (${conf}%)</title></line><circle cx="${x}" cy="${pad.top + 10}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="1.5" opacity="${opacity}"><title>${label}</title></circle>`;
+    }).join("");
+    container.innerHTML = [
+      `<svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">`,
+      `<defs>${defs}</defs>`,
+      gridLines.join(""),
+      areas,
+      decisionMarkers,
+      lines,
+      dots,
+      leftAxisLabels.join(""),
+      rightAxisLabels,
+      timeLabels.join(""),
+      "</svg>"
+    ].join("");
+    if (legend) {
+      legend.innerHTML = layerPaths.map((lp) => [
+        `<span class="legend-item" style="--metric-color:${lp.layer.metric.color}">`,
+        `<span class="legend-dot"></span>`,
+        `${escapeHtml8(lp.layer.metric.label)} (${escapeHtml8(lp.layer.deviceName)})`,
+        "</span>"
+      ].join("")).join("");
+    }
   }
   function renderDetailTable(layers) {
     const tbody = document.getElementById("detail-body");
@@ -3729,25 +4316,25 @@
     }
     const cards = [];
     const tempLayers = byMetric.get("temperature");
-    if (tempLayers) cards.push(renderAreaCard(tempLayers[0], "Temperature Trend"));
+    if (tempLayers) cards.push(renderAreaCard2(tempLayers[0], "Temperature Trend"));
     const humLayers = byMetric.get("humidity");
-    if (humLayers) cards.push(renderLineCard(humLayers[0], "Humidity Trend"));
+    if (humLayers) cards.push(renderLineCard2(humLayers[0], "Humidity Trend"));
     const co2Layers = byMetric.get("co2");
-    if (co2Layers) cards.push(renderBarCard(co2Layers[0], "CO\u2082 Levels"));
+    if (co2Layers) cards.push(renderBarCard2(co2Layers[0], "CO\u2082 Levels"));
     const first = allLayers[0];
     if (first) cards.push(renderGaugeCard(first, "Latest Reading"));
     cards.push(renderQualityMatrix(allLayers, decisions));
     grid.innerHTML = cards.join("");
   }
-  function renderAreaCard(layer, title) {
+  function renderAreaCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
     const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
     const unit = latest.unit || metric.fallbackUnit;
     const id = `area-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
-      void Promise.resolve().then(() => (init_VegaChart(), VegaChart_exports)).then((m) => {
-        m.renderVegaAreaCard(data, metric.key, id, title);
+      void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
+        m.renderAreaCard(data, metric.key, id, title);
       });
     }, 0);
     return `<div class="viz-card" id="${id}">
@@ -3758,15 +4345,15 @@
     <div class="viz-chart-placeholder" style="height:100px;"></div>
   </div>`;
   }
-  function renderLineCard(layer, title) {
+  function renderLineCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
     const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
     const unit = latest.unit || metric.fallbackUnit;
     const id = `line-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
-      void Promise.resolve().then(() => (init_VegaChart(), VegaChart_exports)).then((m) => {
-        m.renderVegaLineCard(data, metric.key, id, title);
+      void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
+        m.renderLineCard(data, metric.key, id, title);
       });
     }, 0);
     return `<div class="viz-card" id="${id}">
@@ -3777,15 +4364,15 @@
     <div class="viz-chart-placeholder" style="height:100px;"></div>
   </div>`;
   }
-  function renderBarCard(layer, title) {
+  function renderBarCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
     const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
     const unit = latest.unit || metric.fallbackUnit;
     const id = `bar-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
-      void Promise.resolve().then(() => (init_VegaChart(), VegaChart_exports)).then((m) => {
-        m.renderVegaBarCard(data, metric.key, id, title);
+      void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
+        m.renderBarCard(data, metric.key, id, title);
       });
     }, 0);
     return `<div class="viz-card" id="${id}">
@@ -4290,6 +4877,7 @@
 
   // src/web/hal-ui/views/Decisions.ts
   init_store();
+  init_ChartKit();
   var expandedDecisionIds = /* @__PURE__ */ new Set();
   var statusFilter = "all";
   async function renderDecisions(container) {
@@ -4299,6 +4887,13 @@
     <div class="page-header">
       <h1 class="page-title">Decisions</h1>
       <p class="page-subtitle">HAL autonomous decision log</p>
+    </div>
+
+    <div class="decisions-chart-section mb-4">
+      <div class="hal-card" style="padding: var(--space-3)">
+        <div class="section-title mb-3">Confidence Distribution (14 Days)</div>
+        <div id="decisions-boxplot" style="min-height: 180px;"></div>
+      </div>
     </div>
 
     <div class="decisions-toolbar mb-4">
@@ -4319,8 +4914,36 @@
     </div>
   `;
     injectDecisionsStyles();
+    injectChartKitStyles();
     attachDecisionHandlers();
     attachFilterHandlers();
+    renderDecisionsBoxPlot(store.decisions);
+  }
+  function renderDecisionsBoxPlot(decisions) {
+    if (decisions.length < 3) return;
+    const byDay = /* @__PURE__ */ new Map();
+    const now = Date.now();
+    for (const d of decisions) {
+      const day = new Date(d.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const list = byDay.get(day) || [];
+      list.push(d.confidence);
+      byDay.set(day, list);
+    }
+    const days = Array.from(byDay.entries()).sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime()).slice(-14).map(([day, confs]) => {
+      const sorted = confs.sort((a, b) => a - b);
+      const n = sorted.length;
+      return {
+        day,
+        min: sorted[0],
+        q1: sorted[Math.floor(n * 0.25)],
+        median: sorted[Math.floor(n * 0.5)],
+        q3: sorted[Math.floor(n * 0.75)],
+        max: sorted[n - 1]
+      };
+    });
+    if (days.length > 0) {
+      setTimeout(() => renderBoxPlot(days, "decisions-boxplot", { color: "#6DFF9A" }), 0);
+    }
   }
   function attachFilterHandlers() {
     document.querySelectorAll(".filter-btn").forEach((btn) => {

@@ -238,7 +238,7 @@ function getRangeBounds(range: typeof viewState.range): { from: string; to: stri
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-/* ─────────────── Hero Chart (native SVG) ─────────────── */
+/* ─────────────── Hero Chart (ChartKit dual-axis) ─────────────── */
 
 function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -546,10 +546,10 @@ function renderAreaCard(layer: SeriesLayer, title: string): string {
   const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
   const unit = latest.unit || metric.fallbackUnit;
   const id = `area-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
-  // Schedule Vega render
+  // Schedule ChartKit render after DOM insertion
   setTimeout(() => {
-    void import('../components/VegaChart.js').then(m => {
-      m.renderVegaAreaCard(data, metric.key, id, title);
+    void import('../components/ChartKit.js').then(m => {
+      m.renderAreaCard(data, metric.key, id, title);
     });
   }, 0);
   return `<div class="viz-card" id="${id}">
@@ -568,8 +568,8 @@ function renderLineCard(layer: SeriesLayer, title: string): string {
   const unit = latest.unit || metric.fallbackUnit;
   const id = `line-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
   setTimeout(() => {
-    void import('../components/VegaChart.js').then(m => {
-      m.renderVegaLineCard(data, metric.key, id, title);
+    void import('../components/ChartKit.js').then(m => {
+      m.renderLineCard(data, metric.key, id, title);
     });
   }, 0);
   return `<div class="viz-card" id="${id}">
@@ -588,8 +588,8 @@ function renderBarCard(layer: SeriesLayer, title: string): string {
   const unit = latest.unit || metric.fallbackUnit;
   const id = `bar-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
   setTimeout(() => {
-    void import('../components/VegaChart.js').then(m => {
-      m.renderVegaBarCard(data, metric.key, id, title);
+    void import('../components/ChartKit.js').then(m => {
+      m.renderBarCard(data, metric.key, id, title);
     });
   }, 0);
   return `<div class="viz-card" id="${id}">

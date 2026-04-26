@@ -1,7 +1,12 @@
-// Hero Multi-Area Chart — Vega-Lite wrapper for declarative visualizations
+// Hero Multi-Area Chart — ChartKit wrapper (pure SVG, zero deps)
 
 import { halApi, type HalSensorReading, type HalDecision } from '../api.js';
-import { renderVegaHeroChart, renderVegaSparkline } from './VegaChart.js';
+import {
+  renderDualAxisCard,
+  renderSparkline,
+  injectChartKitStyles,
+  type DualAxisLayer,
+} from './ChartKit.js';
 
 export interface HeroChartLayer {
   deviceId: string;
@@ -13,16 +18,16 @@ export interface HeroChartLayer {
 
 export type { HalDecision as HeroChartDecision };
 
-const metricConfig: Record<string, { label: string; color: string }> = {
-  temperature:  { label: 'Temperature',  color: '#F59E0B' },
-  humidity:     { label: 'Humidity',     color: '#38BDF8' },
-  soil_moisture:{ label: 'Soil Moisture',color: '#EF4444' },
-  water_level:  { label: 'Water Level',  color: '#2563EB' },
-  ph:           { label: 'pH',           color: '#A855F7' },
-  co2:          { label: 'CO₂',          color: '#22C55E' },
-  light:        { label: 'Light',        color: '#FACC15' },
-  weight:       { label: 'Weight',       color: '#94A3B8' },
-  vpd:          { label: 'VPD',          color: '#A855F7' },
+const metricConfig: Record<string, { label: string; color: string; unit: string; minAxis: number; maxAxis: number }> = {
+  temperature:  { label: 'Temperature',  color: '#F59E0B', unit: '°C',  minAxis: 10, maxAxis: 40 },
+  humidity:     { label: 'Humidity',     color: '#38BDF8', unit: '%',   minAxis: 0,  maxAxis: 100 },
+  soil_moisture:{ label: 'Soil Moisture',color: '#EF4444', unit: '%',   minAxis: 0,  maxAxis: 100 },
+  water_level:  { label: 'Water Level',  color: '#2563EB', unit: '%',   minAxis: 0,  maxAxis: 100 },
+  ph:           { label: 'pH',           color: '#A855F7', unit: '',    minAxis: 0,  maxAxis: 14 },
+  co2:          { label: 'CO₂',          color: '#22C55E', unit: 'ppm', minAxis: 0,  maxAxis: 2000 },
+  light:        { label: 'Light',        color: '#FACC15', unit: 'lux', minAxis: 0,  maxAxis: 100000 },
+  weight:       { label: 'Weight',       color: '#94A3B8', unit: 'kg',  minAxis: 0,  maxAxis: 100 },
+  vpd:          { label: 'VPD',          color: '#A855F7', unit: 'kPa', minAxis: 0,  maxAxis: 3 },
 };
 
 export async function loadHeroChartData(): Promise<{ layers: HeroChartLayer[]; decisions: HalDecision[] }> {
@@ -53,19 +58,43 @@ export async function loadHeroChartData(): Promise<{ layers: HeroChartLayer[]; d
 }
 
 export function renderHeroChart(layers: HeroChartLayer[], containerId: string, decisions: HalDecision[] = []): void {
-  renderVegaHeroChart(layers, containerId, decisions);
+  if (layers.length === 0) {
+    const container = document.getElementById(containerId);
+    if (container) container.innerHTML = '<div class="chart-empty">No sensor data</div>';
+    return;
+  }
+
+  // Convert HeroChartLayer[] to DualAxisLayer[] for ChartKit
+  const dualLayers: DualAxisLayer[] = layers.map(l => {
+    const cfg = metricConfig[l.metric] || { label: l.metric, color: l.color, unit: '', minAxis: 0, maxAxis: 100 };
+    return {
+      label: cfg.label,
+      color: cfg.color,
+      minAxis: cfg.minAxis,
+      maxAxis: cfg.maxAxis,
+      unit: cfg.unit,
+      data: l.data.map(d => ({ t: new Date(d.timestamp).getTime(), v: d.value })),
+    };
+  });
+
+  // Build title from first layer
+  const title = dualLayers.map(l => l.label).join(' + ');
+  const firstDevice = layers[0]?.deviceName || '';
+
+  renderDualAxisCard(dualLayers, containerId, {
+    title,
+    subtitle: '24h Overview',
+    deviceName: firstDevice,
+    showStats: true,
+    showGrid: true,
+    smooth: false,
+  });
 }
 
-export function renderSparkline(data: number[], color: string, _width = 80, _height = 24): string {
-  if (data.length < 2) return '<span class="text-xs text-secondary">--</span>';
-  // Return a placeholder div that Vega-Lite will render into
-  const id = `spark-${Math.random().toString(36).slice(2, 9)}`;
-  // Schedule Vega render after DOM insertion
-  setTimeout(() => renderVegaSparkline(data, color, id), 0);
-  return `<span id="${id}" class="sparkline-svg" style="display:inline-block;width:80px;height:24px;"></span>`;
-}
+export { renderSparkline };
 
 export function injectHeroChartStyles(): void {
+  injectChartKitStyles();
   if (document.getElementById('hal-hero-chart-styles')) return;
   const style = document.createElement('style');
   style.id = 'hal-hero-chart-styles';
@@ -81,14 +110,6 @@ export function injectHeroChartStyles(): void {
   width: 100%;
   min-height: 280px;
 }
-.hero-chart .vega-embed {
-  width: 100% !important;
-}
-.hero-chart .vega-embed svg {
-  display: block;
-  width: 100%;
-  height: auto;
-}
 .chart-empty {
   min-height: 280px;
   display: flex;
@@ -96,9 +117,6 @@ export function injectHeroChartStyles(): void {
   justify-content: center;
   color: var(--text-secondary);
   font-size: 13px;
-}
-.sparkline-svg {
-  display: inline-block;
 }
 `;
   document.head.appendChild(style);
