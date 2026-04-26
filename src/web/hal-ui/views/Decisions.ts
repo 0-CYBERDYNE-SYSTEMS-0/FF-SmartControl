@@ -2,7 +2,7 @@
 
 import { getStore } from '../store.js';
 import { HalDecision } from '../api.js';
-import { renderHeatmap, type HeatmapCell, injectChartKitStyles } from '../components/ChartKit.js';
+import { renderHeatmap, type HeatmapCell, renderDecisionBarTrend, type DecisionBarPoint, injectChartKitStyles } from '../components/ChartKit.js';
 
 const expandedDecisionIds = new Set<string>();
 let statusFilter: 'all' | 'success' | 'failure' | 'pending' = 'all';
@@ -24,6 +24,13 @@ export async function renderDecisions(container: HTMLElement): Promise<void> {
       <div class="hal-card" style="padding: var(--space-3)">
         <div class="section-title mb-3">Decision Activity Heatmap</div>
         <div id="decisions-heatmap" style="min-height: 100px;"></div>
+      </div>
+    </div>
+
+    <div class="decisions-chart-section mb-4">
+      <div class="hal-card" style="padding: var(--space-3)">
+        <div class="section-title mb-3">Decision Trend (24h)</div>
+        <div id="decisions-bar-trend" style="min-height: 180px;"></div>
       </div>
     </div>
 
@@ -50,6 +57,7 @@ export async function renderDecisions(container: HTMLElement): Promise<void> {
   attachDecisionHandlers();
   attachFilterHandlers();
   renderDecisionsHeatmap(store.decisions);
+  renderDecisionsBarTrend(store.decisions);
 }
 
 function renderDecisionsHeatmap(decisions: HalDecision[]): void {
@@ -78,6 +86,48 @@ function renderDecisionsHeatmap(decisions: HalDecision[]): void {
   setTimeout(() => renderHeatmap(cells, 'decisions-heatmap', {
     colorRange: ['#0a1a12', '#1a4030', '#4aB070', '#F59E0B', '#FF5C6C'],
   }), 0);
+}
+
+function renderDecisionsBarTrend(decisions: HalDecision[]): void {
+  if (decisions.length < 2) return;
+
+  // Bucket by hour for last 24 hours
+  const now = Date.now();
+  const buckets = new Map<number, { success: number; failure: number; pending: number }>();
+
+  for (let h = 23; h >= 0; h--) {
+    const t = now - h * 3600000;
+    const hourKey = new Date(t).getHours();
+    buckets.set(hourKey, { success: 0, failure: 0, pending: 0 });
+  }
+
+  for (const d of decisions) {
+    const t = new Date(d.timestamp).getTime();
+    if (now - t > 24 * 3600000) continue;
+    const hourKey = new Date(d.timestamp).getHours();
+    const bucket = buckets.get(hourKey);
+    if (!bucket) continue;
+    const status = d.status || 'pending';
+    if (status === 'success') bucket.success++;
+    else if (status === 'failure') bucket.failure++;
+    else bucket.pending++;
+  }
+
+  const points: DecisionBarPoint[] = [];
+  for (let h = 23; h >= 0; h--) {
+    const t = now - h * 3600000;
+    const hourKey = new Date(t).getHours();
+    const bucket = buckets.get(hourKey);
+    const label = `${hourKey.toString().padStart(2, '0')}:00`;
+    points.push({
+      label,
+      success: bucket?.success ?? 0,
+      failure: bucket?.failure ?? 0,
+      pending: bucket?.pending ?? 0,
+    });
+  }
+
+  setTimeout(() => renderDecisionBarTrend(points, 'decisions-bar-trend', { height: 180 }), 0);
 }
 
 function attachFilterHandlers(): void {

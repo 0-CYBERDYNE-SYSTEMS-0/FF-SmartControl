@@ -5,6 +5,7 @@ import {
   renderDualAxisCard,
   renderSparkline,
   injectChartKitStyles,
+  generateDeviceShades,
   type DualAxisLayer,
 } from './ChartKit.js';
 
@@ -64,12 +65,27 @@ export function renderHeroChart(layers: HeroChartLayer[], containerId: string, d
     return;
   }
 
-  // Convert HeroChartLayer[] to DualAxisLayer[] for ChartKit
+  // Group by base color to apply per-device shade variation
+  const colorGroups = new Map<string, HeroChartLayer[]>();
+  for (const l of layers) {
+    const list = colorGroups.get(l.color) || [];
+    list.push(l);
+    colorGroups.set(l.color, list);
+  }
+
+  // Convert HeroChartLayer[] to DualAxisLayer[] for ChartKit with shade variation
   const dualLayers: DualAxisLayer[] = layers.map(l => {
     const cfg = metricConfig[l.metric] || { label: l.metric, color: l.color, unit: '', minAxis: 0, maxAxis: 100 };
+    const group = colorGroups.get(l.color)!;
+    let color = l.color;
+    if (group.length > 1) {
+      const idx = group.indexOf(l);
+      const shades = generateDeviceShades(l.color, group.length);
+      color = shades[idx];
+    }
     return {
-      label: cfg.label,
-      color: cfg.color,
+      label: `${l.deviceName} — ${cfg.label}`,
+      color,
       minAxis: cfg.minAxis,
       maxAxis: cfg.maxAxis,
       unit: cfg.unit,

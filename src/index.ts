@@ -4946,6 +4946,12 @@ async function startHalUiService(): Promise<void> {
     halUiServer = await startHalUiServer(port, host);
     logger.info({ port, host }, 'HAL UI server started');
 
+    // Log Tailscale URL if available
+    const tailscaleIp = process.env.TAILSCALE_IP;
+    if (tailscaleIp) {
+      logger.info({ url: `http://${tailscaleIp}:${port}` }, 'HAL UI available on Tailscale');
+    }
+
     // Auto-open browser if enabled (default: 1)
     if (process.env.HAL_UI_AUTO_OPEN !== '0') {
       const open = (await import('open')).default;

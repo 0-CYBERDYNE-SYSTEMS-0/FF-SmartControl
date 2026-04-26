@@ -57,6 +57,8 @@ function sendFile(res: http.ServerResponse, filePath: string, isHtml = false): v
 }
 
 export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise<HalUiServer> {
+  // Allow overriding bind host via env for Tailscale/mobile access
+  const bindHost = process.env.HAL_UI_BIND_HOST || host;
   const staticDir = path.resolve(process.cwd(), 'src', 'web', 'hal-ui');
 
   const server = http.createServer(async (req, res) => {
@@ -217,9 +219,9 @@ export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, host, () => resolve());
+    server.listen(port, bindHost, () => resolve());
   });
 
-  logger.info({ port, host }, 'HAL UI server listening on http://{host}:{port}');
+  logger.info({ port, host, bindHost }, 'HAL UI server listening on http://{bindHost}:{port}');
   return { host, port, close: () => new Promise<void>(resolve => server.close((_err?: Error) => resolve())) };
 }

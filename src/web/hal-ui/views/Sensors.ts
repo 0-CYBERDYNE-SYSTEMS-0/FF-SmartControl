@@ -273,7 +273,7 @@ function renderHeroChart(layers: SeriesLayer[], _decisions: HalDecision[] = []):
     // Normalize values to 0-100 scale for stacking
     const vSpan = Math.max(1, axisMax - axisMin);
     return {
-      label: `${cfg.label} (${escapeHtml(l.deviceName)})`,
+      label: `${escapeHtml(l.deviceName)} — ${cfg.label}`,
       color: cfg.color,
       data: l.data.map(d => ({
         t: new Date(d.timestamp).getTime(),
@@ -282,19 +282,39 @@ function renderHeroChart(layers: SeriesLayer[], _decisions: HalDecision[] = []):
     };
   });
 
-  // Use ChartKit stacked area
+  // Use ChartKit stacked area — shade variation happens inside renderStackedAreaChart
   void import('../components/ChartKit.js').then(m => {
     m.renderStackedAreaChart(stackedLayers, 'hero-chart', { showLegend: true });
   });
 
-  // Legend below chart
+  // Legend below chart — rebuild with shaded colors after ChartKit renders
   if (legend) {
-    legend.innerHTML = layers.map(l => `
-      <span class="legend-item" style="--metric-color:${l.metric.color}">
-        <span class="legend-dot"></span>
-        ${escapeHtml(l.metric.label)} (${escapeHtml(l.deviceName)})
-      </span>
-    `).join('');
+    // Group by base color to know which devices share a metric hue
+    const colorGroups = new Map<string, typeof layers>();
+    for (const l of layers) {
+      const list = colorGroups.get(l.metric.color) || [];
+      list.push(l);
+      colorGroups.set(l.metric.color, list);
+    }
+    void import('../components/ChartKit.js').then(m => {
+      const shades = new Map<string, string[]>();
+      for (const [color, group] of colorGroups) {
+        if (group.length > 1) {
+          shades.set(color, m.generateDeviceShades(color, group.length));
+        }
+      }
+      legend.innerHTML = layers.map(l => {
+        const group = colorGroups.get(l.metric.color)!;
+        const idx = group.indexOf(l);
+        const shade = group.length > 1 ? shades.get(l.metric.color)![idx] : l.metric.color;
+        return `
+          <span class="legend-item" style="--metric-color:${shade}">
+            <span class="legend-dot"></span>
+            ${escapeHtml(l.deviceName)} — ${escapeHtml(l.metric.label)}
+          </span>
+        `;
+      }).join('');
+    });
   }
 }
 

@@ -4,7 +4,7 @@ import { getStore, setStore, formatSensorValue } from '../store.js';
 import { halApi, HalDevice } from '../api.js';
 import { createToggle, setToggleState } from '../components/Toggle.js';
 import { showToast } from '../components/Toast.js';
-import { renderBulletChart, type BulletMetric, injectChartKitStyles, renderTinyAreaChart, renderTinyBarChart } from '../components/ChartKit.js';
+import { renderBulletChart, type BulletMetric, injectChartKitStyles, renderTinyAreaChart, renderTinyBarChart, generateDeviceShades } from '../components/ChartKit.js';
 
 export async function renderDevices(container: HTMLElement): Promise<void> {
   const store = getStore();
@@ -47,6 +47,18 @@ function renderDeviceCharts(devices: HalDevice[]): void {
 
   const store = getStore();
 
+  // Group sensors by their dominant metric color so same-metric devices get shades
+  const tempSensors: HalDevice[] = [];
+  const humSensors: HalDevice[] = [];
+  for (const s of sensors) {
+    const snap = store.sensors[s.id];
+    if (snap?.temperature?.value != null) tempSensors.push(s);
+    else if (snap?.humidity?.value != null) humSensors.push(s);
+  }
+
+  const tempShades = generateDeviceShades('#F59E0B', tempSensors.length);
+  const humShades = generateDeviceShades('#38BDF8', humSensors.length);
+
   for (const s of sensors) {
     const chartId = `dev-chart-${s.id}`;
     const container = document.getElementById(chartId);
@@ -69,7 +81,14 @@ function renderDeviceCharts(devices: HalDevice[]): void {
     const base = values[0];
     const trend = Array.from({ length: 15 }, (_, i) => base + Math.sin(i * 0.8) * (base * 0.05));
 
-    const color = snap.temperature ? '#F59E0B' : '#38BDF8';
+    let color: string;
+    if (snap.temperature?.value != null) {
+      const idx = tempSensors.indexOf(s);
+      color = idx >= 0 ? tempShades[idx] : '#F59E0B';
+    } else {
+      const idx = humSensors.indexOf(s);
+      color = idx >= 0 ? humShades[idx] : '#38BDF8';
+    }
     renderTinyAreaChart(trend, color, chartId);
   }
 }

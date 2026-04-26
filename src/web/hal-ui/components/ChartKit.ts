@@ -35,6 +35,66 @@ function escapeAttr(s: string): string {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   COLOR SHADE GENERATION — Per-device variation within metric hue
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0;
+  let s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return { h: h * 360, s: s * 100, l: l * 100 };
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const toRgb = (p: number, q: number, t: number): number => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  const sNorm = s / 100;
+  const lNorm = l / 100;
+  const q = lNorm < 0.5 ? lNorm * (1 + sNorm) : lNorm + sNorm - lNorm * sNorm;
+  const p = 2 * lNorm - q;
+  const r = toRgb(p, q, h / 360 + 1 / 3);
+  const g = toRgb(p, q, h / 360);
+  const b = toRgb(p, q, h / 360 - 1 / 3);
+  const toHex = (v: number) => Math.round(v * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+export function generateDeviceShades(baseColor: string, count: number): string[] {
+  if (count <= 1) return [baseColor];
+  const hsl = hexToHsl(baseColor);
+  // Cycle: lightness shifts, then saturation shifts for >6
+  const lightnessShifts = [-10, -5, +5, +10, -15, +15];
+  const saturationShifts = [0, 0, 0, 0, 0, 0, -10, +10, -15, +15, -20, +20];
+  return Array.from({ length: count }, (_, i) => {
+    const lShift = lightnessShifts[i % lightnessShifts.length] ?? 0;
+    const sShift = saturationShifts[i] ?? saturationShifts[saturationShifts.length - 1];
+    const l = Math.max(15, Math.min(95, hsl.l + lShift));
+    const s = Math.max(20, Math.min(100, hsl.s + sShift));
+    return hslToHex(hsl.h, s, l);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    MONOTONE CUBIC SPLINE (Fritsch-Carlson) — from f30439d
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -522,12 +582,27 @@ export function renderStackedAreaChart(
     return;
   }
 
+  // Apply per-device shade variation for layers sharing the same base color
+  const colorGroups = new Map<string, StackedLayer[]>();
+  for (const layer of layers) {
+    const list = colorGroups.get(layer.color) || [];
+    list.push(layer);
+    colorGroups.set(layer.color, list);
+  }
+  const shadedLayers = layers.map(layer => {
+    const group = colorGroups.get(layer.color)!;
+    if (group.length <= 1) return layer;
+    const idx = group.indexOf(layer);
+    const shades = generateDeviceShades(layer.color, group.length);
+    return { ...layer, color: shades[idx] };
+  });
+
   const width = opts.width ?? 900;
   const height = opts.height ?? 320;
   const pad = { top: 24, right: 24, bottom: 40, left: 52 };
 
   // Unified time domain
-  const allTimes = layers.flatMap(l => l.data.map(d => d.t));
+  const allTimes = shadedLayers.flatMap(l => l.data.map(d => d.t));
   const tMin = Math.min(...allTimes);
   const tMax = Math.max(...allTimes);
   const tSpan = Math.max(1, tMax - tMin);
@@ -535,7 +610,7 @@ export function renderStackedAreaChart(
 
   // Build stacked values at each time point
   const timeMap = new Map<number, number[]>();
-  for (const layer of layers) {
+  for (const layer of shadedLayers) {
     for (const d of layer.data) {
       if (!timeMap.has(d.t)) timeMap.set(d.t, []);
     }
@@ -547,7 +622,7 @@ export function renderStackedAreaChart(
     const x = tx(t);
     let y0 = 0;
     const segs: { x: number; y0: number; y1: number; v: number }[] = [];
-    for (const layer of layers) {
+    for (const layer of shadedLayers) {
       const pt = layer.data.find(d => d.t === t);
       const v = pt?.v ?? 0;
       y0 += v;
@@ -560,7 +635,7 @@ export function renderStackedAreaChart(
   const yScale = (v: number) => pad.top + ((maxTotal - v) / maxTotal) * (height - pad.top - pad.bottom);
 
   // Build area paths per layer (bottom-up)
-  const layerPaths = layers.map((layer, li) => {
+  const layerPaths = shadedLayers.map((layer, li) => {
     const topPts: SplinePoint[] = [];
     const botPts: SplinePoint[] = [];
 
@@ -619,7 +694,7 @@ export function renderStackedAreaChart(
 
   // Legend
   const legendHtml = opts.showLegend !== false
-    ? `<div class="stack-legend">${layers.map(l => `
+    ? `<div class="stack-legend">${shadedLayers.map(l => `
         <span class="legend-item" style="--metric-color:${l.color}">
           <span class="legend-dot"></span>${escapeHtml(l.label)}
         </span>`).join('')}</div>`
@@ -764,6 +839,90 @@ export function renderBarCard(
       <span class="viz-card-value text-mono" style="color:${cfg.color}">${latest.value.toFixed(0)}${unit}</span>
     </div>
     <svg viewBox="0 0 ${w} ${h}" class="viz-svg">${rects}</svg>
+  `;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DECISION BAR TREND — Grouped bar chart for decision counts over time
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export interface DecisionBarPoint {
+  label: string;
+  success: number;
+  failure: number;
+  pending: number;
+}
+
+export function renderDecisionBarTrend(
+  points: DecisionBarPoint[],
+  containerId: string,
+  opts: { width?: number; height?: number } = {}
+): void {
+  const container = document.getElementById(containerId);
+  if (!container || points.length === 0) {
+    if (container) container.innerHTML = '<div class="chart-empty">No decision data</div>';
+    return;
+  }
+
+  const W = opts.width ?? (container.clientWidth || 600);
+  const H = opts.height ?? 180;
+  const pad = { t: 20, r: 16, b: 40, l: 40 };
+  const chartW = W - pad.l - pad.r;
+  const chartH = H - pad.t - pad.b;
+
+  const maxVal = Math.max(...points.flatMap(p => [p.success, p.failure, p.pending]), 1);
+
+  const groupW = chartW / points.length;
+  const barW = groupW * 0.22;
+  const gap = groupW * 0.04;
+
+  const colors = { success: '#6DFF9A', failure: '#FF5C6C', pending: '#FFC857' };
+
+  const bars = points.map((p, i) => {
+    const gx = pad.l + i * groupW + groupW / 2;
+    const vals = [
+      { key: 'success' as const, v: p.success },
+      { key: 'failure' as const, v: p.failure },
+      { key: 'pending' as const, v: p.pending },
+    ];
+    return vals.map((item, j) => {
+      const bh = (item.v / maxVal) * chartH;
+      const x = gx - barW * 1.5 - gap + j * (barW + gap);
+      const y = pad.t + chartH - bh;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${colors[item.key]}" opacity="0.85" rx="2"/>` +
+             (item.v > 0 ? `<text x="${(x + barW / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" fill="${colors[item.key]}" font-size="9" font-family="var(--font-mono)">${item.v}</text>` : '');
+    }).join('');
+  }).join('');
+
+  // Y-axis grid
+  const ySteps = 5;
+  const gridLines = Array.from({ length: ySteps + 1 }, (_, i) => {
+    const y = pad.t + (i / ySteps) * chartH;
+    const v = Math.round(maxVal * (1 - i / ySteps));
+    return `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 20%, var(--border))" stroke-dasharray="2 3"/>` +
+           `<text x="${pad.l - 6}" y="${y + 3}" text-anchor="end" fill="var(--text-tertiary)" font-size="9" font-family="var(--font-mono)">${v}</text>`;
+  }).join('');
+
+  // X labels
+  const xLabels = points.map((p, i) => {
+    const x = pad.l + i * groupW + groupW / 2;
+    return `<text x="${x.toFixed(1)}" y="${H - 10}" text-anchor="middle" fill="var(--text-tertiary)" font-size="9" font-family="var(--font-mono)">${escapeHtml(p.label)}</text>`;
+  }).join('');
+
+  // Legend
+  const legend = `
+    <div class="dbt-legend">
+      <span class="dbt-legend-item"><span class="dbt-legend-dot" style="background:${colors.success}"></span>Success</span>
+      <span class="dbt-legend-item"><span class="dbt-legend-dot" style="background:${colors.failure}"></span>Failure</span>
+      <span class="dbt-legend-item"><span class="dbt-legend-dot" style="background:${colors.pending}"></span>Pending</span>
+    </div>
+  `;
+
+  container.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" class="viz-svg" preserveAspectRatio="xMidYMid meet">
+      ${gridLines}${bars}${xLabels}
+    </svg>
+    ${legend}
   `;
 }
 
@@ -1361,6 +1520,28 @@ export function injectChartKitStyles(): void {
   border-top: 1px solid var(--border-subtle);
   margin-top: var(--space-3);
   padding-top: var(--space-2);
+}
+
+/* ── Decision bar trend legend ── */
+.dbt-legend {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: center;
+  margin-top: var(--space-2);
+  flex-wrap: wrap;
+}
+.dbt-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.dbt-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 /* ── Viz card headers ── */
