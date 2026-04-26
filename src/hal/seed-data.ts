@@ -11,6 +11,10 @@ const DEVICES: Array<{ id: string; type: DeviceType; protocol: DeviceProtocol; h
   { id: 'tent_temp_2',   type: 'sensor', protocol: 'mqtt',   host: 'mqtt://localhost', label: 'Tent Temperature #2' },
   { id: 'soil_probe_1',  type: 'sensor', protocol: 'mqtt',   host: 'mqtt://localhost', label: 'Soil Probe 1' },
   { id: 'co2_monitor',   type: 'sensor', protocol: 'mqtt',   host: 'mqtt://localhost', label: 'CO2 Monitor' },
+  { id: 'light_sensor',  type: 'sensor', protocol: 'mqtt',   host: 'mqtt://localhost', label: 'Light Sensor' },
+  { id: 'ph_probe',      type: 'sensor', protocol: 'mqtt',   host: 'mqtt://localhost', label: 'pH Probe' },
+  { id: 'water_level_1', type: 'sensor', protocol: 'mqtt',   host: 'mqtt://localhost', label: 'Water Level Sensor' },
+  { id: 'load_cell_1',   type: 'sensor', protocol: 'serial', host: '/dev/ttyUSB0',     label: 'Load Cell #1' },
   // Relays
   { id: 'grow_light_main', type: 'relay',  protocol: 'tasmota', host: '192.168.1.101', label: 'Grow Light (Main)' },
   { id: 'exhaust_fan',    type: 'relay',  protocol: 'shelly', host: '192.168.1.102', label: 'Exhaust Fan' },
@@ -33,6 +37,10 @@ const SENSORS: Array<{ deviceId: string; metric: MetricType; unit: SensorUnit; b
   { deviceId: 'co2_monitor',  metric: 'co2',            unit: 'ppm', baseValue: 800,  amplitude: 400,  period: 86400 },
   { deviceId: 'soil_probe_1', metric: 'soil_moisture',  unit: '%',   baseValue: 55,   amplitude: 20,   period: 43200 },
   { deviceId: 'soil_probe_1', metric: 'temperature',   unit: 'c',   baseValue: 21,   amplitude: 1.5,  period: 86400 },
+  { deviceId: 'light_sensor', metric: 'light',          unit: 'lux', baseValue: 35000, amplitude: 30000, period: 86400 },
+  { deviceId: 'ph_probe',     metric: 'ph',             unit: '',    baseValue: 6.2,  amplitude: 0.6,  period: 86400 },
+  { deviceId: 'water_level_1',metric: 'water_level',    unit: '%',   baseValue: 72,   amplitude: 15,   period: 86400 },
+  { deviceId: 'load_cell_1',  metric: 'weight',         unit: 'kg',  baseValue: 12.5, amplitude: 2.5,  period: 86400 },
 ];
 
 const DECISIONS: Array<{ deviceId: string | null; decision: DecisionType; confidence: number; reasoning: string }> = [

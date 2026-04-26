@@ -25,10 +25,12 @@ export function injectCardStyles(): void {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--space-4);
-  transition: border-color var(--transition-fast);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 .hal-card:hover {
   border-color: var(--accent);
+  box-shadow: var(--shadow-card-hover);
 }
 .hal-card-header {
   display: flex;

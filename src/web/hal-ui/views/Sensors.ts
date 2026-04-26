@@ -3,7 +3,7 @@
 // Cards: area, line, bar, gauge, heatmap
 
 import { getStore, setStore, formatSensorValue, formatTimeValue, formatDateTimeValue } from '../store.js';
-import { halApi, HalSensorReading } from '../api.js';
+import { halApi, HalSensorReading, HalDecision } from '../api.js';
 
 type MetricKey = 'temperature' | 'humidity' | 'soil_moisture' | 'light' | 'co2' | 'water_level' | 'ph' | 'weight';
 
@@ -40,9 +40,16 @@ const viewState = {
   deviceId: 'all',
   range: '24H' as '1H' | '6H' | '24H' | '7D' | '30D',
   activeMetrics: new Set<MetricKey>(['temperature', 'humidity', 'co2']),
+  decisions: [] as HalDecision[],
 };
 
 let loadSequence = 0;
+
+const DECISION_COLORS: Record<string, string> = {
+  success: '#6DFF9A',
+  failure: '#FF5C6C',
+  pending: '#FFC857',
+};
 
 export async function renderSensors(container: HTMLElement): Promise<void> {
   const store = getStore();
@@ -96,6 +103,11 @@ export async function renderSensors(container: HTMLElement): Promise<void> {
         </div>
         <div class="hero-legend" id="hero-legend"></div>
       </div>
+    </div>
+
+    <div class="horizon-strips-section">
+      <h2 class="section-title mb-3">Metric Strips</h2>
+      <div class="horizon-strips-grid" id="horizon-strips"></div>
     </div>
 
     <div class="viz-grid" id="viz-grid"></div>
@@ -189,19 +201,24 @@ async function loadData(sensors: ReturnType<typeof getStore>['devices']): Promis
 
   try {
     const layers: SeriesLayer[] = [];
-    await Promise.all(selectedDevices.flatMap(device =>
-      activeMetricConfigs.map(async metric => {
-        const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
-        if (data.length > 0) layers.push({ deviceId: device.id, deviceName: device.name, metric, data });
-      })
-    ));
+    const [decisions] = await Promise.all([
+      halApi.getDecisions(50).catch(() => [] as HalDecision[]),
+      ...selectedDevices.flatMap(device =>
+        activeMetricConfigs.map(async metric => {
+          const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
+          if (data.length > 0) layers.push({ deviceId: device.id, deviceName: device.name, metric, data });
+        })
+      ),
+    ]);
 
     if (sequence !== loadSequence) return;
 
-    renderHeroChart(layers);
+    viewState.decisions = decisions;
+    renderHeroChart(layers, decisions);
     renderDetailTable(layers);
     updatePillValues(layers);
-    renderVizCards(layers);
+    renderHorizonStrips(layers);
+    renderVizCards(layers, decisions);
   } catch (err: any) {
     console.error('Sensor load failed:', err);
     if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
@@ -223,14 +240,22 @@ function getRangeBounds(range: typeof viewState.range): { from: string; to: stri
 
 /* ─────────────── Hero Chart (single multi-layer SVG) ─────────────── */
 
-function renderHeroChart(layers: SeriesLayer[]): void {
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function renderHeroChart(layers: SeriesLayer[], decisions: HalDecision[] = []): void {
   const container = document.getElementById('hero-chart');
   const legend = document.getElementById('hero-legend');
   if (!container) return;
 
   if (layers.length === 0) {
-    container.innerHTML = '<div class="chart-empty">No data for selection</div>';
-    if (legend) legend.innerHTML = '';
+    container.textContent = '';
+    const empty = document.createElement('div');
+    empty.className = 'chart-empty';
+    empty.textContent = 'No data for selection';
+    container.appendChild(empty);
+    if (legend) legend.textContent = '';
     return;
   }
 
@@ -343,11 +368,26 @@ function renderHeroChart(layers: SeriesLayer[]): void {
     ];
   }).join('');
 
+  const decisionMarkers = decisions
+    .filter(d => {
+      const t = new Date(d.timestamp).getTime();
+      return t >= tMin && t <= tMax;
+    })
+    .map(d => {
+      const x = tx(new Date(d.timestamp).getTime()).toFixed(1);
+      const color = DECISION_COLORS[d.status || 'pending'] ?? DECISION_COLORS.pending;
+      const opacity = (0.35 + (d.confidence ?? 0.5) * 0.65).toFixed(2);
+      const label = escapeAttr(d.decision.slice(0, 60));
+      const conf = ((d.confidence ?? 0) * 100).toFixed(0);
+      return `<line x1="${x}" y1="${pad.top}" x2="${x}" y2="${height - pad.bottom}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="${opacity}"><title>${label} (${conf}%)</title></line><circle cx="${x}" cy="${pad.top + 10}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="1.5" opacity="${opacity}"><title>${label}</title></circle>`;
+    }).join('');
+
   container.innerHTML = `
     <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
       <defs>${defs}</defs>
       ${gridLines.join('')}
       ${areas}
+      ${decisionMarkers}
       ${lines}
       ${dots}
       ${leftAxisLabels.join('')}
@@ -423,12 +463,64 @@ function updatePillValues(layers: SeriesLayer[]): void {
   });
 }
 
+/* ─────────────── Horizon Strips ─────────────── */
+
+function renderHorizonStrips(allLayers: SeriesLayer[]): void {
+  const container = document.getElementById('horizon-strips');
+  if (!container) return;
+  if (allLayers.length === 0) {
+    container.textContent = '';
+    return;
+  }
+
+  const store = getStore();
+  const byMetric = new Map<string, SeriesLayer>();
+  for (const layer of allLayers) {
+    if (!byMetric.has(layer.metric.key)) byMetric.set(layer.metric.key, layer);
+  }
+
+  const strips = Array.from(byMetric.values()).map(layer => {
+    const { data, metric } = layer;
+    if (data.length < 2) return '';
+    const converted = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+    const latestLabel = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
+    const values = data.map(d => formatSensorValue(d.value, metric.key, store.unitSystem).value);
+    const vMin = Math.min(...values);
+    const vMax = Math.max(...values);
+    const vSpan = Math.max(0.001, vMax - vMin);
+    const w = 420, h = 52;
+    const step = (w - 4) / Math.max(values.length - 1, 1);
+    const pts = values.map((v, i) => {
+      const x = 2 + i * step;
+      const y = 2 + ((vMax - v) / vSpan) * (h - 4);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    const color = metric.color;
+    return `<div class="horizon-strip">
+      <div class="horizon-strip-header">
+        <span class="horizon-strip-label">${escapeHtml(metric.shortLabel)}</span>
+        <span class="horizon-strip-value text-mono" style="color:${color}">${latestLabel}</span>
+      </div>
+      <svg viewBox="0 0 ${w} ${h}" class="horizon-strip-svg" preserveAspectRatio="none">
+        <defs><linearGradient id="hs-grad-${metric.key}" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.3"/><stop offset="100%" stop-color="${color}" stop-opacity="0.02"/></linearGradient></defs>
+        <path d="M2,${h - 2} ${pts} ${(2 + (values.length - 1) * step).toFixed(1)},${h - 2} Z" fill="url(#hs-grad-${metric.key})" stroke="none"/>
+        <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+      </svg>
+    </div>`;
+  }).filter(Boolean);
+
+  container.innerHTML = strips.join('');
+}
+
 /* ─────────────── Viz Cards ─────────────── */
 
-function renderVizCards(allLayers: SeriesLayer[]): void {
+function renderVizCards(allLayers: SeriesLayer[], decisions: HalDecision[] = []): void {
   const grid = document.getElementById('viz-grid');
   if (!grid) return;
-  if (allLayers.length === 0) { grid.innerHTML = ''; return; }
+  if (allLayers.length === 0) {
+    grid.textContent = '';
+    return;
+  }
 
   const store = getStore();
   const byMetric = new Map<string, SeriesLayer[]>();
@@ -456,8 +548,8 @@ function renderVizCards(allLayers: SeriesLayer[]): void {
   const first = allLayers[0];
   if (first) cards.push(renderGaugeCard(first, 'Latest Reading'));
 
-  // 5. Heatmap card — all metrics x last 24h buckets
-  cards.push(renderHeatmapCard(allLayers, '24h Activity'));
+  // 5. Sensor Quality Matrix — freshness per device × metric
+  cards.push(renderQualityMatrix(allLayers, decisions));
 
   grid.innerHTML = cards.join('');
 }
@@ -577,42 +669,80 @@ function renderGaugeCard(layer: SeriesLayer, title: string): string {
     </div>`;
 }
 
-function renderHeatmapCard(layers: SeriesLayer[], title: string): string {
-  const store = getStore();
-  const buckets = 12;
+function renderQualityMatrix(layers: SeriesLayer[], decisions: HalDecision[]): string {
+  // Rows = devices, cols = active metrics. Color = data freshness/quality.
   const now = Date.now();
-  const bucketMs = (24 * 60 * 60 * 1000) / buckets;
-  const cells: string[] = [];
-  for (let b = 0; b < buckets; b++) {
-    const bStart = now - (buckets - b) * bucketMs;
-    const bEnd = bStart + bucketMs;
-    let sum = 0, count = 0;
-    for (const layer of layers) {
-      for (const d of layer.data) {
-        const t = new Date(d.timestamp).getTime();
-        if (t >= bStart && t < bEnd) {
-          const v = formatSensorValue(d.value, layer.metric.key, store.unitSystem).value;
-          sum += v; count++;
-        }
-      }
-    }
-    const avg = count > 0 ? sum / count : 0;
-    const intensity = count > 0 ? Math.min(1, avg / 100) : 0;
-    const color = count === 0 ? 'var(--bg-tertiary)' : `color-mix(in srgb, var(--accent) ${(intensity * 100).toFixed(0)}%, var(--bg-tertiary))`;
-    cells.push(`<div class="hm-cell" style="background:${color}" title="${count} readings, avg ${avg.toFixed(1)}"></div>`);
+  const staleMs = 10 * 60 * 1000; // 10 min = stale
+
+  // Build unique device list from layers
+  const deviceMap = new Map<string, string>(); // deviceId -> deviceName
+  const metricSet = new Set<string>();
+  for (const l of layers) {
+    deviceMap.set(l.deviceId, l.deviceName);
+    metricSet.add(l.metric.key);
   }
+
+  const deviceIds = Array.from(deviceMap.keys());
+  const metricKeys = Array.from(metricSet);
+
+  if (deviceIds.length === 0) return '';
+
+  // Build lookup: deviceId+metric -> latest timestamp
+  const latestMap = new Map<string, number>();
+  for (const l of layers) {
+    if (l.data.length === 0) continue;
+    const last = l.data[l.data.length - 1];
+    latestMap.set(`${l.deviceId}:${l.metric.key}`, new Date(last.timestamp).getTime());
+  }
+
+  const qualityColor = (ageMs: number | undefined): string => {
+    if (ageMs === undefined) return '#1A2822';
+    if (ageMs < staleMs) return '#6DFF9A';
+    if (ageMs < staleMs * 6) return '#FFC857';
+    return '#FF5C6C';
+  };
+
+  const qualityLabel = (ageMs: number | undefined): string => {
+    if (ageMs === undefined) return 'no data';
+    const mins = Math.floor(ageMs / 60000);
+    return mins < 1 ? 'just now' : `${mins}m ago`;
+  };
+
+  const headerCols = metricKeys.map(k => {
+    const cfg = metrics.find(m => m.key === k);
+    return `<th class="qm-th">${escapeHtml(cfg?.shortLabel || k)}</th>`;
+  }).join('');
+
+  const rows = deviceIds.map(deviceId => {
+    const name = deviceMap.get(deviceId) || deviceId;
+    const cells = metricKeys.map(metricKey => {
+      const ts = latestMap.get(`${deviceId}:${metricKey}`);
+      const ageMs = ts !== undefined ? now - ts : undefined;
+      const color = qualityColor(ageMs);
+      const label = qualityLabel(ageMs);
+      return `<td class="qm-cell" title="${escapeHtml(name)} · ${metricKey} · ${label}"><span class="qm-dot" style="background:${color}"></span></td>`;
+    }).join('');
+    return `<tr><td class="qm-device">${escapeHtml(name.length > 20 ? name.slice(0, 18) + '…' : name)}</td>${cells}</tr>`;
+  }).join('');
+
+  const recentDecisionCount = decisions.filter(d => now - new Date(d.timestamp).getTime() < 3600000).length;
+
   return `
     <div class="viz-card wide">
       <div class="viz-card-header">
-        <span class="viz-card-title">${escapeHtml(title)}</span>
-        <span class="viz-card-value text-mono text-secondary">${layers.length} layers</span>
+        <span class="viz-card-title">Sensor Quality</span>
+        <span class="viz-card-value text-mono text-secondary">${recentDecisionCount} decisions / 1h</span>
       </div>
-      <div class="hm-grid">${cells.join('')}</div>
-      <div class="hm-labels">
-        <span class="text-xs text-secondary">-24h</span>
-        <span class="text-xs text-secondary">-12h</span>
-        <span class="text-xs text-secondary">now</span>
+      <div class="qm-legend">
+        <span class="qm-legend-item"><span class="qm-dot" style="background:#6DFF9A"></span>Fresh</span>
+        <span class="qm-legend-item"><span class="qm-dot" style="background:#FFC857"></span>Stale</span>
+        <span class="qm-legend-item"><span class="qm-dot" style="background:#FF5C6C"></span>Old</span>
+        <span class="qm-legend-item"><span class="qm-dot" style="background:#1A2822"></span>Missing</span>
       </div>
+      <table class="qm-table">
+        <thead><tr><th class="qm-th-device">Device</th>${headerCols}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
     </div>`;
 }
 
@@ -917,9 +1047,104 @@ function injectSensorStyles(): void {
   padding: 24px;
   color: var(--text-secondary);
 }
+
+/* ── Horizon strips ── */
+.horizon-strips-section {
+  margin-top: var(--space-6);
+}
+.horizon-strips-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.horizon-strip {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  overflow: hidden;
+}
+.horizon-strip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+.horizon-strip-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+.horizon-strip-value {
+  font-size: 13px;
+  font-weight: 600;
+}
+.horizon-strip-svg {
+  display: block;
+  width: 100%;
+  height: 52px;
+}
+
+/* ── Quality Matrix ── */
+.qm-legend {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+.qm-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.qm-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.qm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.qm-th, .qm-th-device {
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.qm-th-device { min-width: 120px; }
+.qm-cell {
+  padding: var(--space-1) var(--space-2);
+  text-align: center;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.qm-device {
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.qm-table tbody tr:last-child td { border-bottom: none; }
+.qm-table tbody tr:hover td { background: var(--bg-tertiary); }
+
 @media (max-width: 1023px) {
   .viz-grid { grid-template-columns: repeat(2, 1fr); }
   .viz-card.wide { grid-column: span 2; }
+  .horizon-strips-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
   .sensors-hero-header { flex-direction: column; align-items: flex-start; }
@@ -928,6 +1153,7 @@ function injectSensorStyles(): void {
   .metric-pill { height: 32px; padding: 0 10px; font-size: 11px; }
   .viz-grid { grid-template-columns: 1fr; }
   .viz-card.wide { grid-column: span 1; }
+  .horizon-strips-grid { grid-template-columns: 1fr; }
 }
 `;
   document.head.appendChild(style);

@@ -9,6 +9,8 @@ const navItems: { id: ViewId; label: string; icon: string }[] = [
   { id: 'sensors', label: 'Sensors', icon: sensorsIcon() },
   { id: 'decisions', label: 'Decisions', icon: decisionsIcon() },
   { id: 'cameras', label: 'Cameras', icon: camerasIcon() },
+  { id: 'system', label: 'System', icon: systemIcon() },
+  { id: 'terminal', label: 'Terminal', icon: terminalIcon() },
 ];
 
 export function renderSidebar(mode: FarmMode, activeView: ViewId, collapsed: boolean): string {
@@ -103,6 +105,14 @@ function decisionsIcon(): string {
 
 function camerasIcon(): string {
   return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
+}
+
+function systemIcon(): string {
+  return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
+}
+
+function terminalIcon(): string {
+  return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
 }
 
 function chevronIcon(): string {

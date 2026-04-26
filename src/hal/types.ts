@@ -1,11 +1,11 @@
 // Device types
 export type DeviceType = 'smart_plug' | 'sensor' | 'camera' | 'relay';
-export type DeviceProtocol = 'tasmota' | 'shelly' | 'kasa' | 'mqtt' | 'gpio';
+export type DeviceProtocol = 'tasmota' | 'shelly' | 'kasa' | 'mqtt' | 'gpio' | 'serial';
 export type DeviceState = 'on' | 'off' | 'unknown';
 
 // Sensor types
 export type MetricType = 'temperature' | 'humidity' | 'soil_moisture' | 'light' | 'co2' | 'water_level' | 'ph' | 'weight';
-export type SensorUnit = 'c' | 'f' | '%' | 'lux' | 'ppm' | 'mm' | 'ph' | 'kg';
+export type SensorUnit = 'c' | 'f' | '%' | 'lux' | 'ppm' | 'mm' | 'ph' | 'kg' | '';
 export type SensorQuality = 'good' | 'stale' | 'error';
 
 // Relay types

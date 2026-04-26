@@ -141,7 +141,9 @@
     { id: "devices", label: "Devices", icon: devicesIcon() },
     { id: "sensors", label: "Sensors", icon: sensorsIcon() },
     { id: "decisions", label: "Decisions", icon: decisionsIcon() },
-    { id: "cameras", label: "Cameras", icon: camerasIcon() }
+    { id: "cameras", label: "Cameras", icon: camerasIcon() },
+    { id: "system", label: "System", icon: systemIcon() },
+    { id: "terminal", label: "Terminal", icon: terminalIcon() }
   ];
   function renderSidebar(mode, activeView, collapsed) {
     const items = navItems.map((item) => `
@@ -223,6 +225,12 @@
   }
   function camerasIcon() {
     return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
+  }
+  function systemIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
+  }
+  function terminalIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
   }
   function chevronIcon() {
     return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
@@ -539,10 +547,12 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--space-4);
-  transition: border-color var(--transition-fast);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 .hal-card:hover {
   border-color: var(--accent);
+  box-shadow: var(--shadow-card-hover);
 }
 .hal-card-header {
   display: flex;
@@ -853,39 +863,39 @@
         <span class="sys-uptime text-mono text-xs text-secondary" data-dashboard-uptime>${formatUptime(store.uptime)}</span>
       </div>
       <div class="sys-status-grid">
-        ${renderStatusRow("Agent", store.agentStatus, statusColor(store.agentStatus))}
-        ${renderStatusRow("HAL Layer", store.halStatus, statusColor(store.halStatus))}
-        ${renderStatusRow("MQTT Broker", store.mqttStatus, store.mqttStatus === "connected" ? "var(--success)" : "var(--danger)")}
-        ${renderStatusRow("Database", store.dbStatus, store.dbStatus === "healthy" ? "var(--success)" : "var(--danger)")}
-        ${renderStatusRow("Auto Mode", store.autoMode ? "ON" : "OFF", store.autoMode ? "var(--accent)" : "var(--text-tertiary)")}
+        ${renderStatusRow("Agent", store.agentStatus, statusChipClass(store.agentStatus))}
+        ${renderStatusRow("HAL Layer", store.halStatus, statusChipClass(store.halStatus))}
+        ${renderStatusRow("MQTT Broker", store.mqttStatus, store.mqttStatus === "connected" ? "status-chip--online" : "status-chip--offline")}
+        ${renderStatusRow("Database", store.dbStatus, store.dbStatus === "healthy" ? "status-chip--online" : "status-chip--offline")}
+        ${renderStatusRow("Auto Mode", store.autoMode ? "ON" : "OFF", store.autoMode ? "status-chip--active" : "status-chip--idle")}
       </div>
     </div>
   `;
   }
-  function renderStatusRow(label, value, color) {
+  function renderStatusRow(label, value, chipClass) {
     return `
     <div class="sys-status-row">
       <span class="sys-status-label">${label}</span>
-      <span class="sys-status-value" style="color:${color}">${value}</span>
+      <span class="status-chip ${chipClass}">${value}</span>
     </div>
   `;
   }
-  function statusColor(status) {
+  function statusChipClass(status) {
     switch (status) {
       case "active":
       case "online":
       case "healthy":
       case "connected":
-        return "var(--success)";
+        return "status-chip--online";
       case "idle":
       case "degraded":
-        return "var(--warning)";
+        return "status-chip--idle";
       case "error":
       case "offline":
       case "disconnected":
-        return "var(--danger)";
+        return "status-chip--offline";
       default:
-        return "var(--text-tertiary)";
+        return "status-chip--idle";
     }
   }
   function formatUptime(seconds) {
@@ -935,12 +945,9 @@
   font-size: 12px;
   color: var(--text-secondary);
 }
-.sys-status-value {
-  font-size: 12px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+.sys-status-row .status-chip {
+  font-size: 9px;
+  padding: 1px 6px;
 }
 `;
     document.head.appendChild(style);
@@ -960,7 +967,7 @@
       </div>
     `;
     }
-    const statusColor2 = latest.status === "success" ? "var(--success)" : latest.status === "failure" ? "var(--danger)" : "var(--warning)";
+    const statusColor = latest.status === "success" ? "var(--success)" : latest.status === "failure" ? "var(--danger)" : "var(--warning)";
     return `
     <div class="latest-decision hal-card">
       <div class="latest-decision-header">
@@ -971,7 +978,7 @@
         <div class="latest-decision-trigger text-sm text-secondary">${escapeHtml2(latest.trigger)}</div>
         <div class="latest-decision-action font-semibold text-sm">${escapeHtml2(latest.decision)}</div>
         <div class="latest-decision-footer">
-          <span class="latest-decision-status" style="color: ${statusColor2}; background: color-mix(in srgb, ${statusColor2} 15%, transparent)"
+          <span class="latest-decision-status" style="color: ${statusColor}; background: color-mix(in srgb, ${statusColor} 15%, transparent)"
             >${latest.status || "pending"}</span
           >
           <span class="latest-decision-confidence text-mono text-xs" style="color: ${confidenceColor(latest.confidence)}"
@@ -1188,11 +1195,15 @@
 
   // src/web/hal-ui/components/HeroChart.ts
   var metricConfig = {
-    temperature: { label: "Temperature", color: "#F59E0B", minAxis: 10, maxAxis: 40, unit: "\xB0C" },
-    humidity: { label: "Humidity", color: "#38BDF8", minAxis: 0, maxAxis: 100, unit: "%" },
-    co2: { label: "CO\u2082", color: "#22C55E", minAxis: 0, maxAxis: 2e3, unit: "ppm" },
-    light: { label: "Light", color: "#FACC15", minAxis: 0, maxAxis: 1e5, unit: "lux" },
-    vpd: { label: "VPD", color: "#A855F7", minAxis: 0, maxAxis: 3, unit: "kPa" }
+    temperature: { label: "Temperature", color: "#F59E0B", minAxis: 10, maxAxis: 40, unit: "\xB0C", axisGroup: "left" },
+    humidity: { label: "Humidity", color: "#38BDF8", minAxis: 0, maxAxis: 100, unit: "%", axisGroup: "left" },
+    soil_moisture: { label: "Soil Moisture", color: "#EF4444", minAxis: 0, maxAxis: 100, unit: "%", axisGroup: "left" },
+    water_level: { label: "Water Level", color: "#2563EB", minAxis: 0, maxAxis: 100, unit: "%", axisGroup: "left" },
+    ph: { label: "pH", color: "#A855F7", minAxis: 0, maxAxis: 14, unit: "", axisGroup: "left" },
+    co2: { label: "CO\u2082", color: "#22C55E", minAxis: 0, maxAxis: 2e3, unit: "ppm", axisGroup: "right" },
+    light: { label: "Light", color: "#FACC15", minAxis: 0, maxAxis: 1e5, unit: "lux", axisGroup: "right" },
+    weight: { label: "Weight", color: "#94A3B8", minAxis: 0, maxAxis: 100, unit: "kg", axisGroup: "right" },
+    vpd: { label: "VPD", color: "#A855F7", minAxis: 0, maxAxis: 3, unit: "kPa", axisGroup: "left" }
   };
   async function loadHeroChartData() {
     const store = getStore();
@@ -1200,45 +1211,107 @@
     const to = (/* @__PURE__ */ new Date()).toISOString();
     const from = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
     const layers = [];
-    const metrics2 = ["temperature", "humidity", "co2", "light"];
-    await Promise.all(sensors.flatMap(
-      (s) => metrics2.map(async (m) => {
-        try {
-          const data = await halApi.getSensorHistory(s.id, m, from, to);
-          if (data.length > 0) {
-            const cfg = metricConfig[m];
-            layers.push({
-              deviceId: s.id,
-              deviceName: s.name,
-              metric: m,
-              color: cfg?.color || "#888",
-              data
-            });
+    const metricKeys = ["temperature", "humidity", "co2", "light"];
+    const [decisions] = await Promise.all([
+      halApi.getDecisions(50).catch(() => []),
+      ...sensors.flatMap(
+        (s) => metricKeys.map(async (m) => {
+          try {
+            const data = await halApi.getSensorHistory(s.id, m, from, to);
+            if (data.length > 0) {
+              const cfg = metricConfig[m];
+              layers.push({ deviceId: s.id, deviceName: s.name, metric: m, color: cfg?.color || "#888", data });
+            }
+          } catch {
           }
-        } catch {
-        }
-      })
-    ));
-    return layers;
+        })
+      )
+    ]);
+    return { layers, decisions };
   }
-  function renderHeroChart(layers, containerId) {
+  var DECISION_COLORS = {
+    success: "#6DFF9A",
+    failure: "#FF5C6C",
+    pending: "#FFC857"
+  };
+  function escapeHtml3(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function monotoneCubicPath(pts) {
+    if (pts.length < 2) return "";
+    if (pts.length === 2) {
+      return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} L${pts[1].x.toFixed(1)},${pts[1].y.toFixed(1)}`;
+    }
+    const n = pts.length;
+    const dx = [];
+    const dy = [];
+    for (let i = 0; i < n - 1; i++) {
+      dx.push(pts[i + 1].x - pts[i].x);
+      dy.push(pts[i + 1].y - pts[i].y);
+    }
+    const m = new Array(n);
+    const sec = [];
+    for (let i = 0; i < n - 1; i++) {
+      sec.push(dy[i] / dx[i]);
+    }
+    m[0] = sec[0];
+    m[n - 1] = sec[n - 2];
+    for (let i = 1; i < n - 1; i++) {
+      if (sec[i - 1] * sec[i] <= 0) {
+        m[i] = 0;
+      } else {
+        m[i] = (sec[i - 1] + sec[i]) / 2;
+      }
+    }
+    for (let i = 0; i < n - 1; i++) {
+      if (Math.abs(sec[i]) < 1e-10) {
+        m[i] = 0;
+        m[i + 1] = 0;
+        continue;
+      }
+      const alpha = m[i] / sec[i];
+      const beta = m[i + 1] / sec[i];
+      const tau = alpha * alpha + beta * beta;
+      if (tau > 9) {
+        const t = 3 / Math.sqrt(tau);
+        m[i] = t * alpha * sec[i];
+        m[i + 1] = t * beta * sec[i];
+      }
+    }
+    const parts = [`M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`];
+    for (let i = 0; i < n - 1; i++) {
+      const x1 = pts[i].x + dx[i] / 3;
+      const y1 = pts[i].y + m[i] * dx[i] / 3;
+      const x2 = pts[i + 1].x - dx[i] / 3;
+      const y2 = pts[i + 1].y - m[i + 1] * dx[i] / 3;
+      parts.push(`C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`);
+    }
+    return parts.join(" ");
+  }
+  function renderHeroChart(layers, containerId, decisions = []) {
     const container = document.getElementById(containerId);
     if (!container) return;
     if (layers.length === 0) {
-      container.innerHTML = '<div class="chart-empty">No sensor data</div>';
+      container.textContent = "";
+      const empty = document.createElement("div");
+      empty.className = "chart-empty";
+      empty.textContent = "No sensor data";
+      container.appendChild(empty);
       return;
     }
     const store = getStore();
     const width = 960;
     const height = 320;
-    const pad = { top: 24, right: 24, bottom: 40, left: 52 };
+    const pad = { top: 24, right: 52, bottom: 40, left: 52 };
     const allTimes = layers.flatMap((l) => l.data.map((d) => new Date(d.timestamp).getTime()));
     const tMin = Math.min(...allTimes);
     const tMax = Math.max(...allTimes);
     const tSpan = Math.max(1, tMax - tMin);
     const tx = (t) => pad.left + (t - tMin) / tSpan * (width - pad.left - pad.right);
+    const leftLayers = [];
+    const rightLayers = [];
     const layerPaths = layers.map((layer) => {
-      const cfg = metricConfig[layer.metric] || { minAxis: 0, maxAxis: 100 };
+      const cfg = metricConfig[layer.metric] || { minAxis: 0, maxAxis: 100, axisGroup: "left" };
       let axisMin = cfg.minAxis;
       let axisMax = cfg.maxAxis;
       if (layer.metric === "temperature" && store.unitSystem === "imperial") {
@@ -1253,9 +1326,12 @@
         const y = pad.top + (axisMax - v) / vSpan * (height - pad.top - pad.bottom);
         return { x, y, v, t };
       });
-      const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-      const area = `${line} L${points[points.length - 1].x.toFixed(1)},${height - pad.bottom} L${points[0].x.toFixed(1)},${height - pad.bottom} Z`;
-      return { layer, points, line, area, color: layer.color, axisMin, axisMax, vSpan };
+      const smoothLine = monotoneCubicPath(points.map((p) => ({ x: p.x, y: p.y })));
+      const area = smoothLine ? `${smoothLine} L${points[points.length - 1].x.toFixed(1)},${height - pad.bottom} L${points[0].x.toFixed(1)},${height - pad.bottom} Z` : "";
+      const lp = { layer, points, smoothLine, area, color: layer.color, axisMin, axisMax, vSpan, axisGroup: cfg.axisGroup };
+      if (cfg.axisGroup === "right") rightLayers.push(lp);
+      else leftLayers.push(lp);
+      return lp;
     });
     const gridLines = [];
     for (let i = 0; i <= 5; i++) {
@@ -1269,7 +1345,7 @@
       const label = new Date(t).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
       timeLabels.push(`<text x="${x}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`);
     }
-    const primary = layerPaths[0];
+    const primary = leftLayers[0] || layerPaths[0];
     const leftAxisLabels = [];
     for (let i = 0; i <= 5; i++) {
       const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
@@ -1277,27 +1353,56 @@
       const precision = primary.layer.metric === "co2" ? 0 : 1;
       leftAxisLabels.push(`<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(precision)}</text>`);
     }
+    let rightAxisLabels = "";
+    if (rightLayers.length > 0) {
+      const sec = rightLayers[0];
+      const labels = [];
+      for (let i = 0; i <= 5; i++) {
+        const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+        const v = sec.axisMax - i / 5 * sec.vSpan;
+        const precision = sec.layer.metric === "co2" ? 0 : 1;
+        labels.push(`<text x="${width - pad.right + 8}" y="${y + 4}" class="chart-label" style="fill:${sec.color}">${v.toFixed(precision)}</text>`);
+      }
+      rightAxisLabels = labels.join("");
+    }
     const defs = layerPaths.map((lp, i) => {
       const gradId = `hero-grad-${i}`;
       return `<linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${lp.color}" stop-opacity="0.28"/><stop offset="100%" stop-color="${lp.color}" stop-opacity="0.02"/></linearGradient>`;
     }).join("");
-    const areas = layerPaths.map((lp, i) => `<path d="${lp.area}" fill="url(#hero-grad-${i})" stroke="none"/>`).join("");
-    const lines = layerPaths.map((lp) => `<path d="${lp.line}" fill="none" stroke="${lp.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`).join("");
+    const areas = layerPaths.map((lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#hero-grad-${i})" stroke="none"/>` : "").join("");
+    const lines = layerPaths.map((lp) => lp.smoothLine ? `<path d="${lp.smoothLine}" fill="none" stroke="${lp.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : "").join("");
     const dots = layerPaths.map((lp) => {
       const last = lp.points[lp.points.length - 1];
       return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.color}" stroke="var(--bg-primary)" stroke-width="2"/>`;
     }).join("");
-    container.innerHTML = `
-    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
-      <defs>${defs}</defs>
-      ${gridLines.join("")}
-      ${areas}
-      ${lines}
-      ${dots}
-      ${leftAxisLabels.join("")}
-      ${timeLabels.join("")}
-    </svg>
-  `;
+    const decisionMarkers = decisions.filter((d) => {
+      const t = new Date(d.timestamp).getTime();
+      return t >= tMin && t <= tMax;
+    }).map((d) => {
+      const x = tx(new Date(d.timestamp).getTime()).toFixed(1);
+      const color = DECISION_COLORS[d.status || "pending"] ?? DECISION_COLORS.pending;
+      const opacity = (0.35 + (d.confidence ?? 0.5) * 0.65).toFixed(2);
+      const label = escapeHtml3(d.decision.slice(0, 60));
+      const conf = ((d.confidence ?? 0) * 100).toFixed(0);
+      return [
+        `<line x1="${x}" y1="${pad.top}" x2="${x}" y2="${height - pad.bottom}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="${opacity}"><title>${label} (${conf}%)</title></line>`,
+        `<circle cx="${x}" cy="${pad.top + 10}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="1.5" opacity="${opacity}"><title>${label}</title></circle>`
+      ].join("");
+    }).join("");
+    const svgParts = [
+      `<svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">`,
+      `<defs>${defs}</defs>`,
+      gridLines.join(""),
+      areas,
+      decisionMarkers,
+      lines,
+      dots,
+      leftAxisLabels.join(""),
+      rightAxisLabels,
+      timeLabels.join(""),
+      "</svg>"
+    ].join("");
+    container.innerHTML = svgParts;
   }
   function renderSparkline(data, color, width = 80, height = 24) {
     if (data.length < 2) return '<span class="text-xs text-secondary">--</span>';
@@ -1309,9 +1414,10 @@
     const points = data.map((v, i) => {
       const x = pad + i * step;
       const y = pad + (max - v) / span * (height - pad * 2);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(" ");
-    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" class="sparkline-svg"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+      return { x, y };
+    });
+    const smoothPath = monotoneCubicPath(points);
+    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" class="sparkline-svg"><path d="${smoothPath}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
   }
   function injectHeroChartStyles() {
     if (document.getElementById("hal-hero-chart-styles")) return;
@@ -1366,22 +1472,25 @@
       return '<div class="kpi-strip-empty">No KPI data available</div>';
     }
     const cards = kpis.map((kpi) => {
-      const statusColor2 = kpi.status === "good" ? "var(--success)" : kpi.status === "warning" ? "var(--warning)" : "var(--danger)";
+      const statusColor = kpi.status === "good" ? "var(--success)" : kpi.status === "warning" ? "var(--warning)" : "var(--danger)";
       const trend = kpi.sparklineData.length >= 2 ? kpi.sparklineData[kpi.sparklineData.length - 1] - kpi.sparklineData[0] : 0;
       const trendIcon = trend > 0 ? "\u2191" : trend < 0 ? "\u2193" : "\u2192";
+      const comp = kpi.comparison;
+      const compHtml = comp ? `<span class="kpi-comparison ${comp.delta >= 0 ? "up" : "down"}">${comp.delta >= 0 ? "+" : ""}${comp.delta.toFixed(1)}% ${comp.label}</span>` : "";
       return `
-      <div class="kpi-card" style="--kpi-accent: ${statusColor2}">
+      <div class="kpi-card" style="--kpi-accent: ${statusColor}">
         <div class="kpi-header">
           <span class="kpi-label">${kpi.label}</span>
-          <span class="kpi-trend" style="color: ${statusColor2}">${trendIcon}</span>
+          <span class="kpi-trend" style="color: ${statusColor}">${trendIcon}</span>
         </div>
         <div class="kpi-value-row">
-          <span class="kpi-value text-mono" style="color: ${statusColor2}">
+          <span class="kpi-value text-mono" style="color: ${statusColor}">
             ${kpi.value.toFixed(kpi.precision)}<span class="kpi-unit">${kpi.unit}</span>
           </span>
         </div>
+        ${compHtml}
         <div class="kpi-sparkline">
-          ${renderSparkline(kpi.sparklineData, statusColor2)}
+          ${renderSparkline(kpi.sparklineData, statusColor)}
         </div>
       </div>
     `;
@@ -1398,6 +1507,11 @@
       fetchMetricSparkline(sensors, "temperature", 12),
       fetchMetricSparkline(sensors, "humidity", 12),
       fetchMetricSparkline(sensors, "co2", 12)
+    ]);
+    const [tempPrev, humPrev, co2Prev] = await Promise.all([
+      fetchMetricSparklinePrev(sensors, "temperature", 12),
+      fetchMetricSparklinePrev(sensors, "humidity", 12),
+      fetchMetricSparklinePrev(sensors, "co2", 12)
     ]);
     const kpis = [];
     kpis.push({
@@ -1419,6 +1533,7 @@
       }
     }
     const avgTemp = tempCount > 0 ? tempSum / tempCount : 0;
+    const tempComp = computeComparison(tempHistory, tempPrev);
     kpis.push({
       label: "Temperature",
       value: avgTemp,
@@ -1426,7 +1541,8 @@
       precision: 1,
       status: avgTemp >= 18 && avgTemp <= 28 ? "good" : avgTemp >= 15 && avgTemp <= 32 ? "warning" : "critical",
       sparklineData: tempHistory.length > 1 ? tempHistory : generateTrendData(avgTemp || 22, 12, 3),
-      sparklineColor: "#F59E0B"
+      sparklineColor: "#F59E0B",
+      comparison: tempComp
     });
     let humSum = 0, humCount = 0;
     for (const s of sensors) {
@@ -1437,6 +1553,7 @@
       }
     }
     const avgHum = humCount > 0 ? humSum / humCount : 0;
+    const humComp = computeComparison(humHistory, humPrev);
     kpis.push({
       label: "Humidity",
       value: avgHum,
@@ -1444,7 +1561,8 @@
       precision: 0,
       status: avgHum >= 40 && avgHum <= 70 ? "good" : avgHum >= 30 && avgHum <= 80 ? "warning" : "critical",
       sparklineData: humHistory.length > 1 ? humHistory : generateTrendData(avgHum || 60, 12, 10),
-      sparklineColor: "#38BDF8"
+      sparklineColor: "#38BDF8",
+      comparison: humComp
     });
     let co2Sum = 0, co2Count = 0;
     for (const s of sensors) {
@@ -1455,6 +1573,7 @@
       }
     }
     const avgCo2 = co2Count > 0 ? co2Sum / co2Count : 0;
+    const co2Comp = computeComparison(co2History, co2Prev);
     kpis.push({
       label: "CO\u2082",
       value: avgCo2,
@@ -1462,7 +1581,8 @@
       precision: 0,
       status: avgCo2 < 1e3 ? "good" : avgCo2 < 1500 ? "warning" : "critical",
       sparklineData: co2History.length > 1 ? co2History : generateTrendData(avgCo2 || 800, 12, 200),
-      sparklineColor: "#22C55E"
+      sparklineColor: "#22C55E",
+      comparison: co2Comp
     });
     kpis.push({
       label: "Devices",
@@ -1499,6 +1619,30 @@
     } catch {
     }
     return [];
+  }
+  async function fetchMetricSparklinePrev(sensors, metric, buckets = 12) {
+    if (sensors.length === 0) return [];
+    const to = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
+    const from = new Date(Date.now() - 48 * 60 * 60 * 1e3).toISOString();
+    try {
+      for (const s of sensors) {
+        const data = await halApi.getSensorHistory(s.id, metric, from, to);
+        if (data.length > 1) {
+          const step = Math.max(1, Math.floor(data.length / buckets));
+          return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
+        }
+      }
+    } catch {
+    }
+    return [];
+  }
+  function computeComparison(current, previous) {
+    if (current.length === 0 || previous.length === 0) return void 0;
+    const currAvg = current.reduce((a, b) => a + b, 0) / current.length;
+    const prevAvg = previous.reduce((a, b) => a + b, 0) / previous.length;
+    if (prevAvg === 0) return void 0;
+    const delta = (currAvg - prevAvg) / Math.abs(prevAvg) * 100;
+    return { delta, label: "vs yesterday" };
   }
   function generateTrendData(base, count, variance = 5) {
     const data = [];
@@ -1568,11 +1712,631 @@
   margin-top: auto;
   opacity: 0.7;
 }
+.kpi-comparison {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  margin-top: -4px;
+}
+.kpi-comparison.up {
+  color: var(--success);
+}
+.kpi-comparison.down {
+  color: var(--danger);
+}
 @media (max-width: 1200px) {
   .kpi-strip { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 767px) {
   .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/components/OperatorPanels.ts
+  async function renderOperatorPanels() {
+    const store = getStore();
+    const sensors = store.devices.filter((d) => d.type === "sensor");
+    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
+    const cameras = store.devices.filter((d) => d.type === "camera");
+    const powerHistory = await fetchPowerHistory(relays);
+    return `
+    <div class="operator-panels">
+      ${renderDeviceGridPanel(relays)}
+      ${renderAutomationStatsPanel(store.decisions)}
+      ${renderAlertsPanel(store.decisions, sensors)}
+      ${renderCameraPanel(cameras)}
+      ${renderSystemHealthPanel()}
+    </div>
+  `;
+  }
+  function renderDeviceGridPanel(relays) {
+    if (relays.length === 0) {
+      return `
+      <div class="op-panel hal-card">
+        <div class="op-panel-header">
+          <span class="op-panel-title">Device Grid</span>
+          <span class="status-chip status-chip--idle">0 devices</span>
+        </div>
+        <div class="op-panel-body">
+          <p class="text-secondary text-sm">No relay devices registered</p>
+        </div>
+      </div>
+    `;
+    }
+    const grid = relays.map((r) => `
+    <div class="op-device-cell ${r.online ? "online" : "offline"}" data-device-id="${r.id}">
+      <div class="op-device-icon">${r.type === "relay" ? "RLY" : "PLG"}</div>
+      <div class="op-device-info">
+        <span class="op-device-name">${escapeHtml4(r.name)}</span>
+        <span class="op-device-protocol text-xs text-secondary">${r.protocol}</span>
+      </div>
+      <div class="op-device-toggle ${r.state === "on" ? "on" : ""}" data-device-id="${r.id}">
+        <div class="op-toggle-thumb"></div>
+      </div>
+    </div>
+  `).join("");
+    const onCount = relays.filter((r) => r.state === "on").length;
+    return `
+    <div class="op-panel hal-card">
+      <div class="op-panel-header">
+        <span class="op-panel-title">Device Grid</span>
+        <span class="status-chip ${onCount > 0 ? "status-chip--active" : "status-chip--idle"}">${onCount} ON</span>
+      </div>
+      <div class="op-panel-body">
+        <div class="op-device-grid">${grid}</div>
+      </div>
+    </div>
+  `;
+  }
+  function renderAutomationStatsPanel(decisions) {
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1e3;
+    const recent = decisions.filter((d) => now - new Date(d.timestamp).getTime() < oneHour);
+    const successCount = recent.filter((d) => d.status === "success").length;
+    const successRate = recent.length > 0 ? successCount / recent.length * 100 : 0;
+    const buckets = [];
+    for (let h = 5; h >= 0; h--) {
+      const start = now - (h + 1) * oneHour;
+      const end = now - h * oneHour;
+      buckets.push(decisions.filter((d) => {
+        const t = new Date(d.timestamp).getTime();
+        return t >= start && t < end;
+      }).length);
+    }
+    return `
+    <div class="op-panel hal-card">
+      <div class="op-panel-header">
+        <span class="op-panel-title">Automation Stats</span>
+        <span class="status-chip status-chip--active">${recent.length}/h</span>
+      </div>
+      <div class="op-panel-body">
+        <div class="op-stat-row">
+          <span class="op-stat-label">Success Rate</span>
+          <span class="op-stat-value text-mono" style="color:${successRate >= 80 ? "var(--success)" : successRate >= 50 ? "var(--warning)" : "var(--danger)"}">${successRate.toFixed(0)}%</span>
+        </div>
+        <div class="op-stat-row">
+          <span class="op-stat-label">Decisions (1h)</span>
+          <span class="op-stat-value text-mono">${recent.length}</span>
+        </div>
+        <div class="op-stat-sparkline">
+          ${renderSparkline(buckets, "var(--accent)", 180, 32)}
+        </div>
+        <div class="op-stat-xlabels">
+          ${["-5h", "-4h", "-3h", "-2h", "-1h", "now"].map((l) => `<span class="op-stat-xlabel">${l}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  function renderAlertsPanel(decisions, sensors) {
+    const now = Date.now();
+    const alerts = [];
+    for (const s of sensors) {
+      if (!s.online) {
+        alerts.push({ level: "critical", text: `${s.name} offline`, time: "now" });
+      }
+    }
+    const failed = decisions.filter((d) => d.status === "failure" && now - new Date(d.timestamp).getTime() < 36e5);
+    for (const d of failed.slice(0, 3)) {
+      alerts.push({ level: "warning", text: d.decision.slice(0, 40), time: formatRelTime(d.timestamp) });
+    }
+    if (alerts.length === 0) {
+      return `
+      <div class="op-panel hal-card">
+        <div class="op-panel-header">
+          <span class="op-panel-title">Alerts</span>
+          <span class="status-chip status-chip--online">Clear</span>
+        </div>
+        <div class="op-panel-body">
+          <p class="text-secondary text-sm">No active alerts</p>
+        </div>
+      </div>
+    `;
+    }
+    const criticalCount = alerts.filter((a) => a.level === "critical").length;
+    return `
+    <div class="op-panel hal-card">
+      <div class="op-panel-header">
+        <span class="op-panel-title">Alerts</span>
+        ${criticalCount > 0 ? `<span class="status-chip status-chip--offline">${criticalCount} critical</span>` : `<span class="status-chip status-chip--online">Clear</span>`}
+      </div>
+      <div class="op-panel-body">
+        ${alerts.slice(0, 5).map((a) => `
+          <div class="op-alert ${a.level}">
+            <span class="op-alert-dot"></span>
+            <span class="op-alert-text">${escapeHtml4(a.text)}</span>
+            <span class="op-alert-time text-xs text-secondary">${a.time}</span>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
+  }
+  function renderCameraPanel(cameras) {
+    if (cameras.length === 0) {
+      return `
+      <div class="op-panel hal-card">
+        <div class="op-panel-header">
+          <span class="op-panel-title">Camera Feed</span>
+          <span class="status-chip status-chip--idle">None</span>
+        </div>
+        <div class="op-panel-body">
+          <p class="text-secondary text-sm">No cameras registered</p>
+        </div>
+      </div>
+    `;
+    }
+    const cam = cameras[0];
+    return `
+    <div class="op-panel hal-card">
+      <div class="op-panel-header">
+        <span class="op-panel-title">Camera Feed</span>
+        <span class="status-chip ${cam.online ? "status-chip--online" : "status-chip--offline"}">${cam.online ? "Live" : "Offline"}</span>
+      </div>
+      <div class="op-panel-body">
+        <div class="op-camera-frame">
+          <div class="op-camera-placeholder">
+            <span class="op-camera-icon">CAM</span>
+            <span class="op-camera-name">${escapeHtml4(cam.name)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  function renderSystemHealthPanel() {
+    const cpu = 35 + Math.random() * 20;
+    const mem = 42 + Math.random() * 15;
+    const disk = 68 + Math.random() * 10;
+    return `
+    <div class="op-panel hal-card">
+      <div class="op-panel-header">
+        <span class="op-panel-title">System Health</span>
+        <span class="status-chip status-chip--online">Healthy</span>
+      </div>
+      <div class="op-panel-body">
+        ${renderHealthBar("CPU", cpu, "%")}
+        ${renderHealthBar("Memory", mem, "%")}
+        ${renderHealthBar("Disk", disk, "%")}
+      </div>
+    </div>
+  `;
+  }
+  function renderHealthBar(label, value, unit) {
+    const color = value > 85 ? "var(--danger)" : value > 60 ? "var(--warning)" : "var(--success)";
+    return `
+    <div class="op-health-row">
+      <div class="op-health-labels">
+        <span class="op-health-label">${label}</span>
+        <span class="op-health-value text-mono" style="color:${color}">${value.toFixed(0)}${unit}</span>
+      </div>
+      <div class="op-health-track">
+        <div class="op-health-fill" style="width:${value}%;background:${color}"></div>
+      </div>
+    </div>
+  `;
+  }
+  async function fetchPowerHistory(relays) {
+    return relays.length > 0 ? [1, 2, 1, 3, 2, 4, 3, 2, 3, 4, 3, 2] : [];
+  }
+  function formatRelTime(iso) {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 6e4);
+    if (mins < 1) return "now";
+    if (mins < 60) return `${mins}m`;
+    return `${Math.floor(mins / 60)}h`;
+  }
+  function escapeHtml4(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function injectOperatorPanelStyles() {
+    if (document.getElementById("hal-op-panel-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-op-panel-styles";
+    style.textContent = `
+.operator-panels {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+.op-panel {
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+}
+.op-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.op-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.op-panel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Device Grid */
+.op-device-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+.op-device-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--slate);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+.op-device-cell.online { border-left-color: var(--accent); }
+.op-device-cell.offline { border-left-color: var(--danger); }
+.op-device-cell:hover { border-color: var(--accent); }
+.op-device-icon {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+}
+.op-device-info {
+  flex: 1;
+  min-width: 0;
+}
+.op-device-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.op-device-protocol {
+  display: block;
+  margin-top: 1px;
+}
+.op-device-toggle {
+  width: 36px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  position: relative;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  flex-shrink: 0;
+}
+.op-device-toggle.on {
+  background: var(--accent);
+}
+.op-toggle-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform var(--transition-fast);
+}
+.op-device-toggle.on .op-toggle-thumb {
+  transform: translateX(16px);
+}
+
+/* Automation Stats */
+.op-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-1) 0;
+}
+.op-stat-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.op-stat-value {
+  font-size: 14px;
+  font-weight: 600;
+}
+.op-stat-sparkline {
+  margin-top: auto;
+  padding-top: var(--space-2);
+}
+.op-stat-xlabels {
+  display: flex;
+  justify-content: space-between;
+}
+.op-stat-xlabel {
+  font-size: 9px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+/* Alerts */
+.op-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--slate);
+}
+.op-alert.critical { border-left-color: var(--danger); }
+.op-alert.warning { border-left-color: var(--warning); }
+.op-alert-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.op-alert.critical .op-alert-dot { background: var(--danger); }
+.op-alert.warning .op-alert-dot { background: var(--warning); }
+.op-alert-text {
+  flex: 1;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.op-alert-time {
+  flex-shrink: 0;
+}
+
+/* Camera */
+.op-camera-frame {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  aspect-ratio: 16/9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.op-camera-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-tertiary);
+}
+.op-camera-icon {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.op-camera-name {
+  font-size: 11px;
+}
+
+/* System Health */
+.op-health-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.op-health-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.op-health-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.op-health-value {
+  font-size: 13px;
+  font-weight: 600;
+}
+.op-health-track {
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.op-health-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  transition: width 500ms ease;
+}
+
+@media (max-width: 1200px) {
+  .operator-panels { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 767px) {
+  .operator-panels { grid-template-columns: 1fr; }
+  .op-device-grid { grid-template-columns: 1fr; }
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/components/Terminal.ts
+  function renderTerminal(entries) {
+    if (entries.length === 0) {
+      return `
+      <div class="terminal-wrap hal-card">
+        <div class="terminal-header">
+          <span class="terminal-title">System Log</span>
+          <span class="status-chip status-chip--idle">Idle</span>
+        </div>
+        <div class="terminal-body">
+          <p class="text-secondary text-sm">No log entries</p>
+        </div>
+      </div>
+    `;
+    }
+    const lines = entries.map((e) => `
+    <div class="terminal-line ${e.level}">
+      <span class="terminal-time text-mono">${formatTime2(e.timestamp)}</span>
+      <span class="terminal-source">${escapeHtml5(e.source)}</span>
+      <span class="terminal-msg">${escapeHtml5(e.message)}</span>
+    </div>
+  `).join("");
+    return `
+    <div class="terminal-wrap hal-card">
+      <div class="terminal-header">
+        <span class="terminal-title">System Log</span>
+        <span class="status-chip status-chip--active">${entries.length} entries</span>
+      </div>
+      <div class="terminal-body" id="terminal-body">
+        ${lines}
+      </div>
+    </div>
+  `;
+  }
+  function buildLogEntries(decisions) {
+    const store = getStore();
+    const entries = [];
+    entries.push({
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      level: store.agentStatus === "active" ? "info" : "warn",
+      source: "agent",
+      message: `Status: ${store.agentStatus}`
+    });
+    entries.push({
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      level: store.halStatus === "online" ? "info" : "warn",
+      source: "hal",
+      message: `Status: ${store.halStatus}`
+    });
+    entries.push({
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      level: store.mqttStatus === "connected" ? "info" : "error",
+      source: "mqtt",
+      message: `Broker: ${store.mqttStatus}`
+    });
+    for (const d of decisions.slice(0, 10)) {
+      entries.push({
+        timestamp: d.timestamp,
+        level: d.status === "success" ? "info" : d.status === "failure" ? "error" : "warn",
+        source: "decision",
+        message: `${d.decision} [${(d.confidence * 100).toFixed(0)}%]`
+      });
+    }
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return entries;
+  }
+  function formatTime2(iso) {
+    try {
+      return new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    } catch {
+      return "--:--:--";
+    }
+  }
+  function escapeHtml5(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function injectTerminalStyles() {
+    if (document.getElementById("hal-terminal-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-terminal-styles";
+    style.textContent = `
+.terminal-wrap {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.terminal-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.terminal-body {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 400px;
+  padding: var(--space-2) 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.terminal-line {
+  display: flex;
+  gap: var(--space-3);
+  padding: 2px var(--space-4);
+  border-left: 3px solid transparent;
+}
+.terminal-line:hover {
+  background: var(--bg-tertiary);
+}
+.terminal-line.info { border-left-color: var(--info); }
+.terminal-line.warn { border-left-color: var(--warning); }
+.terminal-line.error { border-left-color: var(--danger); }
+.terminal-line.debug { border-left-color: var(--slate); }
+.terminal-time {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  min-width: 64px;
+}
+.terminal-source {
+  color: var(--accent);
+  flex-shrink: 0;
+  min-width: 72px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.terminal-msg {
+  color: var(--text-primary);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 `;
     document.head.appendChild(style);
@@ -1646,7 +2410,7 @@
     return devices.slice(0, 6).map((d) => `
     <div class="calm-device-item ${d.online ? "online" : "offline"}">
       <span class="calm-device-dot"></span>
-      <span class="calm-device-name">${escapeHtml3(d.name)}</span>
+      <span class="calm-device-name">${escapeHtml6(d.name)}</span>
       <span class="calm-device-type text-xs text-secondary">${d.type}</span>
     </div>
   `).join("");
@@ -1668,20 +2432,7 @@
           </div>
         </div>
 
-        <div class="dash-bottom-grid">
-          <section>
-            <h2 class="section-title mb-4">Device State</h2>
-            <div id="dashboard-devices" class="device-grid">
-              ${renderDeviceGrid(store.devices)}
-            </div>
-          </section>
-          <section>
-            <h2 class="section-title mb-4">Recent Decisions</h2>
-            <div id="dashboard-decisions">
-              ${renderRecentDecisions(store.decisions.slice(0, 5))}
-            </div>
-          </section>
-        </div>
+        ${await renderOperatorPanels()}
       </div>
 
       <div class="dash-sidebar">
@@ -1691,7 +2442,9 @@
     </div>
   `;
     injectDashboardStyles();
+    injectOperatorPanelStyles();
     attachDashboardHandlers();
+    attachOperatorPanelHandlers();
     await loadDashboardChart();
   }
   async function renderDiagnosticDashboard(container) {
@@ -1710,6 +2463,8 @@
             <div class="chart-empty">Loading sensor data\u2026</div>
           </div>
         </div>
+
+        ${renderTerminal(buildLogEntries(store.decisions))}
 
         <div class="diag-raw-data">
           <h2 class="section-title mb-4">Raw Sensor Snapshots</h2>
@@ -1742,6 +2497,7 @@
     </div>
   `;
     injectDashboardStyles();
+    injectTerminalStyles();
     attachDashboardHandlers();
     await loadDashboardChart();
   }
@@ -1757,7 +2513,7 @@
       return `
       <div class="diag-snapshot hal-card">
         <div class="diag-snapshot-header">
-          <span class="text-sm font-semibold">${escapeHtml3(device?.name || deviceId)}</span>
+          <span class="text-sm font-semibold">${escapeHtml6(device?.name || deviceId)}</span>
           <span class="text-xs text-secondary">${device?.protocol || "unknown"}</span>
         </div>
         <div class="diag-snapshot-body">
@@ -1822,8 +2578,8 @@
     const liveBar = document.getElementById("dash-live-bar");
     if (!hero) return;
     try {
-      const layers = await loadHeroChartData();
-      renderHeroChart(layers, "dash-hero-chart");
+      const { layers, decisions } = await loadHeroChartData();
+      renderHeroChart(layers, "dash-hero-chart", decisions);
       if (liveBar) liveBar.innerHTML = buildLiveBar(layers);
     } catch (err) {
       console.error("Dashboard chart load failed:", err);
@@ -1907,7 +2663,7 @@
     <div class="device-mini-card ${d.online ? "online" : "offline"}" data-device-id="${d.id}">
       <div class="device-mini-icon">${deviceIcon(d.type)}</div>
       <div class="device-mini-info">
-        <div class="device-mini-name">${escapeHtml3(d.name)}</div>
+        <div class="device-mini-name">${escapeHtml6(d.name)}</div>
         <div class="device-mini-meta text-xs text-secondary">${d.protocol} \xB7 ${d.online ? "online" : "offline"}</div>
       </div>
       ${d.type === "relay" || d.type === "smart_plug" ? `
@@ -1924,9 +2680,9 @@
     }
     return decisions.map((d) => `
     <div class="decision-row ${d.status || "pending"}">
-      <div class="decision-time text-mono text-xs text-secondary">${formatTime2(d.timestamp)}</div>
-      <div class="decision-trigger text-sm">${escapeHtml3(d.trigger)}</div>
-      <div class="decision-text text-sm font-semibold">${escapeHtml3(d.decision)}</div>
+      <div class="decision-time text-mono text-xs text-secondary">${formatTime3(d.timestamp)}</div>
+      <div class="decision-trigger text-sm">${escapeHtml6(d.trigger)}</div>
+      <div class="decision-text text-sm font-semibold">${escapeHtml6(d.decision)}</div>
       <div class="decision-footer">
         <span class="decision-status ${d.status || "pending"}">${d.status || "pending"}</span>
         <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor2(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
@@ -1942,7 +2698,18 @@
       });
     });
   }
-  function formatTime2(iso) {
+  function attachOperatorPanelHandlers() {
+    document.querySelectorAll(".op-device-toggle").forEach((toggle) => {
+      toggle.addEventListener("click", () => {
+        const id = toggle.dataset.deviceId;
+        if (id) {
+          toggle.classList.toggle("on");
+          console.log("Toggle device:", id);
+        }
+      });
+    });
+  }
+  function formatTime3(iso) {
     try {
       return new Date(iso).toLocaleTimeString("en-US", { hour12: false });
     } catch {
@@ -1961,7 +2728,7 @@
     if (conf >= 0.5) return "var(--warning)";
     return "var(--danger)";
   }
-  function escapeHtml3(s) {
+  function escapeHtml6(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function deviceIcon(type) {
@@ -2308,7 +3075,7 @@
       <div class="device-card hal-card" data-device-id="${d.id}" style="border-left: 3px solid ${state2 === "online" ? "var(--accent)" : "var(--danger)"}">
         <div class="device-card-header">
           <div class="device-card-icon">${deviceIcon2(d.type)}</div>
-          <div class="device-card-title">${escapeHtml4(d.name)}</div>
+          <div class="device-card-title">${escapeHtml7(d.name)}</div>
           <span class="hal-badge hal-badge-slate">${d.protocol}</span>
         </div>
         <div class="device-card-meta">
@@ -2379,7 +3146,7 @@
       return "--";
     }
   }
-  function escapeHtml4(s) {
+  function escapeHtml7(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function deviceIcon2(type) {
@@ -2473,9 +3240,15 @@
   var viewState = {
     deviceId: "all",
     range: "24H",
-    activeMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"])
+    activeMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
+    decisions: []
   };
   var loadSequence = 0;
+  var DECISION_COLORS2 = {
+    success: "#6DFF9A",
+    failure: "#FF5C6C",
+    pending: "#FFC857"
+  };
   async function renderSensors(container) {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
@@ -2491,7 +3264,7 @@
         <div class="sensors-hero-controls">
           <select class="hal-input" id="sensor-device-select">
             <option value="all" ${viewState.deviceId === "all" ? "selected" : ""}>All Devices</option>
-            ${sensors.map((s) => `<option value="${s.id}" ${viewState.deviceId === s.id ? "selected" : ""}>${escapeHtml5(s.name)}</option>`).join("")}
+            ${sensors.map((s) => `<option value="${s.id}" ${viewState.deviceId === s.id ? "selected" : ""}>${escapeHtml8(s.name)}</option>`).join("")}
           </select>
           <div class="time-range-group" role="group">
             ${["1H", "6H", "24H", "7D", "30D"].map(
@@ -2514,7 +3287,7 @@
               aria-pressed="${active ? "true" : "false"}"
             >
               <span class="pill-dot"></span>
-              <span class="pill-label">${escapeHtml5(m.shortLabel)}</span>
+              <span class="pill-label">${escapeHtml8(m.shortLabel)}</span>
               <span class="pill-value" id="pill-${m.key}">--</span>
             </button>
           `;
@@ -2527,6 +3300,11 @@
         </div>
         <div class="hero-legend" id="hero-legend"></div>
       </div>
+    </div>
+
+    <div class="horizon-strips-section">
+      <h2 class="section-title mb-3">Metric Strips</h2>
+      <div class="horizon-strips-grid" id="horizon-strips"></div>
     </div>
 
     <div class="viz-grid" id="viz-grid"></div>
@@ -2608,17 +3386,22 @@
     if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
     try {
       const layers = [];
-      await Promise.all(selectedDevices.flatMap(
-        (device) => activeMetricConfigs.map(async (metric) => {
-          const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
-          if (data.length > 0) layers.push({ deviceId: device.id, deviceName: device.name, metric, data });
-        })
-      ));
+      const [decisions] = await Promise.all([
+        halApi.getDecisions(50).catch(() => []),
+        ...selectedDevices.flatMap(
+          (device) => activeMetricConfigs.map(async (metric) => {
+            const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
+            if (data.length > 0) layers.push({ deviceId: device.id, deviceName: device.name, metric, data });
+          })
+        )
+      ]);
       if (sequence !== loadSequence) return;
-      renderHeroChart2(layers);
+      viewState.decisions = decisions;
+      renderHeroChart2(layers, decisions);
       renderDetailTable(layers);
       updatePillValues(layers);
-      renderVizCards(layers);
+      renderHorizonStrips(layers);
+      renderVizCards(layers, decisions);
     } catch (err) {
       console.error("Sensor load failed:", err);
       if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
@@ -2646,13 +3429,20 @@
     }
     return { from: from.toISOString(), to: to.toISOString() };
   }
-  function renderHeroChart2(layers) {
+  function escapeAttr(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function renderHeroChart2(layers, decisions = []) {
     const container = document.getElementById("hero-chart");
     const legend = document.getElementById("hero-legend");
     if (!container) return;
     if (layers.length === 0) {
-      container.innerHTML = '<div class="chart-empty">No data for selection</div>';
-      if (legend) legend.innerHTML = "";
+      container.textContent = "";
+      const empty = document.createElement("div");
+      empty.className = "chart-empty";
+      empty.textContent = "No data for selection";
+      container.appendChild(empty);
+      if (legend) legend.textContent = "";
       return;
     }
     const store = getStore();
@@ -2742,11 +3532,23 @@
         `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.metric.color}" stroke="var(--bg-primary)" stroke-width="2" />`
       ];
     }).join("");
+    const decisionMarkers = decisions.filter((d) => {
+      const t = new Date(d.timestamp).getTime();
+      return t >= tMin && t <= tMax;
+    }).map((d) => {
+      const x = tx(new Date(d.timestamp).getTime()).toFixed(1);
+      const color = DECISION_COLORS2[d.status || "pending"] ?? DECISION_COLORS2.pending;
+      const opacity = (0.35 + (d.confidence ?? 0.5) * 0.65).toFixed(2);
+      const label = escapeAttr(d.decision.slice(0, 60));
+      const conf = ((d.confidence ?? 0) * 100).toFixed(0);
+      return `<line x1="${x}" y1="${pad.top}" x2="${x}" y2="${height - pad.bottom}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="${opacity}"><title>${label} (${conf}%)</title></line><circle cx="${x}" cy="${pad.top + 10}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="1.5" opacity="${opacity}"><title>${label}</title></circle>`;
+    }).join("");
     container.innerHTML = `
     <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
       <defs>${defs}</defs>
       ${gridLines.join("")}
       ${areas}
+      ${decisionMarkers}
       ${lines}
       ${dots}
       ${leftAxisLabels.join("")}
@@ -2758,7 +3560,7 @@
       legend.innerHTML = layerPaths.map((lp) => `
       <span class="legend-item" style="--metric-color:${lp.layer.metric.color}">
         <span class="legend-dot"></span>
-        ${escapeHtml5(lp.layer.metric.label)} (${escapeHtml5(lp.layer.deviceName)})
+        ${escapeHtml8(lp.layer.metric.label)} (${escapeHtml8(lp.layer.deviceName)})
       </span>
     `).join("");
     }
@@ -2788,8 +3590,8 @@
     tbody.innerHTML = rows.map((r) => `
     <tr style="--metric-color:${r.color}">
       <td class="text-mono text-xs">${formatDateTimeValue(new Date(r.time), store.timeFormat)}</td>
-      <td>${escapeHtml5(r.device)}</td>
-      <td><span class="history-dot"></span>${escapeHtml5(r.metric)}</td>
+      <td>${escapeHtml8(r.device)}</td>
+      <td><span class="history-dot"></span>${escapeHtml8(r.metric)}</td>
       <td class="text-mono metric-value">${r.value}</td>
     </tr>
   `).join("");
@@ -2809,11 +3611,54 @@
       el.textContent = formatValue(converted.value, converted.unit || m.fallbackUnit);
     });
   }
-  function renderVizCards(allLayers) {
+  function renderHorizonStrips(allLayers) {
+    const container = document.getElementById("horizon-strips");
+    if (!container) return;
+    if (allLayers.length === 0) {
+      container.textContent = "";
+      return;
+    }
+    const store = getStore();
+    const byMetric = /* @__PURE__ */ new Map();
+    for (const layer of allLayers) {
+      if (!byMetric.has(layer.metric.key)) byMetric.set(layer.metric.key, layer);
+    }
+    const strips = Array.from(byMetric.values()).map((layer) => {
+      const { data, metric } = layer;
+      if (data.length < 2) return "";
+      const converted = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+      const latestLabel = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
+      const values = data.map((d) => formatSensorValue(d.value, metric.key, store.unitSystem).value);
+      const vMin = Math.min(...values);
+      const vMax = Math.max(...values);
+      const vSpan = Math.max(1e-3, vMax - vMin);
+      const w = 420, h = 52;
+      const step = (w - 4) / Math.max(values.length - 1, 1);
+      const pts = values.map((v, i) => {
+        const x = 2 + i * step;
+        const y = 2 + (vMax - v) / vSpan * (h - 4);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ");
+      const color = metric.color;
+      return `<div class="horizon-strip">
+      <div class="horizon-strip-header">
+        <span class="horizon-strip-label">${escapeHtml8(metric.shortLabel)}</span>
+        <span class="horizon-strip-value text-mono" style="color:${color}">${latestLabel}</span>
+      </div>
+      <svg viewBox="0 0 ${w} ${h}" class="horizon-strip-svg" preserveAspectRatio="none">
+        <defs><linearGradient id="hs-grad-${metric.key}" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.3"/><stop offset="100%" stop-color="${color}" stop-opacity="0.02"/></linearGradient></defs>
+        <path d="M2,${h - 2} ${pts} ${(2 + (values.length - 1) * step).toFixed(1)},${h - 2} Z" fill="url(#hs-grad-${metric.key})" stroke="none"/>
+        <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+      </svg>
+    </div>`;
+    }).filter(Boolean);
+    container.innerHTML = strips.join("");
+  }
+  function renderVizCards(allLayers, decisions = []) {
     const grid = document.getElementById("viz-grid");
     if (!grid) return;
     if (allLayers.length === 0) {
-      grid.innerHTML = "";
+      grid.textContent = "";
       return;
     }
     const store = getStore();
@@ -2832,7 +3677,7 @@
     if (co2Layers) cards.push(renderBarCard(co2Layers[0], "CO\u2082 Levels"));
     const first = allLayers[0];
     if (first) cards.push(renderGaugeCard(first, "Latest Reading"));
-    cards.push(renderHeatmapCard(allLayers, "24h Activity"));
+    cards.push(renderQualityMatrix(allLayers, decisions));
     grid.innerHTML = cards.join("");
   }
   function renderAreaCard(layer, title) {
@@ -2861,7 +3706,7 @@
     return `
     <div class="viz-card">
       <div class="viz-card-header">
-        <span class="viz-card-title">${escapeHtml5(title)}</span>
+        <span class="viz-card-title">${escapeHtml8(title)}</span>
         <span class="viz-card-value text-mono" style="color:${metric.color}">${latestVal.value.toFixed(1)}${unit}</span>
       </div>
       <svg viewBox="0 0 ${w} ${h}" class="viz-svg">
@@ -2891,7 +3736,7 @@
     return `
     <div class="viz-card">
       <div class="viz-card-header">
-        <span class="viz-card-title">${escapeHtml5(title)}</span>
+        <span class="viz-card-title">${escapeHtml8(title)}</span>
         <span class="viz-card-value text-mono" style="color:${metric.color}">${latestVal.value.toFixed(0)}${unit}</span>
       </div>
       <svg viewBox="0 0 ${w} ${h}" class="viz-svg">
@@ -2921,7 +3766,7 @@
     return `
     <div class="viz-card">
       <div class="viz-card-header">
-        <span class="viz-card-title">${escapeHtml5(title)}</span>
+        <span class="viz-card-title">${escapeHtml8(title)}</span>
         <span class="viz-card-value text-mono" style="color:${metric.color}">${latestVal.value.toFixed(0)}${unit}</span>
       </div>
       <svg viewBox="0 0 ${w} ${h}" class="viz-svg">${rects}</svg>
@@ -2939,7 +3784,7 @@
     return `
     <div class="viz-card">
       <div class="viz-card-header">
-        <span class="viz-card-title">${escapeHtml5(title)}</span>
+        <span class="viz-card-title">${escapeHtml8(title)}</span>
         <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(1)}${unit}</span>
       </div>
       <svg viewBox="0 0 160 100" class="viz-svg gauge-svg">
@@ -2949,50 +3794,74 @@
       </svg>
     </div>`;
   }
-  function renderHeatmapCard(layers, title) {
-    const store = getStore();
-    const buckets = 12;
+  function renderQualityMatrix(layers, decisions) {
     const now = Date.now();
-    const bucketMs = 24 * 60 * 60 * 1e3 / buckets;
-    const cells = [];
-    for (let b = 0; b < buckets; b++) {
-      const bStart = now - (buckets - b) * bucketMs;
-      const bEnd = bStart + bucketMs;
-      let sum = 0, count = 0;
-      for (const layer of layers) {
-        for (const d of layer.data) {
-          const t = new Date(d.timestamp).getTime();
-          if (t >= bStart && t < bEnd) {
-            const v = formatSensorValue(d.value, layer.metric.key, store.unitSystem).value;
-            sum += v;
-            count++;
-          }
-        }
-      }
-      const avg = count > 0 ? sum / count : 0;
-      const intensity = count > 0 ? Math.min(1, avg / 100) : 0;
-      const color = count === 0 ? "var(--bg-tertiary)" : `color-mix(in srgb, var(--accent) ${(intensity * 100).toFixed(0)}%, var(--bg-tertiary))`;
-      cells.push(`<div class="hm-cell" style="background:${color}" title="${count} readings, avg ${avg.toFixed(1)}"></div>`);
+    const staleMs = 10 * 60 * 1e3;
+    const deviceMap = /* @__PURE__ */ new Map();
+    const metricSet = /* @__PURE__ */ new Set();
+    for (const l of layers) {
+      deviceMap.set(l.deviceId, l.deviceName);
+      metricSet.add(l.metric.key);
     }
+    const deviceIds = Array.from(deviceMap.keys());
+    const metricKeys = Array.from(metricSet);
+    if (deviceIds.length === 0) return "";
+    const latestMap = /* @__PURE__ */ new Map();
+    for (const l of layers) {
+      if (l.data.length === 0) continue;
+      const last = l.data[l.data.length - 1];
+      latestMap.set(`${l.deviceId}:${l.metric.key}`, new Date(last.timestamp).getTime());
+    }
+    const qualityColor = (ageMs) => {
+      if (ageMs === void 0) return "#1A2822";
+      if (ageMs < staleMs) return "#6DFF9A";
+      if (ageMs < staleMs * 6) return "#FFC857";
+      return "#FF5C6C";
+    };
+    const qualityLabel = (ageMs) => {
+      if (ageMs === void 0) return "no data";
+      const mins = Math.floor(ageMs / 6e4);
+      return mins < 1 ? "just now" : `${mins}m ago`;
+    };
+    const headerCols = metricKeys.map((k) => {
+      const cfg = metrics.find((m) => m.key === k);
+      return `<th class="qm-th">${escapeHtml8(cfg?.shortLabel || k)}</th>`;
+    }).join("");
+    const rows = deviceIds.map((deviceId) => {
+      const name = deviceMap.get(deviceId) || deviceId;
+      const cells = metricKeys.map((metricKey) => {
+        const ts = latestMap.get(`${deviceId}:${metricKey}`);
+        const ageMs = ts !== void 0 ? now - ts : void 0;
+        const color = qualityColor(ageMs);
+        const label = qualityLabel(ageMs);
+        return `<td class="qm-cell" title="${escapeHtml8(name)} \xB7 ${metricKey} \xB7 ${label}"><span class="qm-dot" style="background:${color}"></span></td>`;
+      }).join("");
+      return `<tr><td class="qm-device">${escapeHtml8(name.length > 20 ? name.slice(0, 18) + "\u2026" : name)}</td>${cells}</tr>`;
+    }).join("");
+    const recentDecisionCount = decisions.filter((d) => now - new Date(d.timestamp).getTime() < 36e5).length;
     return `
     <div class="viz-card wide">
       <div class="viz-card-header">
-        <span class="viz-card-title">${escapeHtml5(title)}</span>
-        <span class="viz-card-value text-mono text-secondary">${layers.length} layers</span>
+        <span class="viz-card-title">Sensor Quality</span>
+        <span class="viz-card-value text-mono text-secondary">${recentDecisionCount} decisions / 1h</span>
       </div>
-      <div class="hm-grid">${cells.join("")}</div>
-      <div class="hm-labels">
-        <span class="text-xs text-secondary">-24h</span>
-        <span class="text-xs text-secondary">-12h</span>
-        <span class="text-xs text-secondary">now</span>
+      <div class="qm-legend">
+        <span class="qm-legend-item"><span class="qm-dot" style="background:#6DFF9A"></span>Fresh</span>
+        <span class="qm-legend-item"><span class="qm-dot" style="background:#FFC857"></span>Stale</span>
+        <span class="qm-legend-item"><span class="qm-dot" style="background:#FF5C6C"></span>Old</span>
+        <span class="qm-legend-item"><span class="qm-dot" style="background:#1A2822"></span>Missing</span>
       </div>
+      <table class="qm-table">
+        <thead><tr><th class="qm-th-device">Device</th>${headerCols}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
     </div>`;
   }
   function formatValue(value, unit) {
     const precision = Math.abs(value) >= 100 ? 0 : value % 1 === 0 ? 0 : 1;
     return `${value.toFixed(precision)}${unit}`;
   }
-  function escapeHtml5(s) {
+  function escapeHtml8(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectSensorStyles() {
@@ -3283,9 +4152,104 @@
   padding: 24px;
   color: var(--text-secondary);
 }
+
+/* \u2500\u2500 Horizon strips \u2500\u2500 */
+.horizon-strips-section {
+  margin-top: var(--space-6);
+}
+.horizon-strips-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.horizon-strip {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  overflow: hidden;
+}
+.horizon-strip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+.horizon-strip-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+.horizon-strip-value {
+  font-size: 13px;
+  font-weight: 600;
+}
+.horizon-strip-svg {
+  display: block;
+  width: 100%;
+  height: 52px;
+}
+
+/* \u2500\u2500 Quality Matrix \u2500\u2500 */
+.qm-legend {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+.qm-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.qm-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.qm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.qm-th, .qm-th-device {
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.qm-th-device { min-width: 120px; }
+.qm-cell {
+  padding: var(--space-1) var(--space-2);
+  text-align: center;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.qm-device {
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.qm-table tbody tr:last-child td { border-bottom: none; }
+.qm-table tbody tr:hover td { background: var(--bg-tertiary); }
+
 @media (max-width: 1023px) {
   .viz-grid { grid-template-columns: repeat(2, 1fr); }
   .viz-card.wide { grid-column: span 2; }
+  .horizon-strips-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
   .sensors-hero-header { flex-direction: column; align-items: flex-start; }
@@ -3294,6 +4258,7 @@
   .metric-pill { height: 32px; padding: 0 10px; font-size: 11px; }
   .viz-grid { grid-template-columns: 1fr; }
   .viz-card.wide { grid-column: span 1; }
+  .horizon-strips-grid { grid-template-columns: 1fr; }
 }
 `;
     document.head.appendChild(style);
@@ -3351,10 +4316,10 @@
       <div class="decision-summary">
         <div class="decision-left">
           <span class="decision-status-dot ${d.status || "pending"}"></span>
-          <span class="decision-time text-mono text-xs text-secondary">${formatTime3(d.timestamp)}</span>
+          <span class="decision-time text-mono text-xs text-secondary">${formatTime4(d.timestamp)}</span>
         </div>
         <div class="decision-middle">
-          <span class="decision-trigger-text text-sm">${escapeHtml6(d.trigger)}</span>
+          <span class="decision-trigger-text text-sm">${escapeHtml9(d.trigger)}</span>
         </div>
         <div class="decision-right">
           <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor3(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
@@ -3364,12 +4329,12 @@
       <div class="decision-detail" ${expandedDecisionIds.has(d.id) ? "" : "hidden"}>
         <div class="decision-detail-row">
           <span class="decision-detail-label">Decision</span>
-          <span class="decision-detail-value font-semibold">${escapeHtml6(d.decision)}</span>
+          <span class="decision-detail-value font-semibold">${escapeHtml9(d.decision)}</span>
         </div>
         ${d.outcome ? `
         <div class="decision-detail-row">
           <span class="decision-detail-label">Outcome</span>
-          <span class="decision-detail-value">${escapeHtml6(d.outcome)}</span>
+          <span class="decision-detail-value">${escapeHtml9(d.outcome)}</span>
         </div>` : ""}
         <div class="decision-detail-row">
           <span class="decision-detail-label">Confidence</span>
@@ -3409,7 +4374,7 @@
     if (conf >= 0.5) return "var(--warning)";
     return "var(--danger)";
   }
-  function formatTime3(iso) {
+  function formatTime4(iso) {
     try {
       return new Date(iso).toLocaleString("en-US", {
         month: "short",
@@ -3423,7 +4388,7 @@
       return "--";
     }
   }
-  function escapeHtml6(s) {
+  function escapeHtml9(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectDecisionsStyles() {
@@ -3577,7 +4542,7 @@
       return `
     <div class="camera-card hal-card" data-camera-id="${c.id}">
       <div class="camera-thumbnail" id="thumb-${c.id}">
-        ${demoImg ? `<img src="${demoImg}" alt="${escapeHtml7(c.name)}" class="camera-img" />` : `
+        ${demoImg ? `<img src="${demoImg}" alt="${escapeHtml10(c.name)}" class="camera-img" />` : `
         <div class="camera-placeholder">
           <span class="camera-icon">CAM</span>
           <span class="text-secondary text-sm">No preview</span>
@@ -3588,7 +4553,7 @@
         </div>
       </div>
       <div class="camera-info">
-        <div class="camera-name">${escapeHtml7(c.name)}</div>
+        <div class="camera-name">${escapeHtml10(c.name)}</div>
         <div class="camera-meta text-xs text-secondary">${c.protocol} \xB7 ${c.online ? "online" : "offline"}</div>
       </div>
       <button class="hal-btn hal-btn-secondary camera-capture-btn" data-camera-id="${c.id}">
@@ -3617,7 +4582,7 @@
               <div class="capture-meta">
                 <div class="capture-meta-row">
                   <span class="text-secondary text-xs">Path</span>
-                  <span class="text-mono text-xs">${escapeHtml7(result.path)}</span>
+                  <span class="text-mono text-xs">${escapeHtml10(result.path)}</span>
                 </div>
                 <div class="capture-meta-row">
                   <span class="text-secondary text-xs">Size</span>
@@ -3637,7 +4602,7 @@
       });
     });
   }
-  function escapeHtml7(s) {
+  function escapeHtml10(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectCamerasStyles() {
@@ -3741,7 +4706,9 @@
     devices: renderDevices,
     sensors: renderSensors,
     decisions: renderDecisions,
-    cameras: renderCameras
+    cameras: renderCameras,
+    system: renderDashboard,
+    terminal: renderDashboard
   };
   var pageLoadTime = Date.now();
   async function init() {

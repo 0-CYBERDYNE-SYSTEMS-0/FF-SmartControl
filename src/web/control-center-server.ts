@@ -1048,7 +1048,18 @@ export async function startWebControlCenterServer(
         });
         res.end(body);
       } catch {
-        sendText(res, 404, 'Not found');
+        // SPA fallback for deep routes
+        try {
+          const fallback = fs.readFileSync(path.join(halUiDir, 'index.html'));
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            'Content-Length': fallback.byteLength,
+          });
+          res.end(fallback);
+        } catch {
+          sendText(res, 404, 'Not found');
+        }
       }
       return;
     }

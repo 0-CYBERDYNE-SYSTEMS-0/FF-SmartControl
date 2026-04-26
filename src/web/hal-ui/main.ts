@@ -31,6 +31,8 @@ const views: Record<ViewId, AsyncViewRenderer> = {
   sensors:    renderSensors,
   decisions:  renderDecisions,
   cameras:    renderCameras,
+  system:     renderDashboard,
+  terminal:   renderDashboard,
 };
 
 // Uptime tracking

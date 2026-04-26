@@ -12,43 +12,45 @@ export function renderSystemStatus(): string {
         <span class="sys-uptime text-mono text-xs text-secondary" data-dashboard-uptime>${formatUptime(store.uptime)}</span>
       </div>
       <div class="sys-status-grid">
-        ${renderStatusRow('Agent', store.agentStatus, statusColor(store.agentStatus))}
-        ${renderStatusRow('HAL Layer', store.halStatus, statusColor(store.halStatus))}
-        ${renderStatusRow('MQTT Broker', store.mqttStatus, store.mqttStatus === 'connected' ? 'var(--success)' : 'var(--danger)')}
-        ${renderStatusRow('Database', store.dbStatus, store.dbStatus === 'healthy' ? 'var(--success)' : 'var(--danger)')}
-        ${renderStatusRow('Auto Mode', store.autoMode ? 'ON' : 'OFF', store.autoMode ? 'var(--accent)' : 'var(--text-tertiary)')}
+        ${renderStatusRow('Agent', store.agentStatus, statusChipClass(store.agentStatus))}
+        ${renderStatusRow('HAL Layer', store.halStatus, statusChipClass(store.halStatus))}
+        ${renderStatusRow('MQTT Broker', store.mqttStatus, store.mqttStatus === 'connected' ? 'status-chip--online' : 'status-chip--offline')}
+        ${renderStatusRow('Database', store.dbStatus, store.dbStatus === 'healthy' ? 'status-chip--online' : 'status-chip--offline')}
+        ${renderStatusRow('Auto Mode', store.autoMode ? 'ON' : 'OFF', store.autoMode ? 'status-chip--active' : 'status-chip--idle')}
       </div>
     </div>
   `;
 }
 
-function renderStatusRow(label: string, value: string, color: string): string {
+function renderStatusRow(label: string, value: string, chipClass: string): string {
   return `
     <div class="sys-status-row">
       <span class="sys-status-label">${label}</span>
-      <span class="sys-status-value" style="color:${color}">${value}</span>
+      <span class="status-chip ${chipClass}">${value}</span>
     </div>
   `;
 }
 
-function statusColor(status: string): string {
+function statusChipClass(status: string): string {
   switch (status) {
     case 'active':
     case 'online':
     case 'healthy':
     case 'connected':
-      return 'var(--success)';
+      return 'status-chip--online';
     case 'idle':
     case 'degraded':
-      return 'var(--warning)';
+      return 'status-chip--idle';
     case 'error':
     case 'offline':
     case 'disconnected':
-      return 'var(--danger)';
+      return 'status-chip--offline';
     default:
-      return 'var(--text-tertiary)';
+      return 'status-chip--idle';
   }
 }
+
+
 
 function formatUptime(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -98,12 +100,9 @@ export function injectSystemStatusStyles(): void {
   font-size: 12px;
   color: var(--text-secondary);
 }
-.sys-status-value {
-  font-size: 12px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+.sys-status-row .status-chip {
+  font-size: 9px;
+  padding: 1px 6px;
 }
 `;
   document.head.appendChild(style);

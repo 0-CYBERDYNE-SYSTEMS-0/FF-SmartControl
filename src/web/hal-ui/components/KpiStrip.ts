@@ -13,6 +13,7 @@ export interface KpiData {
   status: 'good' | 'warning' | 'critical';
   sparklineData: number[];
   sparklineColor: string;
+  comparison?: { delta: number; label: string };
 }
 
 export function renderKpiStrip(kpis: KpiData[]): string {
@@ -29,6 +30,11 @@ export function renderKpiStrip(kpis: KpiData[]): string {
       : 0;
     const trendIcon = trend > 0 ? '↑' : trend < 0 ? '↓' : '→';
 
+    const comp = kpi.comparison;
+    const compHtml = comp
+      ? `<span class="kpi-comparison ${comp.delta >= 0 ? 'up' : 'down'}">${comp.delta >= 0 ? '+' : ''}${comp.delta.toFixed(1)}% ${comp.label}</span>`
+      : '';
+
     return `
       <div class="kpi-card" style="--kpi-accent: ${statusColor}">
         <div class="kpi-header">
@@ -40,6 +46,7 @@ export function renderKpiStrip(kpis: KpiData[]): string {
             ${kpi.value.toFixed(kpi.precision)}<span class="kpi-unit">${kpi.unit}</span>
           </span>
         </div>
+        ${compHtml}
         <div class="kpi-sparkline">
           ${renderSparkline(kpi.sparklineData, statusColor)}
         </div>
@@ -62,6 +69,13 @@ export async function buildKpiData(): Promise<KpiData[]> {
     fetchMetricSparkline(sensors, 'temperature', 12),
     fetchMetricSparkline(sensors, 'humidity', 12),
     fetchMetricSparkline(sensors, 'co2', 12),
+  ]);
+
+  // Fetch 24h-48h history for comparison
+  const [tempPrev, humPrev, co2Prev] = await Promise.all([
+    fetchMetricSparklinePrev(sensors, 'temperature', 12),
+    fetchMetricSparklinePrev(sensors, 'humidity', 12),
+    fetchMetricSparklinePrev(sensors, 'co2', 12),
   ]);
 
   const kpis: KpiData[] = [];
@@ -88,6 +102,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
     }
   }
   const avgTemp = tempCount > 0 ? tempSum / tempCount : 0;
+  const tempComp = computeComparison(tempHistory, tempPrev);
   kpis.push({
     label: 'Temperature',
     value: avgTemp,
@@ -96,6 +111,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
     status: avgTemp >= 18 && avgTemp <= 28 ? 'good' : avgTemp >= 15 && avgTemp <= 32 ? 'warning' : 'critical',
     sparklineData: tempHistory.length > 1 ? tempHistory : generateTrendData(avgTemp || 22, 12, 3),
     sparklineColor: '#F59E0B',
+    comparison: tempComp,
   });
 
   // Humidity — average from sensors
@@ -108,6 +124,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
     }
   }
   const avgHum = humCount > 0 ? humSum / humCount : 0;
+  const humComp = computeComparison(humHistory, humPrev);
   kpis.push({
     label: 'Humidity',
     value: avgHum,
@@ -116,6 +133,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
     status: avgHum >= 40 && avgHum <= 70 ? 'good' : avgHum >= 30 && avgHum <= 80 ? 'warning' : 'critical',
     sparklineData: humHistory.length > 1 ? humHistory : generateTrendData(avgHum || 60, 12, 10),
     sparklineColor: '#38BDF8',
+    comparison: humComp,
   });
 
   // CO2 — from sensor snapshots or history
@@ -128,6 +146,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
     }
   }
   const avgCo2 = co2Count > 0 ? co2Sum / co2Count : 0;
+  const co2Comp = computeComparison(co2History, co2Prev);
   kpis.push({
     label: 'CO₂',
     value: avgCo2,
@@ -136,6 +155,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
     status: avgCo2 < 1000 ? 'good' : avgCo2 < 1500 ? 'warning' : 'critical',
     sparklineData: co2History.length > 1 ? co2History : generateTrendData(avgCo2 || 800, 12, 200),
     sparklineColor: '#22C55E',
+    comparison: co2Comp,
   });
 
   // Devices — total online
@@ -172,13 +192,38 @@ async function fetchMetricSparkline(sensors: ReturnType<typeof getStore>['device
     for (const s of sensors) {
       const data = await halApi.getSensorHistory(s.id, metric, from, to);
       if (data.length > 1) {
-        // Sample evenly across the data
         const step = Math.max(1, Math.floor(data.length / buckets));
         return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
       }
     }
   } catch { /* ignore */ }
   return [];
+}
+
+async function fetchMetricSparklinePrev(sensors: ReturnType<typeof getStore>['devices'], metric: string, buckets = 12): Promise<number[]> {
+  if (sensors.length === 0) return [];
+  const to = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const from = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+
+  try {
+    for (const s of sensors) {
+      const data = await halApi.getSensorHistory(s.id, metric, from, to);
+      if (data.length > 1) {
+        const step = Math.max(1, Math.floor(data.length / buckets));
+        return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
+      }
+    }
+  } catch { /* ignore */ }
+  return [];
+}
+
+function computeComparison(current: number[], previous: number[]): { delta: number; label: string } | undefined {
+  if (current.length === 0 || previous.length === 0) return undefined;
+  const currAvg = current.reduce((a, b) => a + b, 0) / current.length;
+  const prevAvg = previous.reduce((a, b) => a + b, 0) / previous.length;
+  if (prevAvg === 0) return undefined;
+  const delta = ((currAvg - prevAvg) / Math.abs(prevAvg)) * 100;
+  return { delta, label: 'vs yesterday' };
 }
 
 function generateTrendData(base: number, count: number, variance = 5): number[] {
@@ -249,6 +294,18 @@ export function injectKpiStyles(): void {
 .kpi-sparkline {
   margin-top: auto;
   opacity: 0.7;
+}
+.kpi-comparison {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  margin-top: -4px;
+}
+.kpi-comparison.up {
+  color: var(--success);
+}
+.kpi-comparison.down {
+  color: var(--danger);
 }
 @media (max-width: 1200px) {
   .kpi-strip { grid-template-columns: repeat(3, 1fr); }

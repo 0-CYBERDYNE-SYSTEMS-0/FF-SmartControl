@@ -7,6 +7,8 @@ import { renderSystemStatus, injectSystemStatusStyles } from '../components/Syst
 import { renderLatestDecision, injectLatestDecisionStyles } from '../components/LatestDecision.js';
 import { renderKpiStrip, buildKpiData, injectKpiStyles } from '../components/KpiStrip.js';
 import { loadHeroChartData, renderHeroChart, injectHeroChartStyles } from '../components/HeroChart.js';
+import { renderOperatorPanels, injectOperatorPanelStyles } from '../components/OperatorPanels.js';
+import { renderTerminal, buildLogEntries, injectTerminalStyles } from '../components/Terminal.js';
 
 export async function renderDashboard(container: HTMLElement): Promise<void> {
   const store = getStore();
@@ -111,20 +113,7 @@ async function renderOperatorDashboard(container: HTMLElement): Promise<void> {
           </div>
         </div>
 
-        <div class="dash-bottom-grid">
-          <section>
-            <h2 class="section-title mb-4">Device State</h2>
-            <div id="dashboard-devices" class="device-grid">
-              ${renderDeviceGrid(store.devices)}
-            </div>
-          </section>
-          <section>
-            <h2 class="section-title mb-4">Recent Decisions</h2>
-            <div id="dashboard-decisions">
-              ${renderRecentDecisions(store.decisions.slice(0, 5))}
-            </div>
-          </section>
-        </div>
+        ${await renderOperatorPanels()}
       </div>
 
       <div class="dash-sidebar">
@@ -135,7 +124,9 @@ async function renderOperatorDashboard(container: HTMLElement): Promise<void> {
   `;
 
   injectDashboardStyles();
+  injectOperatorPanelStyles();
   attachDashboardHandlers();
+  attachOperatorPanelHandlers();
   await loadDashboardChart();
 }
 
@@ -158,6 +149,8 @@ async function renderDiagnosticDashboard(container: HTMLElement): Promise<void> 
             <div class="chart-empty">Loading sensor data…</div>
           </div>
         </div>
+
+        ${renderTerminal(buildLogEntries(store.decisions))}
 
         <div class="diag-raw-data">
           <h2 class="section-title mb-4">Raw Sensor Snapshots</h2>
@@ -191,6 +184,7 @@ async function renderDiagnosticDashboard(container: HTMLElement): Promise<void> 
   `;
 
   injectDashboardStyles();
+  injectTerminalStyles();
   attachDashboardHandlers();
   await loadDashboardChart();
 }
@@ -282,8 +276,8 @@ async function loadDashboardChart(): Promise<void> {
   if (!hero) return;
 
   try {
-    const layers = await loadHeroChartData();
-    renderHeroChart(layers, 'dash-hero-chart');
+    const { layers, decisions } = await loadHeroChartData();
+    renderHeroChart(layers, 'dash-hero-chart', decisions);
     if (liveBar) liveBar.innerHTML = buildLiveBar(layers);
   } catch (err: any) {
     console.error('Dashboard chart load failed:', err);
@@ -393,6 +387,18 @@ function attachDashboardHandlers(): void {
     card.addEventListener('click', () => {
       const id = (card as HTMLElement).dataset.deviceId;
       if (id) console.log('Device clicked:', id);
+    });
+  });
+}
+
+function attachOperatorPanelHandlers(): void {
+  document.querySelectorAll('.op-device-toggle').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const id = (toggle as HTMLElement).dataset.deviceId;
+      if (id) {
+        toggle.classList.toggle('on');
+        console.log('Toggle device:', id);
+      }
     });
   });
 }

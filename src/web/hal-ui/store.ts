@@ -5,7 +5,7 @@ import type { HalDevice, HalDecision, HalState, SensorMetricSnapshot } from './a
 export type FarmMode = 'CALM' | 'OPERATOR' | 'DIAGNOSTIC';
 export type UnitSystem = 'metric' | 'imperial';
 export type TimeFormat = '12h' | '24h';
-export type ViewId = 'dashboard' | 'devices' | 'sensors' | 'decisions' | 'cameras';
+export type ViewId = 'dashboard' | 'devices' | 'sensors' | 'decisions' | 'cameras' | 'system' | 'terminal';
 
 export interface HalStore {
   // UI state
