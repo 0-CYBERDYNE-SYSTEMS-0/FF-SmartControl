@@ -2,7 +2,7 @@
 
 import { getStore } from '../store.js';
 import { HalDecision } from '../api.js';
-import { renderBoxPlot, type BoxPlotDay, injectChartKitStyles } from '../components/ChartKit.js';
+import { renderHeatmap, type HeatmapCell, injectChartKitStyles } from '../components/ChartKit.js';
 
 const expandedDecisionIds = new Set<string>();
 let statusFilter: 'all' | 'success' | 'failure' | 'pending' = 'all';
@@ -22,8 +22,8 @@ export async function renderDecisions(container: HTMLElement): Promise<void> {
 
     <div class="decisions-chart-section mb-4">
       <div class="hal-card" style="padding: var(--space-3)">
-        <div class="section-title mb-3">Confidence Distribution (14 Days)</div>
-        <div id="decisions-boxplot" style="min-height: 180px;"></div>
+        <div class="section-title mb-3">Decision Activity Heatmap</div>
+        <div id="decisions-heatmap" style="min-height: 100px;"></div>
       </div>
     </div>
 
@@ -49,43 +49,35 @@ export async function renderDecisions(container: HTMLElement): Promise<void> {
   injectChartKitStyles();
   attachDecisionHandlers();
   attachFilterHandlers();
-  renderDecisionsBoxPlot(store.decisions);
+  renderDecisionsHeatmap(store.decisions);
 }
 
-function renderDecisionsBoxPlot(decisions: HalDecision[]): void {
+function renderDecisionsHeatmap(decisions: HalDecision[]): void {
   if (decisions.length < 3) return;
 
-  // Group decisions by day, calculate quartiles
-  const byDay = new Map<string, number[]>();
-  const now = Date.now();
+  // Build heatmap: hour of day x day of week = decision count
+  const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const counts = new Map<string, number>();
 
   for (const d of decisions) {
-    const day = new Date(d.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const list = byDay.get(day) || [];
-    list.push(d.confidence);
-    byDay.set(day, list);
+    const dt = new Date(d.timestamp);
+    const dow = dows[dt.getDay()];
+    const hour = dt.getHours();
+    const key = `${dow}:${hour}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
   }
 
-  // Take last 14 days
-  const days: BoxPlotDay[] = Array.from(byDay.entries())
-    .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
-    .slice(-14)
-    .map(([day, confs]) => {
-      const sorted = confs.sort((a, b) => a - b);
-      const n = sorted.length;
-      return {
-        day,
-        min: sorted[0],
-        q1: sorted[Math.floor(n * 0.25)],
-        median: sorted[Math.floor(n * 0.5)],
-        q3: sorted[Math.floor(n * 0.75)],
-        max: sorted[n - 1],
-      };
-    });
-
-  if (days.length > 0) {
-    setTimeout(() => renderBoxPlot(days, 'decisions-boxplot', { color: '#6DFF9A' }), 0);
+  const cells: HeatmapCell[] = [];
+  for (const dow of dows) {
+    for (let h = 0; h < 24; h++) {
+      const val = counts.get(`${dow}:${h}`) || 0;
+      cells.push({ dow, hour: h, value: val });
+    }
   }
+
+  setTimeout(() => renderHeatmap(cells, 'decisions-heatmap', {
+    colorRange: ['#0a1a12', '#1a4030', '#4aB070', '#F59E0B', '#FF5C6C'],
+  }), 0);
 }
 
 function attachFilterHandlers(): void {
