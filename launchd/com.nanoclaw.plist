@@ -26,7 +26,7 @@
         <key>FFT_NANO_TUI_ENABLED</key>
         <string>1</string>
         <key>FFT_NANO_TUI_PORT</key>
-        <string>28989</string>
+        <string>3390</string>
     </dict>
     <key>StandardOutPath</key>
     <string>{{PROJECT_ROOT}}/logs/nanoclaw.log</string>

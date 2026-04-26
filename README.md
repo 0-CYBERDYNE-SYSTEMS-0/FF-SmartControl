@@ -213,7 +213,7 @@ fft web
 # or: ./scripts/web.sh
 ```
 
-By default it listens on `http://127.0.0.1:28990`.
+By default it listens on `http://127.0.0.1:3391`.
 
 ### 5. Claim Telegram as main/admin
 
@@ -241,7 +241,7 @@ The `fft` CLI is the primary interface after install. When CLI linking is unavai
 | `fft profile <status\|set\|apply> [core\|farm]` | Show or switch operator/assistant profile |
 | `fft start [telegram-only]` | Start the host service |
 | `fft dev [telegram-only]` | Start in development mode |
-| `fft tui [--url ws://127.0.0.1:28989] [--session main] [--deliver]` | Attach the terminal UI |
+| `fft tui [--url ws://127.0.0.1:3390] [--session main] [--deliver]` | Attach the terminal UI |
 | `fft web [--open]` | Open the FFT Control Center web UI |
 | `fft doctor [--json]` | Run health diagnostics |
 | `fft service <install\|uninstall\|start\|stop\|restart\|status\|logs>` | Manage the host service |
@@ -364,7 +364,7 @@ TUI keybinds:
 
 TUI gateway env:
 
-- `FFT_NANO_TUI_PORT` (default `28989`)
+- `FFT_NANO_TUI_PORT` (default `3390`)
 - `FFT_NANO_TUI_HOST` (default `127.0.0.1`, uses `0.0.0.0` in LAN/remote web modes)
 - `FFT_NANO_TUI_ENABLED` (`1` default, set `0` to disable)
 - `FFT_NANO_TUI_AUTH_TOKEN` (optional, defaults to `FFT_NANO_WEB_AUTH_TOKEN` when set)
@@ -374,12 +374,12 @@ FFT CONTROL CENTER env:
 - `FFT_NANO_WEB_ENABLED` (`1` default)
 - `FFT_NANO_WEB_ACCESS_MODE` (`localhost|lan|remote`, default `localhost`)
 - `FFT_NANO_WEB_HOST` (default `127.0.0.1` for localhost mode, else `0.0.0.0`)
-- `FFT_NANO_WEB_PORT` (default `28990`)
+- `FFT_NANO_WEB_PORT` (default `3391`)
 - `FFT_NANO_WEB_AUTH_TOKEN` (required for `lan` and `remote` modes)
 
 TUI troubleshooting:
 
-- `connect ECONNREFUSED 127.0.0.1:28989`: host is not running, wrong `FFT_NANO_TUI_PORT`, or gateway disabled.
+- `connect ECONNREFUSED 127.0.0.1:3390`: host is not running, wrong `FFT_NANO_TUI_PORT`, or gateway disabled.
 - `EADDRINUSE` in host logs: selected TUI port is already in use; change `FFT_NANO_TUI_PORT`.
 - `unknown session: main`: no main chat is registered yet; use `/sessions` and switch to an available session.
 

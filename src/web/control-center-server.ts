@@ -1020,6 +1020,13 @@ export async function startWebControlCenterServer(
       return;
     }
 
+    // Root redirect → FarmPal dashboard
+    if (requestPath === '/') {
+      res.writeHead(302, { Location: '/hal-ui/' });
+      res.end();
+      return;
+    }
+
     // HAL UI static files (src/web/hal-ui/)
     if (requestPath.startsWith('/hal-ui')) {
       const halUiDir = path.resolve(process.cwd(), 'src', 'web', 'hal-ui');

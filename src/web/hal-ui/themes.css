@@ -2,9 +2,21 @@
 html { scroll-behavior: smooth; }
 
 #app {
+  min-height: 100vh;
+}
+
+/* App layout with sidebar */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-main {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 /* Scrollbar */
@@ -17,8 +29,6 @@ html { scroll-behavior: smooth; }
 .main-content {
   flex: 1;
   padding: var(--space-6);
-  max-width: var(--page-max-width);
-  margin: 0 auto;
   width: 100%;
 }
 
@@ -36,6 +46,30 @@ html { scroll-behavior: smooth; }
   font-size: 14px;
   color: var(--text-secondary);
   margin-top: var(--space-1);
+}
+
+/* Mobile hamburger for sidebar */
+.mobile-menu-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+}
+.mobile-menu-btn:hover {
+  background: var(--bg-tertiary);
+}
+.mobile-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 150;
+}
+.mobile-overlay.active {
+  display: block;
 }
 
 /* Utility classes */
@@ -112,4 +146,5 @@ html { scroll-behavior: smooth; }
 @media (max-width: 767px) {
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
   .main-content { padding: var(--space-4); }
+  .mobile-menu-btn { display: flex; }
 }

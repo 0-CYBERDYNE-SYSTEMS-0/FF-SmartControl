@@ -23,7 +23,7 @@ Current product surface also includes:
   - `src/cron/` — Cron v2 compatibility, scheduling adapters, and scheduler service types.
   - `src/hal/` — Hardware abstraction layer (sensors, relays, MQTT, serial, GPIO, camera, discovery, decisions).
   - `src/web/control-center-server.ts` — Web control center server and local file APIs.
-  - `src/web/hal-ui-server.ts` — Standalone HAL UI/API server, defaulting to `127.0.0.1:28991`.
+  - `src/web/hal-ui-server.ts` — Standalone HAL UI/API server, defaulting to `127.0.0.1:3392`.
   - `src/web/hal-ui/` — HAL UI source and built browser assets.
   - `src/tui/` — Terminal UI gateway and client.
   - `src/agent/` — Agent decision loop, LLM interface, and tool executor.
@@ -87,6 +87,7 @@ node --import tsx --test tests/<name>.test.ts
 ## Runtime and Service Notes
 
 - The long-running host uses a singleton lock at `data/fft_nano.lock`; do not run a second foreground host while the installed service is active.
+- Port policy: do not use `28995` or any higher `289xx` port for local previews, service defaults, or fallback servers. This machine has many services in that range. Prefer the FarmPal local block `3390`-`3399` unless the user explicitly provides a different port.
 - Normal installed-service restart:
   ```bash
   ./scripts/service.sh restart
@@ -100,9 +101,9 @@ node --import tsx --test tests/<name>.test.ts
   npm run dev
   ```
 - The host can serve multiple local surfaces:
-  - TUI websocket default: `127.0.0.1:28989`
-  - Web control center default: `127.0.0.1:28990`
-  - HAL UI default: `127.0.0.1:28991`
+  - TUI websocket default: `127.0.0.1:3390`
+  - Web control center default: `127.0.0.1:3391`
+  - HAL UI default: `127.0.0.1:3392`
 - HAL UI environment knobs:
   - `HAL_UI_ENABLED=0` disables the standalone HAL UI server.
   - `HAL_UI_HOST` and `HAL_UI_PORT` override host/port.

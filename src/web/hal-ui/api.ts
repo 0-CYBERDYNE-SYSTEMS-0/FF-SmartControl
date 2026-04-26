@@ -51,9 +51,14 @@ export interface HalDecision {
   outcome?: string;
 }
 
+export type SensorMetricSnapshot = Partial<Record<
+  'temperature' | 'humidity' | 'co2' | 'light' | 'soil_moisture' | 'water_level' | 'ph' | 'weight',
+  HalSensorReading
+>>;
+
 export interface HalState {
   devices: HalDevice[];
-  sensorSnapshots: Record<string, { temperature?: HalSensorReading; humidity?: HalSensorReading }>;
+  sensorSnapshots: Record<string, SensorMetricSnapshot>;
   recentDecisions: HalDecision[];
 }
 
@@ -101,14 +106,19 @@ function normalizeSensorReading(reading?: RawHalSensorReading): HalSensorReading
 }
 
 function normalizeSensorSnapshots(
-  snapshots: HalState['sensorSnapshots'] | Record<string, { temperature?: RawHalSensorReading; humidity?: RawHalSensorReading }> | undefined,
+  snapshots: HalState['sensorSnapshots'] | Record<string, Record<string, RawHalSensorReading>> | undefined,
 ): HalState['sensorSnapshots'] {
   const normalized: HalState['sensorSnapshots'] = {};
   for (const [deviceId, snapshot] of Object.entries(snapshots || {})) {
-    normalized[deviceId] = {
-      temperature: normalizeSensorReading(snapshot.temperature),
-      humidity: normalizeSensorReading(snapshot.humidity),
-    };
+    normalized[deviceId] = {};
+    for (const [metric, reading] of Object.entries(snapshot)) {
+      if (reading && typeof reading === 'object') {
+        const normalizedReading = normalizeSensorReading(reading as RawHalSensorReading);
+        if (normalizedReading) {
+          (normalized[deviceId] as Record<string, HalSensorReading>)[metric] = normalizedReading;
+        }
+      }
+    }
   }
   return normalized;
 }

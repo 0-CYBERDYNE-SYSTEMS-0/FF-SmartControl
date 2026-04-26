@@ -693,10 +693,10 @@ async function resolveWizardSelections(
             'Gateway/TUI port',
             envMap.FFT_NANO_TUI_PORT ||
               process.env.FFT_NANO_TUI_PORT ||
-              '28989',
+              '3390',
           ),
           10,
-        ) || 28989;
+        ) || 3390;
     const installDaemon =
       typeof opts.installDaemon === 'boolean'
         ? opts.installDaemon

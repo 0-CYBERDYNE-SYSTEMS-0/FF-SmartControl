@@ -5,8 +5,8 @@ import './tokens.css';
 import './reset.css';
 import './themes.css';
 
+import { renderSidebar, initSidebar } from './components/Sidebar.js';
 import { renderHeader, initHeader } from './components/Header.js';
-import { renderViewTabs, initViewTabs } from './components/ViewTabs.js';
 import { injectCardStyles } from './components/Card.js';
 import { injectToggleStyles } from './components/Toggle.js';
 import { injectModalStyles } from './components/Modal.js';
@@ -20,9 +20,8 @@ import { renderCameras } from './views/Cameras.js';
 
 import { halApi } from './api.js';
 import type { HalState } from './api.js';
-import { getStore, setStore, subscribe, applyModeAccent } from './store.js';
-import type { FarmMode } from './components/Header.js';
-import type { ViewId } from './components/ViewTabs.js';
+import { getStore, setStore, applyModeAccent } from './store.js';
+import type { FarmMode, ViewId } from './store.js';
 
 type AsyncViewRenderer = (container: HTMLElement) => Promise<void>;
 
@@ -48,24 +47,24 @@ async function init(): Promise<void> {
 
   // Build shell
   const store = getStore();
+  applyModeAccent(store.mode);
   app.innerHTML = `
-    <div id="hal-header"></div>
-    <div id="hal-tabs"></div>
-    <main class="main-content" id="view-container"></main>
+    <div class="app-layout" id="app-layout">
+      ${renderSidebar(store.mode, store.activeView, store.sidebarCollapsed)}
+      <div class="app-main">
+        <div id="hal-header"></div>
+        <main class="main-content" id="view-container"></main>
+      </div>
+    </div>
   `;
 
-  // Render header & tabs
+  // Render header
   const headerEl = document.getElementById('hal-header')!;
-  const tabsEl   = document.getElementById('hal-tabs')!;
   headerEl.innerHTML = renderHeader(store.mode, handleModeChange);
-  tabsEl.innerHTML   = renderViewTabs(store.activeView as ViewId);
-
-  // Init header clock and mode buttons
   initHeader(store.mode, handleModeChange);
-  initViewTabs(handleViewChange);
 
-  // Subscribe to store changes
-  subscribe(render);
+  // Init sidebar
+  initSidebar(handleViewChange);
 
   // Initial data fetch
   await refreshHALData();
@@ -84,6 +83,15 @@ function handleModeChange(mode: FarmMode): void {
   setStore({ mode });
   applyModeAccent(mode);
   showToast(`Mode: ${mode}`, 'info', 2000);
+  // Re-render sidebar to update mode indicator
+  const sidebar = document.getElementById('hal-sidebar');
+  if (sidebar) {
+    const store = getStore();
+    const newSidebar = document.createElement('div');
+    newSidebar.innerHTML = renderSidebar(mode, store.activeView, store.sidebarCollapsed);
+    sidebar.outerHTML = newSidebar.firstElementChild!.outerHTML;
+    initSidebar(handleViewChange);
+  }
 }
 
 async function handleViewChange(viewId: ViewId): Promise<void> {
@@ -96,7 +104,7 @@ async function render(): Promise<void> {
   const container = document.getElementById('view-container');
   if (!container) return;
 
-  const renderer = views[store.activeView as ViewId];
+  const renderer = views[store.activeView];
   if (renderer) {
     await renderer(container);
   }
@@ -135,8 +143,19 @@ function startPolling(): void {
 
 function startUptimeCounter(): void {
   setInterval(() => {
-    setStore({ uptime: Math.floor((Date.now() - pageLoadTime) / 1000) });
+    const uptime = Math.floor((Date.now() - pageLoadTime) / 1000);
+    setStore({ uptime });
+    const uptimeEl = document.querySelector<HTMLElement>('[data-dashboard-uptime]');
+    if (uptimeEl) uptimeEl.textContent = formatUptime(uptime);
   }, 1000);
+}
+
+function formatUptime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h}h ${m}m`;
 }
 
 // Boot

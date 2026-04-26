@@ -1,0 +1,3844 @@
+"use strict";
+(() => {
+  // src/web/hal-ui/store.ts
+  var listeners = /* @__PURE__ */ new Set();
+  var state = {
+    mode: "CALM",
+    activeView: "dashboard",
+    unitSystem: "metric",
+    timeFormat: "24h",
+    sidebarCollapsed: false,
+    devices: [],
+    decisions: [],
+    sensors: {},
+    cameras: [],
+    uptime: 0,
+    decisionsToday: 0,
+    agentStatus: "active",
+    halStatus: "online",
+    mqttStatus: "connected",
+    dbStatus: "healthy",
+    autoMode: true
+  };
+  function getStore() {
+    return state;
+  }
+  function setStore(partial) {
+    state = { ...state, ...partial };
+    listeners.forEach((l) => l());
+  }
+  function convertTemp(celsius, to) {
+    if (to === "imperial") return celsius * 9 / 5 + 32;
+    return celsius;
+  }
+  function tempUnit(system) {
+    return system === "imperial" ? "F" : "C";
+  }
+  function convertWeight(kg, to) {
+    if (to === "imperial") return kg * 2.20462;
+    return kg;
+  }
+  function weightUnit(system) {
+    return system === "imperial" ? "lb" : "kg";
+  }
+  function formatSensorValue(value, metric, system) {
+    switch (metric) {
+      case "temperature":
+        return { value: convertTemp(value, system), unit: tempUnit(system) };
+      case "weight":
+        return { value: convertWeight(value, system), unit: weightUnit(system) };
+      default:
+        return { value, unit: getMetricUnit(metric) };
+    }
+  }
+  function getMetricUnit(metric) {
+    switch (metric) {
+      case "humidity":
+      case "soil_moisture":
+      case "water_level":
+        return "%";
+      case "co2":
+        return "ppm";
+      case "light":
+        return "lux";
+      case "ph":
+        return "";
+      default:
+        return "";
+    }
+  }
+  function formatTimeValue(date, format) {
+    if (format === "12h") {
+      return date.toLocaleTimeString("en-US", { hour12: true, hour: "2-digit", minute: "2-digit" });
+    }
+    return date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+  }
+  function formatDateTimeValue(date, format) {
+    if (format === "12h") {
+      return date.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true
+      });
+    }
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    });
+  }
+  var modeDefinitions = {
+    CALM: {
+      accent: "#238636",
+      accentBright: "#3FB950",
+      bgPrimary: "#07110C",
+      bgSecondary: "#0E1A14",
+      bgTertiary: "#14251B",
+      border: "#254332",
+      borderSubtle: "#182B20"
+    },
+    OPERATOR: {
+      accent: "#E0A11B",
+      accentBright: "#F6C453",
+      bgPrimary: "#120D05",
+      bgSecondary: "#1D160A",
+      bgTertiary: "#2A210F",
+      border: "#4A3714",
+      borderSubtle: "#33250E"
+    },
+    DIAGNOSTIC: {
+      accent: "#2F81F7",
+      accentBright: "#58A6FF",
+      bgPrimary: "#07101E",
+      bgSecondary: "#0D1627",
+      bgTertiary: "#13213A",
+      border: "#263D63",
+      borderSubtle: "#172A47"
+    }
+  };
+  function applyModeAccent(mode) {
+    const root = document.documentElement;
+    root.dataset.mode = mode.toLowerCase();
+    const def = modeDefinitions[mode];
+    root.style.setProperty("--accent", def.accent);
+    root.style.setProperty("--accent-bright", def.accentBright);
+    root.style.setProperty("--bg-primary", def.bgPrimary);
+    root.style.setProperty("--bg-secondary", def.bgSecondary);
+    root.style.setProperty("--bg-tertiary", def.bgTertiary);
+    root.style.setProperty("--border", def.border);
+    root.style.setProperty("--border-subtle", def.borderSubtle);
+  }
+
+  // src/web/hal-ui/components/Sidebar.ts
+  var navItems = [
+    { id: "dashboard", label: "Overview", icon: overviewIcon() },
+    { id: "devices", label: "Devices", icon: devicesIcon() },
+    { id: "sensors", label: "Sensors", icon: sensorsIcon() },
+    { id: "decisions", label: "Decisions", icon: decisionsIcon() },
+    { id: "cameras", label: "Cameras", icon: camerasIcon() }
+  ];
+  function renderSidebar(mode, activeView, collapsed) {
+    const items = navItems.map((item) => `
+    <button
+      class="sidebar-item ${item.id === activeView ? "active" : ""}"
+      data-view="${item.id}"
+      title="${item.label}"
+    >
+      <span class="sidebar-icon">${item.icon}</span>
+      <span class="sidebar-label">${item.label}</span>
+    </button>
+  `).join("");
+    return `
+    <aside class="sidebar ${collapsed ? "collapsed" : ""}" id="hal-sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
+            <rect x="2" y="2" width="24" height="24" rx="4" fill="var(--accent)" opacity="0.15"/>
+            <rect x="6" y="6" width="16" height="16" rx="2" fill="var(--accent)" opacity="0.4"/>
+            <rect x="10" y="10" width="8" height="8" rx="1" fill="var(--accent)"/>
+          </svg>
+          <span class="sidebar-brand">FarmPal</span>
+        </div>
+        <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+          ${chevronIcon()}
+        </button>
+      </div>
+      <nav class="sidebar-nav" aria-label="Main navigation">
+        ${items}
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-mode">
+          <span class="sidebar-mode-dot" style="background: var(--accent)"></span>
+          <span class="sidebar-mode-label">${mode}</span>
+        </div>
+      </div>
+    </aside>
+  `;
+  }
+  function initSidebar(onViewChange) {
+    injectSidebarStyles();
+    document.querySelectorAll(".sidebar-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        const viewId = item.dataset.view;
+        document.querySelectorAll(".sidebar-item").forEach((i) => i.classList.remove("active"));
+        item.classList.add("active");
+        const sidebar = document.getElementById("hal-sidebar");
+        sidebar?.classList.remove("open");
+        onViewChange(viewId);
+      });
+    });
+    const toggle = document.getElementById("sidebar-toggle");
+    toggle?.addEventListener("click", () => {
+      const sidebar = document.getElementById("hal-sidebar");
+      const collapsed = sidebar?.classList.toggle("collapsed");
+      setStore({ sidebarCollapsed: !!collapsed });
+    });
+    document.addEventListener("click", (e) => {
+      const sidebar = document.getElementById("hal-sidebar");
+      const mobileBtn = document.getElementById("mobile-menu-btn");
+      if (!sidebar || !mobileBtn) return;
+      if (window.innerWidth > 767) return;
+      if (!sidebar.contains(e.target) && !mobileBtn.contains(e.target)) {
+        sidebar.classList.remove("open");
+      }
+    });
+  }
+  function overviewIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>`;
+  }
+  function devicesIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 6v6l4 2"/></svg>`;
+  }
+  function sensorsIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`;
+  }
+  function decisionsIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
+  }
+  function camerasIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
+  }
+  function chevronIcon() {
+    return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
+  }
+  function injectSidebarStyles() {
+    if (document.getElementById("hal-sidebar-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-sidebar-styles";
+    style.textContent = `
+.sidebar {
+  width: 200px;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width var(--transition-base);
+  overflow: hidden;
+}
+.sidebar.collapsed {
+  width: 64px;
+}
+.sidebar-header {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow: hidden;
+}
+.sidebar-brand {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  transition: opacity var(--transition-fast);
+}
+.sidebar.collapsed .sidebar-brand {
+  opacity: 0;
+  width: 0;
+}
+.sidebar-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.sidebar-toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.sidebar.collapsed .sidebar-toggle svg {
+  transform: rotate(180deg);
+}
+.sidebar-nav {
+  flex: 1;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  text-align: left;
+  white-space: nowrap;
+}
+.sidebar-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.sidebar-item.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-tertiary));
+  color: var(--accent);
+  border-left: 3px solid var(--accent);
+  margin-left: -3px;
+}
+.sidebar-item svg {
+  flex-shrink: 0;
+}
+.sidebar-label {
+  transition: opacity var(--transition-fast);
+}
+.sidebar.collapsed .sidebar-label {
+  opacity: 0;
+  width: 0;
+  display: none;
+}
+.sidebar.collapsed .sidebar-item {
+  justify-content: center;
+  padding: 10px;
+}
+.sidebar-footer {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sidebar-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+.sidebar-mode-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sidebar.collapsed .sidebar-mode-label {
+  display: none;
+}
+.sidebar.collapsed .sidebar-mode {
+  justify-content: center;
+}
+@media (max-width: 767px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform var(--transition-base);
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar.collapsed {
+    width: 200px;
+  }
+  .sidebar.collapsed .sidebar-brand,
+  .sidebar.collapsed .sidebar-label,
+  .sidebar.collapsed .sidebar-mode-label {
+    display: block;
+    opacity: 1;
+    width: auto;
+  }
+  .sidebar.collapsed .sidebar-item {
+    justify-content: flex-start;
+    padding: 10px var(--space-3);
+  }
+  .sidebar.collapsed .sidebar-toggle svg {
+    transform: none;
+  }
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/components/Header.ts
+  function renderHeader(mode, onModeChange) {
+    return `
+    <header class="hal-header">
+      <div class="hal-header-left">
+        <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
+      </div>
+      <div class="hal-header-center">
+        <button class="hal-mode-badge ${mode === "CALM" ? "active" : ""}" data-mode="CALM">CALM</button>
+        <button class="hal-mode-badge ${mode === "OPERATOR" ? "active" : ""}" data-mode="OPERATOR">OPERATOR</button>
+        <button class="hal-mode-badge ${mode === "DIAGNOSTIC" ? "active" : ""}" data-mode="DIAGNOSTIC">DIAGNOSTIC</button>
+      </div>
+      <div class="hal-header-right">
+        <span class="hal-clock text-mono" id="hal-clock">--:--:--</span>
+      </div>
+    </header>
+  `;
+  }
+  function getViewLabel() {
+    const labels = {
+      dashboard: "Overview",
+      devices: "Devices",
+      sensors: "Sensors",
+      decisions: "Decisions",
+      cameras: "Cameras"
+    };
+    return labels[location.hash.slice(1) || "dashboard"] || "Overview";
+  }
+  function initHeader(mode, onModeChange) {
+    injectHeaderStyles();
+    startClock();
+    setupModeButtons(onModeChange);
+  }
+  function setupModeButtons(onModeChange) {
+    document.querySelectorAll(".hal-mode-badge").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const newMode = btn.dataset.mode;
+        document.querySelectorAll(".hal-mode-badge").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        onModeChange(newMode);
+      });
+    });
+    const mobileMenuBtn = document.getElementById("mobile-menu-btn");
+    mobileMenuBtn?.addEventListener("click", () => {
+      const sidebar = document.getElementById("hal-sidebar");
+      sidebar?.classList.toggle("open");
+    });
+  }
+  function startClock() {
+    function tick() {
+      const el = document.getElementById("hal-clock");
+      if (el) {
+        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", { hour12: false });
+      }
+    }
+    tick();
+    setInterval(tick, 1e3);
+  }
+  function injectHeaderStyles() {
+    if (document.getElementById("hal-header-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-header-styles";
+    style.textContent = `
+.hal-header {
+  height: var(--header-height);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--page-padding);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  flex-shrink: 0;
+}
+.hal-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.hal-header-view-label {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+.hal-header-center {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.hal-mode-badge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 3px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.hal-mode-badge.active,
+.hal-mode-badge:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.hal-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.hal-clock {
+  font-size: 13px;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/components/Card.ts
+  function injectCardStyles() {
+    if (document.getElementById("hal-card-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-card-styles";
+    style.textContent = `
+.hal-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  transition: border-color var(--transition-fast);
+}
+.hal-card:hover {
+  border-color: var(--accent);
+}
+.hal-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.hal-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.hal-card-body {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/components/Toggle.ts
+  function injectToggleStyles() {
+    if (document.getElementById("hal-toggle-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-toggle-styles";
+    style.textContent = `
+.hal-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  transition: background var(--transition-base);
+  flex-shrink: 0;
+  border: none;
+  padding: 0;
+}
+.hal-toggle.active {
+  background: var(--accent);
+}
+.hal-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--transition-base);
+  pointer-events: none;
+}
+.hal-toggle.active .hal-toggle-thumb {
+  transform: translateX(18px);
+}
+.hal-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+`;
+    document.head.appendChild(style);
+  }
+  function createToggle(id, initialState, onChange) {
+    const btn = document.createElement("button");
+    btn.className = "hal-toggle" + (initialState ? " active" : "");
+    btn.id = id;
+    btn.setAttribute("role", "switch");
+    btn.setAttribute("aria-checked", String(initialState));
+    btn.setAttribute("aria-label", "Toggle power state");
+    const thumb = document.createElement("span");
+    thumb.className = "hal-toggle-thumb";
+    btn.appendChild(thumb);
+    btn.addEventListener("click", () => {
+      const newState = !btn.classList.contains("active");
+      btn.classList.toggle("active", newState);
+      btn.setAttribute("aria-checked", String(newState));
+      onChange(newState);
+    });
+    return btn;
+  }
+  function setToggleState(el, on) {
+    el.classList.toggle("active", on);
+    el.setAttribute("aria-checked", String(on));
+  }
+
+  // src/web/hal-ui/components/Modal.ts
+  var activeModal = null;
+  function openModal(title, bodyContent, actions = "") {
+    closeModal();
+    const overlay = document.createElement("div");
+    overlay.id = "hal-modal-overlay";
+    overlay.className = "hal-modal-overlay";
+    const panel = document.createElement("div");
+    panel.className = "hal-modal-panel";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.innerHTML = `
+    <div class="hal-modal-header">
+      <h2 class="hal-modal-title">${escapeHtml(title)}</h2>
+      <button class="hal-modal-close" aria-label="Close modal">\xD7</button>
+    </div>
+    <div class="hal-modal-body">${bodyContent}</div>
+    ${actions ? `<div class="hal-modal-actions">${actions}</div>` : ""}
+  `;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    activeModal = overlay;
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeModal();
+    });
+    panel.querySelector(".hal-modal-close")?.addEventListener("click", closeModal);
+    document.addEventListener("keydown", handleEscape);
+  }
+  function closeModal() {
+    if (!activeModal) return;
+    activeModal.remove();
+    activeModal = null;
+    document.removeEventListener("keydown", handleEscape);
+  }
+  function handleEscape(e) {
+    if (e.key === "Escape") closeModal();
+  }
+  function escapeHtml(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function injectModalStyles() {
+    if (document.getElementById("hal-modal-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-modal-styles";
+    style.textContent = `
+.hal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  animation: hal-fade-in 150ms ease;
+}
+.hal-modal-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: hal-slide-up 150ms ease;
+}
+.hal-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.hal-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.hal-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.hal-modal-close:hover { color: var(--text-primary); }
+.hal-modal-body {
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.hal-modal-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  padding: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+@keyframes hal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes hal-slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/components/Toast.ts
+  var MAX_VISIBLE = 3;
+  var toasts = [];
+  var borderColors = {
+    success: "var(--success)",
+    warning: "var(--warning)",
+    danger: "var(--danger)",
+    info: "var(--info)"
+  };
+  function showToast(message, type = "info", duration = 4e3) {
+    const container = getOrCreateContainer();
+    const toast = document.createElement("div");
+    toast.className = `hal-toast hal-toast-${type}`;
+    toast.style.borderLeftColor = borderColors[type];
+    toast.textContent = message;
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "hal-toast-close";
+    closeBtn.setAttribute("aria-label", "Dismiss");
+    closeBtn.textContent = "\xD7";
+    closeBtn.addEventListener("click", () => dismissToast(toast));
+    toast.appendChild(closeBtn);
+    container.appendChild(toast);
+    toasts.push(toast);
+    while (toasts.length > MAX_VISIBLE) {
+      dismissToast(toasts[0]);
+    }
+    if (duration > 0) {
+      setTimeout(() => dismissToast(toast), duration);
+    }
+  }
+  function dismissToast(toast) {
+    toast.classList.add("hal-toast-out");
+    setTimeout(() => {
+      toast.remove();
+      toasts = toasts.filter((t) => t !== toast);
+    }, 200);
+  }
+  function getOrCreateContainer() {
+    let container = document.getElementById("hal-toast-container");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "hal-toast-container";
+      injectToastStyles();
+      document.body.appendChild(container);
+    }
+    return container;
+  }
+  function injectToastStyles() {
+    const style = document.createElement("style");
+    style.textContent = `
+#hal-toast-container {
+  position: fixed;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+.hal-toast {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--success);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-primary);
+  font-size: 14px;
+  max-width: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  pointer-events: all;
+  animation: hal-toast-in 200ms ease forwards;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.hal-toast-out {
+  animation: hal-toast-out 200ms ease forwards;
+}
+.hal-toast-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.hal-toast-close:hover { color: var(--text-primary); }
+@keyframes hal-toast-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes hal-toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(20px); }
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/components/SystemStatus.ts
+  function renderSystemStatus() {
+    const store = getStore();
+    return `
+    <div class="sys-status-panel hal-card">
+      <div class="sys-status-header">
+        <span class="sys-status-title">System Status</span>
+        <span class="sys-uptime text-mono text-xs text-secondary" data-dashboard-uptime>${formatUptime(store.uptime)}</span>
+      </div>
+      <div class="sys-status-grid">
+        ${renderStatusRow("Agent", store.agentStatus, statusColor(store.agentStatus))}
+        ${renderStatusRow("HAL Layer", store.halStatus, statusColor(store.halStatus))}
+        ${renderStatusRow("MQTT Broker", store.mqttStatus, store.mqttStatus === "connected" ? "var(--success)" : "var(--danger)")}
+        ${renderStatusRow("Database", store.dbStatus, store.dbStatus === "healthy" ? "var(--success)" : "var(--danger)")}
+        ${renderStatusRow("Auto Mode", store.autoMode ? "ON" : "OFF", store.autoMode ? "var(--accent)" : "var(--text-tertiary)")}
+      </div>
+    </div>
+  `;
+  }
+  function renderStatusRow(label, value, color) {
+    return `
+    <div class="sys-status-row">
+      <span class="sys-status-label">${label}</span>
+      <span class="sys-status-value" style="color:${color}">${value}</span>
+    </div>
+  `;
+  }
+  function statusColor(status) {
+    switch (status) {
+      case "active":
+      case "online":
+      case "healthy":
+      case "connected":
+        return "var(--success)";
+      case "idle":
+      case "degraded":
+        return "var(--warning)";
+      case "error":
+      case "offline":
+      case "disconnected":
+        return "var(--danger)";
+      default:
+        return "var(--text-tertiary)";
+    }
+  }
+  function formatUptime(seconds) {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor(seconds % 3600 / 60);
+    return `${h}h ${m}m`;
+  }
+  function injectSystemStatusStyles() {
+    if (document.getElementById("hal-sys-status-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-sys-status-styles";
+    style.textContent = `
+.sys-status-panel {
+  padding: var(--space-4);
+}
+.sys-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.sys-status-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sys-status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sys-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sys-status-row:last-child {
+  border-bottom: none;
+}
+.sys-status-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sys-status-value {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/components/LatestDecision.ts
+  function renderLatestDecision() {
+    const store = getStore();
+    const latest = store.decisions[0];
+    if (!latest) {
+      return `
+      <div class="latest-decision hal-card">
+        <div class="latest-decision-header">
+          <span class="latest-decision-title">Latest Decision</span>
+        </div>
+        <div class="latest-decision-empty text-secondary text-sm">No decisions yet</div>
+      </div>
+    `;
+    }
+    const statusColor2 = latest.status === "success" ? "var(--success)" : latest.status === "failure" ? "var(--danger)" : "var(--warning)";
+    return `
+    <div class="latest-decision hal-card">
+      <div class="latest-decision-header">
+        <span class="latest-decision-title">Latest Decision</span>
+        <span class="latest-decision-time text-mono text-xs text-secondary">${formatTime(latest.timestamp)}</span>
+      </div>
+      <div class="latest-decision-body">
+        <div class="latest-decision-trigger text-sm text-secondary">${escapeHtml2(latest.trigger)}</div>
+        <div class="latest-decision-action font-semibold text-sm">${escapeHtml2(latest.decision)}</div>
+        <div class="latest-decision-footer">
+          <span class="latest-decision-status" style="color: ${statusColor2}; background: color-mix(in srgb, ${statusColor2} 15%, transparent)"
+            >${latest.status || "pending"}</span
+          >
+          <span class="latest-decision-confidence text-mono text-xs" style="color: ${confidenceColor(latest.confidence)}"
+            >${(latest.confidence * 100).toFixed(0)}%</span
+          >
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  function formatTime(iso) {
+    try {
+      return new Date(iso).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      });
+    } catch {
+      return "--";
+    }
+  }
+  function confidenceColor(conf) {
+    if (conf >= 0.8) return "var(--success)";
+    if (conf >= 0.5) return "var(--warning)";
+    return "var(--danger)";
+  }
+  function escapeHtml2(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function injectLatestDecisionStyles() {
+    if (document.getElementById("hal-latest-decision-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-latest-decision-styles";
+    style.textContent = `
+.latest-decision {
+  padding: var(--space-4);
+}
+.latest-decision-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.latest-decision-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.latest-decision-empty {
+  padding: var(--space-6) 0;
+  text-align: center;
+}
+.latest-decision-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.latest-decision-trigger {
+  font-size: 12px;
+}
+.latest-decision-action {
+  color: var(--text-primary);
+}
+.latest-decision-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.latest-decision-status {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/api.ts
+  var BASE = "/api/hal";
+  async function halGet(path, params) {
+    let url = BASE + path;
+    if (params) {
+      const qs = new URLSearchParams(params).toString();
+      url += "?" + qs;
+    }
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HAL API ${url} failed: ${res.status} ${res.statusText}`);
+    return res.json();
+  }
+  async function halPost(path, body) {
+    const res = await fetch(BASE + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : void 0
+    });
+    if (!res.ok) throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
+    return res.json();
+  }
+  function normalizeDevice(device) {
+    const rawState = device.state ?? device.last_state ?? "unknown";
+    const state2 = rawState === "on" || rawState === "off" ? rawState : "unknown";
+    return {
+      id: device.id || "unknown",
+      name: device.name || device.label || device.id || "Unknown device",
+      type: device.type || "relay",
+      protocol: device.protocol || "unknown",
+      host: device.host,
+      state: state2,
+      online: typeof device.online === "boolean" ? device.online : state2 !== "unknown",
+      lastSeen: device.lastSeen || device.last_seen || void 0
+    };
+  }
+  function normalizeSensorReading(reading) {
+    if (!reading || typeof reading.value !== "number") return void 0;
+    return {
+      timestamp: reading.timestamp || reading.read_at || reading.stored_at || (/* @__PURE__ */ new Date()).toISOString(),
+      value: reading.value,
+      unit: reading.unit
+    };
+  }
+  function normalizeSensorSnapshots(snapshots) {
+    const normalized = {};
+    for (const [deviceId, snapshot] of Object.entries(snapshots || {})) {
+      normalized[deviceId] = {};
+      for (const [metric, reading] of Object.entries(snapshot)) {
+        if (reading && typeof reading === "object") {
+          const normalizedReading = normalizeSensorReading(reading);
+          if (normalizedReading) {
+            normalized[deviceId][metric] = normalizedReading;
+          }
+        }
+      }
+    }
+    return normalized;
+  }
+  function normalizeDecision(decision) {
+    const outcome = decision.outcome;
+    const status = decision.status || (outcome === "success" || outcome === "failure" ? outcome : "pending");
+    return {
+      id: decision.id || "unknown",
+      timestamp: decision.timestamp || decision.decided_at || decision.completed_at || (/* @__PURE__ */ new Date()).toISOString(),
+      trigger: decision.trigger || decision.device_id || "HAL",
+      decision: decision.reasoning || decision.decision || "No decision text",
+      confidence: Math.max(0, Math.min(1, Number(decision.confidence ?? 0))),
+      status,
+      outcome
+    };
+  }
+  function normalizeState(state2) {
+    return {
+      devices: (state2.devices || []).map(normalizeDevice),
+      sensorSnapshots: normalizeSensorSnapshots(state2.sensorSnapshots),
+      recentDecisions: (state2.recentDecisions || []).map(normalizeDecision)
+    };
+  }
+  var halApi = {
+    // GET /api/hal/state
+    async getState() {
+      return normalizeState(await halGet("/state"));
+    },
+    // GET /api/hal/devices
+    async getDevices() {
+      const devices = await halGet("/devices");
+      return devices.map(normalizeDevice);
+    },
+    // POST /api/hal/devices/:id/control
+    controlDevice(id, action) {
+      return halPost(`/devices/${id}/control`, { action });
+    },
+    // GET /api/hal/sensors/latest
+    async getSensorsLatest() {
+      const readings = await halGet("/sensors/latest");
+      return readings.map((reading) => ({
+        device: normalizeDevice(reading.device),
+        temperature: normalizeSensorReading(reading.temperature),
+        humidity: normalizeSensorReading(reading.humidity)
+      }));
+    },
+    // GET /api/hal/sensors/history
+    async getSensorHistory(device, metric, from, to) {
+      const readings = await halGet("/sensors/history", {
+        device,
+        metric,
+        ...from ? { from } : {},
+        ...to ? { to } : {}
+      });
+      return readings.map(normalizeSensorReading).filter((reading) => Boolean(reading));
+    },
+    // GET /api/hal/decisions
+    async getDecisions(limit = 20) {
+      const decisions = await halGet("/decisions", { limit: String(limit) });
+      return decisions.map(normalizeDecision);
+    },
+    // GET /api/hal/cameras
+    async getCameras() {
+      const cameras = await halGet("/cameras");
+      return cameras.map(normalizeDevice);
+    },
+    // POST /api/hal/cameras/:id/capture
+    captureCamera(id) {
+      return halPost(`/cameras/${id}/capture`);
+    }
+  };
+
+  // src/web/hal-ui/components/HeroChart.ts
+  var metricConfig = {
+    temperature: { label: "Temperature", color: "#F59E0B", minAxis: 10, maxAxis: 40, unit: "\xB0C" },
+    humidity: { label: "Humidity", color: "#38BDF8", minAxis: 0, maxAxis: 100, unit: "%" },
+    co2: { label: "CO\u2082", color: "#22C55E", minAxis: 0, maxAxis: 2e3, unit: "ppm" },
+    light: { label: "Light", color: "#FACC15", minAxis: 0, maxAxis: 1e5, unit: "lux" },
+    vpd: { label: "VPD", color: "#A855F7", minAxis: 0, maxAxis: 3, unit: "kPa" }
+  };
+  async function loadHeroChartData() {
+    const store = getStore();
+    const sensors = store.devices.filter((d) => d.type === "sensor");
+    const to = (/* @__PURE__ */ new Date()).toISOString();
+    const from = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
+    const layers = [];
+    const metrics2 = ["temperature", "humidity", "co2", "light"];
+    await Promise.all(sensors.flatMap(
+      (s) => metrics2.map(async (m) => {
+        try {
+          const data = await halApi.getSensorHistory(s.id, m, from, to);
+          if (data.length > 0) {
+            const cfg = metricConfig[m];
+            layers.push({
+              deviceId: s.id,
+              deviceName: s.name,
+              metric: m,
+              color: cfg?.color || "#888",
+              data
+            });
+          }
+        } catch {
+        }
+      })
+    ));
+    return layers;
+  }
+  function renderHeroChart(layers, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (layers.length === 0) {
+      container.innerHTML = '<div class="chart-empty">No sensor data</div>';
+      return;
+    }
+    const store = getStore();
+    const width = 960;
+    const height = 320;
+    const pad = { top: 24, right: 24, bottom: 40, left: 52 };
+    const allTimes = layers.flatMap((l) => l.data.map((d) => new Date(d.timestamp).getTime()));
+    const tMin = Math.min(...allTimes);
+    const tMax = Math.max(...allTimes);
+    const tSpan = Math.max(1, tMax - tMin);
+    const tx = (t) => pad.left + (t - tMin) / tSpan * (width - pad.left - pad.right);
+    const layerPaths = layers.map((layer) => {
+      const cfg = metricConfig[layer.metric] || { minAxis: 0, maxAxis: 100 };
+      let axisMin = cfg.minAxis;
+      let axisMax = cfg.maxAxis;
+      if (layer.metric === "temperature" && store.unitSystem === "imperial") {
+        axisMin = axisMin * 9 / 5 + 32;
+        axisMax = axisMax * 9 / 5 + 32;
+      }
+      const vSpan = Math.max(1, axisMax - axisMin);
+      const points = layer.data.map((d) => {
+        const v = formatSensorValue(d.value, layer.metric, store.unitSystem).value;
+        const t = new Date(d.timestamp).getTime();
+        const x = tx(t);
+        const y = pad.top + (axisMax - v) / vSpan * (height - pad.top - pad.bottom);
+        return { x, y, v, t };
+      });
+      const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const area = `${line} L${points[points.length - 1].x.toFixed(1)},${height - pad.bottom} L${points[0].x.toFixed(1)},${height - pad.bottom} Z`;
+      return { layer, points, line, area, color: layer.color, axisMin, axisMax, vSpan };
+    });
+    const gridLines = [];
+    for (let i = 0; i <= 5; i++) {
+      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+      gridLines.push(`<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid" />`);
+    }
+    const timeLabels = [];
+    for (let i = 0; i <= 6; i++) {
+      const t = tMin + i / 6 * tSpan;
+      const x = tx(t);
+      const label = new Date(t).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+      timeLabels.push(`<text x="${x}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`);
+    }
+    const primary = layerPaths[0];
+    const leftAxisLabels = [];
+    for (let i = 0; i <= 5; i++) {
+      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+      const v = primary.axisMax - i / 5 * primary.vSpan;
+      const precision = primary.layer.metric === "co2" ? 0 : 1;
+      leftAxisLabels.push(`<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(precision)}</text>`);
+    }
+    const defs = layerPaths.map((lp, i) => {
+      const gradId = `hero-grad-${i}`;
+      return `<linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${lp.color}" stop-opacity="0.28"/><stop offset="100%" stop-color="${lp.color}" stop-opacity="0.02"/></linearGradient>`;
+    }).join("");
+    const areas = layerPaths.map((lp, i) => `<path d="${lp.area}" fill="url(#hero-grad-${i})" stroke="none"/>`).join("");
+    const lines = layerPaths.map((lp) => `<path d="${lp.line}" fill="none" stroke="${lp.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`).join("");
+    const dots = layerPaths.map((lp) => {
+      const last = lp.points[lp.points.length - 1];
+      return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.color}" stroke="var(--bg-primary)" stroke-width="2"/>`;
+    }).join("");
+    container.innerHTML = `
+    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+      <defs>${defs}</defs>
+      ${gridLines.join("")}
+      ${areas}
+      ${lines}
+      ${dots}
+      ${leftAxisLabels.join("")}
+      ${timeLabels.join("")}
+    </svg>
+  `;
+  }
+  function renderSparkline(data, color, width = 80, height = 24) {
+    if (data.length < 2) return '<span class="text-xs text-secondary">--</span>';
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const span = Math.max(1e-3, max - min);
+    const pad = 2;
+    const step = (width - pad * 2) / (data.length - 1);
+    const points = data.map((v, i) => {
+      const x = pad + i * step;
+      const y = pad + (max - v) / span * (height - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" class="sparkline-svg"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+  }
+  function injectHeroChartStyles() {
+    if (document.getElementById("hal-hero-chart-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-hero-chart-styles";
+    style.textContent = `
+.hero-chart-wrap {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  overflow: hidden;
+}
+.hero-chart {
+  width: 100%;
+  min-height: 280px;
+}
+.hero-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chart-grid {
+  stroke: color-mix(in srgb, var(--text-tertiary) 30%, var(--border));
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.chart-label {
+  fill: var(--text-tertiary);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+.chart-empty {
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.sparkline-svg {
+  display: block;
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/components/KpiStrip.ts
+  function renderKpiStrip(kpis) {
+    injectHeroChartStyles();
+    if (kpis.length === 0) {
+      return '<div class="kpi-strip-empty">No KPI data available</div>';
+    }
+    const cards = kpis.map((kpi) => {
+      const statusColor2 = kpi.status === "good" ? "var(--success)" : kpi.status === "warning" ? "var(--warning)" : "var(--danger)";
+      const trend = kpi.sparklineData.length >= 2 ? kpi.sparklineData[kpi.sparklineData.length - 1] - kpi.sparklineData[0] : 0;
+      const trendIcon = trend > 0 ? "\u2191" : trend < 0 ? "\u2193" : "\u2192";
+      return `
+      <div class="kpi-card" style="--kpi-accent: ${statusColor2}">
+        <div class="kpi-header">
+          <span class="kpi-label">${kpi.label}</span>
+          <span class="kpi-trend" style="color: ${statusColor2}">${trendIcon}</span>
+        </div>
+        <div class="kpi-value-row">
+          <span class="kpi-value text-mono" style="color: ${statusColor2}">
+            ${kpi.value.toFixed(kpi.precision)}<span class="kpi-unit">${kpi.unit}</span>
+          </span>
+        </div>
+        <div class="kpi-sparkline">
+          ${renderSparkline(kpi.sparklineData, statusColor2)}
+        </div>
+      </div>
+    `;
+    }).join("");
+    return `<div class="kpi-strip">${cards}</div>`;
+  }
+  async function buildKpiData() {
+    const store = getStore();
+    const sensors = store.devices.filter((d) => d.type === "sensor");
+    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
+    const activeRelays = relays.filter((d) => d.state === "on");
+    const onlineDevices = store.devices.filter((d) => d.online).length;
+    const [tempHistory, humHistory, co2History] = await Promise.all([
+      fetchMetricSparkline(sensors, "temperature", 12),
+      fetchMetricSparkline(sensors, "humidity", 12),
+      fetchMetricSparkline(sensors, "co2", 12)
+    ]);
+    const kpis = [];
+    kpis.push({
+      label: "Power Now",
+      value: activeRelays.length,
+      unit: "ON",
+      precision: 0,
+      status: activeRelays.length > 0 ? "good" : "warning",
+      sparklineData: generateTrendData(activeRelays.length, 12),
+      sparklineColor: "var(--accent)"
+    });
+    let tempSum = 0, tempCount = 0;
+    for (const s of sensors) {
+      const snap = store.sensors[s.id];
+      if (snap?.temperature?.value != null) {
+        const converted = formatSensorValue(snap.temperature.value, "temperature", store.unitSystem);
+        tempSum += converted.value;
+        tempCount++;
+      }
+    }
+    const avgTemp = tempCount > 0 ? tempSum / tempCount : 0;
+    kpis.push({
+      label: "Temperature",
+      value: avgTemp,
+      unit: formatSensorValue(0, "temperature", store.unitSystem).unit,
+      precision: 1,
+      status: avgTemp >= 18 && avgTemp <= 28 ? "good" : avgTemp >= 15 && avgTemp <= 32 ? "warning" : "critical",
+      sparklineData: tempHistory.length > 1 ? tempHistory : generateTrendData(avgTemp || 22, 12, 3),
+      sparklineColor: "#F59E0B"
+    });
+    let humSum = 0, humCount = 0;
+    for (const s of sensors) {
+      const snap = store.sensors[s.id];
+      if (snap?.humidity?.value != null) {
+        humSum += snap.humidity.value;
+        humCount++;
+      }
+    }
+    const avgHum = humCount > 0 ? humSum / humCount : 0;
+    kpis.push({
+      label: "Humidity",
+      value: avgHum,
+      unit: "%",
+      precision: 0,
+      status: avgHum >= 40 && avgHum <= 70 ? "good" : avgHum >= 30 && avgHum <= 80 ? "warning" : "critical",
+      sparklineData: humHistory.length > 1 ? humHistory : generateTrendData(avgHum || 60, 12, 10),
+      sparklineColor: "#38BDF8"
+    });
+    let co2Sum = 0, co2Count = 0;
+    for (const s of sensors) {
+      const snap = store.sensors[s.id];
+      if (snap?.co2?.value != null) {
+        co2Sum += snap.co2.value;
+        co2Count++;
+      }
+    }
+    const avgCo2 = co2Count > 0 ? co2Sum / co2Count : 0;
+    kpis.push({
+      label: "CO\u2082",
+      value: avgCo2,
+      unit: "ppm",
+      precision: 0,
+      status: avgCo2 < 1e3 ? "good" : avgCo2 < 1500 ? "warning" : "critical",
+      sparklineData: co2History.length > 1 ? co2History : generateTrendData(avgCo2 || 800, 12, 200),
+      sparklineColor: "#22C55E"
+    });
+    kpis.push({
+      label: "Devices",
+      value: onlineDevices,
+      unit: `/${store.devices.length}`,
+      precision: 0,
+      status: onlineDevices === store.devices.length ? "good" : onlineDevices > 0 ? "warning" : "critical",
+      sparklineData: generateTrendData(onlineDevices || 1, 12),
+      sparklineColor: "var(--accent)"
+    });
+    kpis.push({
+      label: "Automations",
+      value: store.decisionsToday,
+      unit: "today",
+      precision: 0,
+      status: store.decisionsToday > 0 ? "good" : "warning",
+      sparklineData: generateTrendData(store.decisionsToday || 0, 12, 2),
+      sparklineColor: "var(--accent)"
+    });
+    return kpis;
+  }
+  async function fetchMetricSparkline(sensors, metric, buckets = 12) {
+    if (sensors.length === 0) return [];
+    const from = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
+    const to = (/* @__PURE__ */ new Date()).toISOString();
+    try {
+      for (const s of sensors) {
+        const data = await halApi.getSensorHistory(s.id, metric, from, to);
+        if (data.length > 1) {
+          const step = Math.max(1, Math.floor(data.length / buckets));
+          return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
+        }
+      }
+    } catch {
+    }
+    return [];
+  }
+  function generateTrendData(base, count, variance = 5) {
+    const data = [];
+    for (let i = 0; i < count; i++) {
+      data.push(base + (Math.random() - 0.5) * variance * 2);
+    }
+    return data;
+  }
+  function injectKpiStyles() {
+    if (document.getElementById("hal-kpi-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-kpi-styles";
+    style.textContent = `
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+.kpi-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--kpi-accent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: border-color var(--transition-fast);
+}
+.kpi-card:hover {
+  border-color: var(--kpi-accent);
+}
+.kpi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.kpi-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.kpi-trend {
+  font-size: 12px;
+  font-weight: 700;
+}
+.kpi-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.kpi-value {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+}
+.kpi-unit {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-left: 2px;
+}
+.kpi-sparkline {
+  margin-top: auto;
+  opacity: 0.7;
+}
+@media (max-width: 1200px) {
+  .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 767px) {
+  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/views/Dashboard.ts
+  async function renderDashboard(container) {
+    const store = getStore();
+    const mode = store.mode;
+    injectSystemStatusStyles();
+    injectLatestDecisionStyles();
+    injectKpiStyles();
+    injectHeroChartStyles();
+    if (mode === "CALM") {
+      await renderCalmDashboard(container);
+    } else if (mode === "OPERATOR") {
+      await renderOperatorDashboard(container);
+    } else {
+      await renderDiagnosticDashboard(container);
+    }
+  }
+  async function renderCalmDashboard(container) {
+    const store = getStore();
+    container.innerHTML = `
+    <div class="dash-layout calm-layout">
+      <div class="dash-main">
+        <div class="calm-hero">
+          <div class="calm-status-row">
+            ${renderCalmKpi("Temperature", getLatestTemp(), "\xB0C", "#F59E0B")}
+            ${renderCalmKpi("Humidity", getLatestHum(), "%", "#38BDF8")}
+            ${renderCalmKpi("Devices", store.devices.filter((d) => d.online).length, `/${store.devices.length}`, "var(--accent)")}
+          </div>
+        </div>
+
+        <div class="hero-chart-wrap calm-chart">
+          <div class="dash-hero-header">
+            <h2 class="section-title">24h Overview</h2>
+          </div>
+          <div class="hero-chart" id="dash-hero-chart">
+            <div class="chart-empty">Loading\u2026</div>
+          </div>
+        </div>
+
+        <div class="calm-devices">
+          <h2 class="section-title mb-4">Active Devices</h2>
+          <div class="calm-device-list">
+            ${renderCalmDeviceList(store.devices.filter((d) => d.online))}
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-sidebar calm-sidebar">
+        ${renderSystemStatus()}
+      </div>
+    </div>
+  `;
+    injectDashboardStyles();
+    await loadDashboardChart();
+  }
+  function renderCalmKpi(label, value, unit, color) {
+    const val = typeof value === "number" ? value.toFixed(1) : value;
+    return `
+    <div class="calm-kpi" style="--kpi-color: ${color}">
+      <span class="calm-kpi-value text-mono">${val}<small>${unit}</small></span>
+      <span class="calm-kpi-label">${label}</span>
+    </div>
+  `;
+  }
+  function renderCalmDeviceList(devices) {
+    if (devices.length === 0) return '<p class="text-secondary text-sm">No active devices</p>';
+    return devices.slice(0, 6).map((d) => `
+    <div class="calm-device-item ${d.online ? "online" : "offline"}">
+      <span class="calm-device-dot"></span>
+      <span class="calm-device-name">${escapeHtml3(d.name)}</span>
+      <span class="calm-device-type text-xs text-secondary">${d.type}</span>
+    </div>
+  `).join("");
+  }
+  async function renderOperatorDashboard(container) {
+    const store = getStore();
+    container.innerHTML = `
+    <div class="dash-layout">
+      <div class="dash-main">
+        ${renderKpiStrip(await buildKpiData())}
+
+        <div class="hero-chart-wrap">
+          <div class="dash-hero-header">
+            <h2 class="section-title">Environment Overview</h2>
+            <div class="dash-live-bar" id="dash-live-bar">Loading\u2026</div>
+          </div>
+          <div class="hero-chart" id="dash-hero-chart">
+            <div class="chart-empty">Loading sensor data\u2026</div>
+          </div>
+        </div>
+
+        <div class="dash-bottom-grid">
+          <section>
+            <h2 class="section-title mb-4">Device State</h2>
+            <div id="dashboard-devices" class="device-grid">
+              ${renderDeviceGrid(store.devices)}
+            </div>
+          </section>
+          <section>
+            <h2 class="section-title mb-4">Recent Decisions</h2>
+            <div id="dashboard-decisions">
+              ${renderRecentDecisions(store.decisions.slice(0, 5))}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="dash-sidebar">
+        ${renderSystemStatus()}
+        ${renderLatestDecision()}
+      </div>
+    </div>
+  `;
+    injectDashboardStyles();
+    attachDashboardHandlers();
+    await loadDashboardChart();
+  }
+  async function renderDiagnosticDashboard(container) {
+    const store = getStore();
+    container.innerHTML = `
+    <div class="dash-layout diag-layout">
+      <div class="dash-main">
+        ${renderKpiStrip(await buildKpiData())}
+
+        <div class="hero-chart-wrap">
+          <div class="dash-hero-header">
+            <h2 class="section-title">Environment Overview \u2014 All Metrics</h2>
+            <div class="dash-live-bar" id="dash-live-bar">Loading\u2026</div>
+          </div>
+          <div class="hero-chart" id="dash-hero-chart">
+            <div class="chart-empty">Loading sensor data\u2026</div>
+          </div>
+        </div>
+
+        <div class="diag-raw-data">
+          <h2 class="section-title mb-4">Raw Sensor Snapshots</h2>
+          <div class="diag-snapshot-grid" id="diag-snapshots">
+            ${renderRawSnapshots(store.sensors, store.devices)}
+          </div>
+        </div>
+
+        <div class="dash-bottom-grid">
+          <section>
+            <h2 class="section-title mb-4">All Devices (${store.devices.length})</h2>
+            <div id="dashboard-devices" class="device-grid">
+              ${renderDeviceGrid(store.devices)}
+            </div>
+          </section>
+          <section>
+            <h2 class="section-title mb-4">All Decisions (${store.decisions.length})</h2>
+            <div id="dashboard-decisions">
+              ${renderRecentDecisions(store.decisions.slice(0, 10))}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="dash-sidebar">
+        ${renderSystemStatus()}
+        ${renderLatestDecision()}
+        ${renderDiagnosticExtras(store)}
+      </div>
+    </div>
+  `;
+    injectDashboardStyles();
+    attachDashboardHandlers();
+    await loadDashboardChart();
+  }
+  function renderRawSnapshots(sensors, devices) {
+    const entries = Object.entries(sensors);
+    if (entries.length === 0) {
+      return '<p class="text-secondary text-sm">No sensor snapshots available</p>';
+    }
+    return entries.map(([deviceId, snap]) => {
+      const device = devices.find((d) => d.id === deviceId);
+      const temp = snap.temperature;
+      const hum = snap.humidity;
+      return `
+      <div class="diag-snapshot hal-card">
+        <div class="diag-snapshot-header">
+          <span class="text-sm font-semibold">${escapeHtml3(device?.name || deviceId)}</span>
+          <span class="text-xs text-secondary">${device?.protocol || "unknown"}</span>
+        </div>
+        <div class="diag-snapshot-body">
+          ${temp ? `
+            <div class="diag-snapshot-row">
+              <span class="text-xs text-secondary">temperature</span>
+              <span class="text-mono text-xs">${temp.value.toFixed(2)} \xB0C @ ${new Date(temp.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+          ` : ""}
+          ${hum ? `
+            <div class="diag-snapshot-row">
+              <span class="text-xs text-secondary">humidity</span>
+              <span class="text-mono text-xs">${hum.value.toFixed(2)} % @ ${new Date(hum.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+          ` : ""}
+          ${!temp && !hum ? '<span class="text-xs text-secondary">No data</span>' : ""}
+        </div>
+      </div>
+    `;
+    }).join("");
+  }
+  function renderDiagnosticExtras(store) {
+    const sensors = store.devices.filter((d) => d.type === "sensor");
+    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
+    const cameras = store.devices.filter((d) => d.type === "camera");
+    return `
+    <div class="diag-extras hal-card">
+      <div class="diag-extras-header">
+        <span class="diag-extras-title">Diagnostics</span>
+      </div>
+      <div class="diag-extras-grid">
+        <div class="diag-extras-row">
+          <span class="text-xs text-secondary">Sensors</span>
+          <span class="text-mono text-xs">${sensors.length}</span>
+        </div>
+        <div class="diag-extras-row">
+          <span class="text-xs text-secondary">Relays</span>
+          <span class="text-mono text-xs">${relays.length}</span>
+        </div>
+        <div class="diag-extras-row">
+          <span class="text-xs text-secondary">Cameras</span>
+          <span class="text-mono text-xs">${cameras.length}</span>
+        </div>
+        <div class="diag-extras-row">
+          <span class="text-xs text-secondary">Decisions</span>
+          <span class="text-mono text-xs">${store.decisions.length}</span>
+        </div>
+        <div class="diag-extras-row">
+          <span class="text-xs text-secondary">Uptime</span>
+          <span class="text-mono text-xs" data-dashboard-uptime>${formatUptime2(store.uptime)}</span>
+        </div>
+        <div class="diag-extras-row">
+          <span class="text-xs text-secondary">Mode</span>
+          <span class="text-mono text-xs" style="color:var(--accent)">${store.mode}</span>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  async function loadDashboardChart() {
+    const hero = document.getElementById("dash-hero-chart");
+    const liveBar = document.getElementById("dash-live-bar");
+    if (!hero) return;
+    try {
+      const layers = await loadHeroChartData();
+      renderHeroChart(layers, "dash-hero-chart");
+      if (liveBar) liveBar.innerHTML = buildLiveBar(layers);
+    } catch (err) {
+      console.error("Dashboard chart load failed:", err);
+      if (hero) hero.innerHTML = '<div class="chart-empty">Failed to load</div>';
+    }
+  }
+  function buildLiveBar(layers) {
+    const store = getStore();
+    const latest = {};
+    const metricColors = {
+      temperature: "#F59E0B",
+      humidity: "#38BDF8",
+      co2: "#22C55E",
+      light: "#FACC15",
+      soil_moisture: "#EF4444",
+      water_level: "#2563EB",
+      ph: "#A855F7",
+      weight: "#94A3B8"
+    };
+    for (const layer of layers) {
+      if (!layer.data.length) continue;
+      const last = layer.data[layer.data.length - 1];
+      const converted = formatSensorValue(last.value, layer.metric, store.unitSystem);
+      const unit = converted.unit || getMetricUnit2(layer.metric);
+      latest[layer.metric] = { value: converted.value, unit, color: metricColors[layer.metric] };
+    }
+    const items = Object.entries(latest).map(([metric, info]) => {
+      const label = metric.charAt(0).toUpperCase() + metric.slice(1).replace("_", " ");
+      const precision = Math.abs(info.value) >= 100 ? 0 : info.value % 1 === 0 ? 0 : 1;
+      return `<span class="live-item" style="--live-color:${info.color}"><span class="live-dot"></span><span class="live-label">${label}</span><span class="live-val text-mono">${info.value.toFixed(precision)}${info.unit}</span></span>`;
+    });
+    return items.join("") || '<span class="text-secondary text-xs">No live data</span>';
+  }
+  function getLatestTemp() {
+    const store = getStore();
+    let sum = 0, count = 0;
+    for (const s of store.devices.filter((d) => d.type === "sensor")) {
+      const snap = store.sensors[s.id];
+      if (snap?.temperature?.value != null) {
+        sum += snap.temperature.value;
+        count++;
+      }
+    }
+    return count > 0 ? sum / count : 0;
+  }
+  function getLatestHum() {
+    const store = getStore();
+    let sum = 0, count = 0;
+    for (const s of store.devices.filter((d) => d.type === "sensor")) {
+      const snap = store.sensors[s.id];
+      if (snap?.humidity?.value != null) {
+        sum += snap.humidity.value;
+        count++;
+      }
+    }
+    return count > 0 ? sum / count : 0;
+  }
+  function getMetricUnit2(metric) {
+    switch (metric) {
+      case "humidity":
+      case "soil_moisture":
+      case "water_level":
+        return "%";
+      case "co2":
+        return "ppm";
+      case "light":
+        return "lux";
+      case "ph":
+        return "";
+      case "weight":
+        return "kg";
+      default:
+        return "";
+    }
+  }
+  function renderDeviceGrid(devices) {
+    if (devices.length === 0) {
+      return '<div class="empty-state"><p>No devices registered</p></div>';
+    }
+    return devices.map((d) => `
+    <div class="device-mini-card ${d.online ? "online" : "offline"}" data-device-id="${d.id}">
+      <div class="device-mini-icon">${deviceIcon(d.type)}</div>
+      <div class="device-mini-info">
+        <div class="device-mini-name">${escapeHtml3(d.name)}</div>
+        <div class="device-mini-meta text-xs text-secondary">${d.protocol} \xB7 ${d.online ? "online" : "offline"}</div>
+      </div>
+      ${d.type === "relay" || d.type === "smart_plug" ? `
+        <div class="device-mini-state ${d.state === "on" ? "on" : ""}">
+          ${d.state === "on" ? "ON" : "OFF"}
+        </div>
+      ` : ""}
+    </div>
+  `).join("");
+  }
+  function renderRecentDecisions(decisions) {
+    if (decisions.length === 0) {
+      return '<div class="empty-state"><p>No decisions yet</p></div>';
+    }
+    return decisions.map((d) => `
+    <div class="decision-row ${d.status || "pending"}">
+      <div class="decision-time text-mono text-xs text-secondary">${formatTime2(d.timestamp)}</div>
+      <div class="decision-trigger text-sm">${escapeHtml3(d.trigger)}</div>
+      <div class="decision-text text-sm font-semibold">${escapeHtml3(d.decision)}</div>
+      <div class="decision-footer">
+        <span class="decision-status ${d.status || "pending"}">${d.status || "pending"}</span>
+        <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor2(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
+      </div>
+    </div>
+  `).join("");
+  }
+  function attachDashboardHandlers() {
+    document.querySelectorAll(".device-mini-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        const id = card.dataset.deviceId;
+        if (id) console.log("Device clicked:", id);
+      });
+    });
+  }
+  function formatTime2(iso) {
+    try {
+      return new Date(iso).toLocaleTimeString("en-US", { hour12: false });
+    } catch {
+      return "--";
+    }
+  }
+  function formatUptime2(seconds) {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor(seconds % 3600 / 60);
+    return `${h}h ${m}m`;
+  }
+  function confidenceColor2(conf) {
+    if (conf >= 0.8) return "var(--success)";
+    if (conf >= 0.5) return "var(--warning)";
+    return "var(--danger)";
+  }
+  function escapeHtml3(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function deviceIcon(type) {
+    switch (type) {
+      case "sensor":
+        return "SNS";
+      case "camera":
+        return "CAM";
+      case "relay":
+        return "RLY";
+      case "smart_plug":
+        return "PLG";
+      default:
+        return "DEV";
+    }
+  }
+  function injectDashboardStyles() {
+    if (document.getElementById("hal-dashboard-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-dashboard-styles";
+    style.textContent = `
+/* \u2500\u2500 Layout \u2500\u2500 */
+.dash-layout {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: var(--space-6);
+}
+.dash-main { min-width: 0; }
+.dash-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* \u2500\u2500 CALM mode \u2500\u2500 */
+.calm-layout { grid-template-columns: 1fr 220px; }
+.calm-hero { margin-bottom: var(--space-6); }
+.calm-status-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+.calm-kpi {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  text-align: center;
+  border-left: 3px solid var(--kpi-color);
+}
+.calm-kpi-value {
+  display: block;
+  font-size: 36px;
+  font-weight: 600;
+  color: var(--kpi-color);
+  line-height: 1;
+}
+.calm-kpi-value small {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-left: 2px;
+}
+.calm-kpi-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: var(--space-2);
+}
+.calm-chart { margin-bottom: var(--space-6); }
+.calm-devices { margin-bottom: var(--space-6); }
+.calm-device-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.calm-device-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.calm-device-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.calm-device-item.offline .calm-device-dot {
+  background: var(--danger);
+}
+.calm-device-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+.calm-sidebar { gap: var(--space-4); }
+
+/* \u2500\u2500 OPERATOR mode \u2500\u2500 */
+.dash-hero-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.dash-live-bar {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.live-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--live-color);
+  box-shadow: 0 0 6px var(--live-color);
+}
+.live-label {
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 10px;
+}
+.live-val {
+  color: var(--live-color);
+  font-size: 13px;
+  font-weight: 600;
+}
+.dash-bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+  margin-top: var(--space-6);
+}
+.device-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+.device-mini-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--slate);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+.device-mini-card:hover { border-color: var(--accent); }
+.device-mini-card.online { border-left-color: var(--accent); }
+.device-mini-card.offline { border-left-color: var(--danger); }
+.device-mini-icon { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: var(--radius-sm); padding: 2px 5px; }
+.device-mini-name { font-size: 13px; font-weight: 500; }
+.device-mini-meta { margin-top: 2px; }
+.device-mini-state {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+.device-mini-state.on {
+  background: color-mix(in srgb, var(--success) 20%, transparent);
+  color: var(--success);
+}
+.decision-row {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  border-left: 3px solid var(--slate);
+}
+.decision-row.success { border-left-color: var(--success); }
+.decision-row.failure { border-left-color: var(--danger); }
+.decision-row.pending { border-left-color: var(--warning); }
+.decision-time { margin-bottom: 2px; }
+.decision-trigger { color: var(--text-secondary); margin-bottom: 2px; }
+.decision-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.decision-status {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+.decision-status.success { background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
+.decision-status.failure { background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger); }
+.decision-status.pending { background: color-mix(in srgb, var(--warning) 20%, transparent); color: var(--warning); }
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+/* \u2500\u2500 DIAGNOSTIC mode \u2500\u2500 */
+.diag-layout { grid-template-columns: 1fr 280px; }
+.diag-raw-data { margin: var(--space-6) 0; }
+.diag-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+.diag-snapshot {
+  padding: var(--space-3);
+}
+.diag-snapshot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.diag-snapshot-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.diag-snapshot-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.diag-extras {
+  padding: var(--space-4);
+}
+.diag-extras-header {
+  margin-bottom: var(--space-3);
+}
+.diag-extras-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.diag-extras-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.diag-extras-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.diag-extras-row:last-child { border-bottom: none; }
+
+/* \u2500\u2500 Responsive \u2500\u2500 */
+@media (max-width: 1023px) {
+  .dash-layout, .calm-layout, .diag-layout { grid-template-columns: 1fr; }
+  .dash-sidebar { flex-direction: row; flex-wrap: wrap; }
+  .dash-sidebar > * { flex: 1; min-width: 240px; }
+  .calm-status-row { grid-template-columns: repeat(3, 1fr); }
+  .diag-snapshot-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 767px) {
+  .dash-bottom-grid { grid-template-columns: 1fr; }
+  .device-grid { grid-template-columns: 1fr; }
+  .dash-hero-header { flex-direction: column; align-items: flex-start; }
+  .dash-live-bar { gap: var(--space-2); }
+  .calm-status-row { grid-template-columns: 1fr; }
+  .diag-snapshot-grid { grid-template-columns: 1fr; }
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/views/Devices.ts
+  async function renderDevices(container) {
+    const store = getStore();
+    injectDevicesStyles();
+    container.innerHTML = `
+    <div class="page-header">
+      <h1 class="page-title">Devices</h1>
+      <p class="page-subtitle">Manage farm hardware</p>
+    </div>
+
+    <div class="devices-toolbar mb-4">
+      <input class="hal-input" id="device-filter" type="text" placeholder="Filter devices..." />
+      <select class="hal-input" id="device-type-filter">
+        <option value="">All types</option>
+        <option value="relay">Relays</option>
+        <option value="sensor">Sensors</option>
+        <option value="camera">Cameras</option>
+      </select>
+      <select class="hal-input" id="device-status-filter">
+        <option value="">All status</option>
+        <option value="online">Online</option>
+        <option value="offline">Offline</option>
+      </select>
+    </div>
+
+    <div id="devices-grid" class="grid-3">
+      ${renderDeviceCards(store.devices)}
+    </div>
+  `;
+    attachDevicesHandlers();
+  }
+  function renderDeviceCards(devices) {
+    if (devices.length === 0) {
+      return `<div class="empty-state col-span-3"><p class="empty-state-title">No devices registered</p><p class="empty-state-desc">Devices will appear here once discovered.</p></div>`;
+    }
+    return devices.map((d) => {
+      const state2 = d.online ? "online" : "offline";
+      return `
+      <div class="device-card hal-card" data-device-id="${d.id}" style="border-left: 3px solid ${state2 === "online" ? "var(--accent)" : "var(--danger)"}">
+        <div class="device-card-header">
+          <div class="device-card-icon">${deviceIcon2(d.type)}</div>
+          <div class="device-card-title">${escapeHtml4(d.name)}</div>
+          <span class="hal-badge hal-badge-slate">${d.protocol}</span>
+        </div>
+        <div class="device-card-meta">
+          <span class="text-xs text-secondary">${d.type} \xB7 ${state2}</span>
+          ${d.lastSeen ? `<span class="text-xs text-mono text-secondary">${formatRelativeTime(d.lastSeen)}</span>` : ""}
+        </div>
+        ${d.type === "relay" ? `
+          <div class="device-card-control">
+            <span class="text-xs text-secondary">Power</span>
+            <div id="toggle-${d.id}" class="device-toggle"></div>
+          </div>
+        ` : ""}
+      </div>
+    `;
+    }).join("");
+  }
+  function attachDevicesHandlers() {
+    const filterInput = document.getElementById("device-filter");
+    const typeSelect = document.getElementById("device-type-filter");
+    const statusSelect = document.getElementById("device-status-filter");
+    function applyFilter() {
+      const q = filterInput?.value.toLowerCase() || "";
+      const type = typeSelect?.value || "";
+      const status = statusSelect?.value || "";
+      const store = getStore();
+      const filtered = store.devices.filter((d) => {
+        const matchQ = !q || d.name.toLowerCase().includes(q) || d.protocol.toLowerCase().includes(q);
+        const matchType = !type || d.type === type;
+        const matchStatus = !status || (status === "online" ? d.online : !d.online);
+        return matchQ && matchType && matchStatus;
+      });
+      const grid = document.getElementById("devices-grid");
+      if (grid) grid.innerHTML = renderDeviceCards(filtered);
+      attachToggleHandlers();
+    }
+    filterInput?.addEventListener("input", applyFilter);
+    typeSelect?.addEventListener("change", applyFilter);
+    statusSelect?.addEventListener("change", applyFilter);
+    attachToggleHandlers();
+  }
+  function attachToggleHandlers() {
+    const store = getStore();
+    const relays = store.devices.filter((d) => d.type === "relay");
+    relays.forEach((relay) => {
+      const el = document.getElementById(`toggle-${relay.id}`);
+      if (!el) return;
+      const isOn = relay.state === "on";
+      const toggle = createToggle(`toggle-${relay.id}`, isOn, async (on) => {
+        try {
+          await halApi.controlDevice(relay.id, on ? "on" : "off");
+          showToast(`${relay.name} turned ${on ? "on" : "off"}`, "success");
+        } catch (err) {
+          showToast(`Failed: ${err.message}`, "danger");
+          setToggleState(toggle, !on);
+        }
+      });
+      el.replaceWith(toggle);
+    });
+  }
+  function formatRelativeTime(iso) {
+    try {
+      const diff = Date.now() - new Date(iso).getTime();
+      if (diff < 6e4) return "just now";
+      if (diff < 36e5) return `${Math.floor(diff / 6e4)}m ago`;
+      if (diff < 864e5) return `${Math.floor(diff / 36e5)}h ago`;
+      return `${Math.floor(diff / 864e5)}d ago`;
+    } catch {
+      return "--";
+    }
+  }
+  function escapeHtml4(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function deviceIcon2(type) {
+    switch (type) {
+      case "sensor":
+        return "SNS";
+      case "camera":
+        return "CAM";
+      case "relay":
+        return "RLY";
+      case "smart_plug":
+        return "PLG";
+      default:
+        return "DEV";
+    }
+  }
+  function injectDevicesStyles() {
+    if (document.getElementById("hal-devices-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-devices-styles";
+    style.textContent = `
+.devices-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.hal-input {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 var(--space-3);
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+.hal-input:focus { border-color: var(--accent); }
+.hal-input::placeholder { color: var(--text-tertiary); }
+.device-card { padding: var(--space-4); }
+.device-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.device-card-icon { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: var(--radius-sm); padding: 3px 6px; }
+.device-card-title { flex: 1; font-size: 14px; font-weight: 600; }
+.hal-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  text-transform: uppercase;
+}
+.hal-badge-slate {
+  background: color-mix(in srgb, var(--slate) 20%, transparent);
+  color: var(--slate);
+  border: 1px solid var(--slate);
+}
+.device-card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+.device-card-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.col-span-3 { grid-column: 1 / -1; }
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/views/Sensors.ts
+  var metrics = [
+    { key: "temperature", label: "Temperature", shortLabel: "Temp", fallbackUnit: "\xB0C", color: "#F59E0B", description: "Air / probe temperature", minAxis: 10, maxAxis: 40 },
+    { key: "humidity", label: "Humidity", shortLabel: "RH", fallbackUnit: "%", color: "#38BDF8", description: "Relative humidity", minAxis: 0, maxAxis: 100 },
+    { key: "soil_moisture", label: "Soil Moisture", shortLabel: "Soil", fallbackUnit: "%", color: "#EF4444", description: "Volumetric water content", minAxis: 0, maxAxis: 100 },
+    { key: "co2", label: "CO\u2082", shortLabel: "CO\u2082", fallbackUnit: "ppm", color: "#22C55E", description: "Carbon dioxide", minAxis: 0, maxAxis: 2e3 },
+    { key: "light", label: "Light", shortLabel: "Light", fallbackUnit: "lux", color: "#FACC15", description: "PAR / illuminance", minAxis: 0, maxAxis: 1e5 },
+    { key: "water_level", label: "Water Level", shortLabel: "Water", fallbackUnit: "%", color: "#2563EB", description: "Reservoir level", minAxis: 0, maxAxis: 100 },
+    { key: "ph", label: "pH", shortLabel: "pH", fallbackUnit: "", color: "#A855F7", description: "Acidity / alkalinity", minAxis: 0, maxAxis: 14 },
+    { key: "weight", label: "Weight", shortLabel: "Weight", fallbackUnit: "kg", color: "#94A3B8", description: "Load cell", minAxis: 0, maxAxis: 100 }
+  ];
+  var viewState = {
+    deviceId: "all",
+    range: "24H",
+    activeMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"])
+  };
+  var loadSequence = 0;
+  async function renderSensors(container) {
+    const store = getStore();
+    const sensors = store.devices.filter((d) => d.type === "sensor");
+    const validDeviceIds = /* @__PURE__ */ new Set(["all", ...sensors.map((s) => s.id)]);
+    if (!validDeviceIds.has(viewState.deviceId)) viewState.deviceId = "all";
+    container.innerHTML = `
+    <div class="sensors-hero">
+      <div class="sensors-hero-header">
+        <div class="sensors-hero-title">
+          <h1 class="page-title">Sensors</h1>
+          <p class="page-subtitle">Environmental telemetry</p>
+        </div>
+        <div class="sensors-hero-controls">
+          <select class="hal-input" id="sensor-device-select">
+            <option value="all" ${viewState.deviceId === "all" ? "selected" : ""}>All Devices</option>
+            ${sensors.map((s) => `<option value="${s.id}" ${viewState.deviceId === s.id ? "selected" : ""}>${escapeHtml5(s.name)}</option>`).join("")}
+          </select>
+          <div class="time-range-group" role="group">
+            ${["1H", "6H", "24H", "7D", "30D"].map(
+      (r) => `<button class="hal-range-btn ${r === viewState.range ? "active" : ""}" data-range="${r}">${r}</button>`
+    ).join("")}
+          </div>
+          <button class="hal-range-btn" id="unit-toggle">${store.unitSystem === "metric" ? "\xB0C" : "\xB0F"}</button>
+          <button class="hal-range-btn" id="time-format-toggle">${store.timeFormat === "24h" ? "24H" : "12H"}</button>
+        </div>
+      </div>
+
+      <div class="metric-bar" id="metric-bar">
+        ${metrics.map((m) => {
+      const active = viewState.activeMetrics.has(m.key);
+      return `
+            <button
+              class="metric-pill ${active ? "active" : ""}"
+              data-metric="${m.key}"
+              style="--metric-color:${m.color}"
+              aria-pressed="${active ? "true" : "false"}"
+            >
+              <span class="pill-dot"></span>
+              <span class="pill-label">${escapeHtml5(m.shortLabel)}</span>
+              <span class="pill-value" id="pill-${m.key}">--</span>
+            </button>
+          `;
+    }).join("")}
+      </div>
+
+      <div class="hero-chart-wrap">
+        <div id="hero-chart" class="hero-chart">
+          <div class="chart-empty">Loading sensor data...</div>
+        </div>
+        <div class="hero-legend" id="hero-legend"></div>
+      </div>
+    </div>
+
+    <div class="viz-grid" id="viz-grid"></div>
+
+    <div class="sensor-detail-drawer" id="detail-drawer">
+      <div class="detail-header">
+        <h3 class="section-title">Readings</h3>
+        <span class="text-xs text-secondary" id="detail-count">--</span>
+      </div>
+      <div class="detail-table-wrap">
+        <table class="hal-table compact">
+          <thead>
+            <tr><th>Time</th><th>Device</th><th>Metric</th><th>Value</th></tr>
+          </thead>
+          <tbody id="detail-body">
+            <tr><td colspan="4" class="empty-cell">Select metrics above</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+    injectSensorStyles();
+    attachHandlers(sensors);
+    await loadData(sensors);
+  }
+  function attachHandlers(sensors) {
+    const deviceSelect = document.getElementById("sensor-device-select");
+    deviceSelect?.addEventListener("change", () => {
+      viewState.deviceId = deviceSelect.value || "all";
+      void loadData(sensors);
+    });
+    document.querySelectorAll(".hal-range-btn[data-range]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".hal-range-btn[data-range]").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        viewState.range = btn.dataset.range || "24H";
+        void loadData(sensors);
+      });
+    });
+    const unitToggle = document.getElementById("unit-toggle");
+    unitToggle?.addEventListener("click", () => {
+      const store = getStore();
+      const newSystem = store.unitSystem === "metric" ? "imperial" : "metric";
+      setStore({ unitSystem: newSystem });
+      unitToggle.textContent = newSystem === "metric" ? "\xB0C" : "\xB0F";
+      void loadData(sensors);
+    });
+    const timeFormatToggle = document.getElementById("time-format-toggle");
+    timeFormatToggle?.addEventListener("click", () => {
+      const store = getStore();
+      const newFormat = store.timeFormat === "24h" ? "12h" : "24h";
+      setStore({ timeFormat: newFormat });
+      timeFormatToggle.textContent = newFormat === "24h" ? "24H" : "12H";
+      void loadData(sensors);
+    });
+    document.querySelectorAll(".metric-pill").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const metric = btn.dataset.metric;
+        if (viewState.activeMetrics.has(metric)) {
+          if (viewState.activeMetrics.size > 1) viewState.activeMetrics.delete(metric);
+        } else {
+          viewState.activeMetrics.add(metric);
+        }
+        document.querySelectorAll(".metric-pill").forEach((pill) => {
+          const key = pill.dataset.metric;
+          pill.classList.toggle("active", viewState.activeMetrics.has(key));
+          pill.setAttribute("aria-pressed", viewState.activeMetrics.has(key) ? "true" : "false");
+        });
+        void loadData(sensors);
+      });
+    });
+  }
+  async function loadData(sensors) {
+    const sequence = ++loadSequence;
+    const selectedDevices = viewState.deviceId === "all" ? sensors : sensors.filter((s) => s.id === viewState.deviceId);
+    const activeMetricConfigs = metrics.filter((m) => viewState.activeMetrics.has(m.key));
+    const { from, to } = getRangeBounds(viewState.range);
+    const heroChart = document.getElementById("hero-chart");
+    if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
+    try {
+      const layers = [];
+      await Promise.all(selectedDevices.flatMap(
+        (device) => activeMetricConfigs.map(async (metric) => {
+          const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
+          if (data.length > 0) layers.push({ deviceId: device.id, deviceName: device.name, metric, data });
+        })
+      ));
+      if (sequence !== loadSequence) return;
+      renderHeroChart2(layers);
+      renderDetailTable(layers);
+      updatePillValues(layers);
+      renderVizCards(layers);
+    } catch (err) {
+      console.error("Sensor load failed:", err);
+      if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
+    }
+  }
+  function getRangeBounds(range) {
+    const to = /* @__PURE__ */ new Date();
+    const from = /* @__PURE__ */ new Date();
+    switch (range) {
+      case "1H":
+        from.setHours(from.getHours() - 1);
+        break;
+      case "6H":
+        from.setHours(from.getHours() - 6);
+        break;
+      case "7D":
+        from.setDate(from.getDate() - 7);
+        break;
+      case "30D":
+        from.setDate(from.getDate() - 30);
+        break;
+      default:
+        from.setDate(from.getDate() - 1);
+        break;
+    }
+    return { from: from.toISOString(), to: to.toISOString() };
+  }
+  function renderHeroChart2(layers) {
+    const container = document.getElementById("hero-chart");
+    const legend = document.getElementById("hero-legend");
+    if (!container) return;
+    if (layers.length === 0) {
+      container.innerHTML = '<div class="chart-empty">No data for selection</div>';
+      if (legend) legend.innerHTML = "";
+      return;
+    }
+    const store = getStore();
+    const width = 900;
+    const height = 320;
+    const pad = { top: 24, right: 24, bottom: 36, left: 52 };
+    const allTimes = layers.flatMap((l) => l.data.map((d) => new Date(d.timestamp).getTime()));
+    const tMin = Math.min(...allTimes);
+    const tMax = Math.max(...allTimes);
+    const tSpan = Math.max(1, tMax - tMin);
+    const tx = (t) => pad.left + (t - tMin) / tSpan * (width - pad.left - pad.right);
+    const layerPaths = layers.map((layer) => {
+      const cfg = layer.metric;
+      let axisMin = cfg.minAxis;
+      let axisMax = cfg.maxAxis;
+      if (cfg.key === "temperature" && store.unitSystem === "imperial") {
+        axisMin = axisMin * 9 / 5 + 32;
+        axisMax = axisMax * 9 / 5 + 32;
+      }
+      if (cfg.key === "weight" && store.unitSystem === "imperial") {
+        axisMin = axisMin * 2.20462;
+        axisMax = axisMax * 2.20462;
+      }
+      const vSpan = Math.max(1, axisMax - axisMin);
+      const points = layer.data.map((d) => {
+        const v = formatSensorValue(d.value, cfg.key, store.unitSystem).value;
+        const t = new Date(d.timestamp).getTime();
+        const x = tx(t);
+        const y = pad.top + (axisMax - v) / vSpan * (height - pad.top - pad.bottom);
+        return { x, y, v, t, raw: d };
+      });
+      const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const area = `${line} L${points[points.length - 1].x.toFixed(1)},${height - pad.bottom} L${points[0].x.toFixed(1)},${height - pad.bottom} Z`;
+      return { layer, points, line, area, axisMin, axisMax, vSpan };
+    });
+    const gridLines = [];
+    for (let i = 0; i <= 5; i++) {
+      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+      gridLines.push(`<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid" />`);
+    }
+    const timeLabels = [];
+    const timeSteps = 6;
+    for (let i = 0; i <= timeSteps; i++) {
+      const t = tMin + i / timeSteps * tSpan;
+      const x = tx(t);
+      const label = formatTimeValue(new Date(t), store.timeFormat);
+      timeLabels.push(`<text x="${x}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`);
+    }
+    const primary = layerPaths[0];
+    const leftAxisLabels = [];
+    for (let i = 0; i <= 5; i++) {
+      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+      const v = primary.axisMax - i / 5 * primary.vSpan;
+      const precision = primary.layer.metric.key === "co2" ? 0 : 1;
+      leftAxisLabels.push(`<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(precision)}</text>`);
+    }
+    let rightAxisLabels = "";
+    if (layerPaths.length > 1 && layerPaths[1].layer.metric.key !== primary.layer.metric.key) {
+      const sec = layerPaths[1];
+      const labels = [];
+      for (let i = 0; i <= 5; i++) {
+        const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
+        const v = sec.axisMax - i / 5 * sec.vSpan;
+        const precision = sec.layer.metric.key === "co2" ? 0 : 1;
+        labels.push(`<text x="${width - pad.right + 8}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.metric.color}">${v.toFixed(precision)}</text>`);
+      }
+      rightAxisLabels = labels.join("");
+    }
+    const defs = layerPaths.map((lp, i) => {
+      const gradId = `hero-grad-${i}`;
+      return `
+      <linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="${lp.layer.metric.color}" stop-opacity="0.28" />
+        <stop offset="100%" stop-color="${lp.layer.metric.color}" stop-opacity="0.02" />
+      </linearGradient>
+    `;
+    }).join("");
+    const areas = layerPaths.map(
+      (lp, i) => `<path d="${lp.area}" fill="url(#hero-grad-${i})" stroke="none" />`
+    ).join("");
+    const lines = layerPaths.map(
+      (lp) => `<path d="${lp.line}" fill="none" stroke="${lp.layer.metric.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />`
+    ).join("");
+    const dots = layerPaths.flatMap((lp) => {
+      const last = lp.points[lp.points.length - 1];
+      return [
+        `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.metric.color}" stroke="var(--bg-primary)" stroke-width="2" />`
+      ];
+    }).join("");
+    container.innerHTML = `
+    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+      <defs>${defs}</defs>
+      ${gridLines.join("")}
+      ${areas}
+      ${lines}
+      ${dots}
+      ${leftAxisLabels.join("")}
+      ${rightAxisLabels}
+      ${timeLabels.join("")}
+    </svg>
+  `;
+    if (legend) {
+      legend.innerHTML = layerPaths.map((lp) => `
+      <span class="legend-item" style="--metric-color:${lp.layer.metric.color}">
+        <span class="legend-dot"></span>
+        ${escapeHtml5(lp.layer.metric.label)} (${escapeHtml5(lp.layer.deviceName)})
+      </span>
+    `).join("");
+    }
+  }
+  function renderDetailTable(layers) {
+    const tbody = document.getElementById("detail-body");
+    const count = document.getElementById("detail-count");
+    if (!tbody) return;
+    const store = getStore();
+    const rows = layers.flatMap(
+      (layer) => layer.data.slice(-15).map((reading) => {
+        const converted = formatSensorValue(reading.value, layer.metric.key, store.unitSystem);
+        return {
+          time: reading.timestamp,
+          device: layer.deviceName,
+          metric: layer.metric.label,
+          value: formatValue(converted.value, converted.unit || layer.metric.fallbackUnit),
+          color: layer.metric.color
+        };
+      })
+    ).sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+    if (count) count.textContent = `${rows.length} readings`;
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-cell">No data</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map((r) => `
+    <tr style="--metric-color:${r.color}">
+      <td class="text-mono text-xs">${formatDateTimeValue(new Date(r.time), store.timeFormat)}</td>
+      <td>${escapeHtml5(r.device)}</td>
+      <td><span class="history-dot"></span>${escapeHtml5(r.metric)}</td>
+      <td class="text-mono metric-value">${r.value}</td>
+    </tr>
+  `).join("");
+  }
+  function updatePillValues(layers) {
+    const store = getStore();
+    metrics.forEach((m) => {
+      const el = document.getElementById(`pill-${m.key}`);
+      if (!el) return;
+      const layer = layers.find((l) => l.metric.key === m.key);
+      if (!layer || layer.data.length === 0) {
+        el.textContent = "--";
+        return;
+      }
+      const latest = layer.data[layer.data.length - 1];
+      const converted = formatSensorValue(latest.value, m.key, store.unitSystem);
+      el.textContent = formatValue(converted.value, converted.unit || m.fallbackUnit);
+    });
+  }
+  function renderVizCards(allLayers) {
+    const grid = document.getElementById("viz-grid");
+    if (!grid) return;
+    if (allLayers.length === 0) {
+      grid.innerHTML = "";
+      return;
+    }
+    const store = getStore();
+    const byMetric = /* @__PURE__ */ new Map();
+    for (const layer of allLayers) {
+      const list = byMetric.get(layer.metric.key) || [];
+      list.push(layer);
+      byMetric.set(layer.metric.key, list);
+    }
+    const cards = [];
+    const tempLayers = byMetric.get("temperature");
+    if (tempLayers) cards.push(renderAreaCard(tempLayers[0], "Temperature Trend"));
+    const humLayers = byMetric.get("humidity");
+    if (humLayers) cards.push(renderLineCard(humLayers[0], "Humidity Trend"));
+    const co2Layers = byMetric.get("co2");
+    if (co2Layers) cards.push(renderBarCard(co2Layers[0], "CO\u2082 Levels"));
+    const first = allLayers[0];
+    if (first) cards.push(renderGaugeCard(first, "Latest Reading"));
+    cards.push(renderHeatmapCard(allLayers, "24h Activity"));
+    grid.innerHTML = cards.join("");
+  }
+  function renderAreaCard(layer, title) {
+    const { data, metric } = layer;
+    const store = getStore();
+    const w = 340, h = 120, pad = { t: 8, r: 8, b: 20, l: 32 };
+    const times = data.map((d) => new Date(d.timestamp).getTime());
+    const tMin = Math.min(...times), tMax = Math.max(...times);
+    const tSpan = Math.max(1, tMax - tMin);
+    const tx = (t) => pad.l + (t - tMin) / tSpan * (w - pad.l - pad.r);
+    let axisMin = metric.minAxis, axisMax = metric.maxAxis;
+    if (metric.key === "temperature" && store.unitSystem === "imperial") {
+      axisMin = axisMin * 9 / 5 + 32;
+      axisMax = axisMax * 9 / 5 + 32;
+    }
+    const vSpan = Math.max(1, axisMax - axisMin);
+    const points = data.map((d) => {
+      const v = formatSensorValue(d.value, metric.key, store.unitSystem).value;
+      return { x: tx(new Date(d.timestamp).getTime()), y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b) };
+    });
+    const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+    const area = `${line} L${points[points.length - 1].x.toFixed(1)},${h - pad.b} L${points[0].x.toFixed(1)},${h - pad.b} Z`;
+    const latest = data[data.length - 1];
+    const latestVal = formatSensorValue(latest.value, metric.key, store.unitSystem);
+    const unit = latestVal.unit || metric.fallbackUnit;
+    return `
+    <div class="viz-card">
+      <div class="viz-card-header">
+        <span class="viz-card-title">${escapeHtml5(title)}</span>
+        <span class="viz-card-value text-mono" style="color:${metric.color}">${latestVal.value.toFixed(1)}${unit}</span>
+      </div>
+      <svg viewBox="0 0 ${w} ${h}" class="viz-svg">
+        <defs><linearGradient id="area-grad-${metric.key}" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${metric.color}" stop-opacity="0.25"/><stop offset="100%" stop-color="${metric.color}" stop-opacity="0.02"/></linearGradient></defs>
+        <path d="${area}" fill="url(#area-grad-${metric.key})" stroke="none"/>
+        <path d="${line}" fill="none" stroke="${metric.color}" stroke-width="1.5" stroke-linejoin="round"/>
+      </svg>
+    </div>`;
+  }
+  function renderLineCard(layer, title) {
+    const { data, metric } = layer;
+    const store = getStore();
+    const w = 340, h = 120, pad = { t: 8, r: 8, b: 20, l: 32 };
+    const times = data.map((d) => new Date(d.timestamp).getTime());
+    const tMin = Math.min(...times), tMax = Math.max(...times);
+    const tSpan = Math.max(1, tMax - tMin);
+    const tx = (t) => pad.l + (t - tMin) / tSpan * (w - pad.l - pad.r);
+    const axisMin = metric.minAxis, axisMax = metric.maxAxis;
+    const vSpan = Math.max(1, axisMax - axisMin);
+    const pts = data.map((d) => {
+      const v = formatSensorValue(d.value, metric.key, store.unitSystem).value;
+      return `${tx(new Date(d.timestamp).getTime()).toFixed(1)},${(pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b)).toFixed(1)}`;
+    }).join(" ");
+    const latest = data[data.length - 1];
+    const latestVal = formatSensorValue(latest.value, metric.key, store.unitSystem);
+    const unit = latestVal.unit || metric.fallbackUnit;
+    return `
+    <div class="viz-card">
+      <div class="viz-card-header">
+        <span class="viz-card-title">${escapeHtml5(title)}</span>
+        <span class="viz-card-value text-mono" style="color:${metric.color}">${latestVal.value.toFixed(0)}${unit}</span>
+      </div>
+      <svg viewBox="0 0 ${w} ${h}" class="viz-svg">
+        <polyline points="${pts}" fill="none" stroke="${metric.color}" stroke-width="1.5" stroke-linejoin="round"/>
+      </svg>
+    </div>`;
+  }
+  function renderBarCard(layer, title) {
+    const { data, metric } = layer;
+    const store = getStore();
+    const w = 340, h = 120, pad = { t: 8, r: 8, b: 20, l: 32 };
+    const bars = Math.min(data.length, 24);
+    const step = (w - pad.l - pad.r) / bars;
+    const barW = step * 0.7;
+    const axisMin = metric.minAxis, axisMax = metric.maxAxis;
+    const vSpan = Math.max(1, axisMax - axisMin);
+    const rects = data.slice(-bars).map((d, i) => {
+      const v = formatSensorValue(d.value, metric.key, store.unitSystem).value;
+      const bh = (v - axisMin) / vSpan * (h - pad.t - pad.b);
+      const x = pad.l + i * step + (step - barW) / 2;
+      const y = h - pad.b - bh;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${metric.color}" opacity="0.7" rx="2"/>`;
+    }).join("");
+    const latest = data[data.length - 1];
+    const latestVal = formatSensorValue(latest.value, metric.key, store.unitSystem);
+    const unit = latestVal.unit || metric.fallbackUnit;
+    return `
+    <div class="viz-card">
+      <div class="viz-card-header">
+        <span class="viz-card-title">${escapeHtml5(title)}</span>
+        <span class="viz-card-value text-mono" style="color:${metric.color}">${latestVal.value.toFixed(0)}${unit}</span>
+      </div>
+      <svg viewBox="0 0 ${w} ${h}" class="viz-svg">${rects}</svg>
+    </div>`;
+  }
+  function renderGaugeCard(layer, title) {
+    const { data, metric } = layer;
+    const store = getStore();
+    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+    const unit = latest.unit || metric.fallbackUnit;
+    const pct = Math.max(0, Math.min(1, (latest.value - metric.minAxis) / (metric.maxAxis - metric.minAxis)));
+    const r = 42, cx = 80, cy = 56;
+    const circ = 2 * Math.PI * r;
+    const dash = pct * circ;
+    return `
+    <div class="viz-card">
+      <div class="viz-card-header">
+        <span class="viz-card-title">${escapeHtml5(title)}</span>
+        <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(1)}${unit}</span>
+      </div>
+      <svg viewBox="0 0 160 100" class="viz-svg gauge-svg">
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--border)" stroke-width="8"/>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${metric.color}" stroke-width="8" stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}" stroke-dashoffset="0" transform="rotate(-90 ${cx} ${cy})"/>
+        <text x="${cx}" y="${cy + 6}" text-anchor="middle" fill="${metric.color}" font-size="18" font-weight="600" font-family="var(--font-mono)">${(pct * 100).toFixed(0)}%</text>
+      </svg>
+    </div>`;
+  }
+  function renderHeatmapCard(layers, title) {
+    const store = getStore();
+    const buckets = 12;
+    const now = Date.now();
+    const bucketMs = 24 * 60 * 60 * 1e3 / buckets;
+    const cells = [];
+    for (let b = 0; b < buckets; b++) {
+      const bStart = now - (buckets - b) * bucketMs;
+      const bEnd = bStart + bucketMs;
+      let sum = 0, count = 0;
+      for (const layer of layers) {
+        for (const d of layer.data) {
+          const t = new Date(d.timestamp).getTime();
+          if (t >= bStart && t < bEnd) {
+            const v = formatSensorValue(d.value, layer.metric.key, store.unitSystem).value;
+            sum += v;
+            count++;
+          }
+        }
+      }
+      const avg = count > 0 ? sum / count : 0;
+      const intensity = count > 0 ? Math.min(1, avg / 100) : 0;
+      const color = count === 0 ? "var(--bg-tertiary)" : `color-mix(in srgb, var(--accent) ${(intensity * 100).toFixed(0)}%, var(--bg-tertiary))`;
+      cells.push(`<div class="hm-cell" style="background:${color}" title="${count} readings, avg ${avg.toFixed(1)}"></div>`);
+    }
+    return `
+    <div class="viz-card wide">
+      <div class="viz-card-header">
+        <span class="viz-card-title">${escapeHtml5(title)}</span>
+        <span class="viz-card-value text-mono text-secondary">${layers.length} layers</span>
+      </div>
+      <div class="hm-grid">${cells.join("")}</div>
+      <div class="hm-labels">
+        <span class="text-xs text-secondary">-24h</span>
+        <span class="text-xs text-secondary">-12h</span>
+        <span class="text-xs text-secondary">now</span>
+      </div>
+    </div>`;
+  }
+  function formatValue(value, unit) {
+    const precision = Math.abs(value) >= 100 ? 0 : value % 1 === 0 ? 0 : 1;
+    return `${value.toFixed(precision)}${unit}`;
+  }
+  function escapeHtml5(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function injectSensorStyles() {
+    if (document.getElementById("hal-sensors-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-sensors-styles";
+    style.textContent = `
+.sensors-hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.sensors-hero-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.sensors-hero-title .page-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+.sensors-hero-title .page-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 2px 0 0;
+}
+.sensors-hero-controls {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.hal-input {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 32px;
+  padding: 0 var(--space-3);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+.hal-input:focus { border-color: var(--accent); }
+.time-range-group {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+.hal-range-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.hal-range-btn.active,
+.hal-range-btn:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.metric-bar {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) 0;
+}
+.metric-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--metric-color) 25%, var(--border));
+  background: color-mix(in srgb, var(--metric-color) 6%, var(--bg-secondary));
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+.metric-pill.active {
+  background: color-mix(in srgb, var(--metric-color) 18%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--metric-color) 60%, var(--border));
+  color: var(--text-primary);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--metric-color) 20%, transparent);
+}
+.metric-pill:hover {
+  border-color: color-mix(in srgb, var(--metric-color) 50%, var(--border));
+}
+.pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--metric-color);
+}
+.pill-label {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.pill-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--metric-color);
+  margin-left: 2px;
+}
+.hero-chart-wrap {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  overflow: hidden;
+}
+.hero-chart {
+  width: 100%;
+  min-height: 260px;
+}
+.hero-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chart-grid {
+  stroke: color-mix(in srgb, var(--text-tertiary) 30%, var(--border));
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.chart-label {
+  fill: var(--text-tertiary);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+.chart-empty {
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.hero-legend {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--metric-color);
+}
+/* Viz cards */
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+.viz-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.viz-card.wide {
+  grid-column: span 2;
+}
+.viz-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.viz-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.viz-card-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+.viz-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.gauge-svg {
+  max-height: 100px;
+}
+.hm-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 3px;
+  height: 40px;
+}
+.hm-cell {
+  border-radius: var(--radius-sm);
+  min-height: 8px;
+}
+.hm-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+.sensor-detail-drawer {
+  margin-top: var(--space-4);
+}
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+.detail-table-wrap {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.hal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.hal-table th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-tertiary);
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-tertiary);
+}
+.hal-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+.hal-table tr:last-child td { border-bottom: none; }
+.hal-table tr:hover td { background: var(--bg-tertiary); }
+.metric-value { color: var(--metric-color); }
+.history-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--metric-color);
+  margin-right: 6px;
+}
+.empty-cell {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-secondary);
+}
+@media (max-width: 1023px) {
+  .viz-grid { grid-template-columns: repeat(2, 1fr); }
+  .viz-card.wide { grid-column: span 2; }
+}
+@media (max-width: 768px) {
+  .sensors-hero-header { flex-direction: column; align-items: flex-start; }
+  .hero-chart { min-height: 200px; }
+  .metric-bar { gap: var(--space-1); }
+  .metric-pill { height: 32px; padding: 0 10px; font-size: 11px; }
+  .viz-grid { grid-template-columns: 1fr; }
+  .viz-card.wide { grid-column: span 1; }
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/views/Decisions.ts
+  var expandedDecisionIds = /* @__PURE__ */ new Set();
+  var statusFilter = "all";
+  async function renderDecisions(container) {
+    const store = getStore();
+    const filtered = statusFilter === "all" ? store.decisions : store.decisions.filter((d) => (d.status || "pending") === statusFilter);
+    container.innerHTML = `
+    <div class="page-header">
+      <h1 class="page-title">Decisions</h1>
+      <p class="page-subtitle">HAL autonomous decision log</p>
+    </div>
+
+    <div class="decisions-toolbar mb-4">
+      <div class="filter-group" role="group" aria-label="Filter by status">
+        ${["all", "success", "failure", "pending"].map((s) => `
+          <button class="filter-btn ${s === statusFilter ? "active" : ""}" data-filter="${s}">
+            ${s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        `).join("")}
+      </div>
+      <span class="text-xs text-secondary">${filtered.length} decisions</span>
+    </div>
+
+    <div class="hal-card" style="padding:0">
+      <div id="decisions-list">
+        ${renderDecisionList(filtered)}
+      </div>
+    </div>
+  `;
+    injectDecisionsStyles();
+    attachDecisionHandlers();
+    attachFilterHandlers();
+  }
+  function attachFilterHandlers() {
+    document.querySelectorAll(".filter-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        statusFilter = btn.dataset.filter;
+        const store = getStore();
+        const container = document.getElementById("view-container");
+        if (container) renderDecisions(container);
+      });
+    });
+  }
+  function renderDecisionList(decisions) {
+    if (decisions.length === 0) {
+      return `<div class="empty-state" style="padding: var(--space-8)"><p class="empty-state-title">No decisions</p><p class="empty-state-desc">${statusFilter === "all" ? "Decisions will appear here as the HAL makes them." : `No ${statusFilter} decisions found.`}</p></div>`;
+    }
+    return decisions.map((d) => `
+    <div class="decision-item" data-id="${d.id}">
+      <div class="decision-summary">
+        <div class="decision-left">
+          <span class="decision-status-dot ${d.status || "pending"}"></span>
+          <span class="decision-time text-mono text-xs text-secondary">${formatTime3(d.timestamp)}</span>
+        </div>
+        <div class="decision-middle">
+          <span class="decision-trigger-text text-sm">${escapeHtml6(d.trigger)}</span>
+        </div>
+        <div class="decision-right">
+          <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor3(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
+          <button class="decision-expand-btn" aria-label="Toggle metadata">${expandedDecisionIds.has(d.id) ? "v" : ">"}</button>
+        </div>
+      </div>
+      <div class="decision-detail" ${expandedDecisionIds.has(d.id) ? "" : "hidden"}>
+        <div class="decision-detail-row">
+          <span class="decision-detail-label">Decision</span>
+          <span class="decision-detail-value font-semibold">${escapeHtml6(d.decision)}</span>
+        </div>
+        ${d.outcome ? `
+        <div class="decision-detail-row">
+          <span class="decision-detail-label">Outcome</span>
+          <span class="decision-detail-value">${escapeHtml6(d.outcome)}</span>
+        </div>` : ""}
+        <div class="decision-detail-row">
+          <span class="decision-detail-label">Confidence</span>
+          <span class="decision-detail-value text-mono">${(d.confidence * 100).toFixed(1)}%</span>
+        </div>
+        <div class="decision-detail-row">
+          <span class="decision-detail-label">Timestamp</span>
+          <span class="decision-detail-value text-mono">${d.timestamp}</span>
+        </div>
+      </div>
+    </div>
+  `).join("");
+  }
+  function attachDecisionHandlers() {
+    document.querySelectorAll(".decision-item").forEach((item) => {
+      const summary = item.querySelector(".decision-summary");
+      const detail = item.querySelector(".decision-detail");
+      const expandBtn = item.querySelector(".decision-expand-btn");
+      detail?.addEventListener("click", (event) => event.stopPropagation());
+      summary?.addEventListener("click", () => {
+        const isOpen = !detail?.hidden;
+        const id = item.dataset.id;
+        if (isOpen) {
+          detail.hidden = true;
+          expandBtn.textContent = ">";
+          if (id) expandedDecisionIds.delete(id);
+        } else {
+          detail.hidden = false;
+          expandBtn.textContent = "v";
+          if (id) expandedDecisionIds.add(id);
+        }
+      });
+    });
+  }
+  function confidenceColor3(conf) {
+    if (conf >= 0.8) return "var(--success)";
+    if (conf >= 0.5) return "var(--warning)";
+    return "var(--danger)";
+  }
+  function formatTime3(iso) {
+    try {
+      return new Date(iso).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      });
+    } catch {
+      return "--";
+    }
+  }
+  function escapeHtml6(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function injectDecisionsStyles() {
+    if (document.getElementById("hal-decisions-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-decisions-styles";
+    style.textContent = `
+.decision-item {
+  border-bottom: 1px solid var(--border);
+}
+.decision-item:last-child { border-bottom: none; }
+.decision-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.decision-summary:hover { background: var(--bg-tertiary); }
+.decision-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 140px;
+}
+.decision-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--slate);
+  flex-shrink: 0;
+}
+.decision-status-dot.success { background: var(--success); }
+.decision-status-dot.failure { background: var(--danger); }
+.decision-status-dot.pending { background: var(--warning); }
+.decision-middle { flex: 1; }
+.decision-trigger-text { color: var(--text-primary); }
+.decision-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.decision-confidence { font-size: 12px; }
+.decision-expand-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--transition-fast);
+}
+.decision-detail {
+  padding: 0 var(--space-4) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.decision-detail[hidden] { display: none; }
+.decision-detail-row {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.decision-detail-row:last-child { border-bottom: none; }
+.decision-detail-label {
+  min-width: 100px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.decision-detail-value { font-size: 14px; color: var(--text-primary); }
+.decisions-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.filter-group {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+.filter-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-transform: capitalize;
+}
+.filter-btn.active,
+.filter-btn:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/views/Cameras.ts
+  var DEMO_IMAGES = {
+    tent_cam_a: "/hal-ui/assets/cam1.jpg",
+    tent_cam_b: "/hal-ui/assets/cam2.jpg"
+  };
+  var refreshInterval = null;
+  async function renderCameras(container) {
+    const store = getStore();
+    const cameras = store.devices.filter((d) => d.type === "camera");
+    container.innerHTML = `
+    <div class="page-header">
+      <h1 class="page-title">Cameras</h1>
+      <p class="page-subtitle">Live feeds and captures</p>
+    </div>
+
+    <div id="cameras-grid" class="grid-2">
+      ${renderCameraGrid(cameras)}
+    </div>
+  `;
+    injectCamerasStyles();
+    attachCameraHandlers(cameras);
+    startCameraRefresh();
+  }
+  function startCameraRefresh() {
+    if (refreshInterval) clearInterval(refreshInterval);
+    refreshInterval = setInterval(() => {
+      document.querySelectorAll(".camera-time").forEach((el) => {
+        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+      });
+    }, 3e4);
+  }
+  function renderCameraGrid(cameras) {
+    if (cameras.length === 0) {
+      return `<div class="empty-state col-span-2"><p class="empty-state-title">No cameras registered</p><p class="empty-state-desc">Cameras will appear here once discovered.</p></div>`;
+    }
+    return cameras.map((c) => {
+      const demoImg = DEMO_IMAGES[c.id];
+      return `
+    <div class="camera-card hal-card" data-camera-id="${c.id}">
+      <div class="camera-thumbnail" id="thumb-${c.id}">
+        ${demoImg ? `<img src="${demoImg}" alt="${escapeHtml7(c.name)}" class="camera-img" />` : `
+        <div class="camera-placeholder">
+          <span class="camera-icon">CAM</span>
+          <span class="text-secondary text-sm">No preview</span>
+        </div>`}
+        <div class="camera-overlay">
+          <span class="camera-live-badge">LIVE</span>
+          <span class="camera-time text-mono text-xs">${(/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}</span>
+        </div>
+      </div>
+      <div class="camera-info">
+        <div class="camera-name">${escapeHtml7(c.name)}</div>
+        <div class="camera-meta text-xs text-secondary">${c.protocol} \xB7 ${c.online ? "online" : "offline"}</div>
+      </div>
+      <button class="hal-btn hal-btn-secondary camera-capture-btn" data-camera-id="${c.id}">
+        Capture
+      </button>
+    </div>
+  `;
+    }).join("");
+  }
+  function attachCameraHandlers(cameras) {
+    document.querySelectorAll(".camera-capture-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const cameraId = btn.dataset.cameraId;
+        const camera = cameras.find((c) => c.id === cameraId);
+        if (!camera) return;
+        btn.textContent = "Capturing...";
+        btn.disabled = true;
+        try {
+          const result = await halApi.captureCamera(cameraId);
+          showToast(`Capture saved: ${result.path}`, "success");
+          openModal(
+            `${camera.name} \u2014 Capture`,
+            `
+            <div class="capture-result">
+              <p class="text-sm text-secondary mb-4">Capture complete</p>
+              <div class="capture-meta">
+                <div class="capture-meta-row">
+                  <span class="text-secondary text-xs">Path</span>
+                  <span class="text-mono text-xs">${escapeHtml7(result.path)}</span>
+                </div>
+                <div class="capture-meta-row">
+                  <span class="text-secondary text-xs">Size</span>
+                  <span class="text-mono text-xs">${(result.size_bytes / 1024).toFixed(1)} KB</span>
+                </div>
+              </div>
+            </div>
+          `,
+            `<button class="hal-btn hal-btn-primary" onclick="document.getElementById('hal-modal-overlay')?.click()">Close</button>`
+          );
+        } catch (err) {
+          showToast(`Capture failed: ${err.message}`, "danger");
+        } finally {
+          btn.textContent = "Capture";
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+  function escapeHtml7(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function injectCamerasStyles() {
+    if (document.getElementById("hal-cameras-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-cameras-styles";
+    style.textContent = `
+.camera-card { padding: 0; overflow: hidden; position: relative; }
+.camera-thumbnail {
+  height: 200px;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+.camera-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.camera-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+  pointer-events: none;
+}
+.camera-live-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: var(--danger);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.camera-time {
+  color: rgba(255,255,255,0.9);
+}
+.camera-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+.camera-icon { font-size: 14px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-tertiary); opacity: 0.6; }
+.camera-info {
+  padding: var(--space-3) var(--space-4);
+}
+.camera-name { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.camera-capture-btn {
+  width: 100%;
+  border-radius: 0;
+  border-top: 1px solid var(--border);
+  padding: var(--space-2);
+  font-size: 13px;
+}
+.hal-btn {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.hal-btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.hal-btn-primary:hover { background: var(--accent-bright); }
+.hal-btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+.hal-btn-secondary:hover { border-color: var(--accent); }
+.hal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.capture-result { }
+.capture-meta { display: flex; flex-direction: column; gap: var(--space-2); }
+.capture-meta-row { display: flex; justify-content: space-between; align-items: center; }
+.col-span-2 { grid-column: 1 / -1; }
+`;
+    document.head.appendChild(style);
+  }
+
+  // src/web/hal-ui/main.ts
+  var views = {
+    dashboard: renderDashboard,
+    devices: renderDevices,
+    sensors: renderSensors,
+    decisions: renderDecisions,
+    cameras: renderCameras
+  };
+  var pageLoadTime = Date.now();
+  async function init() {
+    const app = document.getElementById("app");
+    if (!app) throw new Error("#app element not found");
+    injectCardStyles();
+    injectToggleStyles();
+    injectModalStyles();
+    const store = getStore();
+    applyModeAccent(store.mode);
+    app.innerHTML = `
+    <div class="app-layout" id="app-layout">
+      ${renderSidebar(store.mode, store.activeView, store.sidebarCollapsed)}
+      <div class="app-main">
+        <div id="hal-header"></div>
+        <main class="main-content" id="view-container"></main>
+      </div>
+    </div>
+  `;
+    const headerEl = document.getElementById("hal-header");
+    headerEl.innerHTML = renderHeader(store.mode, handleModeChange);
+    initHeader(store.mode, handleModeChange);
+    initSidebar(handleViewChange);
+    await refreshHALData();
+    await render();
+    startPolling();
+    startUptimeCounter();
+  }
+  function handleModeChange(mode) {
+    setStore({ mode });
+    applyModeAccent(mode);
+    showToast(`Mode: ${mode}`, "info", 2e3);
+    const sidebar = document.getElementById("hal-sidebar");
+    if (sidebar) {
+      const store = getStore();
+      const newSidebar = document.createElement("div");
+      newSidebar.innerHTML = renderSidebar(mode, store.activeView, store.sidebarCollapsed);
+      sidebar.outerHTML = newSidebar.firstElementChild.outerHTML;
+      initSidebar(handleViewChange);
+    }
+  }
+  async function handleViewChange(viewId) {
+    setStore({ activeView: viewId });
+    await render();
+  }
+  async function render() {
+    const store = getStore();
+    const container = document.getElementById("view-container");
+    if (!container) return;
+    const renderer = views[store.activeView];
+    if (renderer) {
+      await renderer(container);
+    }
+  }
+  async function refreshHALData() {
+    try {
+      const state2 = await halApi.getState();
+      setStore({
+        devices: state2.devices,
+        sensors: state2.sensorSnapshots,
+        cameras: state2.devices.filter((device) => device.type === "camera"),
+        decisions: state2.recentDecisions,
+        decisionsToday: countTodayDecisions(state2.recentDecisions)
+      });
+    } catch (err) {
+      console.error("HAL data refresh failed:", err);
+    }
+  }
+  function countTodayDecisions(decisions) {
+    const today = (/* @__PURE__ */ new Date()).toDateString();
+    return decisions.filter((d) => {
+      try {
+        return new Date(d.timestamp).toDateString() === today;
+      } catch {
+        return false;
+      }
+    }).length;
+  }
+  var pollInterval = null;
+  function startPolling() {
+    pollInterval = setInterval(refreshHALData, 1e4);
+  }
+  function startUptimeCounter() {
+    setInterval(() => {
+      const uptime = Math.floor((Date.now() - pageLoadTime) / 1e3);
+      setStore({ uptime });
+      const uptimeEl = document.querySelector("[data-dashboard-uptime]");
+      if (uptimeEl) uptimeEl.textContent = formatUptime3(uptime);
+    }, 1e3);
+  }
+  function formatUptime3(seconds) {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor(seconds % 3600 / 60);
+    return `${h}h ${m}m`;
+  }
+  document.addEventListener("DOMContentLoaded", init);
+})();
+//# sourceMappingURL=main.js.map

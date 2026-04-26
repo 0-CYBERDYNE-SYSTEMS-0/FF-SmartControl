@@ -8,7 +8,7 @@ import type {
   GatewayResponseFrame,
 } from './protocol.js';
 
-const DEFAULT_GATEWAY_URL = `ws://127.0.0.1:${process.env.FFT_NANO_TUI_PORT || '28989'}`;
+const DEFAULT_GATEWAY_URL = `ws://127.0.0.1:${process.env.FFT_NANO_TUI_PORT || '3390'}`;
 
 interface PendingRequest {
   resolve: (value: unknown) => void;

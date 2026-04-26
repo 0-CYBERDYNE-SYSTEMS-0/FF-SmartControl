@@ -23,6 +23,11 @@ export async function renderDevices(container: HTMLElement): Promise<void> {
         <option value="sensor">Sensors</option>
         <option value="camera">Cameras</option>
       </select>
+      <select class="hal-input" id="device-status-filter">
+        <option value="">All status</option>
+        <option value="online">Online</option>
+        <option value="offline">Offline</option>
+      </select>
     </div>
 
     <div id="devices-grid" class="grid-3">
@@ -62,18 +67,20 @@ function renderDeviceCards(devices: HalDevice[]): string {
 }
 
 function attachDevicesHandlers(): void {
-  // Filter input
-  const filterInput = document.getElementById('device-filter') as HTMLInputElement;
-  const typeSelect = document.getElementById('device-type-filter') as HTMLSelectElement;
+  const filterInput = document.getElementById('device-filter') as HTMLInputElement | null;
+  const typeSelect = document.getElementById('device-type-filter') as HTMLSelectElement | null;
+  const statusSelect = document.getElementById('device-status-filter') as HTMLSelectElement | null;
 
   function applyFilter(): void {
-    const q = filterInput.value.toLowerCase();
-    const type = typeSelect.value;
+    const q = filterInput?.value.toLowerCase() || '';
+    const type = typeSelect?.value || '';
+    const status = statusSelect?.value || '';
     const store = getStore();
     const filtered = store.devices.filter(d => {
       const matchQ = !q || d.name.toLowerCase().includes(q) || d.protocol.toLowerCase().includes(q);
       const matchType = !type || d.type === type;
-      return matchQ && matchType;
+      const matchStatus = !status || (status === 'online' ? d.online : !d.online);
+      return matchQ && matchType && matchStatus;
     });
     const grid = document.getElementById('devices-grid');
     if (grid) grid.innerHTML = renderDeviceCards(filtered);
@@ -82,6 +89,7 @@ function attachDevicesHandlers(): void {
 
   filterInput?.addEventListener('input', applyFilter);
   typeSelect?.addEventListener('change', applyFilter);
+  statusSelect?.addEventListener('change', applyFilter);
 
   attachToggleHandlers();
 }
@@ -122,10 +130,11 @@ function escapeHtml(s: string): string {
 
 function deviceIcon(type: string): string {
   switch (type) {
-    case 'sensor': return '🌡️';
-    case 'camera': return '📷';
-    case 'relay':  return '⚡';
-    default:       return '📟';
+    case 'sensor': return 'SNS';
+    case 'camera': return 'CAM';
+    case 'relay':  return 'RLY';
+    case 'smart_plug': return 'PLG';
+    default:       return 'DEV';
   }
 }
 
@@ -159,7 +168,7 @@ function injectDevicesStyles(): void {
   gap: var(--space-2);
   margin-bottom: var(--space-2);
 }
-.device-card-icon { font-size: 24px; }
+.device-card-icon { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: var(--radius-sm); padding: 3px 6px; }
 .device-card-title { flex: 1; font-size: 14px; font-weight: 600; }
 .hal-badge {
   font-size: 10px;

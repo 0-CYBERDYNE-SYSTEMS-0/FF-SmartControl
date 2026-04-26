@@ -65,7 +65,7 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "hal:ui:build": "bash scripts/build-hal-ui.sh",
     "hal:ui:watch": "bash scripts/build-hal-ui.sh --watch",
-    "hal:ui:open": "node -e \"import('open').then(m => m.default('http://127.0.0.1:28991'))\"",
+    "hal:ui:open": "node -e \"import('open').then(m => m.default('http://127.0.0.1:3392'))\"",
     "format:check": "prettier --check \"src/**/*.ts\""
   },
   "dependencies": {

@@ -84,7 +84,7 @@ export interface TuiGatewayAdapters {
   hostUpdate: () => { ok: boolean; text: string };
 }
 
-const DEFAULT_PORT = Number(process.env.FFT_NANO_TUI_PORT || 28989);
+const DEFAULT_PORT = Number(process.env.FFT_NANO_TUI_PORT || 3390);
 const DEFAULT_HOST = process.env.FFT_NANO_TUI_HOST || '127.0.0.1';
 
 export interface TuiGatewayOptions {

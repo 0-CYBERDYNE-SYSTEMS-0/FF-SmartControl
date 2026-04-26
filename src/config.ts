@@ -182,7 +182,7 @@ export const FFT_NANO_WEB_ENABLED = envFlag(
 );
 export const FFT_NANO_WEB_PORT = envInt(
   process.env.FFT_NANO_WEB_PORT,
-  28990,
+  3391,
   1,
   65535,
 );
@@ -202,7 +202,7 @@ export const FFT_NANO_TUI_ENABLED = envFlag(
 );
 export const FFT_NANO_TUI_PORT = envInt(
   process.env.FFT_NANO_TUI_PORT,
-  28989,
+  3390,
   1,
   65535,
 );

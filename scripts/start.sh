@@ -9,7 +9,7 @@ usage() {
 Usage:
   ./scripts/start.sh [start] [telegram-only]
   ./scripts/start.sh dev [telegram-only]
-  ./scripts/start.sh tui [--url ws://127.0.0.1:28989] [--session main] [--deliver]
+  ./scripts/start.sh tui [--url ws://127.0.0.1:3390] [--session main] [--deliver]
 
 Notes:
 - Sources .env if present.
@@ -80,11 +80,11 @@ fi
 # Allow explicit override (including disabling with 0/false/no).
 export FFT_NANO_TUI_ENABLED="${FFT_NANO_TUI_ENABLED:-1}"
 export FFT_NANO_TUI_HOST="${FFT_NANO_TUI_HOST:-127.0.0.1}"
-export FFT_NANO_TUI_PORT="${FFT_NANO_TUI_PORT:-28989}"
+export FFT_NANO_TUI_PORT="${FFT_NANO_TUI_PORT:-3390}"
 export FFT_NANO_WEB_ENABLED="${FFT_NANO_WEB_ENABLED:-1}"
 export FFT_NANO_WEB_ACCESS_MODE="${FFT_NANO_WEB_ACCESS_MODE:-localhost}"
 export FFT_NANO_WEB_HOST="${FFT_NANO_WEB_HOST:-127.0.0.1}"
-export FFT_NANO_WEB_PORT="${FFT_NANO_WEB_PORT:-28990}"
+export FFT_NANO_WEB_PORT="${FFT_NANO_WEB_PORT:-3391}"
 
 # Prefer TELEGRAM_BOT_TOKEN from .env/exports; fall back to macOS Keychain.
 if [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] && [[ "$(uname -s)" == "Darwin" ]] && command -v security >/dev/null 2>&1; then
@@ -118,11 +118,11 @@ telegram="${TELEGRAM_BOT_TOKEN:-}"
 wa="${WHATSAPP_ENABLED:-1}"
 tui_enabled="${FFT_NANO_TUI_ENABLED:-1}"
 tui_host="${FFT_NANO_TUI_HOST:-127.0.0.1}"
-tui_port="${FFT_NANO_TUI_PORT:-28989}"
+tui_port="${FFT_NANO_TUI_PORT:-3390}"
 web_enabled="${FFT_NANO_WEB_ENABLED:-1}"
 web_access="${FFT_NANO_WEB_ACCESS_MODE:-localhost}"
 web_host="${FFT_NANO_WEB_HOST:-127.0.0.1}"
-web_port="${FFT_NANO_WEB_PORT:-28990}"
+web_port="${FFT_NANO_WEB_PORT:-3391}"
 profile="${FFT_PROFILE:-core}"
 feature_farm="${FEATURE_FARM:-auto}"
 

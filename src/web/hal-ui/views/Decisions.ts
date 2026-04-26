@@ -1,10 +1,17 @@
-// Decisions view — expandable rows, timestamp, trigger, decision, confidence
+// Decisions view — expandable rows, timestamp, trigger, decision, confidence, status filter
 
 import { getStore } from '../store.js';
-import { halApi, HalDecision } from '../api.js';
+import { HalDecision } from '../api.js';
+
+const expandedDecisionIds = new Set<string>();
+let statusFilter: 'all' | 'success' | 'failure' | 'pending' = 'all';
 
 export async function renderDecisions(container: HTMLElement): Promise<void> {
   const store = getStore();
+
+  const filtered = statusFilter === 'all'
+    ? store.decisions
+    : store.decisions.filter(d => (d.status || 'pending') === statusFilter);
 
   container.innerHTML = `
     <div class="page-header">
@@ -12,20 +19,43 @@ export async function renderDecisions(container: HTMLElement): Promise<void> {
       <p class="page-subtitle">HAL autonomous decision log</p>
     </div>
 
+    <div class="decisions-toolbar mb-4">
+      <div class="filter-group" role="group" aria-label="Filter by status">
+        ${(['all','success','failure','pending'] as const).map(s => `
+          <button class="filter-btn ${s === statusFilter ? 'active' : ''}" data-filter="${s}">
+            ${s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        `).join('')}
+      </div>
+      <span class="text-xs text-secondary">${filtered.length} decisions</span>
+    </div>
+
     <div class="hal-card" style="padding:0">
       <div id="decisions-list">
-        ${renderDecisionList(store.decisions)}
+        ${renderDecisionList(filtered)}
       </div>
     </div>
   `;
 
   injectDecisionsStyles();
   attachDecisionHandlers();
+  attachFilterHandlers();
+}
+
+function attachFilterHandlers(): void {
+  document.querySelectorAll<HTMLButtonElement>('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      statusFilter = btn.dataset.filter as typeof statusFilter;
+      const store = getStore();
+      const container = document.getElementById('view-container');
+      if (container) renderDecisions(container);
+    });
+  });
 }
 
 function renderDecisionList(decisions: HalDecision[]): string {
   if (decisions.length === 0) {
-    return `<div class="empty-state"><p class="empty-state-title">No decisions yet</p><p class="empty-state-desc">Decisions will appear here as the HAL makes them.</p></div>`;
+    return `<div class="empty-state" style="padding: var(--space-8)"><p class="empty-state-title">No decisions</p><p class="empty-state-desc">${statusFilter === 'all' ? 'Decisions will appear here as the HAL makes them.' : `No ${statusFilter} decisions found.`}</p></div>`;
   }
   return decisions.map(d => `
     <div class="decision-item" data-id="${d.id}">
@@ -39,10 +69,10 @@ function renderDecisionList(decisions: HalDecision[]): string {
         </div>
         <div class="decision-right">
           <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
-          <button class="decision-expand-btn" aria-label="Expand">▶</button>
+          <button class="decision-expand-btn" aria-label="Toggle metadata">${expandedDecisionIds.has(d.id) ? 'v' : '>'}</button>
         </div>
       </div>
-      <div class="decision-detail" hidden>
+      <div class="decision-detail" ${expandedDecisionIds.has(d.id) ? '' : 'hidden'}>
         <div class="decision-detail-row">
           <span class="decision-detail-label">Decision</span>
           <span class="decision-detail-value font-semibold">${escapeHtml(d.decision)}</span>
@@ -71,14 +101,18 @@ function attachDecisionHandlers(): void {
     const detail = item.querySelector<HTMLElement>('.decision-detail');
     const expandBtn = item.querySelector<HTMLButtonElement>('.decision-expand-btn');
 
+    detail?.addEventListener('click', event => event.stopPropagation());
     summary?.addEventListener('click', () => {
       const isOpen = !detail?.hidden;
-      // Close all others
-      document.querySelectorAll<HTMLElement>('.decision-detail').forEach(el => el.hidden = true);
-      document.querySelectorAll<HTMLButtonElement>('.decision-expand-btn').forEach(btn => btn.textContent = '▶');
-      if (!isOpen) {
+      const id = item.dataset.id;
+      if (isOpen) {
+        detail!.hidden = true;
+        expandBtn!.textContent = '>';
+        if (id) expandedDecisionIds.delete(id);
+      } else {
         detail!.hidden = false;
-        expandBtn!.textContent = '▼';
+        expandBtn!.textContent = 'v';
+        if (id) expandedDecisionIds.add(id);
       }
     });
   });
@@ -180,6 +214,37 @@ function injectDecisionsStyles(): void {
   letter-spacing: 0.04em;
 }
 .decision-detail-value { font-size: 14px; color: var(--text-primary); }
+.decisions-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.filter-group {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+.filter-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-transform: capitalize;
+}
+.filter-btn.active,
+.filter-btn:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
 `;
   document.head.appendChild(style);
 }

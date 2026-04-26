@@ -108,7 +108,7 @@ Weak agents often do one or more of the following:
 
 #### Prompt A1
 
-Figure out why the service is not responding on port `28990`. Do not ask me where to look unless you hit a real blocker.
+Figure out why the service is not responding on port `3391`. Do not ask me where to look unless you hit a real blocker.
 
 Strong behavior:
 

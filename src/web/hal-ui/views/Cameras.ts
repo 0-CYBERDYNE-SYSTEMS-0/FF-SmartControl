@@ -1,9 +1,16 @@
-// Cameras view — 2-col thumbnail grid, click for capture modal
+// Cameras view — 2-col thumbnail grid with demo stock imagery, click for capture modal
 
 import { getStore } from '../store.js';
 import { halApi, HalDevice } from '../api.js';
 import { openModal } from '../components/Modal.js';
 import { showToast } from '../components/Toast.js';
+
+const DEMO_IMAGES: Record<string, string> = {
+  tent_cam_a: '/hal-ui/assets/cam1.jpg',
+  tent_cam_b: '/hal-ui/assets/cam2.jpg',
+};
+
+let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
 export async function renderCameras(container: HTMLElement): Promise<void> {
   const store = getStore();
@@ -12,7 +19,7 @@ export async function renderCameras(container: HTMLElement): Promise<void> {
   container.innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Cameras</h1>
-      <p class="page-subtitle">Camera feeds and captures</p>
+      <p class="page-subtitle">Live feeds and captures</p>
     </div>
 
     <div id="cameras-grid" class="grid-2">
@@ -22,18 +29,35 @@ export async function renderCameras(container: HTMLElement): Promise<void> {
 
   injectCamerasStyles();
   attachCameraHandlers(cameras);
+  startCameraRefresh();
+}
+
+function startCameraRefresh(): void {
+  if (refreshInterval) clearInterval(refreshInterval);
+  refreshInterval = setInterval(() => {
+    document.querySelectorAll('.camera-time').forEach(el => {
+      el.textContent = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    });
+  }, 30000);
 }
 
 function renderCameraGrid(cameras: HalDevice[]): string {
   if (cameras.length === 0) {
     return `<div class="empty-state col-span-2"><p class="empty-state-title">No cameras registered</p><p class="empty-state-desc">Cameras will appear here once discovered.</p></div>`;
   }
-  return cameras.map(c => `
+  return cameras.map(c => {
+    const demoImg = DEMO_IMAGES[c.id];
+    return `
     <div class="camera-card hal-card" data-camera-id="${c.id}">
       <div class="camera-thumbnail" id="thumb-${c.id}">
+        ${demoImg ? `<img src="${demoImg}" alt="${escapeHtml(c.name)}" class="camera-img" />` : `
         <div class="camera-placeholder">
-          <span class="camera-icon">📷</span>
+          <span class="camera-icon">CAM</span>
           <span class="text-secondary text-sm">No preview</span>
+        </div>`}
+        <div class="camera-overlay">
+          <span class="camera-live-badge">LIVE</span>
+          <span class="camera-time text-mono text-xs">${new Date().toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit'})}</span>
         </div>
       </div>
       <div class="camera-info">
@@ -44,7 +68,7 @@ function renderCameraGrid(cameras: HalDevice[]): string {
         Capture
       </button>
     </div>
-  `).join('');
+  `}).join('');
 }
 
 function attachCameraHandlers(cameras: HalDevice[]): void {
@@ -61,7 +85,6 @@ function attachCameraHandlers(cameras: HalDevice[]): void {
         const result = await halApi.captureCamera(cameraId);
         showToast(`Capture saved: ${result.path}`, 'success');
 
-        // Show capture modal
         openModal(
           `${camera.name} — Capture`,
           `
@@ -100,14 +123,44 @@ function injectCamerasStyles(): void {
   const style = document.createElement('style');
   style.id = 'hal-cameras-styles';
   style.textContent = `
-.camera-card { padding: 0; overflow: hidden; }
+.camera-card { padding: 0; overflow: hidden; position: relative; }
 .camera-thumbnail {
-  height: 160px;
+  height: 200px;
   background: var(--bg-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
   border-bottom: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+.camera-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.camera-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+  pointer-events: none;
+}
+.camera-live-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: var(--danger);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.camera-time {
+  color: rgba(255,255,255,0.9);
 }
 .camera-placeholder {
   display: flex;
@@ -115,7 +168,7 @@ function injectCamerasStyles(): void {
   align-items: center;
   gap: var(--space-2);
 }
-.camera-icon { font-size: 40px; opacity: 0.5; }
+.camera-icon { font-size: 14px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-tertiary); opacity: 0.6; }
 .camera-info {
   padding: var(--space-3) var(--space-4);
 }

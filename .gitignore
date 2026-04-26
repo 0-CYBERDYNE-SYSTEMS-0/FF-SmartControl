@@ -82,3 +82,4 @@ fft-experience/
 
 # Claude Code planning artifacts (local only)
 docs/superpowers/
+node_modules_old/\ncompiled/\n

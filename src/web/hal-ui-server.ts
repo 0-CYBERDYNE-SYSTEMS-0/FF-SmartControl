@@ -56,7 +56,7 @@ function sendFile(res: http.ServerResponse, filePath: string, isHtml = false): v
   }
 }
 
-export async function startHalUiServer(port = 28991, host = '127.0.0.1'): Promise<HalUiServer> {
+export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise<HalUiServer> {
   const staticDir = path.resolve(process.cwd(), 'src', 'web', 'hal-ui');
 
   const server = http.createServer(async (req, res) => {
@@ -70,12 +70,23 @@ export async function startHalUiServer(port = 28991, host = '127.0.0.1'): Promis
 
       if (apiPath === '/state' && method === 'GET') {
         const devices = halRegistry.list();
-        const sensorSnapshots: Record<string, unknown> = {};
+        const sensorSnapshots: Record<string, Record<string, unknown>> = {};
+        const allMetrics: Array<{ metric: MetricType; fn: (id: string) => unknown }> = [
+          { metric: 'temperature', fn: (id: string) => halSensors.latest(id, 'temperature') },
+          { metric: 'humidity', fn: (id: string) => halSensors.latest(id, 'humidity') },
+          { metric: 'co2', fn: (id: string) => halSensors.latest(id, 'co2') },
+          { metric: 'light', fn: (id: string) => halSensors.latest(id, 'light') },
+          { metric: 'soil_moisture', fn: (id: string) => halSensors.latest(id, 'soil_moisture') },
+          { metric: 'water_level', fn: (id: string) => halSensors.latest(id, 'water_level') },
+          { metric: 'ph', fn: (id: string) => halSensors.latest(id, 'ph') },
+          { metric: 'weight', fn: (id: string) => halSensors.latest(id, 'weight') },
+        ];
         for (const dev of devices.filter((d: any) => d.type === 'sensor')) {
-          sensorSnapshots[dev.id] = {
-            temperature: halSensors.latest(dev.id, 'temperature'),
-            humidity: halSensors.latest(dev.id, 'humidity'),
-          };
+          sensorSnapshots[dev.id] = {};
+          for (const { metric, fn } of allMetrics) {
+            const reading = fn(dev.id);
+            if (reading) sensorSnapshots[dev.id][metric] = reading;
+          }
         }
         sendJson(res, 200, {
           devices,
@@ -181,7 +192,7 @@ export async function startHalUiServer(port = 28991, host = '127.0.0.1'): Promis
       return;
     }
 
-    // Static files from src/web/hal-ui/
+    // Static files from src/web/hal-ui/ (or built dist/web/hal-ui/)
     let filePath = path.join(staticDir, requestPath === '/' ? 'index.html' : requestPath);
     if (!filePath.startsWith(staticDir)) {
       res.writeHead(403);
@@ -197,10 +208,11 @@ export async function startHalUiServer(port = 28991, host = '127.0.0.1'): Promis
 
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       sendFile(res, filePath, requestPath.endsWith('.html'));
-    } else {
-      // Fallback to index.html for SPA routing
-      sendFile(res, path.join(staticDir, 'index.html'), true);
+      return;
     }
+
+    // Fallback to index.html for SPA routing
+    sendFile(res, path.join(staticDir, 'index.html'), true);
   });
 
   await new Promise<void>((resolve, reject) => {

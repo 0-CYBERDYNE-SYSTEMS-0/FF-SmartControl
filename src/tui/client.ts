@@ -47,7 +47,7 @@ type SendMessageStatus = 'sent' | 'queued' | 'busy';
 
 const DEFAULT_PROVIDER = process.env.PI_API || '(provider)';
 const DEFAULT_MODEL = process.env.PI_MODEL || '(model)';
-const DEFAULT_GATEWAY_URL = `ws://127.0.0.1:${process.env.FFT_NANO_TUI_PORT || '28989'}`;
+const DEFAULT_GATEWAY_URL = `ws://127.0.0.1:${process.env.FFT_NANO_TUI_PORT || '3390'}`;
 const DEFAULT_GATEWAY_TOKEN =
   process.env.FFT_NANO_TUI_AUTH_TOKEN ||
   process.env.FFT_NANO_WEB_AUTH_TOKEN ||

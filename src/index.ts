@@ -4941,7 +4941,7 @@ async function startHalUiService(): Promise<void> {
   }
   try {
     const { startHalUiServer } = await import('./web/hal-ui-server.js');
-    const port = parseInt(process.env.HAL_UI_PORT || '28991', 10);
+    const port = parseInt(process.env.HAL_UI_PORT || '3392', 10);
     const host = process.env.HAL_UI_HOST || '127.0.0.1';
     halUiServer = await startHalUiServer(port, host);
     logger.info({ port, host }, 'HAL UI server started');
