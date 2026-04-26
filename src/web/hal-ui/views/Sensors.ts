@@ -40,6 +40,7 @@ const viewState = {
   deviceId: 'all',
   range: '24H' as '1H' | '6H' | '24H' | '7D' | '30D',
   activeMetrics: new Set<MetricKey>(['temperature', 'humidity', 'co2']),
+  activeZone: '',
   decisions: [] as HalDecision[],
 };
 
@@ -78,6 +79,8 @@ export async function renderSensors(container: HTMLElement): Promise<void> {
           <button class="hal-range-btn" id="time-format-toggle">${store.timeFormat === '24h' ? '24H' : '12H'}</button>
         </div>
       </div>
+
+      <div class="zone-bar" id="zone-bar"></div>
 
       <div class="metric-bar" id="metric-bar">
         ${metrics.map(m => {
@@ -173,7 +176,7 @@ function attachHandlers(sensors: ReturnType<typeof getStore>['devices']): void {
     btn.addEventListener('click', () => {
       const metric = btn.dataset.metric as MetricKey;
       if (viewState.activeMetrics.has(metric)) {
-        if (viewState.activeMetrics.size > 1) viewState.activeMetrics.delete(metric);
+        viewState.activeMetrics.delete(metric);
       } else {
         viewState.activeMetrics.add(metric);
       }
@@ -213,16 +216,61 @@ async function loadData(sensors: ReturnType<typeof getStore>['devices']): Promis
 
     if (sequence !== loadSequence) return;
 
+    // Derive zones from loaded layers and render zone toggles
+    const zones = [...new Set(layers.map(l => l.deviceName))];
+    renderZoneToggles(zones);
+
+    // Filter layers to only the selected zone
+    const zoneLayers = viewState.activeZone
+      ? layers.filter(l => l.deviceName === viewState.activeZone)
+      : layers;
+
     viewState.decisions = decisions;
-    renderHeroChart(layers, decisions);
-    renderDetailTable(layers);
-    updatePillValues(layers);
-    renderHorizonStrips(layers);
-    renderVizCards(layers, decisions);
+    renderHeroChart(zoneLayers, decisions, sequence);
+    renderDetailTable(zoneLayers);
+    updatePillValues(zoneLayers);
+    renderHorizonStrips(zoneLayers);
+    renderVizCards(zoneLayers, decisions);
   } catch (err: any) {
     console.error('Sensor load failed:', err);
     if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
   }
+}
+
+function renderZoneToggles(zones: string[]): void {
+  const container = document.getElementById('zone-bar');
+  if (!container) return;
+  if (zones.length <= 1) {
+    container.innerHTML = '';
+    viewState.activeZone = '';
+    return;
+  }
+  container.innerHTML = [
+    `<button class="zone-pill ${viewState.activeZone ? '' : 'active'}" data-zone="__all__">All Zones</button>`,
+    ...zones.map(z => {
+      const isActive = z === viewState.activeZone;
+      return `<button class="zone-pill ${isActive ? 'active' : ''}" data-zone="${escapeAttr(z)}">${escapeHtml(z)}</button>`;
+    }),
+  ].join('');
+
+  container.querySelectorAll('.zone-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const zone = (btn as HTMLElement).dataset.zone;
+      if (zone) {
+        viewState.activeZone = zone === '__all__' ? '' : zone;
+        // Update active visual state without full re-fetch
+        container.querySelectorAll('.zone-pill').forEach(pill => {
+          const pillZone = (pill as HTMLElement).dataset.zone || '';
+          const normalized = pillZone === '__all__' ? '' : pillZone;
+          pill.classList.toggle('active', normalized === viewState.activeZone);
+        });
+        // Re-render chart with current layers filtered to new zone
+        const store = getStore();
+        const sensors = store.devices.filter(d => d.type === 'sensor');
+        void loadData(sensors);
+      }
+    });
+  });
 }
 
 function getRangeBounds(range: typeof viewState.range): { from: string; to: string } {
@@ -244,7 +292,7 @@ function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function renderHeroChart(layers: SeriesLayer[], _decisions: HalDecision[] = []): void {
+function renderHeroChart(layers: SeriesLayer[], _decisions: HalDecision[] = [], expectedSequence?: number): void {
   const container = document.getElementById('hero-chart');
   const legend = document.getElementById('hero-legend');
   if (!container) return;
@@ -284,6 +332,7 @@ function renderHeroChart(layers: SeriesLayer[], _decisions: HalDecision[] = []):
 
   // Use ChartKit stacked area — shade variation happens inside renderStackedAreaChart
   void import('../components/ChartKit.js').then(m => {
+    if (expectedSequence !== undefined && expectedSequence !== loadSequence) return;
     m.renderStackedAreaChart(stackedLayers, 'hero-chart', { showLegend: true });
   });
 
@@ -297,6 +346,7 @@ function renderHeroChart(layers: SeriesLayer[], _decisions: HalDecision[] = []):
       colorGroups.set(l.metric.color, list);
     }
     void import('../components/ChartKit.js').then(m => {
+      if (expectedSequence !== undefined && expectedSequence !== loadSequence) return;
       const shades = new Map<string, string[]>();
       for (const [color, group] of colorGroups) {
         if (group.length > 1) {
@@ -705,6 +755,35 @@ function injectSensorStyles(): void {
 .hal-range-btn.active,
 .hal-range-btn:hover {
   background: var(--accent);
+  color: var(--on-accent);
+}
+.zone-bar {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-2);
+}
+.zone-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+.zone-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
   color: var(--on-accent);
 }
 .metric-bar {

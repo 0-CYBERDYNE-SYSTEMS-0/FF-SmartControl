@@ -6,7 +6,7 @@ FFT_nano (also branded as FarmPal) is a single Node.js host process that receive
 
 Current product surface also includes:
 
-- A farm hardware abstraction layer (HAL) for devices, relays, sensors, cameras, MQTT, serial, GPIO, discovery, decisions, and demo seed data.
+- A farm hardware abstraction layer (HAL) for devices, relays, sensors, cameras, MQTT, serial, GPIO, discovery, decisions, demo seed data, and simulation mode.
 - A web control center and a separate HAL UI served by the host process.
 - A terminal UI gateway/client.
 - Cron v2 task scheduling, heartbeat, memory retrieval/search, knowledge wiki maintenance, file delivery, and coder orchestration flows.
@@ -21,7 +21,7 @@ Current product surface also includes:
   - `src/telegram-commands.ts` — Telegram command handling, settings panels, callback queries.
   - `src/pi-runner.ts` — Agent subprocess spawning, snapshots, runtime event emission.
   - `src/cron/` — Cron v2 compatibility, scheduling adapters, and scheduler service types.
-  - `src/hal/` — Hardware abstraction layer (sensors, relays, MQTT, serial, GPIO, camera, discovery, decisions).
+  - `src/hal/` — Hardware abstraction layer (sensors, relays, MQTT, serial, GPIO, camera, discovery, decisions, simulator).
   - `src/web/control-center-server.ts` — Web control center server and local file APIs.
   - `src/web/hal-ui-server.ts` — Standalone HAL UI/API server, defaulting to `127.0.0.1:3392`.
   - `src/web/hal-ui/` — HAL UI source and built browser assets.
@@ -44,6 +44,7 @@ Current product surface also includes:
 npm run build          # Compile TypeScript to dist/
 npm run dev            # Run src/index.ts via tsx (no build step)
 npm run start          # Run the compiled host from dist/index.js
+npm run auth           # Run WhatsApp auth flow
 npm test               # Run all tests via node --test
 npm run typecheck      # Type-check without emitting
 npm run format         # Format src/**/*.ts with Prettier
@@ -52,11 +53,14 @@ npm run validate:skills # Validate repo/runtime skills
 npm run release-check   # Full release gate
 npm run doctor          # Runtime diagnostics
 npm run farm:doctor     # Farm/HAL-oriented diagnostics
+npm run onboard         # Interactive onboarding CLI
 npm run hal:ui:build    # Bundle src/web/hal-ui into src/web/hal-ui/dist
 npm run hal:ui:watch    # Rebuild HAL UI on changes
 npm run hal:ui:open     # Open the HAL UI default URL
+npm run web:install     # Install web/control-center dependencies
 npm run web:dev         # Run web/control-center frontend dev server
 npm run web:build       # Build web/control-center frontend
+npm run tui             # Run compiled TUI launcher
 npm run tui:dev         # Run the TUI from TypeScript
 ```
 
@@ -82,6 +86,8 @@ node --import tsx --test tests/<name>.test.ts
 - Run tests after every extraction or refactor step to catch regressions immediately.
 - For scheduler changes, check both legacy scheduled task payloads and cron v2 payloads. See `docs/CRON_V2.md`.
 - For HAL changes, cover database persistence and the affected registry/service behavior when practical. If UI-only behavior changes, run `npm run hal:ui:build`.
+- For HAL UI chart toggle changes, verify both `dashboard` and `sensors` views with a live click-through:
+  default zone should be **All Zones**, metric toggles must add/remove chart series, and CO₂ should render when `co2_monitor` history exists.
 - For web control center or TUI changes, verify the relevant package/script in addition to TypeScript.
 
 ## Runtime and Service Notes
@@ -108,6 +114,9 @@ node --import tsx --test tests/<name>.test.ts
   - `HAL_UI_ENABLED=0` disables the standalone HAL UI server.
   - `HAL_UI_HOST` and `HAL_UI_PORT` override host/port.
   - `HAL_UI_AUTO_OPEN=0` prevents automatic browser opening.
+- HAL simulator environment knobs:
+  - `HAL_SIM_MODE=1` enables the HAL simulator loop instead of periodic HAL polling.
+  - `HAL_SIM_TICK_MS`, `HAL_SIM_SPEED`, `HAL_SIM_SEED`, and `HAL_SIM_SCENARIO` tune simulator runtime behavior.
 - Telegram is enabled when `TELEGRAM_BOT_TOKEN` is set. WhatsApp auth uses `npm run auth`.
 - Avoid starting foreground host commands when Telegram polling is already active in the service; polling conflicts can occur before the lock or upstream channel state makes the issue obvious.
 
@@ -165,9 +174,9 @@ When investigating runtime behavior, first identify which checkout the active se
 
 ## Current Local State Notes
 
-- This checkout currently has in-progress HAL UI/server work and related package/script changes.
-- `HANDOFF.md` describes a local native-module ABI blocker involving `better-sqlite3` and the local Node runtime. Treat that as local machine state, not release documentation.
-- `node_modules_old/`, `compiled/`, `data/`, `groups/`, and other generated/runtime artifacts should not be committed.
+- This checkout currently has in-progress HAL UI/server work and HAL simulator integration changes (`src/hal/simulator.ts` plus related `src/app.ts` wiring).
+- `HANDOFF.md` currently tracks a local service port-conflict investigation and keeps `better-sqlite3` ABI copy steps as a fallback note; treat both as local machine state, not release documentation.
+- `node_modules_old/`, `compiled/`, `store/`, `data/`, `groups/`, and other generated/runtime artifacts should not be committed.
 - Before treating the checkout as release-ready, run `npm run typecheck`, `npm test`, `npm run secret-scan`, `npm run validate:skills`, `npm run pack-check`, and `git diff --check`.
 
 ## Security and Configuration Tips

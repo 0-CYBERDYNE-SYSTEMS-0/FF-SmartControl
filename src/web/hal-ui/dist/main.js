@@ -13,7 +13,7 @@
   // src/web/hal-ui/store.ts
   var store_exports = {};
   __export(store_exports, {
-    applyModeAccent: () => applyModeAccent,
+    applyTheme: () => applyTheme,
     convertDistance: () => convertDistance,
     convertTemp: () => convertTemp,
     convertWeight: () => convertWeight,
@@ -25,6 +25,7 @@
     setStore: () => setStore,
     subscribe: () => subscribe,
     tempUnit: () => tempUnit,
+    themeDefinitions: () => themeDefinitions,
     weightUnit: () => weightUnit
   });
   function getStore() {
@@ -111,25 +112,33 @@
       hour12: false
     });
   }
-  function applyModeAccent(mode) {
+  function applyTheme(theme) {
     const root = document.documentElement;
-    root.dataset.mode = mode.toLowerCase();
-    const def = modeDefinitions[mode];
+    root.dataset.theme = theme;
+    const def = themeDefinitions[theme];
     root.style.setProperty("--accent", def.accent);
     root.style.setProperty("--accent-bright", def.accentBright);
     root.style.setProperty("--bg-primary", def.bgPrimary);
     root.style.setProperty("--bg-secondary", def.bgSecondary);
     root.style.setProperty("--bg-tertiary", def.bgTertiary);
+    root.style.setProperty("--text-primary", def.textPrimary);
+    root.style.setProperty("--text-secondary", def.textSecondary);
+    root.style.setProperty("--text-tertiary", def.textTertiary);
     root.style.setProperty("--border", def.border);
     root.style.setProperty("--border-subtle", def.borderSubtle);
+    root.style.setProperty("--success", def.success);
+    root.style.setProperty("--warning", def.warning);
+    root.style.setProperty("--danger", def.danger);
+    root.style.setProperty("--glow", def.glow);
   }
-  var listeners, state, modeDefinitions;
+  var listeners, state, themeDefinitions;
   var init_store = __esm({
     "src/web/hal-ui/store.ts"() {
       "use strict";
       listeners = /* @__PURE__ */ new Set();
       state = {
-        mode: "CALM",
+        theme: "emerald",
+        layout: "operator",
         activeView: "dashboard",
         unitSystem: "metric",
         timeFormat: "24h",
@@ -146,33 +155,142 @@
         dbStatus: "healthy",
         autoMode: true
       };
-      modeDefinitions = {
-        CALM: {
+      themeDefinitions = {
+        emerald: {
+          label: "Emerald",
           accent: "#238636",
           accentBright: "#3FB950",
           bgPrimary: "#07110C",
           bgSecondary: "#0E1A14",
           bgTertiary: "#14251B",
+          textPrimary: "#E8FFF2",
+          textSecondary: "#8FA89B",
+          textTertiary: "#4A6356",
           border: "#254332",
-          borderSubtle: "#182B20"
+          borderSubtle: "#182B20",
+          success: "#3FB950",
+          warning: "#D29922",
+          danger: "#F85149",
+          glow: "rgba(63,185,80,0.12)"
         },
-        OPERATOR: {
-          accent: "#E0A11B",
-          accentBright: "#F6C453",
+        amber: {
+          label: "Amber",
+          accent: "#D29922",
+          accentBright: "#E3B341",
           bgPrimary: "#120D05",
           bgSecondary: "#1D160A",
           bgTertiary: "#2A210F",
+          textPrimary: "#FFF5D6",
+          textSecondary: "#B8A67A",
+          textTertiary: "#6B5D3E",
           border: "#4A3714",
-          borderSubtle: "#33250E"
+          borderSubtle: "#33250E",
+          success: "#7EB84A",
+          warning: "#E3B341",
+          danger: "#E06C5C",
+          glow: "rgba(227,179,65,0.12)"
         },
-        DIAGNOSTIC: {
-          accent: "#2F81F7",
+        blue: {
+          label: "Blue",
+          accent: "#388BFD",
           accentBright: "#58A6FF",
           bgPrimary: "#07101E",
           bgSecondary: "#0D1627",
           bgTertiary: "#13213A",
+          textPrimary: "#E0F0FF",
+          textSecondary: "#7A9EC7",
+          textTertiary: "#4A6385",
           border: "#263D63",
-          borderSubtle: "#172A47"
+          borderSubtle: "#172A47",
+          success: "#4FD17A",
+          warning: "#D29922",
+          danger: "#F85149",
+          glow: "rgba(88,166,255,0.12)"
+        },
+        rose: {
+          label: "Rose",
+          accent: "#F85149",
+          accentBright: "#FF7B72",
+          bgPrimary: "#1A0A0A",
+          bgSecondary: "#271212",
+          bgTertiary: "#361A1A",
+          textPrimary: "#FFE8E8",
+          textSecondary: "#C78F8F",
+          textTertiary: "#7A5555",
+          border: "#5C2A2A",
+          borderSubtle: "#3D1A1A",
+          success: "#7EB84A",
+          warning: "#E3B341",
+          danger: "#FF7B72",
+          glow: "rgba(255,123,114,0.12)"
+        },
+        violet: {
+          label: "Violet",
+          accent: "#A371F7",
+          accentBright: "#C084FC",
+          bgPrimary: "#0F0A1A",
+          bgSecondary: "#18122B",
+          bgTertiary: "#231A3D",
+          textPrimary: "#F0E8FF",
+          textSecondary: "#A08EC7",
+          textTertiary: "#6B5D85",
+          border: "#3D2A63",
+          borderSubtle: "#2A1A47",
+          success: "#7EB84A",
+          warning: "#D29922",
+          danger: "#F85149",
+          glow: "rgba(192,132,252,0.12)"
+        },
+        cyan: {
+          label: "Cyan",
+          accent: "#22B8CF",
+          accentBright: "#4FD1E0",
+          bgPrimary: "#051015",
+          bgSecondary: "#0A1A22",
+          bgTertiary: "#0F2530",
+          textPrimary: "#E0F7FF",
+          textSecondary: "#7AB8C7",
+          textTertiary: "#4A7585",
+          border: "#1A3D4D",
+          borderSubtle: "#102A36",
+          success: "#4FD17A",
+          warning: "#D29922",
+          danger: "#F85149",
+          glow: "rgba(79,209,224,0.12)"
+        },
+        orange: {
+          label: "Orange",
+          accent: "#E07B16",
+          accentBright: "#F6A94C",
+          bgPrimary: "#140E05",
+          bgSecondary: "#1F170A",
+          bgTertiary: "#2E2110",
+          textPrimary: "#FFF0D6",
+          textSecondary: "#C7A87A",
+          textTertiary: "#7A6B4A",
+          border: "#4D3514",
+          borderSubtle: "#36250E",
+          success: "#7EB84A",
+          warning: "#F6A94C",
+          danger: "#F85149",
+          glow: "rgba(246,169,76,0.12)"
+        },
+        slate: {
+          label: "Slate",
+          accent: "#6C7278",
+          accentBright: "#8B949E",
+          bgPrimary: "#0A0C0F",
+          bgSecondary: "#111318",
+          bgTertiary: "#181B22",
+          textPrimary: "#E8EAED",
+          textSecondary: "#8B949E",
+          textTertiary: "#555B63",
+          border: "#2E333B",
+          borderSubtle: "#1E2228",
+          success: "#7EB84A",
+          warning: "#D29922",
+          danger: "#F85149",
+          glow: "rgba(139,148,158,0.12)"
         }
       };
     }
@@ -445,17 +563,22 @@
       container.innerHTML = '<div class="chart-empty">Select a metric</div>';
       return;
     }
+    const chartMetrics = activeMetrics.filter((m) => m.data.length > 0);
+    if (chartMetrics.length === 0) {
+      container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
+      return;
+    }
     const w = 566;
     const h = 210;
     const pad = { l: 100, r: 80, t: 30, b: 40 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const allTimes = activeMetrics.flatMap((m) => m.data.map((d) => d.t));
+    const allTimes = chartMetrics.flatMap((m) => m.data.map((d) => d.t));
     const tMin = Math.min(...allTimes);
     const tMax = Math.max(...allTimes);
     const tSpan = Math.max(1, tMax - tMin);
     const x = (i, len) => pad.l + i / (len - 1) * cw;
-    const computed = activeMetrics.map((m) => {
+    const computed = chartMetrics.map((m) => {
       const values = m.data.map((d) => d.v);
       const min = Math.min(...values);
       const max = Math.max(...values);
@@ -490,7 +613,15 @@
       ${dots}
     </svg>
   `;
-    const statsHtml = computed.map((m) => {
+    const statsHtml = activeMetrics.map((m) => {
+      if (m.data.length === 0) {
+        return `
+        <div class="dhc-stats-row">
+          <div class="dhc-stats-metric" style="color:${m.color}">${escapeHtml3(m.label)}</div>
+          <div class="dhc-stats-current" style="color:var(--text-secondary)">No data</div>
+        </div>
+      `;
+      }
       const values = m.data.map((d) => d.v);
       const min = Math.min(...values);
       const max = Math.max(...values);
@@ -508,16 +639,28 @@
       </div>
     `;
     }).join("");
-    const primaryCurrent = computed[0].data[computed[0].data.length - 1].v;
-    const primaryPrev = computed[0].data[computed[0].data.length - 2]?.v ?? primaryCurrent;
+    const primaryMetric = computed[0];
+    const primaryCurrent = primaryMetric.data[primaryMetric.data.length - 1].v;
+    const primaryPrev = primaryMetric.data[primaryMetric.data.length - 2]?.v ?? primaryCurrent;
     const delta = primaryPrev ? (primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100 : 0;
-    const titleColors = computed.map((m) => `<span style="color:${m.color}">${escapeHtml3(m.label)}</span>`).join(' <span style="color:var(--text-secondary)">+</span> ');
-    const allMetricKeys = ["temperature", "humidity", "co2"];
-    const toggleHtml = allMetricKeys.map((k) => {
-      const m = metrics2.find((x2) => x2.key === k);
-      if (!m) return "";
-      const isActive = activeKeys.has(k);
-      return `<button class="dhc-toggle ${isActive ? "active" : ""}" data-metric="${k}" style="--toggle-color:${m.color}">${escapeHtml3(m.label)}</button>`;
+    const titleColors = activeMetrics.map((m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`).join(' <span style="color:var(--text-secondary)">+</span> ');
+    const zoneToggleHtml = opts.zoneToggles ? `<div class="dhc-zone-toggles">
+        <button class="dhc-zone-toggle ${opts.zoneToggles.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>
+        ${opts.zoneToggles.zones.map((z) => {
+      const isActive = z === opts.zoneToggles.activeZone;
+      return `<button class="dhc-zone-toggle ${isActive ? "active" : ""}" data-zone="${escapeAttr(z)}">${escapeHtml3(z)}</button>`;
+    }).join("")}
+      </div>` : "";
+    const seenKeys = /* @__PURE__ */ new Set();
+    const toggleMetrics = [];
+    for (const metric of metrics2) {
+      if (seenKeys.has(metric.key)) continue;
+      seenKeys.add(metric.key);
+      toggleMetrics.push(metric);
+    }
+    const toggleHtml = toggleMetrics.map((metric) => {
+      const isActive = activeKeys.has(metric.key);
+      return `<button class="dhc-toggle ${isActive ? "active" : ""}" data-metric="${escapeAttr(metric.key)}" style="--toggle-color:${metric.color}">${escapeHtml3(metric.label)}</button>`;
     }).join("");
     container.innerHTML = `
     <div class="dhc-card">
@@ -527,16 +670,26 @@
           ${opts.subtitle ? `<div class="dhc-subtitle">${escapeHtml3(opts.subtitle)}</div>` : ""}
         </div>
         <div class="dhc-kpi">
-          <div class="dhc-kpi-val" style="color:${primary.color}">${primaryCurrent.toFixed(1)}${primary.unit}</div>
+          <div class="dhc-kpi-val" style="color:${primaryMetric.color}">${primaryCurrent.toFixed(1)}${primaryMetric.unit}</div>
           <div class="dhc-kpi-delta">${delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(delta).toFixed(1)}%</div>
         </div>
       </div>
+      ${zoneToggleHtml}
       <div class="dhc-toggles">${toggleHtml}</div>
       <div class="dhc-chart">${svg}</div>
       <div class="dhc-stats">${statsHtml}</div>
-      <div class="dhc-foot">${computed[0].data.length} readings \xB7 ${escapeHtml3(opts.subtitle || "")}</div>
+      <div class="dhc-foot">${primaryMetric.data.length} readings \xB7 ${escapeHtml3(opts.subtitle || "")}</div>
     </div>
   `;
+    if (opts.zoneToggles) {
+      container.querySelectorAll(".dhc-zone-toggle").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const zone = btn.dataset.zone;
+          if (!zone) return;
+          opts.zoneToggles.onZoneChange(zone === "__all__" ? "" : zone);
+        });
+      });
+    }
     if (opts.onToggle) {
       container.querySelectorAll(".dhc-toggle").forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -1204,6 +1357,28 @@
   font-size: 10px;
   margin-top: 2px;
 }
+.dhc-zone-toggles {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+.dhc-zone-toggle {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.dhc-zone-toggle.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
 .dhc-toggles {
   display: flex;
   gap: var(--space-2);
@@ -1358,7 +1533,7 @@
     { id: "system", label: "System", icon: systemIcon() },
     { id: "terminal", label: "Terminal", icon: terminalIcon() }
   ];
-  function renderSidebar(mode, activeView, collapsed) {
+  function renderSidebar(activeView, collapsed) {
     const items = navItems.map((item) => `
     <button
       class="sidebar-item ${item.id === activeView ? "active" : ""}"
@@ -1387,12 +1562,6 @@
       <nav class="sidebar-nav" aria-label="Main navigation">
         ${items}
       </nav>
-      <div class="sidebar-footer">
-        <div class="sidebar-mode">
-          <span class="sidebar-mode-dot" style="background: var(--accent)"></span>
-          <span class="sidebar-mode-label">${mode}</span>
-        </div>
-      </div>
     </aside>
   `;
   }
@@ -1621,7 +1790,19 @@
   }
 
   // src/web/hal-ui/components/Header.ts
-  function renderHeader(mode, onModeChange) {
+  init_store();
+  function renderHeader(theme) {
+    const themes = Object.entries(themeDefinitions);
+    const dots = themes.map(([key, def]) => `
+    <button
+      class="theme-dot ${key === theme ? "active" : ""}"
+      data-theme="${key}"
+      aria-label="${def.label}"
+      title="${def.label}"
+      style="--dot-color:${def.accent}"
+    ></button>
+  `).join("");
+    const currentDef = themeDefinitions[theme];
     return `
     <header class="hal-header">
       <div class="hal-header-left">
@@ -1631,9 +1812,13 @@
         <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
       </div>
       <div class="hal-header-center">
-        <button class="hal-mode-badge ${mode === "CALM" ? "active" : ""}" data-mode="CALM">CALM</button>
-        <button class="hal-mode-badge ${mode === "OPERATOR" ? "active" : ""}" data-mode="OPERATOR">OPERATOR</button>
-        <button class="hal-mode-badge ${mode === "DIAGNOSTIC" ? "active" : ""}" data-mode="DIAGNOSTIC">DIAGNOSTIC</button>
+        <div class="theme-picker-desktop">${dots}</div>
+        <button class="theme-picker-mobile-trigger" id="theme-picker-mobile-trigger" aria-label="Theme" style="--dot-color:${currentDef.accent}">
+          <span class="theme-picker-mobile-dot"></span>
+        </button>
+        <div class="theme-picker-mobile-popover" id="theme-picker-mobile-popover">
+          <div class="theme-picker-mobile-grid">${dots}</div>
+        </div>
       </div>
       <div class="hal-header-right">
         <span class="hal-clock text-mono" id="hal-clock">--:--:--</span>
@@ -1651,19 +1836,35 @@
     };
     return labels[location.hash.slice(1) || "dashboard"] || "Overview";
   }
-  function initHeader(mode, onModeChange) {
+  function initHeader(theme, onThemeChange) {
     injectHeaderStyles();
     startClock();
-    setupModeButtons(onModeChange);
+    setupThemeButtons(onThemeChange);
   }
-  function setupModeButtons(onModeChange) {
-    document.querySelectorAll(".hal-mode-badge").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const newMode = btn.dataset.mode;
-        document.querySelectorAll(".hal-mode-badge").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        onModeChange(newMode);
+  function setupThemeButtons(onThemeChange) {
+    function activateTheme(key) {
+      document.querySelectorAll(".theme-dot").forEach((dot) => {
+        dot.classList.toggle("active", dot.dataset.theme === key);
       });
+      onThemeChange(key);
+    }
+    document.querySelectorAll(".theme-dot").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.theme;
+        activateTheme(key);
+        document.getElementById("theme-picker-mobile-popover")?.classList.remove("open");
+      });
+    });
+    const mobileTrigger = document.getElementById("theme-picker-mobile-trigger");
+    const mobilePopover = document.getElementById("theme-picker-mobile-popover");
+    mobileTrigger?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      mobilePopover?.classList.toggle("open");
+    });
+    document.addEventListener("click", (e) => {
+      if (!mobilePopover?.contains(e.target) && e.target !== mobileTrigger) {
+        mobilePopover?.classList.remove("open");
+      }
     });
     const mobileMenuBtn = document.getElementById("mobile-menu-btn");
     mobileMenuBtn?.addEventListener("click", () => {
@@ -1703,47 +1904,116 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+  flex-shrink: 1;
 }
 .hal-header-view-label {
   font-weight: 600;
   font-size: 15px;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .hal-header-center {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+/* Desktop theme dots */
+.theme-picker-desktop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.theme-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--dot-color);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.theme-dot:hover {
+  transform: scale(1.15);
+}
+.theme-dot.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--dot-color);
+}
+
+/* Mobile theme picker */
+.theme-picker-mobile-trigger {
+  display: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+}
+.theme-picker-mobile-dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--dot-color);
+}
+.theme-picker-mobile-popover {
+  display: none;
   position: absolute;
+  top: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-card-lg);
+  z-index: 110;
+  min-width: 200px;
 }
-.hal-mode-badge {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  padding: 3px 12px;
-  border-radius: var(--radius-pill);
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  background: transparent;
-  cursor: pointer;
-  transition: all var(--transition-fast);
+.theme-picker-mobile-popover.open {
+  display: block;
 }
-.hal-mode-badge.active,
-.hal-mode-badge:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+.theme-picker-mobile-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
 }
+.theme-picker-mobile-grid .theme-dot {
+  width: 32px;
+  height: 32px;
+  justify-self: center;
+}
+
 .hal-header-right {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  flex-shrink: 0;
 }
 .hal-clock {
   font-size: 13px;
   color: var(--text-secondary);
   letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .theme-picker-desktop { display: none; }
+  .theme-picker-mobile-trigger { display: flex; }
+  .hal-header { padding: 0 var(--space-3); }
 }
 `;
     document.head.appendChild(style);
@@ -2416,6 +2686,16 @@
 
   // src/web/hal-ui/components/HeroChart.ts
   init_ChartKit();
+  var HERO_METRIC_KEYS = [
+    "temperature",
+    "humidity",
+    "co2",
+    "light",
+    "soil_moisture",
+    "water_level",
+    "ph",
+    "weight"
+  ];
   var metricConfig2 = {
     temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
     humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
@@ -2433,11 +2713,10 @@
     const to = (/* @__PURE__ */ new Date()).toISOString();
     const from = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
     const layers = [];
-    const metricKeys = ["temperature", "humidity", "co2"];
     const [decisions] = await Promise.all([
       halApi.getDecisions(50).catch(() => []),
       ...sensors.flatMap(
-        (s) => metricKeys.map(async (m) => {
+        (s) => HERO_METRIC_KEYS.map(async (m) => {
           try {
             const data = await halApi.getSensorHistory(s.id, m, from, to);
             if (data.length > 0) {
@@ -3365,15 +3644,15 @@
   // src/web/hal-ui/views/Dashboard.ts
   async function renderDashboard(container) {
     const store = getStore();
-    const mode = store.mode;
+    const layout = store.layout;
     injectSystemStatusStyles();
     injectLatestDecisionStyles();
     injectKpiStyles();
     injectHeroChartStyles();
     injectChartKitStyles();
-    if (mode === "CALM") {
+    if (layout === "calm") {
       await renderCalmDashboard(container);
-    } else if (mode === "OPERATOR") {
+    } else if (layout === "operator") {
       await renderOperatorDashboard(container);
     } else {
       await renderDiagnosticDashboard(container);
@@ -3432,7 +3711,19 @@
     </div>
   `).join("");
   }
-  var dashActiveMetrics = /* @__PURE__ */ new Set(["temperature", "humidity"]);
+  var dashActiveMetrics = /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]);
+  var dashActiveZone = "";
+  var dashLoadSequence = 0;
+  var DASH_METRIC_META = {
+    temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C" },
+    humidity: { label: "Humidity", color: "#38BDF8", unit: "%" },
+    co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm" },
+    light: { label: "Light", color: "#FACC15", unit: "lux" },
+    soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%" },
+    water_level: { label: "Water Level", color: "#2563EB", unit: "%" },
+    ph: { label: "pH", color: "#A855F7", unit: "" },
+    weight: { label: "Weight", color: "#94A3B8", unit: "kg" }
+  };
   async function renderOperatorDashboard(container) {
     const store = getStore();
     container.innerHTML = `
@@ -3462,20 +3753,24 @@
   async function loadDashboardHeroCard() {
     const container = document.getElementById("dash-hero-card");
     if (!container) return;
+    const sequence = ++dashLoadSequence;
     try {
       const { layers } = await loadHeroChartData();
+      if (sequence !== dashLoadSequence) return;
       const store = getStore();
-      const allMetrics = layers.map((l) => {
-        const cfg = {
-          temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C" },
-          humidity: { label: "Humidity", color: "#38BDF8", unit: "%" },
-          co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm" },
-          light: { label: "Light", color: "#FACC15", unit: "lux" },
-          soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%" },
-          water_level: { label: "Water Level", color: "#2563EB", unit: "%" },
-          ph: { label: "pH", color: "#A855F7", unit: "" },
-          weight: { label: "Weight", color: "#94A3B8", unit: "kg" }
-        }[l.metric] || { label: l.metric, color: l.color, unit: "" };
+      const zones = [...new Set(layers.map((l) => l.deviceName))];
+      if (zones.length === 0) {
+        const sensorNames = store.devices.filter((d) => d.type === "sensor").map((d) => d.name);
+        if (sensorNames.length > 0) {
+          zones.push(...sensorNames);
+        }
+      }
+      if (dashActiveZone && !zones.includes(dashActiveZone)) {
+        dashActiveZone = "";
+      }
+      const zoneLayers = dashActiveZone ? layers.filter((l) => l.deviceName === dashActiveZone) : layers;
+      const allMetrics = zoneLayers.map((l) => {
+        const cfg = DASH_METRIC_META[l.metric] || { label: l.metric, color: l.color, unit: "" };
         return {
           key: l.metric,
           label: cfg.label,
@@ -3487,29 +3782,41 @@
           }))
         };
       });
-      const keyMetrics = ["temperature", "humidity", "co2"];
-      for (const key of keyMetrics) {
+      for (const key of HERO_METRIC_KEYS) {
         if (!allMetrics.find((m) => m.key === key)) {
-          const cfg = {
-            temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C" },
-            humidity: { label: "Humidity", color: "#38BDF8", unit: "%" },
-            co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm" }
-          }[key];
+          const cfg = DASH_METRIC_META[key];
           allMetrics.push({ key, label: cfg.label, color: cfg.color, unit: cfg.unit, data: [] });
         }
       }
-      const heroMetrics = allMetrics.filter((m) => keyMetrics.includes(m.key));
+      const heroMetrics = allMetrics.filter((m) => HERO_METRIC_KEYS.includes(m.key)).sort((a, b) => HERO_METRIC_KEYS.indexOf(a.key) - HERO_METRIC_KEYS.indexOf(b.key));
+      for (const key of Array.from(dashActiveMetrics)) {
+        if (!HERO_METRIC_KEYS.includes(key)) {
+          dashActiveMetrics.delete(key);
+        }
+      }
+      if (dashActiveMetrics.size === 0) {
+        dashActiveMetrics.add("temperature");
+      }
+      if (sequence !== dashLoadSequence) return;
       renderDashboardHeroCard(heroMetrics, "dash-hero-card", {
         subtitle: "Environment Overview",
         activeKeys: new Set(dashActiveMetrics),
         onToggle: (key) => {
-          if (dashActiveMetrics.has(key) && dashActiveMetrics.size <= 1) return;
           if (dashActiveMetrics.has(key)) dashActiveMetrics.delete(key);
           else dashActiveMetrics.add(key);
           void loadDashboardHeroCard();
-        }
+        },
+        zoneToggles: zones.length > 1 ? {
+          zones,
+          activeZone: dashActiveZone,
+          onZoneChange: (zone) => {
+            dashActiveZone = zone;
+            void loadDashboardHeroCard();
+          }
+        } : void 0
       });
     } catch (err) {
+      if (sequence !== dashLoadSequence) return;
       console.error("Dashboard hero card load failed:", err);
       container.innerHTML = '<div class="chart-empty">Failed to load</div>';
     }
@@ -3659,7 +3966,7 @@
         </div>
         <div class="diag-extras-row">
           <span class="text-xs text-secondary">Mode</span>
-          <span class="text-mono text-xs" style="color:var(--accent)">${store.mode}</span>
+          <span class="text-mono text-xs" style="color:var(--accent)">${store.layout}</span>
         </div>
       </div>
     </div>
@@ -4365,6 +4672,7 @@
     deviceId: "all",
     range: "24H",
     activeMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
+    activeZone: "",
     decisions: []
   };
   var loadSequence = 0;
@@ -4394,6 +4702,8 @@
           <button class="hal-range-btn" id="time-format-toggle">${store.timeFormat === "24h" ? "24H" : "12H"}</button>
         </div>
       </div>
+
+      <div class="zone-bar" id="zone-bar"></div>
 
       <div class="metric-bar" id="metric-bar">
         ${metrics.map((m) => {
@@ -4483,7 +4793,7 @@
       btn.addEventListener("click", () => {
         const metric = btn.dataset.metric;
         if (viewState.activeMetrics.has(metric)) {
-          if (viewState.activeMetrics.size > 1) viewState.activeMetrics.delete(metric);
+          viewState.activeMetrics.delete(metric);
         } else {
           viewState.activeMetrics.add(metric);
         }
@@ -4515,16 +4825,51 @@
         )
       ]);
       if (sequence !== loadSequence) return;
+      const zones = [...new Set(layers.map((l) => l.deviceName))];
+      renderZoneToggles(zones);
+      const zoneLayers = viewState.activeZone ? layers.filter((l) => l.deviceName === viewState.activeZone) : layers;
       viewState.decisions = decisions;
-      renderHeroChart2(layers, decisions);
-      renderDetailTable(layers);
-      updatePillValues(layers);
-      renderHorizonStrips(layers);
-      renderVizCards(layers, decisions);
+      renderHeroChart2(zoneLayers, decisions, sequence);
+      renderDetailTable(zoneLayers);
+      updatePillValues(zoneLayers);
+      renderHorizonStrips(zoneLayers);
+      renderVizCards(zoneLayers, decisions);
     } catch (err) {
       console.error("Sensor load failed:", err);
       if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
     }
+  }
+  function renderZoneToggles(zones) {
+    const container = document.getElementById("zone-bar");
+    if (!container) return;
+    if (zones.length <= 1) {
+      container.innerHTML = "";
+      viewState.activeZone = "";
+      return;
+    }
+    container.innerHTML = [
+      `<button class="zone-pill ${viewState.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>`,
+      ...zones.map((z) => {
+        const isActive = z === viewState.activeZone;
+        return `<button class="zone-pill ${isActive ? "active" : ""}" data-zone="${escapeAttr2(z)}">${escapeHtml8(z)}</button>`;
+      })
+    ].join("");
+    container.querySelectorAll(".zone-pill").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const zone = btn.dataset.zone;
+        if (zone) {
+          viewState.activeZone = zone === "__all__" ? "" : zone;
+          container.querySelectorAll(".zone-pill").forEach((pill) => {
+            const pillZone = pill.dataset.zone || "";
+            const normalized = pillZone === "__all__" ? "" : pillZone;
+            pill.classList.toggle("active", normalized === viewState.activeZone);
+          });
+          const store = getStore();
+          const sensors = store.devices.filter((d) => d.type === "sensor");
+          void loadData(sensors);
+        }
+      });
+    });
   }
   function getRangeBounds(range) {
     const to = /* @__PURE__ */ new Date();
@@ -4548,7 +4893,10 @@
     }
     return { from: from.toISOString(), to: to.toISOString() };
   }
-  function renderHeroChart2(layers, _decisions = []) {
+  function escapeAttr2(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function renderHeroChart2(layers, _decisions = [], expectedSequence) {
     const container = document.getElementById("hero-chart");
     const legend = document.getElementById("hero-legend");
     if (!container) return;
@@ -4581,6 +4929,7 @@
       };
     });
     void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
+      if (expectedSequence !== void 0 && expectedSequence !== loadSequence) return;
       m.renderStackedAreaChart(stackedLayers, "hero-chart", { showLegend: true });
     });
     if (legend) {
@@ -4591,6 +4940,7 @@
         colorGroups.set(l.metric.color, list);
       }
       void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
+        if (expectedSequence !== void 0 && expectedSequence !== loadSequence) return;
         const shades = /* @__PURE__ */ new Map();
         for (const [color, group] of colorGroups) {
           if (group.length > 1) {
@@ -4941,6 +5291,35 @@
 .hal-range-btn.active,
 .hal-range-btn:hover {
   background: var(--accent);
+  color: var(--on-accent);
+}
+.zone-bar {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-2);
+}
+.zone-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+.zone-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
   color: var(--on-accent);
 }
 .metric-bar {
@@ -5822,10 +6201,10 @@
     injectToggleStyles();
     injectModalStyles();
     const store = getStore();
-    applyModeAccent(store.mode);
+    applyTheme(store.theme);
     app.innerHTML = `
     <div class="app-layout" id="app-layout">
-      ${renderSidebar(store.mode, store.activeView, store.sidebarCollapsed)}
+      ${renderSidebar(store.activeView, store.sidebarCollapsed)}
       <div class="app-main">
         <div id="hal-header"></div>
         <main class="main-content" id="view-container"></main>
@@ -5833,26 +6212,18 @@
     </div>
   `;
     const headerEl = document.getElementById("hal-header");
-    headerEl.innerHTML = renderHeader(store.mode, handleModeChange);
-    initHeader(store.mode, handleModeChange);
+    headerEl.innerHTML = renderHeader(store.theme);
+    initHeader(store.theme, handleThemeChange);
     initSidebar(handleViewChange);
     await refreshHALData();
     await render();
     startPolling();
     startUptimeCounter();
   }
-  function handleModeChange(mode) {
-    setStore({ mode });
-    applyModeAccent(mode);
-    showToast(`Mode: ${mode}`, "info", 2e3);
-    const sidebar = document.getElementById("hal-sidebar");
-    if (sidebar) {
-      const store = getStore();
-      const newSidebar = document.createElement("div");
-      newSidebar.innerHTML = renderSidebar(mode, store.activeView, store.sidebarCollapsed);
-      sidebar.outerHTML = newSidebar.firstElementChild.outerHTML;
-      initSidebar(handleViewChange);
-    }
+  function handleThemeChange(theme) {
+    setStore({ theme });
+    applyTheme(theme);
+    showToast(`Theme: ${theme}`, "info", 2e3);
   }
   async function handleViewChange(viewId) {
     setStore({ activeView: viewId });

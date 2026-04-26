@@ -19,6 +19,17 @@ export interface HeroChartLayer {
 
 export type { HalDecision as HeroChartDecision };
 
+export const HERO_METRIC_KEYS = [
+  'temperature',
+  'humidity',
+  'co2',
+  'light',
+  'soil_moisture',
+  'water_level',
+  'ph',
+  'weight',
+] as const;
+
 const metricConfig: Record<string, { label: string; color: string; unit: string; minAxis: number; maxAxis: number }> = {
   temperature:  { label: 'Temperature',  color: '#F59E0B', unit: '°C',  minAxis: 10, maxAxis: 40 },
   humidity:     { label: 'Humidity',     color: '#38BDF8', unit: '%',   minAxis: 0,  maxAxis: 100 },
@@ -38,12 +49,11 @@ export async function loadHeroChartData(): Promise<{ layers: HeroChartLayer[]; d
   const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const layers: HeroChartLayer[] = [];
-  const metricKeys = ['temperature', 'humidity', 'co2'];
 
   const [decisions] = await Promise.all([
     halApi.getDecisions(50).catch(() => [] as HalDecision[]),
     ...sensors.flatMap(s =>
-      metricKeys.map(async m => {
+      HERO_METRIC_KEYS.map(async m => {
         try {
           const data = await halApi.getSensorHistory(s.id, m, from, to);
           if (data.length > 0) {

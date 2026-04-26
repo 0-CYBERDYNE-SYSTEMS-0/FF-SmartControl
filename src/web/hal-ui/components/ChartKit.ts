@@ -338,7 +338,7 @@ export function renderDualAxisCard(
 
 /* ═══════════════════════════════════════════════════════════════════════════
    DASHBOARD HERO CARD — Ref Code 1 Style (FarmPal themed)
-   Toggle-able temp/humidity/CO₂ with exact card structure from user HTML.
+   Toggle-able sensor metrics with exact card structure from user HTML.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export interface DashboardHeroMetric {
@@ -357,6 +357,11 @@ export function renderDashboardHeroCard(
     subtitle?: string;
     activeKeys?: Set<string>;
     onToggle?: (key: string) => void;
+    zoneToggles?: {
+      zones: string[];
+      activeZone: string;
+      onZoneChange: (zone: string) => void;
+    };
   } = {}
 ): void {
   const container = document.getElementById(containerId);
@@ -370,13 +375,20 @@ export function renderDashboardHeroCard(
     return;
   }
 
+  // Only chart metrics that actually have data; empty placeholders are for toggles only
+  const chartMetrics = activeMetrics.filter(m => m.data.length > 0);
+  if (chartMetrics.length === 0) {
+    container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
+    return;
+  }
+
   const w = 566;
   const h = 210;
   const pad = { l: 100, r: 80, t: 30, b: 40 };
   const cw = w - pad.l - pad.r;
   const ch = h - pad.t - pad.b;
 
-  const allTimes = activeMetrics.flatMap(m => m.data.map(d => d.t));
+  const allTimes = chartMetrics.flatMap(m => m.data.map(d => d.t));
   const tMin = Math.min(...allTimes);
   const tMax = Math.max(...allTimes);
   const tSpan = Math.max(1, tMax - tMin);
@@ -384,7 +396,7 @@ export function renderDashboardHeroCard(
   const x = (i: number, len: number) => pad.l + (i / (len - 1)) * cw;
 
   // Compute min/max from actual data for each metric
-  const computed = activeMetrics.map(m => {
+  const computed = chartMetrics.map(m => {
     const values = m.data.map(d => d.v);
     const min = Math.min(...values);
     const max = Math.max(...values);
@@ -435,8 +447,16 @@ export function renderDashboardHeroCard(
     </svg>
   `;
 
-  // Stats
-  const statsHtml = computed.map(m => {
+  // Stats — show all active metrics, including "No data" for empty ones
+  const statsHtml = activeMetrics.map(m => {
+    if (m.data.length === 0) {
+      return `
+        <div class="dhc-stats-row">
+          <div class="dhc-stats-metric" style="color:${m.color}">${escapeHtml(m.label)}</div>
+          <div class="dhc-stats-current" style="color:var(--text-secondary)">No data</div>
+        </div>
+      `;
+    }
     const values = m.data.map(d => d.v);
     const min = Math.min(...values);
     const max = Math.max(...values);
@@ -455,20 +475,36 @@ export function renderDashboardHeroCard(
     `;
   }).join('');
 
-  // Title row with KPI
-  const primaryCurrent = computed[0].data[computed[0].data.length - 1].v;
-  const primaryPrev = computed[0].data[computed[0].data.length - 2]?.v ?? primaryCurrent;
+  // Title row with KPI — use first chart metric with data for KPI
+  const primaryMetric = computed[0];
+  const primaryCurrent = primaryMetric.data[primaryMetric.data.length - 1].v;
+  const primaryPrev = primaryMetric.data[primaryMetric.data.length - 2]?.v ?? primaryCurrent;
   const delta = primaryPrev ? ((primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100) : 0;
 
-  const titleColors = computed.map(m => `<span style="color:${m.color}">${escapeHtml(m.label)}</span>`).join(' <span style="color:var(--text-secondary)">+</span> ');
+  const titleColors = activeMetrics.map(m => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml(m.label)}</span>`).join(' <span style="color:var(--text-secondary)">+</span> ');
 
-  // Toggle pills
-  const allMetricKeys = ['temperature', 'humidity', 'co2'] as const;
-  const toggleHtml = allMetricKeys.map(k => {
-    const m = metrics.find(x => x.key === k);
-    if (!m) return '';
-    const isActive = activeKeys.has(k);
-    return `<button class="dhc-toggle ${isActive ? 'active' : ''}" data-metric="${k}" style="--toggle-color:${m.color}">${escapeHtml(m.label)}</button>`;
+  // Zone toggles
+  const zoneToggleHtml = opts.zoneToggles
+    ? `<div class="dhc-zone-toggles">
+        <button class="dhc-zone-toggle ${opts.zoneToggles.activeZone ? '' : 'active'}" data-zone="__all__">All Zones</button>
+        ${opts.zoneToggles.zones.map(z => {
+          const isActive = z === opts.zoneToggles!.activeZone;
+          return `<button class="dhc-zone-toggle ${isActive ? 'active' : ''}" data-zone="${escapeAttr(z)}">${escapeHtml(z)}</button>`;
+        }).join('')}
+      </div>`
+    : '';
+
+  // Metric toggle pills
+  const seenKeys = new Set<string>();
+  const toggleMetrics: DashboardHeroMetric[] = [];
+  for (const metric of metrics) {
+    if (seenKeys.has(metric.key)) continue;
+    seenKeys.add(metric.key);
+    toggleMetrics.push(metric);
+  }
+  const toggleHtml = toggleMetrics.map(metric => {
+    const isActive = activeKeys.has(metric.key);
+    return `<button class="dhc-toggle ${isActive ? 'active' : ''}" data-metric="${escapeAttr(metric.key)}" style="--toggle-color:${metric.color}">${escapeHtml(metric.label)}</button>`;
   }).join('');
 
   container.innerHTML = `
@@ -479,18 +515,30 @@ export function renderDashboardHeroCard(
           ${opts.subtitle ? `<div class="dhc-subtitle">${escapeHtml(opts.subtitle)}</div>` : ''}
         </div>
         <div class="dhc-kpi">
-          <div class="dhc-kpi-val" style="color:${primary.color}">${primaryCurrent.toFixed(1)}${primary.unit}</div>
+          <div class="dhc-kpi-val" style="color:${primaryMetric.color}">${primaryCurrent.toFixed(1)}${primaryMetric.unit}</div>
           <div class="dhc-kpi-delta">${delta >= 0 ? '↑' : '↓'} ${Math.abs(delta).toFixed(1)}%</div>
         </div>
       </div>
+      ${zoneToggleHtml}
       <div class="dhc-toggles">${toggleHtml}</div>
       <div class="dhc-chart">${svg}</div>
       <div class="dhc-stats">${statsHtml}</div>
-      <div class="dhc-foot">${computed[0].data.length} readings · ${escapeHtml(opts.subtitle || '')}</div>
+      <div class="dhc-foot">${primaryMetric.data.length} readings · ${escapeHtml(opts.subtitle || '')}</div>
     </div>
   `;
 
-  // Attach toggle handlers
+  // Attach zone toggle handlers
+  if (opts.zoneToggles) {
+    container.querySelectorAll('.dhc-zone-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const zone = (btn as HTMLElement).dataset.zone;
+        if (!zone) return;
+        opts.zoneToggles!.onZoneChange(zone === '__all__' ? '' : zone);
+      });
+    });
+  }
+
+  // Attach metric toggle handlers
   if (opts.onToggle) {
     container.querySelectorAll('.dhc-toggle').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1445,6 +1493,28 @@ export function injectChartKitStyles(): void {
   color: var(--success);
   font-size: 10px;
   margin-top: 2px;
+}
+.dhc-zone-toggles {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+.dhc-zone-toggle {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.dhc-zone-toggle.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 .dhc-toggles {
   display: flex;

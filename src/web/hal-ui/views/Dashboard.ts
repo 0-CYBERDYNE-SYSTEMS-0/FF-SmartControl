@@ -1,19 +1,19 @@
 // Dashboard view — mode-aware: CALM / OPERATOR / DIAGNOSTIC
 // Each mode shows different levels of detail
 
-import { getStore, formatSensorValue, type FarmMode } from '../store.js';
+import { getStore, formatSensorValue } from '../store.js';
 import { halApi, type HalSensorReading } from '../api.js';
 import { renderSystemStatus, injectSystemStatusStyles } from '../components/SystemStatus.js';
 import { renderLatestDecision, injectLatestDecisionStyles } from '../components/LatestDecision.js';
 import { renderKpiStrip, buildKpiData, injectKpiStyles } from '../components/KpiStrip.js';
-import { loadHeroChartData, renderHeroChart, injectHeroChartStyles, renderSparkline } from '../components/HeroChart.js';
+import { HERO_METRIC_KEYS, loadHeroChartData, renderHeroChart, injectHeroChartStyles, renderSparkline } from '../components/HeroChart.js';
 import { renderDashboardHeroCard, type DashboardHeroMetric, injectChartKitStyles } from '../components/ChartKit.js';
 import { renderOperatorPanels, injectOperatorPanelStyles } from '../components/OperatorPanels.js';
 import { renderTerminal, buildLogEntries, injectTerminalStyles } from '../components/Terminal.js';
 
 export async function renderDashboard(container: HTMLElement): Promise<void> {
   const store = getStore();
-  const mode = store.mode;
+  const layout = store.layout;
 
   injectSystemStatusStyles();
   injectLatestDecisionStyles();
@@ -21,10 +21,10 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
   injectHeroChartStyles();
   injectChartKitStyles();
 
-  // Mode-aware layout
-  if (mode === 'CALM') {
+  // Layout-aware rendering
+  if (layout === 'calm') {
     await renderCalmDashboard(container);
-  } else if (mode === 'OPERATOR') {
+  } else if (layout === 'operator') {
     await renderOperatorDashboard(container);
   } else {
     await renderDiagnosticDashboard(container);
@@ -94,7 +94,20 @@ function renderCalmDeviceList(devices: ReturnType<typeof getStore>['devices']): 
 /* ═══════════════ OPERATOR MODE — Full controls, all data ═══════════════ */
 
 // Dashboard active metrics state (persisted in session)
-const dashActiveMetrics = new Set<string>(['temperature', 'humidity']);
+const dashActiveMetrics = new Set<string>(['temperature', 'humidity', 'co2']);
+let dashActiveZone = '';
+let dashLoadSequence = 0;
+
+const DASH_METRIC_META: Record<string, { label: string; color: string; unit: string }> = {
+  temperature: { label: 'Temperature', color: '#F59E0B', unit: '°C' },
+  humidity: { label: 'Humidity', color: '#38BDF8', unit: '%' },
+  co2: { label: 'CO₂', color: '#22C55E', unit: 'ppm' },
+  light: { label: 'Light', color: '#FACC15', unit: 'lux' },
+  soil_moisture: { label: 'Soil Moisture', color: '#EF4444', unit: '%' },
+  water_level: { label: 'Water Level', color: '#2563EB', unit: '%' },
+  ph: { label: 'pH', color: '#A855F7', unit: '' },
+  weight: { label: 'Weight', color: '#94A3B8', unit: 'kg' },
+};
 
 async function renderOperatorDashboard(container: HTMLElement): Promise<void> {
   const store = getStore();
@@ -129,22 +142,35 @@ async function loadDashboardHeroCard(): Promise<void> {
   const container = document.getElementById('dash-hero-card');
   if (!container) return;
 
+  const sequence = ++dashLoadSequence;
+
   try {
     const { layers } = await loadHeroChartData();
+    if (sequence !== dashLoadSequence) return;
     const store = getStore();
 
-    // Build DashboardHeroMetric[] from layers
-    const allMetrics: DashboardHeroMetric[] = layers.map(l => {
-      const cfg = {
-        temperature: { label: 'Temperature', color: '#F59E0B', unit: '°C' },
-        humidity: { label: 'Humidity', color: '#38BDF8', unit: '%' },
-        co2: { label: 'CO₂', color: '#22C55E', unit: 'ppm' },
-        light: { label: 'Light', color: '#FACC15', unit: 'lux' },
-        soil_moisture: { label: 'Soil Moisture', color: '#EF4444', unit: '%' },
-        water_level: { label: 'Water Level', color: '#2563EB', unit: '%' },
-        ph: { label: 'pH', color: '#A855F7', unit: '' },
-        weight: { label: 'Weight', color: '#94A3B8', unit: 'kg' },
-      }[l.metric] || { label: l.metric, color: l.color, unit: '' };
+    // Derive zones from device names in the loaded layers
+    const zones = [...new Set(layers.map(l => l.deviceName))];
+    // If no zones from data but we have sensors, use sensor names
+    if (zones.length === 0) {
+      const sensorNames = store.devices.filter(d => d.type === 'sensor').map(d => d.name);
+      if (sensorNames.length > 0) {
+        zones.push(...sensorNames);
+      }
+    }
+
+    if (dashActiveZone && !zones.includes(dashActiveZone)) {
+      dashActiveZone = '';
+    }
+
+    // Filter layers to only the selected zone
+    const zoneLayers = dashActiveZone
+      ? layers.filter(l => l.deviceName === dashActiveZone)
+      : layers;
+
+    // Build DashboardHeroMetric[] from zone-filtered layers
+    const allMetrics: DashboardHeroMetric[] = zoneLayers.map(l => {
+      const cfg = DASH_METRIC_META[l.metric] || { label: l.metric, color: l.color, unit: '' };
 
       return {
         key: l.metric,
@@ -158,34 +184,48 @@ async function loadDashboardHeroCard(): Promise<void> {
       };
     });
 
-    // Ensure we have all three key metrics even if no data
-    const keyMetrics = ['temperature', 'humidity', 'co2'];
-    for (const key of keyMetrics) {
+    // Ensure every supported metric has a toggle, even when zone has no points.
+    for (const key of HERO_METRIC_KEYS) {
       if (!allMetrics.find(m => m.key === key)) {
-        const cfg = {
-          temperature: { label: 'Temperature', color: '#F59E0B', unit: '°C' },
-          humidity: { label: 'Humidity', color: '#38BDF8', unit: '%' },
-          co2: { label: 'CO₂', color: '#22C55E', unit: 'ppm' },
-        }[key]!;
+        const cfg = DASH_METRIC_META[key];
         allMetrics.push({ key, label: cfg.label, color: cfg.color, unit: cfg.unit, data: [] });
       }
     }
 
-    // Filter to only the three main metrics
-    const heroMetrics = allMetrics.filter(m => keyMetrics.includes(m.key));
+    const heroMetrics = allMetrics
+      .filter(m => HERO_METRIC_KEYS.includes(m.key as (typeof HERO_METRIC_KEYS)[number]))
+      .sort((a, b) => HERO_METRIC_KEYS.indexOf(a.key as (typeof HERO_METRIC_KEYS)[number]) - HERO_METRIC_KEYS.indexOf(b.key as (typeof HERO_METRIC_KEYS)[number]));
+
+    for (const key of Array.from(dashActiveMetrics)) {
+      if (!HERO_METRIC_KEYS.includes(key as (typeof HERO_METRIC_KEYS)[number])) {
+        dashActiveMetrics.delete(key);
+      }
+    }
+    if (dashActiveMetrics.size === 0) {
+      dashActiveMetrics.add('temperature');
+    }
+
+    if (sequence !== dashLoadSequence) return;
 
     renderDashboardHeroCard(heroMetrics, 'dash-hero-card', {
       subtitle: 'Environment Overview',
       activeKeys: new Set(dashActiveMetrics),
       onToggle: (key) => {
-        // Prevent turning off the last active metric
-        if (dashActiveMetrics.has(key) && dashActiveMetrics.size <= 1) return;
         if (dashActiveMetrics.has(key)) dashActiveMetrics.delete(key);
         else dashActiveMetrics.add(key);
         void loadDashboardHeroCard();
       },
+      zoneToggles: zones.length > 1 ? {
+        zones,
+        activeZone: dashActiveZone,
+        onZoneChange: (zone) => {
+          dashActiveZone = zone;
+          void loadDashboardHeroCard();
+        },
+      } : undefined,
     });
   } catch (err: any) {
+    if (sequence !== dashLoadSequence) return;
     console.error('Dashboard hero card load failed:', err);
     container.innerHTML = '<div class="chart-empty">Failed to load</div>';
   }
@@ -350,7 +390,7 @@ function renderDiagnosticExtras(store: ReturnType<typeof getStore>): string {
         </div>
         <div class="diag-extras-row">
           <span class="text-xs text-secondary">Mode</span>
-          <span class="text-mono text-xs" style="color:var(--accent)">${store.mode}</span>
+          <span class="text-mono text-xs" style="color:var(--accent)">${store.layout}</span>
         </div>
       </div>
     </div>
