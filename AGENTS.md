@@ -24,7 +24,8 @@ Current product surface also includes:
   - `src/hal/` — Hardware abstraction layer (sensors, relays, MQTT, serial, GPIO, camera, discovery, decisions, simulator).
   - `src/web/control-center-server.ts` — Web control center server and local file APIs.
   - `src/web/hal-ui-server.ts` — Standalone HAL UI/API server, defaulting to `127.0.0.1:3392`.
-  - `src/web/hal-ui/` — HAL UI source and built browser assets.
+  - `src/web/hal-ui/` — HAL UI TypeScript source files. Key files contain inline CSS styles that get bundled.
+  - `src/web/hal-ui/dist/` — **Bundled HAL UI assets** (CSS/JS). This is what gets served to browsers. **Do not edit directly; edit source files and run `npm run hal:ui:build`.**
   - `src/tui/` — Terminal UI gateway and client.
   - `src/agent/` — Agent decision loop, LLM interface, and tool executor.
   - `src/runtime/` — Host-local EventEmitter hub and boundary IPC.
@@ -89,6 +90,44 @@ node --import tsx --test tests/<name>.test.ts
 - For HAL UI chart toggle changes, verify both `dashboard` and `sensors` views with a live click-through:
   default zone should be **All Zones**, metric toggles must add/remove chart series, and CO₂ should render when `co2_monitor` history exists.
 - For web control center or TUI changes, verify the relevant package/script in addition to TypeScript.
+
+## HAL UI Development (src/web/hal-ui/)
+
+The HAL UI has a **two-stage build**:
+
+1. **Source files** (`src/web/hal-ui/views/`, `src/web/hal-ui/components/`, `src/web/hal-ui/tokens.css`)
+   - TypeScript/TSX files with **inline CSS styles** (styles are injected via `<style>` tags)
+   - These files contain all UI logic and styling
+
+2. **Bundled output** (`src/web/hal-ui/dist/main.js`, `src/web/hal-ui/dist/main.css`)
+   - Bundled by esbuild via `npm run hal:ui:build`
+   - This is what the HAL UI server serves to browsers
+   - Cache-busted via query string (e.g., `?v=20260427-t`)
+
+**Development workflow for HAL UI changes:**
+
+```bash
+# 1. Edit source files in src/web/hal-ui/
+vim src/web/hal-ui/views/Dashboard.ts
+
+# 2. Rebuild the bundle
+npm run hal:ui:build
+
+# 3. Refresh browser (hard refresh with Cmd+Shift+R)
+# The HAL UI server serves from src/web/hal-ui/ which reads dist/ for JS/CSS
+```
+
+**Why it works this way:**
+- The esbuild bundle (`dist/`) contains minified JS + CSS extracted from inline `<style>` tags in source files
+- The HAL UI server (`hal-ui-server.ts`) serves static files from `src/web/hal-ui/`
+- For JS/CSS assets, it reads from `src/web/hal-ui/dist/`
+- HTML templates are served directly from source files
+
+**Important notes:**
+- **Always rebuild** (`npm run hal:ui:build`) after editing HAL UI source files
+- If changes don't appear, hard-refresh the browser or restart FarmPal
+- Update the cache-buster in `src/web/hal-ui/index.html` if needed (the `?v=...` query string)
+- `npm run hal:ui:watch` enables watch mode for automatic rebuilds during development
 
 ## Runtime and Service Notes
 
