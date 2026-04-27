@@ -2,14 +2,20 @@
 
 ## Project Overview
 
-FFT_nano (also branded as FarmPal) is a single Node.js host process that receives chat messages via Telegram and/or WhatsApp, stores chat metadata and messages in SQLite, runs an agent inside an isolated container via `pi`, and sends the agent response back to the originating chat.
+FarmPal is a hardware-first smart garden controller built on top of the older FFT_nano host. The current checkout is a hybrid:
 
-Current product surface also includes:
+- The full FFT_nano host still owns startup, service lifecycle, SQLite state, chat/session routing, TUI gateway, web server, scheduler, heartbeat, and legacy Pi-based agent runs.
+- The FarmPal product surface is the HAL, simulator, hardware control APIs, HAL UI, and a newer lightweight farm-controller agent loop under `src/agent/`.
+- The newer `src/agent/decision-loop.ts` path calls an LLM directly, reads HAL state, logs decisions, and can execute HAL tool calls without going through the full Pi/container agent loop.
 
-- A farm hardware abstraction layer (HAL) for devices, relays, sensors, cameras, MQTT, serial, GPIO, discovery, decisions, demo seed data, and simulation mode.
-- A web control center and a separate HAL UI served by the host process.
-- A terminal UI gateway/client.
-- Cron v2 task scheduling, heartbeat, memory retrieval/search, knowledge wiki maintenance, file delivery, and coder orchestration flows.
+Treat this as a 99% hardware product. Prioritize customer out-of-box reliability for local host execution, HAL device state, simulator/demo clarity, TUI testing, and safe control of real relays/sensors/cameras.
+
+Current important reality:
+
+- The local direction is host runtime, not Docker-first, for normal FarmPal development (`CONTAINER_RUNTIME=host` with `FFT_NANO_ALLOW_HOST_RUNTIME=1`).
+- Docker may still appear in old release/demo scripts and the legacy Pi isolation story, but it is not the desired blocker for the simpler FarmPal host-runtime path.
+- Telegram may be absent during development. The TUI is the active test surface, but the TUI still attaches to the host gateway and existing chat/session machinery.
+- Do not assume the simplified farm agent is the default message path. It currently runs only where it is explicitly wired/configured.
 
 ## Project Structure
 
@@ -20,6 +26,12 @@ Current product surface also includes:
   - `src/message-dispatch.ts` — Message processing, session turns, queue logic.
   - `src/telegram-commands.ts` — Telegram command handling, settings panels, callback queries.
   - `src/pi-runner.ts` — Agent subprocess spawning, snapshots, runtime event emission.
+  - `src/agent/` — Lightweight FarmPal agent modules:
+    - `decision-loop.ts` — Active simplified farm decision cycle, wired behind HAL auto paths.
+    - `llm.ts` — Direct provider selection/calls for the simplified farm agent.
+    - `tool-executor.ts` — HAL tool execution for control/sensor/camera actions.
+    - `generator.ts` and `verifier.ts` — Newer Generator/Verifier pattern, present but not yet the default active control path.
+    - `diagnostic.ts` and `reflector.ts` — Support/self-analysis agents exposed through command paths.
   - `src/cron/` — Cron v2 compatibility, scheduling adapters, and scheduler service types.
   - `src/hal/` — Hardware abstraction layer (sensors, relays, MQTT, serial, GPIO, camera, discovery, decisions, simulator).
   - `src/web/control-center-server.ts` — Web control center server and local file APIs.
@@ -27,7 +39,6 @@ Current product surface also includes:
   - `src/web/hal-ui/` — HAL UI TypeScript source files. Key files contain inline CSS styles that get bundled.
   - `src/web/hal-ui/dist/` — **Bundled HAL UI assets** (CSS/JS). This is what gets served to browsers. **Do not edit directly; edit source files and run `npm run hal:ui:build`.**
   - `src/tui/` — Terminal UI gateway and client.
-  - `src/agent/` — Agent decision loop, LLM interface, and tool executor.
   - `src/runtime/` — Host-local EventEmitter hub and boundary IPC.
 - `web/control-center/` — Vite/React control-center frontend package.
 - `tests/` — Test files named `*.test.ts`, run with `node --test`.
@@ -133,6 +144,16 @@ npm run hal:ui:build
 
 - The long-running host uses a singleton lock at `data/fft_nano.lock`; do not run a second foreground host while the installed service is active.
 - Port policy: do not use `28995` or any higher `289xx` port for local previews, service defaults, or fallback servers. This machine has many services in that range. Prefer the FarmPal local block `3390`-`3399` unless the user explicitly provides a different port.
+- Current FarmPal local surfaces:
+  - TUI websocket default: `127.0.0.1:3390`
+  - Web control center default: `127.0.0.1:3391`
+  - HAL UI default/standalone fallback: `127.0.0.1:3392`
+- FarmPal should be the only local service using the `3390`-`3399` block. If another checkout/service is squatting on those ports, fix the other service rather than moving FarmPal into the reserved `289xx` range.
+- Host runtime is the current target for FarmPal hardware development:
+  - `CONTAINER_RUNTIME=host`
+  - `FFT_NANO_ALLOW_HOST_RUNTIME=1`
+  - In production-like Node environments, `FFT_NANO_ALLOW_HOST_RUNTIME_IN_PROD=1` may also be required.
+- With host runtime, `src/app.ts` skips the Docker daemon requirement. Legacy scripts such as `npm run farm:doctor` may still check Docker/Home Assistant demo assumptions and should not be treated as the sole readiness signal for the simplified host-runtime architecture.
 - Normal installed-service restart:
   ```bash
   ./scripts/service.sh restart
@@ -145,10 +166,6 @@ npm run hal:ui:build
   ```bash
   npm run dev
   ```
-- The host can serve multiple local surfaces:
-  - TUI websocket default: `127.0.0.1:3390`
-  - Web control center default: `127.0.0.1:3391`
-  - HAL UI default: `127.0.0.1:3392`
 - HAL UI environment knobs:
   - `HAL_UI_ENABLED=0` disables the standalone HAL UI server.
   - `HAL_UI_HOST` and `HAL_UI_PORT` override host/port.
@@ -156,8 +173,21 @@ npm run hal:ui:build
 - HAL simulator environment knobs:
   - `HAL_SIM_MODE=1` enables the HAL simulator loop instead of periodic HAL polling.
   - `HAL_SIM_TICK_MS`, `HAL_SIM_SPEED`, `HAL_SIM_SEED`, and `HAL_SIM_SCENARIO` tune simulator runtime behavior.
+- Simplified FarmPal agent knobs:
+  - `HAL_AUTO_MODE=true` plus a message starting with `!auto ` triggers `src/agent/decision-loop.ts` from message dispatch.
+  - `HAL_AUTO_DECISIONS=true` triggers the decision loop from periodic HAL heartbeat/poll paths.
+  - `LLM_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `LMSTUDIO_BASE_URL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `ZAI_API_KEY` affect `src/agent/llm.ts`.
 - Telegram is enabled when `TELEGRAM_BOT_TOKEN` is set. WhatsApp auth uses `npm run auth`.
 - Avoid starting foreground host commands when Telegram polling is already active in the service; polling conflicts can occur before the lock or upstream channel state makes the issue obvious.
+
+## Simplified Farm Agent State
+
+- The active simplified farm loop is `runDecisionCycle()` in `src/agent/decision-loop.ts`.
+- It reads devices from `halRegistry`, sensor readings from `halSensors`, recent decisions from `halDecisions`, then asks the LLM for a strict JSON decision.
+- It can execute HAL tool calls through `src/agent/tool-executor.ts` and can directly call `halRegistry.control()` for `turn_on`/`turn_off` decisions.
+- `src/agent/generator.ts` and `src/agent/verifier.ts` are present, but they are not currently wired as the default control path. Do not assume Generator/Verifier safety checks run unless you verify the call site.
+- The TUI does not bypass the host. TUI messages still enter through the gateway/session/message-dispatch path. For no-Telegram development, verify the TUI session/bootstrap path before assuming a message can reach the simplified farm loop.
+- The old Pi runner still exists and is still used by the legacy/general chat route. Host runtime means that path spawns local `pi`; it does not mean the simplified FarmPal agent is running standalone.
 
 ## Agent, Memory, and Skills Notes
 
@@ -213,8 +243,10 @@ When investigating runtime behavior, first identify which checkout the active se
 
 ## Current Local State Notes
 
-- This checkout currently has in-progress HAL UI/server work and HAL simulator integration changes (`src/hal/simulator.ts` plus related `src/app.ts` wiring).
-- `HANDOFF.md` currently tracks a local service port-conflict investigation and keeps `better-sqlite3` ABI copy steps as a fallback note; treat both as local machine state, not release documentation.
+- This checkout is currently clean on `main` but contains recent FarmPal HAL UI and multi-agent farm-controller commits.
+- `HANDOFF.md` tracks local service port-conflict investigation and `better-sqlite3` ABI fallback notes; treat it as machine-local handoff state, not release documentation.
+- Current architecture should be described as hybrid: full FFT_nano host plus simplified FarmPal HAL agent modules.
+- For customer/OOTB readiness reviews, explicitly check the host-runtime path, TUI/no-Telegram path, HAL hardware path, demo-data behavior, and whether `HAL_AUTO_MODE`/`HAL_AUTO_DECISIONS` are actually enabled.
 - `node_modules_old/`, `compiled/`, `store/`, `data/`, `groups/`, and other generated/runtime artifacts should not be committed.
 - Before treating the checkout as release-ready, run `npm run typecheck`, `npm test`, `npm run secret-scan`, `npm run validate:skills`, `npm run pack-check`, and `git diff --check`.
 
