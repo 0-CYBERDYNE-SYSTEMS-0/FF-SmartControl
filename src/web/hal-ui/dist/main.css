@@ -107,15 +107,21 @@ ol {
 }
 
 /* src/web/hal-ui/themes.css */
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
 html {
   scroll-behavior: smooth;
 }
 #app {
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
 }
 .app-layout {
   display: flex;
-  min-height: 100vh;
+  height: 100%;
   width: 100%;
   min-width: 0;
 }
@@ -151,6 +157,7 @@ html {
   width: 100%;
   min-width: 0;
   overflow-x: hidden;
+  overflow-y: auto;
   align-items: stretch;
 }
 .main-content > * {

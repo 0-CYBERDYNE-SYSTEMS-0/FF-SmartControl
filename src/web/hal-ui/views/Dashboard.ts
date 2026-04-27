@@ -785,6 +785,7 @@ function injectDashboardStyles(): void {
 .dash-bottom-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-auto-rows: minmax(140px, auto);
   align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-3);
@@ -792,18 +793,20 @@ function injectDashboardStyles(): void {
 .device-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-auto-rows: minmax(80px, auto);
   align-items: stretch;
   gap: var(--space-1);
 }
 .device-mini-card {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: var(--space-2);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: var(--space-1) var(--space-2);
   border-left: 2px solid var(--slate);
+  min-height: 80px;
   cursor: pointer;
   transition: border-color var(--transition-fast);
 }
@@ -875,6 +878,7 @@ function injectDashboardStyles(): void {
 .diag-snapshot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-auto-rows: minmax(80px, auto);
   align-items: stretch;
   gap: var(--space-2);
 }

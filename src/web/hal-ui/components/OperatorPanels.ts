@@ -258,6 +258,7 @@ export function injectOperatorPanelStyles(): void {
 .operator-panels {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-auto-rows: minmax(200px, auto);
   align-items: stretch;
   gap: var(--space-4);
   margin-top: var(--space-4);
@@ -297,18 +298,20 @@ export function injectOperatorPanelStyles(): void {
 .op-device-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-auto-rows: minmax(80px, auto);
   align-items: stretch;
   gap: var(--space-1);
 }
 .op-device-cell {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: var(--space-2);
   padding: var(--space-2);
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   border-left: 3px solid var(--slate);
+  min-height: 80px;
   cursor: pointer;
   transition: border-color var(--transition-fast);
 }
@@ -485,7 +488,7 @@ export function injectOperatorPanelStyles(): void {
 
 @media (max-width: 767px) {
   .op-panel {
-    min-height: 0;
+    min-height: 120px;
   }
   .op-device-grid {
     grid-template-columns: 1fr;

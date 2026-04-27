@@ -1667,11 +1667,13 @@ export function injectChartKitStyles(): void {
 }
 .ck-chart {
   width: 100%;
+  min-height: 0;
+  flex: 1;
 }
 .ck-chart svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
 }
 .ck-stats {
   border-top: 1px solid var(--border);
@@ -1725,17 +1727,20 @@ export function injectChartKitStyles(): void {
 .hero-svg {
   display: block;
   width: 100%;
-  height: auto;
+  min-height: 0;
+  flex: 1;
 }
 .og-chart {
   display: block;
   width: 100%;
-  height: auto;
+  min-height: 0;
+  flex: 1;
 }
 .viz-svg {
   display: block;
   width: 100%;
-  height: auto;
+  min-height: 0;
+  flex: 1;
 }
 .chart-grid {
   stroke: color-mix(in srgb, var(--text-tertiary) 30%, var(--border));
@@ -1768,6 +1773,10 @@ export function injectChartKitStyles(): void {
   border-radius: var(--radius-md);
   padding: var(--space-4);
   color: var(--text-primary);
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 .dhc-head {
   display: flex;
@@ -1832,6 +1841,7 @@ export function injectChartKitStyles(): void {
 .dhc-zone-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-auto-rows: minmax(200px, auto);
   align-items: stretch;
   gap: var(--space-2);
 }
@@ -1913,11 +1923,13 @@ export function injectChartKitStyles(): void {
 }
 .dhc-chart {
   width: 100%;
+  min-height: 0;
+  flex: 1;
 }
 .dhc-chart svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
 }
 .dhc-grid {
   stroke: color-mix(in srgb, var(--text-tertiary) 16%, var(--border));

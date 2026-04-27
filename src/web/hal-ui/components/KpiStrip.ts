@@ -242,6 +242,7 @@ export function injectKpiStyles(): void {
 .kpi-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-auto-rows: minmax(80px, auto);
   align-items: stretch;
   gap: var(--space-2);
   margin-bottom: var(--space-4);
@@ -254,7 +255,9 @@ export function injectKpiStyles(): void {
   border-left: 3px solid var(--kpi-accent);
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: var(--space-1);
+  min-height: 80px;
   transition: border-color var(--transition-fast);
 }
 .kpi-card:hover {

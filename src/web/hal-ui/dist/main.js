@@ -1461,11 +1461,13 @@
 }
 .ck-chart {
   width: 100%;
+  min-height: 0;
+  flex: 1;
 }
 .ck-chart svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
 }
 .ck-stats {
   border-top: 1px solid var(--border);
@@ -1519,17 +1521,20 @@
 .hero-svg {
   display: block;
   width: 100%;
-  height: auto;
+  min-height: 0;
+  flex: 1;
 }
 .og-chart {
   display: block;
   width: 100%;
-  height: auto;
+  min-height: 0;
+  flex: 1;
 }
 .viz-svg {
   display: block;
   width: 100%;
-  height: auto;
+  min-height: 0;
+  flex: 1;
 }
 .chart-grid {
   stroke: color-mix(in srgb, var(--text-tertiary) 30%, var(--border));
@@ -1562,6 +1567,10 @@
   border-radius: var(--radius-md);
   padding: var(--space-4);
   color: var(--text-primary);
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 .dhc-head {
   display: flex;
@@ -1626,6 +1635,7 @@
 .dhc-zone-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-auto-rows: minmax(200px, auto);
   align-items: stretch;
   gap: var(--space-2);
 }
@@ -1707,11 +1717,13 @@
 }
 .dhc-chart {
   width: 100%;
+  min-height: 0;
+  flex: 1;
 }
 .dhc-chart svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
 }
 .dhc-grid {
   stroke: color-mix(in srgb, var(--text-tertiary) 16%, var(--border));
@@ -3344,6 +3356,7 @@
 .kpi-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-auto-rows: minmax(80px, auto);
   align-items: stretch;
   gap: var(--space-2);
   margin-bottom: var(--space-4);
@@ -3356,7 +3369,9 @@
   border-left: 3px solid var(--kpi-accent);
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: var(--space-1);
+  min-height: 80px;
   transition: border-color var(--transition-fast);
 }
 .kpi-card:hover {
@@ -3648,6 +3663,7 @@
 .operator-panels {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-auto-rows: minmax(200px, auto);
   align-items: stretch;
   gap: var(--space-4);
   margin-top: var(--space-4);
@@ -3687,18 +3703,20 @@
 .op-device-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-auto-rows: minmax(80px, auto);
   align-items: stretch;
   gap: var(--space-1);
 }
 .op-device-cell {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: var(--space-2);
   padding: var(--space-2);
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   border-left: 3px solid var(--slate);
+  min-height: 80px;
   cursor: pointer;
   transition: border-color var(--transition-fast);
 }
@@ -3875,7 +3893,7 @@
 
 @media (max-width: 767px) {
   .op-panel {
-    min-height: 0;
+    min-height: 120px;
   }
   .op-device-grid {
     grid-template-columns: 1fr;
@@ -4690,6 +4708,7 @@
 .dash-bottom-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-auto-rows: minmax(140px, auto);
   align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-3);
@@ -4697,18 +4716,20 @@
 .device-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-auto-rows: minmax(80px, auto);
   align-items: stretch;
   gap: var(--space-1);
 }
 .device-mini-card {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: var(--space-2);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: var(--space-1) var(--space-2);
   border-left: 2px solid var(--slate);
+  min-height: 80px;
   cursor: pointer;
   transition: border-color var(--transition-fast);
 }
@@ -4780,6 +4801,7 @@
 .diag-snapshot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-auto-rows: minmax(80px, auto);
   align-items: stretch;
   gap: var(--space-2);
 }
@@ -5986,6 +6008,7 @@
 .viz-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-auto-rows: minmax(140px, auto);
   align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-4);
@@ -5997,7 +6020,9 @@
   padding: var(--space-3);
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: var(--space-2);
+  min-height: 140px;
 }
 .viz-card.wide {
   grid-column: span 2;
@@ -6021,7 +6046,8 @@
 .viz-svg {
   display: block;
   width: 100%;
-  height: auto;
+  min-height: 0;
+  flex: 1;
 }
 .gauge-svg {
   max-height: 100px;
@@ -6111,6 +6137,7 @@
 .horizon-strips-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-auto-rows: minmax(140px, auto);
   align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-3);
@@ -6121,6 +6148,10 @@
   border-radius: var(--radius-md);
   padding: var(--space-3);
   overflow: hidden;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 .horizon-strip-header {
   display: flex;
@@ -6142,7 +6173,8 @@
 .horizon-strip-svg {
   display: block;
   width: 100%;
-  height: 52px;
+  flex: 1;
+  min-height: 40px;
 }
 
 /* \u2500\u2500 Quality Matrix \u2500\u2500 */

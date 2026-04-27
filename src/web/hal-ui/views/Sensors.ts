@@ -985,6 +985,7 @@ function injectSensorStyles(): void {
 .viz-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-auto-rows: minmax(140px, auto);
   align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-4);
@@ -996,7 +997,9 @@ function injectSensorStyles(): void {
   padding: var(--space-3);
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: var(--space-2);
+  min-height: 140px;
 }
 .viz-card.wide {
   grid-column: span 2;
@@ -1020,7 +1023,8 @@ function injectSensorStyles(): void {
 .viz-svg {
   display: block;
   width: 100%;
-  height: auto;
+  min-height: 0;
+  flex: 1;
 }
 .gauge-svg {
   max-height: 100px;
@@ -1110,6 +1114,7 @@ function injectSensorStyles(): void {
 .horizon-strips-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-auto-rows: minmax(140px, auto);
   align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-3);
@@ -1120,6 +1125,10 @@ function injectSensorStyles(): void {
   border-radius: var(--radius-md);
   padding: var(--space-3);
   overflow: hidden;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 .horizon-strip-header {
   display: flex;
@@ -1141,7 +1150,8 @@ function injectSensorStyles(): void {
 .horizon-strip-svg {
   display: block;
   width: 100%;
-  height: 52px;
+  flex: 1;
+  min-height: 40px;
 }
 
 /* ── Quality Matrix ── */
