@@ -170,6 +170,7 @@ export interface MessageDispatcherDeps {
     triggerPattern: RegExp;
     tuiSenderName: string;
     mainWorkspaceDir?: string;
+    farmPalPrimaryAgent?: boolean;
   };
   activeChatRuns: Map<
     string,
@@ -247,6 +248,17 @@ export interface MessageDispatcherDeps {
   ) => Promise<{
     result: string | null;
     streamed: boolean;
+    ok: boolean;
+    usage?: RunUsage;
+  }>;
+  runFarmPalTurn?: (params: {
+    chatJid: string;
+    message: string;
+    requestId: string;
+    trigger: 'message';
+  }) => Promise<{
+    result: string | null;
+    streamed: false;
     ok: boolean;
     usage?: RunUsage;
   }>;
@@ -627,6 +639,61 @@ function selectRunRoute(
     : 'agent';
 }
 
+function shouldUseFarmPalPrimaryAgent(params: {
+  deps: MessageDispatcherDeps;
+  latestUserText: string;
+  route: RunRoute;
+  onboardingGate: { active: boolean };
+}): boolean {
+  if (!params.deps.constants.farmPalPrimaryAgent) return false;
+  if (!params.deps.runFarmPalTurn) return false;
+  if (params.route !== 'agent') return false;
+  if (params.onboardingGate.active) return false;
+  if (params.latestUserText.trim().startsWith('/legacy')) return false;
+  return true;
+}
+
+async function runPrimaryAgent(params: {
+  deps: MessageDispatcherDeps;
+  group: any;
+  chatJid: string;
+  finalPrompt: string;
+  latestUserText: string;
+  codingHint: any;
+  requestId: string;
+  runPreferences: Record<string, any>;
+  route: RunRoute;
+  onboardingGate: { active: boolean };
+  abortSignal: AbortSignal;
+}): Promise<RunCompletion> {
+  if (
+    shouldUseFarmPalPrimaryAgent({
+      deps: params.deps,
+      latestUserText: params.latestUserText,
+      route: params.route,
+      onboardingGate: params.onboardingGate,
+    })
+  ) {
+    return params.deps.runFarmPalTurn!({
+      chatJid: params.chatJid,
+      message: params.latestUserText,
+      requestId: params.requestId,
+      trigger: 'message',
+    });
+  }
+
+  return params.deps.runAgent(
+    params.group,
+    params.finalPrompt,
+    params.chatJid,
+    params.codingHint,
+    params.requestId,
+    params.runPreferences,
+    {},
+    params.abortSignal,
+  );
+}
+
 function injectUnresolvedWorkPreamble(
   finalPrompt: string,
   unresolvedSummary: string | null | undefined,
@@ -994,16 +1061,19 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
                 runtimePrefs: params.runPreferences,
                 abortController,
               })
-            : await deps.runAgent(
-                params.group,
-                params.finalPrompt,
-                params.chatJid,
-                params.codingHint,
-                params.requestId,
-                params.runPreferences,
-                {},
-                abortController.signal,
-              );
+            : await runPrimaryAgent({
+                deps,
+                group: params.group,
+                chatJid: params.chatJid,
+                finalPrompt: params.finalPrompt,
+                latestUserText: params.latestUserText,
+                codingHint: params.codingHint,
+                requestId: params.requestId,
+                runPreferences: params.runPreferences,
+                route: params.route,
+                onboardingGate: params.onboardingGate,
+                abortSignal: abortController.signal,
+              });
 
         deps.logger?.info?.(
           {
@@ -1479,7 +1549,11 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
     await processMessageWithOutcome(msg);
 
     // Check for HAL auto mode: messages starting with !auto trigger the decision loop
-    if (process.env.HAL_AUTO_MODE === 'true' && content.startsWith('!auto ')) {
+    if (
+      !deps.constants.farmPalPrimaryAgent &&
+      process.env.HAL_AUTO_MODE === 'true' &&
+      content.startsWith('!auto ')
+    ) {
       void (async () => {
         try {
           const { runDecisionCycle } = await import('./agent/decision-loop.js');

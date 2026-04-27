@@ -4314,6 +4314,11 @@ const messageDispatcher = createMessageDispatcher({
     triggerPattern: TRIGGER_PATTERN,
     tuiSenderName: TUI_SENDER_NAME,
     mainWorkspaceDir: MAIN_WORKSPACE_DIR,
+    farmPalPrimaryAgent:
+      FEATURE_FARM &&
+      !['0', 'false', 'no', 'off'].includes(
+        (process.env.FARMPAL_PRIMARY_AGENT || '1').trim().toLowerCase(),
+      ),
   },
   activeChatRuns,
   activeChatRunsById,
@@ -4330,6 +4335,10 @@ const messageDispatcher = createMessageDispatcher({
   completeMainWorkspaceOnboarding,
   rememberHeartbeatTarget,
   runAgent,
+  runFarmPalTurn: async ({ chatJid, message, requestId, trigger }) => {
+    const { runFarmPalTurn } = await import('./agent/turn.js');
+    return runFarmPalTurn({ chatJid, message, requestId, trigger });
+  },
   runCodingTask,
   consumeNextRunNoContinue,
   updateChatUsage,

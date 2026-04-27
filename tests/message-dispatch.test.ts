@@ -409,6 +409,169 @@ test('runDirectSessionTurn emits one user message and one start event', async ()
   assert.equal(startEvents.length, 1);
 });
 
+test('runDirectSessionTurn uses FarmPal primary agent when enabled', async () => {
+  const farmPalCalls: Array<{ message: string; requestId: string }> = [];
+  const legacyCalls: string[] = [];
+  const persisted: string[] = [];
+
+  const dispatcher = createMessageDispatcher({
+    state: {
+      registeredGroups: {
+        'telegram:1': {
+          jid: 'telegram:1',
+          name: 'Test',
+          folder: 'main',
+          trigger: '@FarmFriend',
+        },
+      },
+      chatRunPreferences: {},
+    },
+    constants: {
+      assistantName: 'FarmFriend',
+      mainGroupFolder: 'main',
+      triggerPattern: /@FarmFriend/i,
+      tuiSenderName: 'TUI',
+      farmPalPrimaryAgent: true,
+    },
+    activeChatRuns: new Map(),
+    activeChatRunsById: new Map(),
+    activeCoderRuns: new Map(),
+    tuiMessageQueue: new Map(),
+    sendMessage: async () => {},
+    setTyping: async () => {},
+    getMessagesSince: () => [],
+    getSessionKeyForChat: (chatJid) => chatJid,
+    resolveMainOnboardingGate: () => ({ active: false }),
+    buildOnboardingInterviewPrompt: ({ prompt }) => prompt,
+    extractOnboardingCompletion: (text) => ({ text, completed: false }),
+    completeMainWorkspaceOnboarding: () => {},
+    rememberHeartbeatTarget: () => {},
+    runAgent: async (_group, prompt) => {
+      legacyCalls.push(prompt);
+      return { ok: true, result: 'legacy', streamed: false };
+    },
+    runFarmPalTurn: async ({ message, requestId }) => {
+      farmPalCalls.push({ message, requestId });
+      return { ok: true, result: 'farm status', streamed: false };
+    },
+    consumeNextRunNoContinue: () => false,
+    updateChatUsage: () => {},
+    persistAssistantHistory: (_chatJid, text) => {
+      persisted.push(text);
+    },
+    persistTuiUserHistory: () => {},
+    deleteTelegramPreviewMessage: async () => {},
+    finalizeTelegramPreviewMessage: async () => false,
+    sendAgentResultMessage: async () => {},
+    emitTuiChatEvent: () => {},
+    emitTuiAgentEvent: () => {},
+    isTelegramJid: () => false,
+    consumeTelegramHostCompletedRun: () => false,
+    consumeTelegramHostStreamState: () => null,
+    resolveTelegramStreamCompletionState: ({
+      externallyCompleted,
+      previewState,
+    }) => ({
+      effectiveStreamed: externallyCompleted,
+      messagePreviewState: previewState,
+    }),
+    finalizeCompletedRun,
+  });
+
+  const start = await dispatcher.runDirectSessionTurn({
+    chatJid: 'telegram:1',
+    text: 'status',
+    runId: 'farm-run',
+    deliver: false,
+  });
+
+  assert.deepEqual(start, { runId: 'farm-run', status: 'started' });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(farmPalCalls, [{ message: 'status', requestId: 'farm-run' }]);
+  assert.deepEqual(legacyCalls, []);
+  assert.deepEqual(persisted, ['farm status']);
+});
+
+test('runDirectSessionTurn keeps /legacy escape hatch on the Pi agent path', async () => {
+  const farmPalCalls: string[] = [];
+  const legacyPrompts: string[] = [];
+
+  const dispatcher = createMessageDispatcher({
+    state: {
+      registeredGroups: {
+        'telegram:1': {
+          jid: 'telegram:1',
+          name: 'Test',
+          folder: 'main',
+          trigger: '@FarmFriend',
+        },
+      },
+      chatRunPreferences: {},
+    },
+    constants: {
+      assistantName: 'FarmFriend',
+      mainGroupFolder: 'main',
+      triggerPattern: /@FarmFriend/i,
+      tuiSenderName: 'TUI',
+      farmPalPrimaryAgent: true,
+    },
+    activeChatRuns: new Map(),
+    activeChatRunsById: new Map(),
+    activeCoderRuns: new Map(),
+    tuiMessageQueue: new Map(),
+    sendMessage: async () => {},
+    setTyping: async () => {},
+    getMessagesSince: () => [],
+    getSessionKeyForChat: (chatJid) => chatJid,
+    resolveMainOnboardingGate: () => ({ active: false }),
+    buildOnboardingInterviewPrompt: ({ prompt }) => prompt,
+    extractOnboardingCompletion: (text) => ({ text, completed: false }),
+    completeMainWorkspaceOnboarding: () => {},
+    rememberHeartbeatTarget: () => {},
+    runAgent: async (_group, prompt) => {
+      legacyPrompts.push(prompt);
+      return { ok: true, result: 'legacy', streamed: false };
+    },
+    runFarmPalTurn: async ({ message }) => {
+      farmPalCalls.push(message);
+      return { ok: true, result: 'farm', streamed: false };
+    },
+    consumeNextRunNoContinue: () => false,
+    updateChatUsage: () => {},
+    persistAssistantHistory: () => {},
+    persistTuiUserHistory: () => {},
+    deleteTelegramPreviewMessage: async () => {},
+    finalizeTelegramPreviewMessage: async () => false,
+    sendAgentResultMessage: async () => {},
+    emitTuiChatEvent: () => {},
+    emitTuiAgentEvent: () => {},
+    isTelegramJid: () => false,
+    consumeTelegramHostCompletedRun: () => false,
+    consumeTelegramHostStreamState: () => null,
+    resolveTelegramStreamCompletionState: ({
+      externallyCompleted,
+      previewState,
+    }) => ({
+      effectiveStreamed: externallyCompleted,
+      messagePreviewState: previewState,
+    }),
+    finalizeCompletedRun,
+  });
+
+  await dispatcher.runDirectSessionTurn({
+    chatJid: 'telegram:1',
+    text: '/legacy explain runtime',
+    runId: 'legacy-run',
+    deliver: false,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(farmPalCalls, []);
+  assert.equal(legacyPrompts.length, 1);
+  assert.match(legacyPrompts[0], /\/legacy explain runtime/);
+});
+
 test('processMessage injects recent assistant context alongside new inbound messages', async () => {
   let capturedPrompt = '';
 
