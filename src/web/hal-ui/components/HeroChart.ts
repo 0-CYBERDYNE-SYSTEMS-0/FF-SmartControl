@@ -144,21 +144,21 @@ export function injectHeroChartStyles(): void {
 .hero-chart-wrap {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--space-4);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
   overflow: hidden;
 }
 .hero-chart {
   width: 100%;
-  min-height: 280px;
+  min-height: 260px;
 }
 .chart-empty {
-  min-height: 280px;
+  min-height: 260px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 12px;
 }
 `;
   document.head.appendChild(style);
