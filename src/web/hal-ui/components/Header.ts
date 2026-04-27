@@ -1,8 +1,21 @@
-// Header — 48px, mode switcher left, clock right
+// Header — 48px, theme picker center, clock right
 
-import type { FarmMode } from '../store.js';
+import { themeDefinitions, type ThemeName } from '../store.js';
 
-export function renderHeader(mode: FarmMode, onModeChange: (m: FarmMode) => void): string {
+export function renderHeader(theme: ThemeName): string {
+  const themes = Object.entries(themeDefinitions) as [ThemeName, { accent: string; label: string }][];
+  const dots = themes.map(([key, def]) => `
+    <button
+      class="theme-dot ${key === theme ? 'active' : ''}"
+      data-theme="${key}"
+      aria-label="${def.label}"
+      title="${def.label}"
+      style="--dot-color:${def.accent}"
+    ></button>
+  `).join('');
+
+  const currentDef = themeDefinitions[theme];
+
   return `
     <header class="hal-header">
       <div class="hal-header-left">
@@ -12,9 +25,12 @@ export function renderHeader(mode: FarmMode, onModeChange: (m: FarmMode) => void
         <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
       </div>
       <div class="hal-header-center">
-        <button class="hal-mode-badge ${mode === 'CALM' ? 'active' : ''}" data-mode="CALM">CALM</button>
-        <button class="hal-mode-badge ${mode === 'OPERATOR' ? 'active' : ''}" data-mode="OPERATOR">OPERATOR</button>
-        <button class="hal-mode-badge ${mode === 'DIAGNOSTIC' ? 'active' : ''}" data-mode="DIAGNOSTIC">DIAGNOSTIC</button>
+        <button class="theme-picker-trigger" id="theme-picker-trigger" aria-label="Theme" style="--dot-color:${currentDef.accent}">
+          <span class="theme-picker-trigger-dot"></span>
+        </button>
+        <div class="theme-picker-popover" id="theme-picker-popover">
+          <div class="theme-picker-grid">${dots}</div>
+        </div>
       </div>
       <div class="hal-header-right">
         <span class="hal-clock text-mono" id="hal-clock">--:--:--</span>
@@ -34,20 +50,41 @@ function getViewLabel(): string {
   return labels[location.hash.slice(1) || 'dashboard'] || 'Overview';
 }
 
-export function initHeader(mode: FarmMode, onModeChange: (m: FarmMode) => void): void {
+export function initHeader(theme: ThemeName, onThemeChange: (t: ThemeName) => void): void {
   injectHeaderStyles();
   startClock();
-  setupModeButtons(onModeChange);
+  setupThemeButtons(onThemeChange);
 }
 
-function setupModeButtons(onModeChange: (m: FarmMode) => void): void {
-  document.querySelectorAll<HTMLButtonElement>('.hal-mode-badge').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const newMode = btn.dataset.mode as FarmMode;
-      document.querySelectorAll('.hal-mode-badge').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      onModeChange(newMode);
+function setupThemeButtons(onThemeChange: (t: ThemeName) => void): void {
+  function activateTheme(key: ThemeName): void {
+    document.querySelectorAll('.theme-dot').forEach(dot => {
+      dot.classList.toggle('active', dot.dataset.theme === key);
     });
+    onThemeChange(key);
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.theme-dot').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.theme as ThemeName;
+      activateTheme(key);
+      // Close mobile popover if open
+      document.getElementById('theme-picker-popover')?.classList.remove('open');
+    });
+  });
+
+  const themeTrigger = document.getElementById('theme-picker-trigger');
+  const themePopover = document.getElementById('theme-picker-popover');
+
+  themeTrigger?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    themePopover?.classList.toggle('open');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!themePopover?.contains(e.target as Node) && e.target !== themeTrigger) {
+      themePopover?.classList.remove('open');
+    }
   });
 
   const mobileMenuBtn = document.getElementById('mobile-menu-btn');
@@ -90,47 +127,118 @@ function injectHeaderStyles(): void {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+  flex-shrink: 1;
 }
 .hal-header-view-label {
   font-weight: 600;
   font-size: 15px;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .hal-header-center {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+/* Desktop theme dots */
+.theme-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--dot-color);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.theme-dot:hover {
+  transform: scale(1.15);
+}
+.theme-dot.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--dot-color);
+}
+
+/* Single trigger theme picker */
+.theme-picker-trigger {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+}
+.theme-picker-trigger-dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--dot-color);
+}
+.theme-picker-popover {
+  display: none;
   position: absolute;
+  top: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-card-lg);
+  z-index: 110;
+  min-width: 200px;
 }
-.hal-mode-badge {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  padding: 3px 12px;
-  border-radius: var(--radius-pill);
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  background: transparent;
-  cursor: pointer;
-  transition: all var(--transition-fast);
+.theme-picker-popover.open {
+  display: block;
 }
-.hal-mode-badge.active,
-.hal-mode-badge:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+.theme-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
 }
+.theme-picker-grid .theme-dot {
+  width: 32px;
+  height: 32px;
+  justify-self: center;
+}
+
 .hal-header-right {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  flex-shrink: 0;
 }
 .hal-clock {
   font-size: 13px;
   color: var(--text-secondary);
   letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .hal-header { padding: 0 var(--space-3); }
+  .hal-clock { font-size: 11px; }
+}
+@media (max-width: 480px) {
+  .hal-header-view-label {
+    max-width: 90px;
+  }
+  .hal-header-right {
+    gap: var(--space-2);
+  }
 }
 `;
   document.head.appendChild(style);

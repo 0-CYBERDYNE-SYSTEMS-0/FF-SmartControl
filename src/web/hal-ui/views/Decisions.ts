@@ -333,6 +333,30 @@ function injectDecisionsStyles(): void {
   background: var(--accent);
   color: var(--on-accent);
 }
+
+@media (max-width: 767px) {
+  .decisions-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .decision-summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .decision-left {
+    min-width: 0;
+  }
+  .decision-right {
+    margin-left: auto;
+  }
+  .decision-detail-row {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .decision-detail-label {
+    min-width: 0;
+  }
+}
 `;
   document.head.appendChild(style);
 }

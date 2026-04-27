@@ -367,20 +367,25 @@ export function renderDashboardHeroCard(
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  const activeKeys = opts.activeKeys ?? new Set(metrics.map(m => m.key));
-  const activeMetrics = metrics.filter(m => activeKeys.has(m.key));
-
-  if (activeMetrics.length === 0) {
-    container.innerHTML = '<div class="chart-empty">Select a metric</div>';
-    return;
-  }
-
-  // Only chart metrics that actually have data; empty placeholders are for toggles only
-  const chartMetrics = activeMetrics.filter(m => m.data.length > 0);
-  if (chartMetrics.length === 0) {
+  const metricsWithData = metrics.filter(m => m.data.length > 0);
+  if (metricsWithData.length === 0) {
     container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
     return;
   }
+
+  const activeKeys = opts.activeKeys ?? new Set(metrics.map(m => m.key));
+  const normalizedActiveKeys = new Set(
+    Array.from(activeKeys).filter(key => metricsWithData.some(metric => metric.key === key))
+  );
+  if (normalizedActiveKeys.size === 0) {
+    const fallbackKey =
+      ['temperature', 'humidity', 'co2'].find(key => metricsWithData.some(metric => metric.key === key)) ??
+      metricsWithData[0]?.key;
+    if (fallbackKey) normalizedActiveKeys.add(fallbackKey);
+  }
+
+  const activeMetrics = metricsWithData.filter(m => normalizedActiveKeys.has(m.key));
+  const chartMetrics = activeMetrics;
 
   const w = 566;
   const h = 210;
@@ -503,7 +508,7 @@ export function renderDashboardHeroCard(
     toggleMetrics.push(metric);
   }
   const toggleHtml = toggleMetrics.map(metric => {
-    const isActive = activeKeys.has(metric.key);
+    const isActive = normalizedActiveKeys.has(metric.key);
     return `<button class="dhc-toggle ${isActive ? 'active' : ''}" data-metric="${escapeAttr(metric.key)}" style="--toggle-color:${metric.color}">${escapeHtml(metric.label)}</button>`;
   }).join('');
 

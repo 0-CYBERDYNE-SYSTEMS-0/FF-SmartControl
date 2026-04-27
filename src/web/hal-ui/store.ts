@@ -2,14 +2,18 @@
 
 import type { HalDevice, HalDecision, HalState, SensorMetricSnapshot } from './api.js';
 
-export type FarmMode = 'CALM' | 'OPERATOR' | 'DIAGNOSTIC';
+export type ThemeName =
+  | 'emerald' | 'amber' | 'blue' | 'rose'
+  | 'violet' | 'cyan' | 'orange' | 'slate';
 export type UnitSystem = 'metric' | 'imperial';
 export type TimeFormat = '12h' | '24h';
 export type ViewId = 'dashboard' | 'devices' | 'sensors' | 'decisions' | 'cameras' | 'system' | 'terminal';
+export type DashboardLayout = 'calm' | 'operator' | 'diagnostic';
 
 export interface HalStore {
   // UI state
-  mode: FarmMode;
+  theme: ThemeName;
+  layout: DashboardLayout;
   activeView: ViewId;
   unitSystem: UnitSystem;
   timeFormat: TimeFormat;
@@ -35,7 +39,8 @@ type Listener = () => void;
 const listeners = new Set<Listener>();
 
 let state: HalStore = {
-  mode: 'CALM',
+  theme: 'emerald',
+  layout: 'operator',
   activeView: 'dashboard',
   unitSystem: 'metric',
   timeFormat: '24h',
@@ -147,54 +152,115 @@ export function formatDateTimeValue(date: Date, format: TimeFormat): string {
   });
 }
 
-// Mode accent definitions
-const modeDefinitions: Record<FarmMode, {
+export interface ThemePalette {
+  label: string;
   accent: string;
   accentBright: string;
   bgPrimary: string;
   bgSecondary: string;
   bgTertiary: string;
+  textPrimary: string;
+  textSecondary: string;
+  textTertiary: string;
   border: string;
   borderSubtle: string;
-}> = {
-  CALM: {
-    accent: '#238636',
-    accentBright: '#3FB950',
-    bgPrimary: '#07110C',
-    bgSecondary: '#0E1A14',
-    bgTertiary: '#14251B',
-    border: '#254332',
-    borderSubtle: '#182B20',
+  success: string;
+  warning: string;
+  danger: string;
+  glow: string;
+}
+
+export const themeDefinitions: Record<ThemeName, ThemePalette> = {
+  emerald: {
+    label: 'Emerald',
+    accent: '#238636', accentBright: '#3FB950',
+    bgPrimary: '#07110C', bgSecondary: '#0E1A14', bgTertiary: '#14251B',
+    textPrimary: '#E8FFF2', textSecondary: '#8FA89B', textTertiary: '#4A6356',
+    border: '#254332', borderSubtle: '#182B20',
+    success: '#3FB950', warning: '#D29922', danger: '#F85149',
+    glow: 'rgba(63,185,80,0.12)',
   },
-  OPERATOR: {
-    accent: '#E0A11B',
-    accentBright: '#F6C453',
-    bgPrimary: '#120D05',
-    bgSecondary: '#1D160A',
-    bgTertiary: '#2A210F',
-    border: '#4A3714',
-    borderSubtle: '#33250E',
+  amber: {
+    label: 'Amber',
+    accent: '#D29922', accentBright: '#E3B341',
+    bgPrimary: '#120D05', bgSecondary: '#1D160A', bgTertiary: '#2A210F',
+    textPrimary: '#FFF5D6', textSecondary: '#B8A67A', textTertiary: '#6B5D3E',
+    border: '#4A3714', borderSubtle: '#33250E',
+    success: '#7EB84A', warning: '#E3B341', danger: '#E06C5C',
+    glow: 'rgba(227,179,65,0.12)',
   },
-  DIAGNOSTIC: {
-    accent: '#2F81F7',
-    accentBright: '#58A6FF',
-    bgPrimary: '#07101E',
-    bgSecondary: '#0D1627',
-    bgTertiary: '#13213A',
-    border: '#263D63',
-    borderSubtle: '#172A47',
+  blue: {
+    label: 'Blue',
+    accent: '#388BFD', accentBright: '#58A6FF',
+    bgPrimary: '#07101E', bgSecondary: '#0D1627', bgTertiary: '#13213A',
+    textPrimary: '#E0F0FF', textSecondary: '#7A9EC7', textTertiary: '#4A6385',
+    border: '#263D63', borderSubtle: '#172A47',
+    success: '#4FD17A', warning: '#D29922', danger: '#F85149',
+    glow: 'rgba(88,166,255,0.12)',
+  },
+  rose: {
+    label: 'Rose',
+    accent: '#F85149', accentBright: '#FF7B72',
+    bgPrimary: '#1A0A0A', bgSecondary: '#271212', bgTertiary: '#361A1A',
+    textPrimary: '#FFE8E8', textSecondary: '#C78F8F', textTertiary: '#7A5555',
+    border: '#5C2A2A', borderSubtle: '#3D1A1A',
+    success: '#7EB84A', warning: '#E3B341', danger: '#FF7B72',
+    glow: 'rgba(255,123,114,0.12)',
+  },
+  violet: {
+    label: 'Violet',
+    accent: '#A371F7', accentBright: '#C084FC',
+    bgPrimary: '#0F0A1A', bgSecondary: '#18122B', bgTertiary: '#231A3D',
+    textPrimary: '#F0E8FF', textSecondary: '#A08EC7', textTertiary: '#6B5D85',
+    border: '#3D2A63', borderSubtle: '#2A1A47',
+    success: '#7EB84A', warning: '#D29922', danger: '#F85149',
+    glow: 'rgba(192,132,252,0.12)',
+  },
+  cyan: {
+    label: 'Cyan',
+    accent: '#22B8CF', accentBright: '#4FD1E0',
+    bgPrimary: '#051015', bgSecondary: '#0A1A22', bgTertiary: '#0F2530',
+    textPrimary: '#E0F7FF', textSecondary: '#7AB8C7', textTertiary: '#4A7585',
+    border: '#1A3D4D', borderSubtle: '#102A36',
+    success: '#4FD17A', warning: '#D29922', danger: '#F85149',
+    glow: 'rgba(79,209,224,0.12)',
+  },
+  orange: {
+    label: 'Orange',
+    accent: '#E07B16', accentBright: '#F6A94C',
+    bgPrimary: '#140E05', bgSecondary: '#1F170A', bgTertiary: '#2E2110',
+    textPrimary: '#FFF0D6', textSecondary: '#C7A87A', textTertiary: '#7A6B4A',
+    border: '#4D3514', borderSubtle: '#36250E',
+    success: '#7EB84A', warning: '#F6A94C', danger: '#F85149',
+    glow: 'rgba(246,169,76,0.12)',
+  },
+  slate: {
+    label: 'Slate',
+    accent: '#6C7278', accentBright: '#8B949E',
+    bgPrimary: '#0A0C0F', bgSecondary: '#111318', bgTertiary: '#181B22',
+    textPrimary: '#E8EAED', textSecondary: '#8B949E', textTertiary: '#555B63',
+    border: '#2E333B', borderSubtle: '#1E2228',
+    success: '#7EB84A', warning: '#D29922', danger: '#F85149',
+    glow: 'rgba(139,148,158,0.12)',
   },
 };
 
-export function applyModeAccent(mode: FarmMode): void {
+export function applyTheme(theme: ThemeName): void {
   const root = document.documentElement;
-  root.dataset.mode = mode.toLowerCase();
-  const def = modeDefinitions[mode];
+  root.dataset.theme = theme;
+  const def = themeDefinitions[theme];
   root.style.setProperty('--accent', def.accent);
   root.style.setProperty('--accent-bright', def.accentBright);
   root.style.setProperty('--bg-primary', def.bgPrimary);
   root.style.setProperty('--bg-secondary', def.bgSecondary);
   root.style.setProperty('--bg-tertiary', def.bgTertiary);
+  root.style.setProperty('--text-primary', def.textPrimary);
+  root.style.setProperty('--text-secondary', def.textSecondary);
+  root.style.setProperty('--text-tertiary', def.textTertiary);
   root.style.setProperty('--border', def.border);
   root.style.setProperty('--border-subtle', def.borderSubtle);
+  root.style.setProperty('--success', def.success);
+  root.style.setProperty('--warning', def.warning);
+  root.style.setProperty('--danger', def.danger);
+  root.style.setProperty('--glow', def.glow);
 }

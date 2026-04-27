@@ -257,7 +257,7 @@ export function injectOperatorPanelStyles(): void {
   style.textContent = `
 .operator-panels {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: var(--space-4);
   margin-top: var(--space-6);
 }
@@ -266,11 +266,14 @@ export function injectOperatorPanelStyles(): void {
   display: flex;
   flex-direction: column;
   min-height: 200px;
+  min-width: 0;
 }
 .op-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   margin-bottom: var(--space-3);
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--border-subtle);
@@ -292,7 +295,7 @@ export function injectOperatorPanelStyles(): void {
 /* Device Grid */
 .op-device-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: var(--space-2);
 }
 .op-device-cell {
@@ -328,9 +331,7 @@ export function injectOperatorPanelStyles(): void {
   display: block;
   font-size: 12px;
   font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .op-device-protocol {
   display: block;
@@ -416,9 +417,7 @@ export function injectOperatorPanelStyles(): void {
 .op-alert-text {
   flex: 1;
   font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .op-alert-time {
   flex-shrink: 0;
@@ -482,12 +481,13 @@ export function injectOperatorPanelStyles(): void {
   transition: width 500ms ease;
 }
 
-@media (max-width: 1200px) {
-  .operator-panels { grid-template-columns: repeat(3, 1fr); }
-}
 @media (max-width: 767px) {
-  .operator-panels { grid-template-columns: 1fr; }
-  .op-device-grid { grid-template-columns: 1fr; }
+  .op-panel {
+    min-height: 0;
+  }
+  .op-device-grid {
+    grid-template-columns: 1fr;
+  }
 }
 `;
   document.head.appendChild(style);

@@ -489,15 +489,28 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
       halRunMigrations();
       deps.logger.info?.('[HAL] Database migrated');
 
-      if (process.env.MQTT_BROKER_URL) {
-        const { mqttSubscriber } = await import('./hal/mqtt.js');
-        await mqttSubscriber.start();
-        deps.logger.info?.('[HAL] MQTT subscriber started');
+      if (process.env.HAL_SIM_MODE === '1') {
+        // Digital Twin Runtime — live simulation, no real hardware
+        const { startSimulator } = await import('./hal/simulator.js');
+        startSimulator({
+          tickMs: parseInt(process.env.HAL_SIM_TICK_MS || '5000', 10),
+          speed: parseFloat(process.env.HAL_SIM_SPEED || '1'),
+          seed: parseInt(process.env.HAL_SIM_SEED || '42', 10),
+          scenario: (process.env.HAL_SIM_SCENARIO as any) || 'normal_day',
+        });
+        deps.logger.info?.('[HAL] Simulator started (HAL_SIM_MODE=1)');
+      } else {
+        // Real hardware mode
+        if (process.env.MQTT_BROKER_URL) {
+          const { mqttSubscriber } = await import('./hal/mqtt.js');
+          await mqttSubscriber.start();
+          deps.logger.info?.('[HAL] MQTT subscriber started');
+        }
+        await halReg.poll();
+        deps.logger.info?.('[HAL] Initial device poll complete');
       }
 
-      await halReg.poll();
-      deps.logger.info?.('[HAL] Initial device poll complete');
-
+      // Seed static demo data for history/charts (idempotent — won't duplicate)
       const { seedHalDemoData } = await import('./hal/seed-data.js');
       seedHalDemoData();
       deps.logger.info?.('[HAL] Demo data seeded');
@@ -507,9 +520,17 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
       deps.logger.error?.({ err }, '[HAL] Init error — continuing without HAL');
     }
 
-    // Periodic HAL poll every 5 minutes (HAL_AUTO_DECISIONS triggers decision loop)
+    // Periodic HAL poll every 5 minutes (skip in sim mode — simulator handles its own loop)
     const halPollTimer = setInterval(async () => {
       try {
+        if (process.env.HAL_SIM_MODE === '1') {
+          // Simulator runs its own tick loop; just trigger decision cycle if enabled
+          if (process.env.HAL_AUTO_DECISIONS === 'true') {
+            const { runDecisionCycle } = await import('./agent/decision-loop.js');
+            await runDecisionCycle({ trigger: 'heartbeat' });
+          }
+          return;
+        }
         const { halRegistry: halReg } = await import('./hal/registry.js');
         await halReg.poll();
         if (process.env.HAL_AUTO_DECISIONS === 'true') {

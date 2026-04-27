@@ -557,17 +557,21 @@
   function renderDashboardHeroCard(metrics2, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    const activeKeys = opts.activeKeys ?? new Set(metrics2.map((m) => m.key));
-    const activeMetrics = metrics2.filter((m) => activeKeys.has(m.key));
-    if (activeMetrics.length === 0) {
-      container.innerHTML = '<div class="chart-empty">Select a metric</div>';
-      return;
-    }
-    const chartMetrics = activeMetrics.filter((m) => m.data.length > 0);
-    if (chartMetrics.length === 0) {
+    const metricsWithData = metrics2.filter((m) => m.data.length > 0);
+    if (metricsWithData.length === 0) {
       container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
       return;
     }
+    const activeKeys = opts.activeKeys ?? new Set(metrics2.map((m) => m.key));
+    const normalizedActiveKeys = new Set(
+      Array.from(activeKeys).filter((key) => metricsWithData.some((metric) => metric.key === key))
+    );
+    if (normalizedActiveKeys.size === 0) {
+      const fallbackKey = ["temperature", "humidity", "co2"].find((key) => metricsWithData.some((metric) => metric.key === key)) ?? metricsWithData[0]?.key;
+      if (fallbackKey) normalizedActiveKeys.add(fallbackKey);
+    }
+    const activeMetrics = metricsWithData.filter((m) => normalizedActiveKeys.has(m.key));
+    const chartMetrics = activeMetrics;
     const w = 566;
     const h = 210;
     const pad = { l: 100, r: 80, t: 30, b: 40 };
@@ -659,7 +663,7 @@
       toggleMetrics.push(metric);
     }
     const toggleHtml = toggleMetrics.map((metric) => {
-      const isActive = activeKeys.has(metric.key);
+      const isActive = normalizedActiveKeys.has(metric.key);
       return `<button class="dhc-toggle ${isActive ? "active" : ""}" data-metric="${escapeAttr(metric.key)}" style="--toggle-color:${metric.color}">${escapeHtml3(metric.label)}</button>`;
     }).join("");
     container.innerHTML = `
@@ -1587,7 +1591,7 @@
       const sidebar = document.getElementById("hal-sidebar");
       const mobileBtn = document.getElementById("mobile-menu-btn");
       if (!sidebar || !mobileBtn) return;
-      if (window.innerWidth > 767) return;
+      if (window.innerWidth > 1279) return;
       if (!sidebar.contains(e.target) && !mobileBtn.contains(e.target)) {
         sidebar.classList.remove("open");
       }
@@ -1754,21 +1758,23 @@
 .sidebar.collapsed .sidebar-mode {
   justify-content: center;
 }
-@media (max-width: 767px) {
+@media (max-width: 1279px) {
   .sidebar {
+    width: min(86vw, 280px);
     position: fixed;
     left: 0;
     top: 0;
     bottom: 0;
-    z-index: 200;
+    z-index: 220;
     transform: translateX(-100%);
     transition: transform var(--transition-base);
+    box-shadow: var(--shadow-card-lg);
   }
   .sidebar.open {
     transform: translateX(0);
   }
   .sidebar.collapsed {
-    width: 200px;
+    width: min(86vw, 280px);
   }
   .sidebar.collapsed .sidebar-brand,
   .sidebar.collapsed .sidebar-label,
@@ -1812,12 +1818,11 @@
         <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
       </div>
       <div class="hal-header-center">
-        <div class="theme-picker-desktop">${dots}</div>
-        <button class="theme-picker-mobile-trigger" id="theme-picker-mobile-trigger" aria-label="Theme" style="--dot-color:${currentDef.accent}">
-          <span class="theme-picker-mobile-dot"></span>
+        <button class="theme-picker-trigger" id="theme-picker-trigger" aria-label="Theme" style="--dot-color:${currentDef.accent}">
+          <span class="theme-picker-trigger-dot"></span>
         </button>
-        <div class="theme-picker-mobile-popover" id="theme-picker-mobile-popover">
-          <div class="theme-picker-mobile-grid">${dots}</div>
+        <div class="theme-picker-popover" id="theme-picker-popover">
+          <div class="theme-picker-grid">${dots}</div>
         </div>
       </div>
       <div class="hal-header-right">
@@ -1852,18 +1857,18 @@
       btn.addEventListener("click", () => {
         const key = btn.dataset.theme;
         activateTheme(key);
-        document.getElementById("theme-picker-mobile-popover")?.classList.remove("open");
+        document.getElementById("theme-picker-popover")?.classList.remove("open");
       });
     });
-    const mobileTrigger = document.getElementById("theme-picker-mobile-trigger");
-    const mobilePopover = document.getElementById("theme-picker-mobile-popover");
-    mobileTrigger?.addEventListener("click", (e) => {
+    const themeTrigger = document.getElementById("theme-picker-trigger");
+    const themePopover = document.getElementById("theme-picker-popover");
+    themeTrigger?.addEventListener("click", (e) => {
       e.stopPropagation();
-      mobilePopover?.classList.toggle("open");
+      themePopover?.classList.toggle("open");
     });
     document.addEventListener("click", (e) => {
-      if (!mobilePopover?.contains(e.target) && e.target !== mobileTrigger) {
-        mobilePopover?.classList.remove("open");
+      if (!themePopover?.contains(e.target) && e.target !== themeTrigger) {
+        themePopover?.classList.remove("open");
       }
     });
     const mobileMenuBtn = document.getElementById("mobile-menu-btn");
@@ -1925,11 +1930,6 @@
 }
 
 /* Desktop theme dots */
-.theme-picker-desktop {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 .theme-dot {
   width: 18px;
   height: 18px;
@@ -1949,9 +1949,9 @@
   box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--dot-color);
 }
 
-/* Mobile theme picker */
-.theme-picker-mobile-trigger {
-  display: none;
+/* Single trigger theme picker */
+.theme-picker-trigger {
+  display: inline-flex;
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -1962,14 +1962,14 @@
   align-items: center;
   justify-content: center;
 }
-.theme-picker-mobile-dot {
+.theme-picker-trigger-dot {
   display: block;
   width: 14px;
   height: 14px;
   border-radius: 50%;
   background: var(--dot-color);
 }
-.theme-picker-mobile-popover {
+.theme-picker-popover {
   display: none;
   position: absolute;
   top: calc(100% + 8px);
@@ -1983,15 +1983,15 @@
   z-index: 110;
   min-width: 200px;
 }
-.theme-picker-mobile-popover.open {
+.theme-picker-popover.open {
   display: block;
 }
-.theme-picker-mobile-grid {
+.theme-picker-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--space-3);
 }
-.theme-picker-mobile-grid .theme-dot {
+.theme-picker-grid .theme-dot {
   width: 32px;
   height: 32px;
   justify-self: center;
@@ -2011,9 +2011,16 @@
 }
 
 @media (max-width: 767px) {
-  .theme-picker-desktop { display: none; }
-  .theme-picker-mobile-trigger { display: flex; }
   .hal-header { padding: 0 var(--space-3); }
+  .hal-clock { font-size: 11px; }
+}
+@media (max-width: 480px) {
+  .hal-header-view-label {
+    max-width: 90px;
+  }
+  .hal-header-right {
+    gap: var(--space-2);
+  }
 }
 `;
     document.head.appendChild(style);
@@ -2707,6 +2714,13 @@
     weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
     vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
   };
+  function resolveZoneName(deviceId, deviceName) {
+    if (deviceId.startsWith("tent_a_")) return "Tent A";
+    if (deviceId.startsWith("tent_b_")) return "Tent B";
+    if (/tent\s*a/i.test(deviceName)) return "Tent A";
+    if (/tent\s*b/i.test(deviceName)) return "Tent B";
+    return "Unzoned";
+  }
   async function loadHeroChartData() {
     const store = (await Promise.resolve().then(() => (init_store(), store_exports))).getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
@@ -2721,7 +2735,14 @@
             const data = await halApi.getSensorHistory(s.id, m, from, to);
             if (data.length > 0) {
               const cfg = metricConfig2[m];
-              layers.push({ deviceId: s.id, deviceName: s.name, metric: m, color: cfg?.color || "#888", data });
+              layers.push({
+                deviceId: s.id,
+                deviceName: s.name,
+                zoneName: resolveZoneName(s.id, s.name),
+                metric: m,
+                color: cfg?.color || "#888",
+                data
+              });
             }
           } catch {
           }
@@ -2952,7 +2973,7 @@
     style.textContent = `
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-6);
 }
@@ -2992,9 +3013,10 @@
   gap: 4px;
 }
 .kpi-value {
-  font-size: 28px;
+  font-size: clamp(22px, 4vw, 28px);
   font-weight: 600;
   line-height: 1;
+  overflow-wrap: anywhere;
 }
 .kpi-unit {
   font-size: 12px;
@@ -3011,6 +3033,7 @@
   font-weight: 600;
   font-family: var(--font-mono);
   margin-top: -4px;
+  overflow-wrap: anywhere;
 }
 .kpi-comparison.up {
   color: var(--success);
@@ -3018,11 +3041,8 @@
 .kpi-comparison.down {
   color: var(--danger);
 }
-@media (max-width: 1200px) {
-  .kpi-strip { grid-template-columns: repeat(3, 1fr); }
-}
 @media (max-width: 767px) {
-  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
 }
 `;
     document.head.appendChild(style);
@@ -3256,7 +3276,7 @@
     style.textContent = `
 .operator-panels {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: var(--space-4);
   margin-top: var(--space-6);
 }
@@ -3265,11 +3285,14 @@
   display: flex;
   flex-direction: column;
   min-height: 200px;
+  min-width: 0;
 }
 .op-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   margin-bottom: var(--space-3);
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--border-subtle);
@@ -3291,7 +3314,7 @@
 /* Device Grid */
 .op-device-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: var(--space-2);
 }
 .op-device-cell {
@@ -3327,9 +3350,7 @@
   display: block;
   font-size: 12px;
   font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .op-device-protocol {
   display: block;
@@ -3415,9 +3436,7 @@
 .op-alert-text {
   flex: 1;
   font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .op-alert-time {
   flex-shrink: 0;
@@ -3481,12 +3500,13 @@
   transition: width 500ms ease;
 }
 
-@media (max-width: 1200px) {
-  .operator-panels { grid-template-columns: repeat(3, 1fr); }
-}
 @media (max-width: 767px) {
-  .operator-panels { grid-template-columns: 1fr; }
-  .op-device-grid { grid-template-columns: 1fr; }
+  .op-panel {
+    min-height: 0;
+  }
+  .op-device-grid {
+    grid-template-columns: 1fr;
+  }
 }
 `;
     document.head.appendChild(style);
@@ -3758,17 +3778,21 @@
       const { layers } = await loadHeroChartData();
       if (sequence !== dashLoadSequence) return;
       const store = getStore();
-      const zones = [...new Set(layers.map((l) => l.deviceName))];
+      const zones = [...new Set(layers.map((l) => l.zoneName).filter(Boolean))];
       if (zones.length === 0) {
-        const sensorNames = store.devices.filter((d) => d.type === "sensor").map((d) => d.name);
-        if (sensorNames.length > 0) {
-          zones.push(...sensorNames);
+        const inferredZones = /* @__PURE__ */ new Set();
+        for (const device of store.devices.filter((d) => d.type === "sensor")) {
+          if (device.id.startsWith("tent_a_")) inferredZones.add("Tent A");
+          if (device.id.startsWith("tent_b_")) inferredZones.add("Tent B");
+        }
+        if (inferredZones.size > 0) {
+          zones.push(...Array.from(inferredZones));
         }
       }
       if (dashActiveZone && !zones.includes(dashActiveZone)) {
         dashActiveZone = "";
       }
-      const zoneLayers = dashActiveZone ? layers.filter((l) => l.deviceName === dashActiveZone) : layers;
+      const zoneLayers = dashActiveZone ? layers.filter((l) => l.zoneName === dashActiveZone) : layers;
       const allMetrics = zoneLayers.map((l) => {
         const cfg = DASH_METRIC_META[l.metric] || { label: l.metric, color: l.color, unit: "" };
         return {
@@ -3782,28 +3806,30 @@
           }))
         };
       });
-      for (const key of HERO_METRIC_KEYS) {
-        if (!allMetrics.find((m) => m.key === key)) {
-          const cfg = DASH_METRIC_META[key];
-          allMetrics.push({ key, label: cfg.label, color: cfg.color, unit: cfg.unit, data: [] });
-        }
-      }
       const heroMetrics = allMetrics.filter((m) => HERO_METRIC_KEYS.includes(m.key)).sort((a, b) => HERO_METRIC_KEYS.indexOf(a.key) - HERO_METRIC_KEYS.indexOf(b.key));
+      const availableMetricKeys = new Set(heroMetrics.filter((m) => m.data.length > 0).map((m) => m.key));
+      const fallbackMetric = ["temperature", "humidity", "co2"].find((key) => availableMetricKeys.has(key)) ?? Array.from(availableMetricKeys)[0];
       for (const key of Array.from(dashActiveMetrics)) {
-        if (!HERO_METRIC_KEYS.includes(key)) {
+        if (!availableMetricKeys.has(key)) {
           dashActiveMetrics.delete(key);
         }
       }
-      if (dashActiveMetrics.size === 0) {
-        dashActiveMetrics.add("temperature");
+      if (dashActiveMetrics.size === 0 && fallbackMetric) {
+        dashActiveMetrics.add(fallbackMetric);
       }
       if (sequence !== dashLoadSequence) return;
       renderDashboardHeroCard(heroMetrics, "dash-hero-card", {
         subtitle: "Environment Overview",
         activeKeys: new Set(dashActiveMetrics),
         onToggle: (key) => {
-          if (dashActiveMetrics.has(key)) dashActiveMetrics.delete(key);
-          else dashActiveMetrics.add(key);
+          if (!availableMetricKeys.has(key)) return;
+          const currentlyActive = Array.from(dashActiveMetrics).filter((metricKey) => availableMetricKeys.has(metricKey));
+          if (dashActiveMetrics.has(key)) {
+            if (currentlyActive.length <= 1) return;
+            dashActiveMetrics.delete(key);
+          } else {
+            dashActiveMetrics.add(key);
+          }
           void loadDashboardHeroCard();
         },
         zoneToggles: zones.length > 1 ? {
@@ -4094,7 +4120,7 @@
 /* \u2500\u2500 Layout \u2500\u2500 */
 .dash-layout {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
   gap: var(--space-6);
 }
 .dash-main { min-width: 0; }
@@ -4102,10 +4128,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  min-width: 0;
 }
 
 /* \u2500\u2500 CALM mode \u2500\u2500 */
-.calm-layout { grid-template-columns: 1fr 220px; }
+.calm-layout { grid-template-columns: minmax(0, 1fr) minmax(220px, 260px); }
 .calm-hero { margin-bottom: var(--space-6); }
 .calm-status-row {
   display: grid;
@@ -4216,13 +4243,13 @@
 }
 .dash-bottom-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: var(--space-6);
   margin-top: var(--space-6);
 }
 .device-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: var(--space-2);
 }
 .device-mini-card {
@@ -4300,11 +4327,11 @@
 }
 
 /* \u2500\u2500 DIAGNOSTIC mode \u2500\u2500 */
-.diag-layout { grid-template-columns: 1fr 280px; }
+.diag-layout { grid-template-columns: minmax(0, 1fr) minmax(240px, 280px); }
 .diag-raw-data { margin: var(--space-6) 0; }
 .diag-snapshot-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: var(--space-3);
 }
 .diag-snapshot {
@@ -4388,20 +4415,22 @@
 }
 
 /* \u2500\u2500 Responsive \u2500\u2500 */
-@media (max-width: 1023px) {
+@media (max-width: 1279px) {
   .dash-layout, .calm-layout, .diag-layout { grid-template-columns: 1fr; }
   .dash-sidebar { flex-direction: row; flex-wrap: wrap; }
-  .dash-sidebar > * { flex: 1; min-width: 240px; }
+  .dash-sidebar > * { flex: 1 1 260px; min-width: 0; }
   .calm-status-row { grid-template-columns: repeat(3, 1fr); }
-  .diag-snapshot-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 767px) {
-  .dash-bottom-grid { grid-template-columns: 1fr; }
-  .device-grid { grid-template-columns: 1fr; }
   .dash-hero-header { flex-direction: column; align-items: flex-start; }
   .dash-live-bar { gap: var(--space-2); }
   .calm-status-row { grid-template-columns: 1fr; }
-  .diag-snapshot-grid { grid-template-columns: 1fr; }
+  .dash-sidebar {
+    flex-direction: column;
+  }
+  .dash-sidebar > * {
+    flex: 1 1 auto;
+  }
 }
 `;
     document.head.appendChild(style);
@@ -4672,6 +4701,7 @@
     deviceId: "all",
     range: "24H",
     activeMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
+    availableMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
     activeZone: "",
     decisions: []
   };
@@ -4792,16 +4822,15 @@
     document.querySelectorAll(".metric-pill").forEach((btn) => {
       btn.addEventListener("click", () => {
         const metric = btn.dataset.metric;
+        if (!viewState.availableMetrics.has(metric)) return;
         if (viewState.activeMetrics.has(metric)) {
+          const activeAvailable = Array.from(viewState.activeMetrics).filter((key) => viewState.availableMetrics.has(key));
+          if (activeAvailable.length <= 1) return;
           viewState.activeMetrics.delete(metric);
         } else {
           viewState.activeMetrics.add(metric);
         }
-        document.querySelectorAll(".metric-pill").forEach((pill) => {
-          const key = pill.dataset.metric;
-          pill.classList.toggle("active", viewState.activeMetrics.has(key));
-          pill.setAttribute("aria-pressed", viewState.activeMetrics.has(key) ? "true" : "false");
-        });
+        syncMetricPills();
         void loadData(sensors);
       });
     });
@@ -4809,8 +4838,11 @@
   async function loadData(sensors) {
     const sequence = ++loadSequence;
     const selectedDevices = viewState.deviceId === "all" ? sensors : sensors.filter((s) => s.id === viewState.deviceId);
-    const activeMetricConfigs = metrics.filter((m) => viewState.activeMetrics.has(m.key));
     const { from, to } = getRangeBounds(viewState.range);
+    viewState.availableMetrics = getAvailableMetrics(selectedDevices);
+    reconcileActiveMetrics();
+    syncMetricPills();
+    const activeMetricConfigs = metrics.filter((m) => viewState.activeMetrics.has(m.key));
     const heroChart = document.getElementById("hero-chart");
     if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
     try {
@@ -4820,14 +4852,25 @@
         ...selectedDevices.flatMap(
           (device) => activeMetricConfigs.map(async (metric) => {
             const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
-            if (data.length > 0) layers.push({ deviceId: device.id, deviceName: device.name, metric, data });
+            if (data.length > 0) {
+              layers.push({
+                deviceId: device.id,
+                deviceName: device.name,
+                zoneName: resolveZoneName2(device.id, device.name),
+                metric,
+                data
+              });
+            }
           })
         )
       ]);
       if (sequence !== loadSequence) return;
-      const zones = [...new Set(layers.map((l) => l.deviceName))];
+      const zones = [...new Set(layers.map((l) => l.zoneName).filter(Boolean))];
       renderZoneToggles(zones);
-      const zoneLayers = viewState.activeZone ? layers.filter((l) => l.deviceName === viewState.activeZone) : layers;
+      viewState.availableMetrics = getAvailableMetrics(selectedDevices);
+      reconcileActiveMetrics();
+      syncMetricPills();
+      const zoneLayers = viewState.activeZone ? layers.filter((l) => l.zoneName === viewState.activeZone) : layers;
       viewState.decisions = decisions;
       renderHeroChart2(zoneLayers, decisions, sequence);
       renderDetailTable(zoneLayers);
@@ -4892,6 +4935,48 @@
         break;
     }
     return { from: from.toISOString(), to: to.toISOString() };
+  }
+  function getAvailableMetrics(selectedDevices) {
+    const store = getStore();
+    const available = /* @__PURE__ */ new Set();
+    const zoneDevices = viewState.activeZone ? selectedDevices.filter((device) => resolveZoneName2(device.id, device.name) === viewState.activeZone) : selectedDevices;
+    for (const device of zoneDevices) {
+      const snapshot = store.sensors[device.id];
+      if (!snapshot) continue;
+      for (const metric of metrics) {
+        const reading = snapshot[metric.key];
+        if (reading && typeof reading.value === "number" && Number.isFinite(reading.value)) {
+          available.add(metric.key);
+        }
+      }
+    }
+    return available;
+  }
+  function resolveZoneName2(deviceId, deviceName) {
+    if (deviceId.startsWith("tent_a_")) return "Tent A";
+    if (deviceId.startsWith("tent_b_")) return "Tent B";
+    if (/tent\s*a/i.test(deviceName)) return "Tent A";
+    if (/tent\s*b/i.test(deviceName)) return "Tent B";
+    return "Unzoned";
+  }
+  function reconcileActiveMetrics() {
+    for (const metricKey of Array.from(viewState.activeMetrics)) {
+      if (!viewState.availableMetrics.has(metricKey)) {
+        viewState.activeMetrics.delete(metricKey);
+      }
+    }
+    if (viewState.activeMetrics.size > 0) return;
+    const fallback = ["temperature", "humidity", "co2"].find((key) => viewState.availableMetrics.has(key)) ?? Array.from(viewState.availableMetrics)[0];
+    if (fallback) viewState.activeMetrics.add(fallback);
+  }
+  function syncMetricPills() {
+    document.querySelectorAll(".metric-pill").forEach((pill) => {
+      const key = pill.dataset.metric;
+      const available = viewState.availableMetrics.has(key);
+      pill.style.display = available ? "" : "none";
+      pill.classList.toggle("active", available && viewState.activeMetrics.has(key));
+      pill.setAttribute("aria-pressed", available && viewState.activeMetrics.has(key) ? "true" : "false");
+    });
   }
   function escapeAttr2(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -5212,10 +5297,12 @@
         <span class="qm-legend-item"><span class="qm-dot" style="background:#FF5C6C"></span>Old</span>
         <span class="qm-legend-item"><span class="qm-dot" style="background:#1A2822"></span>Missing</span>
       </div>
-      <table class="qm-table">
-        <thead><tr><th class="qm-th-device">Device</th>${headerCols}</tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <div class="qm-table-wrap">
+        <table class="qm-table">
+          <thead><tr><th class="qm-th-device">Device</th>${headerCols}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     </div>`;
   }
   function formatValue(value, unit) {
@@ -5257,6 +5344,7 @@
   gap: var(--space-2);
   align-items: center;
   flex-wrap: wrap;
+  min-width: 0;
 }
 .hal-input {
   background: var(--bg-tertiary);
@@ -5503,10 +5591,12 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .hal-table {
   width: 100%;
+  min-width: 560px;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -5606,8 +5696,13 @@
 }
 .qm-table {
   width: 100%;
+  min-width: 560px;
   border-collapse: collapse;
   font-size: 11px;
+}
+.qm-table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .qm-th, .qm-th-device {
   text-align: left;
@@ -5643,6 +5738,12 @@
 }
 @media (max-width: 768px) {
   .sensors-hero-header { flex-direction: column; align-items: flex-start; }
+  .sensors-hero-controls {
+    width: 100%;
+  }
+  .hal-input {
+    width: 100%;
+  }
   .hero-chart { min-height: 200px; }
   .metric-bar { gap: var(--space-1); }
   .metric-pill { height: 32px; padding: 0 10px; font-size: 11px; }
@@ -5963,6 +6064,30 @@
 .filter-btn:hover {
   background: var(--accent);
   color: var(--on-accent);
+}
+
+@media (max-width: 767px) {
+  .decisions-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .decision-summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .decision-left {
+    min-width: 0;
+  }
+  .decision-right {
+    margin-left: auto;
+  }
+  .decision-detail-row {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .decision-detail-label {
+    min-width: 0;
+  }
 }
 `;
     document.head.appendChild(style);

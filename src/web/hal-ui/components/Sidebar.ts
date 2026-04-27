@@ -1,6 +1,6 @@
 // Sidebar — collapsible left navigation with icons, active state, section grouping
 
-import type { FarmMode, ViewId } from '../store.js';
+import type { ViewId } from '../store.js';
 import { getStore, setStore } from '../store.js';
 
 const navItems: { id: ViewId; label: string; icon: string }[] = [
@@ -13,7 +13,7 @@ const navItems: { id: ViewId; label: string; icon: string }[] = [
   { id: 'terminal', label: 'Terminal', icon: terminalIcon() },
 ];
 
-export function renderSidebar(mode: FarmMode, activeView: ViewId, collapsed: boolean): string {
+export function renderSidebar(activeView: ViewId, collapsed: boolean): string {
   const items = navItems.map(item => `
     <button
       class="sidebar-item ${item.id === activeView ? 'active' : ''}"
@@ -43,12 +43,6 @@ export function renderSidebar(mode: FarmMode, activeView: ViewId, collapsed: boo
       <nav class="sidebar-nav" aria-label="Main navigation">
         ${items}
       </nav>
-      <div class="sidebar-footer">
-        <div class="sidebar-mode">
-          <span class="sidebar-mode-dot" style="background: var(--accent)"></span>
-          <span class="sidebar-mode-label">${mode}</span>
-        </div>
-      </div>
     </aside>
   `;
 }
@@ -80,7 +74,7 @@ export function initSidebar(onViewChange: (v: ViewId) => void): void {
     const sidebar = document.getElementById('hal-sidebar');
     const mobileBtn = document.getElementById('mobile-menu-btn');
     if (!sidebar || !mobileBtn) return;
-    if (window.innerWidth > 767) return;
+    if (window.innerWidth > 1279) return;
     if (!sidebar.contains(e.target as Node) && !mobileBtn.contains(e.target as Node)) {
       sidebar.classList.remove('open');
     }
@@ -256,21 +250,23 @@ function injectSidebarStyles(): void {
 .sidebar.collapsed .sidebar-mode {
   justify-content: center;
 }
-@media (max-width: 767px) {
+@media (max-width: 1279px) {
   .sidebar {
+    width: min(86vw, 280px);
     position: fixed;
     left: 0;
     top: 0;
     bottom: 0;
-    z-index: 200;
+    z-index: 220;
     transform: translateX(-100%);
     transition: transform var(--transition-base);
+    box-shadow: var(--shadow-card-lg);
   }
   .sidebar.open {
     transform: translateX(0);
   }
   .sidebar.collapsed {
-    width: 200px;
+    width: min(86vw, 280px);
   }
   .sidebar.collapsed .sidebar-brand,
   .sidebar.collapsed .sidebar-label,

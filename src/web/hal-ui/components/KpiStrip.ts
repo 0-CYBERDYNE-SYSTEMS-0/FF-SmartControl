@@ -241,7 +241,7 @@ export function injectKpiStyles(): void {
   style.textContent = `
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-6);
 }
@@ -281,9 +281,10 @@ export function injectKpiStyles(): void {
   gap: 4px;
 }
 .kpi-value {
-  font-size: 28px;
+  font-size: clamp(22px, 4vw, 28px);
   font-weight: 600;
   line-height: 1;
+  overflow-wrap: anywhere;
 }
 .kpi-unit {
   font-size: 12px;
@@ -300,6 +301,7 @@ export function injectKpiStyles(): void {
   font-weight: 600;
   font-family: var(--font-mono);
   margin-top: -4px;
+  overflow-wrap: anywhere;
 }
 .kpi-comparison.up {
   color: var(--success);
@@ -307,11 +309,8 @@ export function injectKpiStyles(): void {
 .kpi-comparison.down {
   color: var(--danger);
 }
-@media (max-width: 1200px) {
-  .kpi-strip { grid-template-columns: repeat(3, 1fr); }
-}
 @media (max-width: 767px) {
-  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
 }
 `;
   document.head.appendChild(style);

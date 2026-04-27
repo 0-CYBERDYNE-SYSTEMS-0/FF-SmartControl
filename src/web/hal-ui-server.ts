@@ -8,6 +8,7 @@ import { halDecisions } from '../hal/decisions.js';
 import { halRelays } from '../hal/relays.js';
 import type { MetricType } from '../hal/types.js';
 import { logger } from '../logger.js';
+import { getSimulator } from '../hal/simulator.js';
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -114,8 +115,15 @@ export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise
           return;
         }
         try {
-          await halRegistry.control(deviceId, action);
-          halRelays.log({ device_id: deviceId, state: action, reason: 'manual', triggered_by: 'hal-ui' });
+          // In simulator mode, delegate to simulator instead of real hardware
+          const sim = getSimulator();
+          if (sim) {
+            sim.setDeviceState(deviceId, action);
+            halRelays.log({ device_id: deviceId, state: action, reason: 'manual', triggered_by: 'hal-ui' });
+          } else {
+            await halRegistry.control(deviceId, action);
+            halRelays.log({ device_id: deviceId, state: action, reason: 'manual', triggered_by: 'hal-ui' });
+          }
           sendJson(res, 200, { ok: true });
         } catch (err: any) {
           sendJson(res, 500, { error: err.message });
@@ -191,6 +199,55 @@ export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise
       }
 
       sendJson(res, 404, { error: 'HAL API endpoint not found' });
+      return;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // INTERNAL SIMULATOR CONTROL — NOT exposed in production UI
+    // Access via: curl http://localhost:3392/_sim/status
+    // ═══════════════════════════════════════════════════════════════════════
+    if (requestPath.startsWith('/_sim/')) {
+      const sim = getSimulator();
+      if (!sim) {
+        sendJson(res, 503, { error: 'Simulator not running' });
+        return;
+      }
+
+      const simPath = requestPath.slice('/_sim'.length);
+
+      if (simPath === '/status' && method === 'GET') {
+        sendJson(res, 200, sim.getStatus());
+        return;
+      }
+
+      if (simPath === '/scenario' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        if (parsed.scenario) sim.setScenario(parsed.scenario);
+        sendJson(res, 200, { ok: true, scenario: parsed.scenario });
+        return;
+      }
+
+      if (simPath === '/speed' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        if (typeof parsed.speed === 'number') sim.setSpeed(parsed.speed);
+        sendJson(res, 200, { ok: true, speed: parsed.speed });
+        return;
+      }
+
+      if (simPath === '/fault' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        if (parsed.fault) sim.injectFault(parsed.fault);
+        sendJson(res, 200, { ok: true, fault: parsed.fault });
+        return;
+      }
+
+      sendJson(res, 404, { error: 'Simulator endpoint not found' });
       return;
     }
 

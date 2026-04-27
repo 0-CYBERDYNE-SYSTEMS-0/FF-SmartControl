@@ -21,8 +21,8 @@ import { renderTerminalView } from './views/Terminal.js';
 
 import { halApi } from './api.js';
 import type { HalState } from './api.js';
-import { getStore, setStore, applyModeAccent } from './store.js';
-import type { FarmMode, ViewId } from './store.js';
+import { getStore, setStore, applyTheme } from './store.js';
+import type { ThemeName, ViewId } from './store.js';
 
 type AsyncViewRenderer = (container: HTMLElement) => Promise<void>;
 
@@ -50,10 +50,10 @@ async function init(): Promise<void> {
 
   // Build shell
   const store = getStore();
-  applyModeAccent(store.mode);
+  applyTheme(store.theme);
   app.innerHTML = `
     <div class="app-layout" id="app-layout">
-      ${renderSidebar(store.mode, store.activeView, store.sidebarCollapsed)}
+      ${renderSidebar(store.activeView, store.sidebarCollapsed)}
       <div class="app-main">
         <div id="hal-header"></div>
         <main class="main-content" id="view-container"></main>
@@ -63,8 +63,8 @@ async function init(): Promise<void> {
 
   // Render header
   const headerEl = document.getElementById('hal-header')!;
-  headerEl.innerHTML = renderHeader(store.mode, handleModeChange);
-  initHeader(store.mode, handleModeChange);
+  headerEl.innerHTML = renderHeader(store.theme);
+  initHeader(store.theme, handleThemeChange);
 
   // Init sidebar
   initSidebar(handleViewChange);
@@ -82,19 +82,10 @@ async function init(): Promise<void> {
   startUptimeCounter();
 }
 
-function handleModeChange(mode: FarmMode): void {
-  setStore({ mode });
-  applyModeAccent(mode);
-  showToast(`Mode: ${mode}`, 'info', 2000);
-  // Re-render sidebar to update mode indicator
-  const sidebar = document.getElementById('hal-sidebar');
-  if (sidebar) {
-    const store = getStore();
-    const newSidebar = document.createElement('div');
-    newSidebar.innerHTML = renderSidebar(mode, store.activeView, store.sidebarCollapsed);
-    sidebar.outerHTML = newSidebar.firstElementChild!.outerHTML;
-    initSidebar(handleViewChange);
-  }
+function handleThemeChange(theme: ThemeName): void {
+  setStore({ theme });
+  applyTheme(theme);
+  showToast(`Theme: ${theme}`, 'info', 2000);
 }
 
 async function handleViewChange(viewId: ViewId): Promise<void> {
