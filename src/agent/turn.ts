@@ -1,6 +1,10 @@
 import { runDiagnostic, formatDiagnosticReport } from './diagnostic.js';
 import { runGenerator } from './generator.js';
-import { runReflector } from './reflector.js';
+import {
+  applySuggestion,
+  getPendingSuggestions,
+  runReflector,
+} from './reflector.js';
 import { executeVerifiedAction, runVerifier } from './verifier.js';
 import { halRegistry } from '../hal/registry.js';
 import { halSensors } from '../hal/sensors.js';
@@ -29,6 +33,8 @@ type FarmPalIntent =
   | 'status'
   | 'diagnostic'
   | 'reflection'
+  | 'suggestions'
+  | 'apply_suggestion'
   | 'emergency_stop'
   | 'control';
 
@@ -42,7 +48,10 @@ const SENSOR_METRICS: MetricType[] = [
 ];
 
 function normalizeMessage(message: string): string {
-  return message.trim().replace(/^!auto\s+/i, '').trim();
+  return message
+    .trim()
+    .replace(/^!auto\s+/i, '')
+    .trim();
 }
 
 function classifyIntent(message: string): FarmPalIntent {
@@ -55,7 +64,11 @@ function classifyIntent(message: string): FarmPalIntent {
   ) {
     return 'emergency_stop';
   }
-  if (text === '/diagnose' || text === 'diagnose' || text.includes('diagnostic')) {
+  if (
+    text === '/diagnose' ||
+    text === 'diagnose' ||
+    text.includes('diagnostic')
+  ) {
     return 'diagnostic';
   }
   if (
@@ -65,6 +78,16 @@ function classifyIntent(message: string): FarmPalIntent {
     text.includes('what did you learn')
   ) {
     return 'reflection';
+  }
+  if (
+    text === '/suggestions' ||
+    text === 'suggestions' ||
+    text.includes('pending suggestions')
+  ) {
+    return 'suggestions';
+  }
+  if (text.startsWith('/apply') || text.startsWith('apply suggestion')) {
+    return 'apply_suggestion';
   }
   if (
     text === '/status' ||
@@ -115,7 +138,9 @@ function formatStatus(): string {
   return lines.join('\n');
 }
 
-function formatReflectionSummary(report: Awaited<ReturnType<typeof runReflector>>): string {
+function formatReflectionSummary(
+  report: Awaited<ReturnType<typeof runReflector>>,
+): string {
   if (report.suggestions.length === 0) {
     return `${report.summary}\n\nNo pending controller suggestions were generated.`;
   }
@@ -130,15 +155,89 @@ function formatReflectionSummary(report: Awaited<ReturnType<typeof runReflector>
   return `${report.summary}\n\nPending suggestions:\n${suggestions}`;
 }
 
+function formatPendingSuggestions(): string {
+  const suggestions = getPendingSuggestions();
+  if (suggestions.length === 0) {
+    return 'No pending FarmPal suggestions. Run /reflect to generate a fresh review.';
+  }
+  return [
+    'Pending FarmPal suggestions',
+    ...suggestions.map(
+      (suggestion) =>
+        `- ${suggestion.id}: [${suggestion.category}] ${suggestion.currentValue} -> ${suggestion.suggestedValue} (${Math.round(
+          suggestion.confidence * 100,
+        )}%): ${suggestion.reasoning}`,
+    ),
+    '',
+    'Apply with: /apply <suggestion_id>',
+  ].join('\n');
+}
+
+function parseSuggestionId(message: string): string | null {
+  const trimmed = message.trim();
+  const match = trimmed.match(
+    /^(?:\/apply|apply suggestion)\s+([a-zA-Z0-9_-]+)/i,
+  );
+  return match?.[1] ?? null;
+}
+
+async function applyPendingSuggestion(
+  message: string,
+): Promise<FarmPalTurnResult> {
+  const id = parseSuggestionId(message);
+  if (!id) {
+    return {
+      ok: false,
+      streamed: false,
+      result:
+        'Missing suggestion id. Use /suggestions to list pending suggestions, then /apply <suggestion_id>.',
+    };
+  }
+
+  const suggestions = getPendingSuggestions();
+  const suggestion = suggestions.find((candidate) => candidate.id === id);
+  if (!suggestion) {
+    return {
+      ok: false,
+      streamed: false,
+      result: `Suggestion not found: ${id}`,
+    };
+  }
+
+  const result = await applySuggestion(suggestion);
+  return {
+    ok: result.success,
+    streamed: false,
+    result: result.message,
+  };
+}
+
 async function runControlTurn(
   input: FarmPalTurnInput,
   message: string,
 ): Promise<FarmPalTurnResult> {
-  const proposal = await runGenerator({
-    trigger: input.trigger || 'message',
-    message,
-    chatId: input.chatJid,
-  });
+  let proposal: Awaited<ReturnType<typeof runGenerator>>;
+  try {
+    proposal = await runGenerator({
+      trigger: input.trigger || 'message',
+      message,
+      chatId: input.chatJid,
+    });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    halDecisions.log({
+      decision: 'alert',
+      confidence: 1,
+      reasoning: `Control agent unavailable; no hardware action taken: ${reason}`,
+      outcome: 'failure',
+    });
+    return {
+      ok: false,
+      streamed: false,
+      result: `Control agent unavailable. No hardware action was taken.\nReason: ${reason}`,
+    };
+  }
+
   const verification = await runVerifier({
     proposedAction: {
       decision: proposal.decision,
@@ -198,7 +297,9 @@ async function runControlTurn(
     ok: execution.success,
     streamed: false,
     result: [
-      execution.success ? `Approved: ${proposal.decision}` : `Failed: ${proposal.decision}`,
+      execution.success
+        ? `Approved: ${proposal.decision}`
+        : `Failed: ${proposal.decision}`,
       proposal.deviceId ? `Device: ${proposal.deviceId}` : null,
       `Reason: ${proposal.reasoning}`,
       execution.message ? `Result: ${execution.message}` : null,
@@ -236,7 +337,11 @@ export async function runFarmPalTurn(
 
   if (intent === 'diagnostic') {
     const report = await runDiagnostic();
-    return { ok: true, streamed: false, result: formatDiagnosticReport(report) };
+    return {
+      ok: true,
+      streamed: false,
+      result: formatDiagnosticReport(report),
+    };
   }
 
   if (intent === 'reflection') {
@@ -246,6 +351,14 @@ export async function runFarmPalTurn(
       streamed: false,
       result: formatReflectionSummary(report),
     };
+  }
+
+  if (intent === 'suggestions') {
+    return { ok: true, streamed: false, result: formatPendingSuggestions() };
+  }
+
+  if (intent === 'apply_suggestion') {
+    return applyPendingSuggestion(message);
   }
 
   return runControlTurn(input, message);

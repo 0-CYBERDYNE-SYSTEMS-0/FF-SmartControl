@@ -1,9 +1,9 @@
 /**
  * FarmPal Diagnostic Agent
- * 
+ *
  * Read-only troubleshooting agent for technical support.
  * Analyzes logs, config, and system state to identify issues.
- * 
+ *
  * Uses the same callLLM infrastructure as the farm agent.
  * No file editing - reports findings for human review.
  */
@@ -20,7 +20,12 @@ import { DATA_DIR } from '../config.js';
 
 export interface DiagnosticResult {
   timestamp: string;
-  category: 'connectivity' | 'device' | 'sensor' | 'performance' | 'configuration';
+  category:
+    | 'connectivity'
+    | 'device'
+    | 'sensor'
+    | 'performance'
+    | 'configuration';
   severity: 'info' | 'warning' | 'critical';
   finding: string;
   details: string;
@@ -58,13 +63,13 @@ function collectDiagnosticData(): {
     path.join(DATA_DIR, '..', 'farmpal.log'),
     path.join(DATA_DIR, '..', 'error.log'),
   ];
-  
+
   for (const logPath of logPaths) {
     try {
       if (fs.existsSync(logPath)) {
         const content = fs.readFileSync(logPath, 'utf-8');
         const lines = content.split('\n').slice(-100); // Last 100 lines
-        logs.push(...lines.filter(l => l.trim()));
+        logs.push(...lines.filter((l) => l.trim()));
       }
     } catch {
       // Log file may not exist
@@ -74,18 +79,25 @@ function collectDiagnosticData(): {
   // Collect relevant config
   const config: Record<string, string> = {};
   const envVars = [
-    'HAL_SIM_MODE', 'MQTT_BROKER_URL', 'OLLAMA_BASE_URL', 'LLM_PROVIDER',
-    'HAL_AUTO_DECISIONS', 'HAL_AUTO_MODE', 'TELEGRAM_BOT_TOKEN',
-    'NODE_ENV', 'PORT'
+    'HAL_SIM_MODE',
+    'MQTT_BROKER_URL',
+    'OLLAMA_BASE_URL',
+    'LLM_PROVIDER',
+    'HAL_AUTO_DECISIONS',
+    'HAL_AUTO_MODE',
+    'TELEGRAM_BOT_TOKEN',
+    'NODE_ENV',
+    'PORT',
   ];
-  
+
   for (const key of envVars) {
     const value = process.env[key];
     if (value !== undefined) {
       // Mask sensitive values
-      config[key] = key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET')
-        ? '***'
-        : value;
+      config[key] =
+        key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET')
+          ? '***'
+          : value;
     }
   }
 
@@ -99,10 +111,16 @@ function collectDiagnosticData(): {
   const recentDecisions = halDecisions.recent(20);
 
   // Extract errors from logs
-  const errors = logs.filter(l => 
-    l.includes('ERROR') || l.includes('error') || l.includes('Error') ||
-    l.includes('FATAL') || l.includes('CRITICAL')
-  ).slice(-50);
+  const errors = logs
+    .filter(
+      (l) =>
+        l.includes('ERROR') ||
+        l.includes('error') ||
+        l.includes('Error') ||
+        l.includes('FATAL') ||
+        l.includes('CRITICAL'),
+    )
+    .slice(-50);
 
   return { logs, config, devices, recentAlerts, recentDecisions, errors };
 }
@@ -111,12 +129,12 @@ function formatUptime(seconds: number): string {
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
-  
+
   const parts: string[] = [];
   if (days > 0) parts.push(`${days}d`);
   if (hours > 0) parts.push(`${hours}h`);
   if (mins > 0) parts.push(`${mins}m`);
-  
+
   return parts.join(' ') || '<1m';
 }
 
@@ -131,9 +149,12 @@ export async function runDiagnostic(): Promise<DiagnosticReport> {
   const uptime = process.uptime();
 
   // Count device types
-  const sensorCount = data.devices.filter((d: any) => d.type === 'sensor').length;
-  const actuatorCount = data.devices.filter((d: any) => 
-    d.type === 'smart_plug' || d.type === 'relay' || d.type === 'gpio'
+  const sensorCount = data.devices.filter(
+    (d: any) => d.type === 'sensor',
+  ).length;
+  const actuatorCount = data.devices.filter(
+    (d: any) =>
+      d.type === 'smart_plug' || d.type === 'relay' || d.type === 'gpio',
   ).length;
 
   // Build diagnostic prompt
@@ -150,21 +171,35 @@ export async function runDiagnostic(): Promise<DiagnosticReport> {
     `  Recent Decisions: ${data.recentDecisions.length}`,
     '',
     'CONFIGURATION:',
-    Object.entries(data.config).map(([k, v]) => `  ${k}: ${v}`).join('\n'),
+    Object.entries(data.config)
+      .map(([k, v]) => `  ${k}: ${v}`)
+      .join('\n'),
     '',
     'DEVICES:',
     data.devices.length > 0
-      ? data.devices.map((d: any) => `  - ${d.label || d.id}: ${d.type} (${d.protocol}) state=${d.last_state || 'unknown'}`).join('\n')
+      ? data.devices
+          .map(
+            (d: any) =>
+              `  - ${d.label || d.id}: ${d.type} (${d.protocol}) state=${d.last_state || 'unknown'}`,
+          )
+          .join('\n')
       : '  (no devices registered)',
     '',
     'RECENT ALERTS:',
     data.recentAlerts.length > 0
-      ? data.recentAlerts.map((a: any) => `  - [${a.acknowledged ? 'ACK' : 'NEW'}] ${a.message}`).join('\n')
+      ? data.recentAlerts
+          .map(
+            (a: any) => `  - [${a.acknowledged ? 'ACK' : 'NEW'}] ${a.message}`,
+          )
+          .join('\n')
       : '  (none)',
     '',
     'RECENT ERRORS:',
     data.errors.length > 0
-      ? data.errors.slice(0, 20).map(e => `  ${e.slice(0, 200)}`).join('\n')
+      ? data.errors
+          .slice(0, 20)
+          .map((e) => `  ${e.slice(0, 200)}`)
+          .join('\n')
       : '  (none)',
     '',
     'Respond ONLY with valid JSON:',
@@ -184,24 +219,25 @@ export async function runDiagnostic(): Promise<DiagnosticReport> {
     'Return empty findings [] if no issues found.',
   ].join('\n');
 
-  const result = await callLLM('Analyze system data and identify issues.', {
-    system: systemPrompt,
-    temperature: 0.2,
-    maxTokens: 2048,
-  });
-
   let findings: DiagnosticResult[] = [];
   let summary = 'Diagnostic analysis complete.';
 
   try {
+    const result = await callLLM('Analyze system data and identify issues.', {
+      system: systemPrompt,
+      temperature: 0.2,
+      maxTokens: 2048,
+    });
     const jsonMatch = result.text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       findings = parsed.findings || [];
       summary = parsed.summary || summary;
     }
-  } catch {
-    logger.debug('Diagnostic: Failed to parse LLM response');
+  } catch (err) {
+    logger.debug({ err }, 'Diagnostic: LLM analysis unavailable');
+    summary =
+      'Diagnostic LLM analysis unavailable; returned built-in system checks only.';
   }
 
   // Add basic system checks
@@ -211,8 +247,11 @@ export async function runDiagnostic(): Promise<DiagnosticReport> {
       category: 'performance',
       severity: 'warning',
       finding: 'High memory usage',
-      details: `Heap usage at ${(memUsage.heapUsed / memUsage.heapTotal * 100).toFixed(1)}%`,
-      recommendations: ['Consider restarting FarmPal', 'Check for memory leaks'],
+      details: `Heap usage at ${((memUsage.heapUsed / memUsage.heapTotal) * 100).toFixed(1)}%`,
+      recommendations: [
+        'Consider restarting FarmPal',
+        'Check for memory leaks',
+      ],
     });
   }
 
@@ -223,7 +262,10 @@ export async function runDiagnostic(): Promise<DiagnosticReport> {
       severity: 'warning',
       finding: 'Multiple unacknowledged alerts',
       details: `${data.recentAlerts.filter((a: any) => !a.acknowledged).length} alerts need attention`,
-      recommendations: ['Review and acknowledge alerts', 'Check device configurations'],
+      recommendations: [
+        'Review and acknowledge alerts',
+        'Check device configurations',
+      ],
     });
   }
 
@@ -265,7 +307,12 @@ export function formatDiagnosticReport(report: DiagnosticReport): string {
   if (report.findings.length > 0) {
     lines.push('🔍 Findings:');
     for (const f of report.findings) {
-      const icon = f.severity === 'critical' ? '🔴' : f.severity === 'warning' ? '🟡' : '🔵';
+      const icon =
+        f.severity === 'critical'
+          ? '🔴'
+          : f.severity === 'warning'
+            ? '🟡'
+            : '🔵';
       lines.push(`  ${icon} [${f.category.toUpperCase()}] ${f.finding}`);
       lines.push(`     ${f.details}`);
       if (f.recommendations.length > 0) {

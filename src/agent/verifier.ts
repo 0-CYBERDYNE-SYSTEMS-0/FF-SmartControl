@@ -159,6 +159,12 @@ function isActuatorDecision(decision: string): boolean {
   return decision === 'turn_on' || decision === 'turn_off';
 }
 
+function requiresContextVerifier(decision: string): boolean {
+  return (
+    decision === 'turn_on' || decision === 'turn_off' || decision === 'adjust'
+  );
+}
+
 function maxLatestMetric(
   ctx: DeterministicSafetyContext,
   metric: MetricType,
@@ -292,14 +298,13 @@ export async function runVerifier(
     };
   }
 
-  // Use LLM for additional context-aware validation
-  const systemPrompt = buildSafetyPrompt(input);
-  const llmResult = await callLLM(
-    'Evaluate this proposed farm action for safety. Consider device state, recent history, and environmental conditions.',
-    { system: systemPrompt, temperature: 0.1, maxTokens: 512 },
-  );
-
   try {
+    // Use LLM for additional context-aware validation after deterministic checks.
+    const systemPrompt = buildSafetyPrompt(input);
+    const llmResult = await callLLM(
+      'Evaluate this proposed farm action for safety. Consider device state, recent history, and environmental conditions.',
+      { system: systemPrompt, temperature: 0.1, maxTokens: 512 },
+    );
     const jsonMatch = llmResult.text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
@@ -312,8 +317,12 @@ export async function runVerifier(
         );
       }
     }
-  } catch {
-    // LLM parse failure, continue with concerns
+  } catch (err) {
+    if (requiresContextVerifier(input.proposedAction.decision)) {
+      concerns.push(
+        `LLM_VERIFIER_UNAVAILABLE: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   const approved = concerns.length === 0;
