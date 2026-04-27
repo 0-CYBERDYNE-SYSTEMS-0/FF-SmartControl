@@ -65,6 +65,8 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { name: 'verbose', description: 'Cycle or set tool progress mode' },
   { name: 'deliver', description: 'Set delivery mode (on/off)' },
   { name: 'gateway', description: 'Gateway service action (status|restart)' },
+  { name: 'update', description: 'Pull, build, and restart host' },
+  { name: 'hal', description: 'HAL farm control (list|on|off|sensors|history|status)' },
   { name: 'new', description: 'Reset session before next run' },
   { name: 'reset', description: 'Alias for /new' },
   { name: 'abort', description: 'Abort active run' },
@@ -278,16 +280,47 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
           tui.requestRender();
         }
       }
+
+      if (frame.event === 'hal_alert') {
+        const alert = frame.payload as {
+          message: string;
+          deviceId: string;
+          metric: string;
+          value: number;
+          threshold: number;
+          operator: string;
+          timestamp?: string;
+        };
+        if (!alert) return;
+        chatLog.addSystem(
+          `🚨 HAL Alert: ${alert.message}`,
+        );
+        tui.requestRender();
+      }
     },
     onClose: (code, reason) => {
       connectionStatus = `disconnected (${code})${reason ? `: ${reason}` : ''}`;
       setActivityStatus('idle');
       updateFooter();
       tui.requestRender();
-      setTimeout(() => {
-        tui.stop();
-        process.exit(1);
-      }, 50);
+      client.startReconnectLoop();
+    },
+    onReconnecting: (attempt, max) => {
+      connectionStatus = `reconnecting ${attempt}/${max}`;
+      updateFooter();
+      tui.requestRender();
+    },
+    onReconnected: () => {
+      connectionStatus = 'connected';
+      chatLog.addSystem('Reconnected to gateway.');
+      updateFooter();
+      tui.requestRender();
+    },
+    onReconnectFailed: () => {
+      connectionStatus = 'disconnected';
+      chatLog.addSystem('Connection lost. Press Enter to retry or Ctrl+C to exit.');
+      updateFooter();
+      tui.requestRender();
     },
   });
 
@@ -348,6 +381,9 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
     const think = sessionPrefs.thinkLevel || 'off';
     const reasoning = sessionPrefs.reasoningLevel || 'off';
     const verbose = sessionPrefs.verboseMode || 'all';
+    const runIndicator = activeRunId
+      ? `run=${activeRunId.slice(0, 8)}`
+      : '';
     footer.setText(
       theme.dim(
         [
@@ -356,6 +392,7 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
           `reasoning=${reasoning}`,
           `verbose=${verbose}`,
           `deliver=${deliver ? 'on' : 'off'}`,
+          runIndicator,
           connectionStatus,
         ]
           .filter(Boolean)
@@ -708,11 +745,122 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
         }
         break;
 
+      case 'hal': {
+        const sub = (args || '').trim().split(/\s+/)[0]?.toLowerCase() || 'list';
+        const restArgs = (args || '').trim().split(/\s+/).slice(1).join(' ');
+        if (sub === 'list' || sub === 'devices') {
+          const res = await client.request<{
+            devices: Array<{
+              id: string;
+              type: string;
+              protocol: string;
+              label: string;
+              state: string;
+              last_value?: string | null;
+            }>;
+          }>('hal.devices', {});
+          const lines = (res.devices || []).map(
+            (d) =>
+              `• ${d.label || d.id} (${d.type}/${d.protocol}) — ${d.state}${d.last_value ? ' [' + d.last_value + ']' : ''}`,
+          );
+          chatLog.addSystem(
+            lines.length
+              ? 'HAL Devices:\n' + lines.join('\n')
+              : 'No HAL devices registered.',
+          );
+          break;
+        }
+        if (sub === 'on' || sub === 'off') {
+          const deviceArg = restArgs.trim();
+          if (!deviceArg) {
+            chatLog.addSystem(`usage: /hal ${sub} <device_id>`);
+            break;
+          }
+          const result = await client.request<{ ok: boolean }>('hal.control', {
+            deviceId: deviceArg,
+            action: sub,
+          });
+          chatLog.addSystem(
+            result.ok
+              ? `${deviceArg} turned ${sub}.`
+              : `Failed to turn ${sub} ${deviceArg}.`,
+          );
+          break;
+        }
+        if (sub === 'sensors') {
+          const res = await client.request<{
+            sensors: Array<{
+              device: { id: string; label: string };
+              temperature?: { value: number; unit: string } | null;
+              humidity?: { value: number; unit: string } | null;
+              co2?: { value: number; unit: string } | null;
+            }>;
+          }>('hal.sensors', {});
+          const lines = (res.sensors || []).map((s) => {
+            const temp = s.temperature ? `${s.temperature.value}°C` : '—';
+            const hum = s.humidity ? `${s.humidity.value}%` : '—';
+            return `${s.device.label || s.device.id}: ${temp} / ${hum}`;
+          });
+          chatLog.addSystem(
+            lines.length
+              ? 'HAL Sensors:\n' + lines.join('\n')
+              : 'No sensors registered.',
+          );
+          break;
+        }
+        if (sub === 'history') {
+          const [deviceArg, metricArg] = restArgs.trim().split(/\s+/);
+          if (!deviceArg) {
+            chatLog.addSystem('usage: /hal history <device_id> [metric]');
+            break;
+          }
+          const res = await client.request<{
+            history: Array<{
+              read_at: string;
+              value: number;
+              unit: string;
+            }>;
+          }>('hal.history', {
+            deviceId: deviceArg,
+            metric: metricArg || 'temperature',
+          });
+          const rows = (res.history || []).slice(-10);
+          if (!rows.length) {
+            chatLog.addSystem('No readings found.');
+            break;
+          }
+          chatLog.addSystem(
+            `History for ${deviceArg}:\n` +
+              rows.map((r) => `${r.read_at}: ${r.value}${r.unit}`).join('\n'),
+          );
+          break;
+        }
+        if (sub === 'status') {
+          const res = await client.request<{
+            simMode: boolean;
+            deviceCount: number;
+            sensorCount: number;
+          }>('hal.status', {});
+          chatLog.addSystem(
+            [
+              'HAL Status:',
+              `- sim_mode: ${res.simMode ? 'on' : 'off'}`,
+              `- devices: ${res.deviceCount}`,
+              `- sensors: ${res.sensorCount}`,
+            ].join('\n'),
+          );
+          break;
+        }
+        chatLog.addSystem(
+          'HAL commands: /hal list | on <device> | off <device> | sensors | history <device> [metric] | status',
+        );
+        break;
+      }
+
       case 'exit':
       case 'quit':
-        client.close();
-        tui.stop();
-        process.exit(0);
+        await gracefulExit(0);
+        return;
 
       default:
         chatLog.addSystem(`unknown command: /${name}`);
@@ -722,6 +870,56 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
   editor.onSubmit = (text: string) => {
     const value = text.trim();
     if (!value) return;
+
+    if (connectionStatus === 'disconnected') {
+      client.stopReconnectLoop();
+      void client
+        .connect()
+        .then(() => {
+          connectionStatus = 'connected';
+          chatLog.addSystem('Reconnected to gateway.');
+          updateFooter();
+          tui.requestRender();
+          if (value.startsWith('/')) {
+            editor.setText('');
+            void handleCommand(value)
+              .catch((err) => {
+                chatLog.addSystem(
+                  `error: ${err instanceof Error ? err.message : String(err)}`,
+                );
+                setActivityStatus('error');
+              })
+              .finally(() => {
+                tui.requestRender();
+              });
+          } else {
+            void sendMessage(value)
+              .then((status) => {
+                if (status === 'sent' || status === 'queued') {
+                  editor.setText('');
+                  return;
+                }
+                editor.setText(value);
+              })
+              .catch((err) => {
+                chatLog.addSystem(
+                  `error: ${err instanceof Error ? err.message : String(err)}`,
+                );
+                setActivityStatus('error');
+              })
+              .finally(() => {
+                tui.requestRender();
+              });
+          }
+        })
+        .catch((err) => {
+          chatLog.addSystem(
+            `reconnect failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          tui.requestRender();
+        });
+      return;
+    }
 
     if (value.startsWith('/')) {
       editor.setText('');
@@ -779,6 +977,16 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
       });
   };
 
+  const gracefulExit = async (code: number): Promise<void> => {
+    client.close();
+    try {
+      await tui.stop();
+    } catch {
+      // best effort
+    }
+    process.exit(code);
+  };
+
   editor.onCtrlC = () => {
     const now = Date.now();
     if (editor.getText().trim().length > 0) {
@@ -788,9 +996,8 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
       return;
     }
     if (now - lastCtrlCAt < 1000) {
-      client.close();
-      tui.stop();
-      process.exit(0);
+      void gracefulExit(0);
+      return;
     }
     lastCtrlCAt = now;
     setActivityStatus('press ctrl+c again to exit');
@@ -798,9 +1005,7 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
   };
 
   editor.onCtrlD = () => {
-    client.close();
-    tui.stop();
-    process.exit(0);
+    void gracefulExit(0);
   };
 
   editor.onCtrlT = () => {

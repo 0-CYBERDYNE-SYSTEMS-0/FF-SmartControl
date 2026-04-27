@@ -4798,6 +4798,55 @@ function createTuiGatewayAdapters(): TuiGatewayAdapters {
     },
     serviceGateway: async ({ action }) => runGatewayServiceCommand(action),
     hostUpdate: () => runUpdateCommand(),
+    halDevices: () => {
+      const { halRegistry } = require('./hal/registry.js');
+      return halRegistry.list().map((d: any) => ({
+        id: d.id,
+        type: d.type,
+        protocol: d.protocol,
+        label: d.label,
+        host: d.host ?? null,
+        state: d.last_state ?? 'unknown',
+        last_value: d.last_value ?? null,
+      }));
+    },
+    halControl: async ({ deviceId, action }) => {
+      const { halRegistry } = require('./hal/registry.js');
+      const { getSimulator } = require('./hal/simulator.js');
+      const sim = getSimulator();
+      if (sim) {
+        sim.setDeviceState(deviceId, action);
+        return { ok: true };
+      }
+      await halRegistry.control(deviceId, action);
+      return { ok: true };
+    },
+    halSensors: () => {
+      const { halRegistry } = require('./hal/registry.js');
+      const { halSensors } = require('./hal/sensors.js');
+      const devices = halRegistry.list().filter((d: any) => d.type === 'sensor');
+      return devices.map((dev: any) => ({
+        device: { id: dev.id, label: dev.label },
+        temperature: halSensors.latest(dev.id, 'temperature'),
+        humidity: halSensors.latest(dev.id, 'humidity'),
+        co2: halSensors.latest(dev.id, 'co2'),
+      }));
+    },
+    halHistory: ({ deviceId, metric, from, to }) => {
+      const { halSensors } = require('./hal/sensors.js');
+      const fromIso = from || new Date(Date.now() - 86400000).toISOString();
+      const toIso = to || new Date().toISOString();
+      return halSensors.history(deviceId, metric as any, fromIso, toIso);
+    },
+    halStatus: () => {
+      const { halRegistry } = require('./hal/registry.js');
+      return {
+        simMode: process.env.HAL_SIM_MODE === '1',
+        deviceCount: halRegistry.list().length,
+        sensorCount: halRegistry.list().filter((d: any) => d.type === 'sensor')
+          .length,
+      };
+    },
   };
 }
 
@@ -5523,6 +5572,15 @@ async function processHostEvent(event: HostEvent): Promise<void> {
         'Host event reported error',
       );
       return;
+    case 'hal_alert': {
+      const mainChatJid = findMainChatJid();
+      if (!mainChatJid) return;
+      const text = `🚨 Farm Alert: ${event.message}`;
+      void sendMessage(mainChatJid, text).catch((err) => {
+        logger.warn({ err, alertId: event.alertId }, 'HAL alert delivery failed');
+      });
+      return;
+    }
     case 'tool_progress': {
       if (!event.chatJid) return;
       if (!isTelegramJid(event.chatJid)) return;

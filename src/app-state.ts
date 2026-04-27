@@ -197,6 +197,7 @@ export interface TelegramToolProgressState {
   lines: string[];
   lastToolName?: string;
   chain: Promise<void>;
+  pendingCount: number;
 }
 
 // ---------------------------------------------------------------------------

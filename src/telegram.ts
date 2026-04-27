@@ -612,6 +612,7 @@ export interface TelegramBot {
     caption?: string,
   ) => Promise<void>;
   setTyping: (chatJid: string, isTyping: boolean) => Promise<void>;
+  stopAllTypingLoops: () => void;
   setCommands: (
     commands: TelegramCommand[],
     scope?: TelegramCommandScope,
@@ -681,8 +682,10 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBot {
   interface TypingLoopState {
     interval: ReturnType<typeof setInterval>;
     inFlight: boolean;
+    timeout: ReturnType<typeof setTimeout>;
   }
   const typingLoops = new Map<string, TypingLoopState>();
+  const TELEGRAM_TYPING_MAX_DURATION_MS = 120_000;
 
   interface PendingMediaGroup {
     messages: TelegramMessage[];
@@ -1318,6 +1321,7 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBot {
       const loop = typingLoops.get(chatId);
       if (loop) {
         clearInterval(loop.interval);
+        clearTimeout(loop.timeout);
         typingLoops.delete(chatId);
       }
       return;
@@ -1353,6 +1357,14 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBot {
           });
       }, TELEGRAM_TYPING_REFRESH_MS),
       inFlight: false,
+      timeout: setTimeout(() => {
+        const loop = typingLoops.get(chatId);
+        if (loop) {
+          clearInterval(loop.interval);
+          typingLoops.delete(chatId);
+          logger.debug({ chatJid }, 'Telegram typing indicator auto-stopped after max duration');
+        }
+      }, TELEGRAM_TYPING_MAX_DURATION_MS),
     };
     typingLoops.set(chatId, state);
 
@@ -1617,6 +1629,15 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBot {
     );
   }
 
+  function stopAllTypingLoops(): void {
+    for (const [chatId, loop] of typingLoops) {
+      clearInterval(loop.interval);
+      clearTimeout(loop.timeout);
+      typingLoops.delete(chatId);
+    }
+    logger.debug('All Telegram typing loops cleared');
+  }
+
   return {
     startPolling: (onEvent) => {
       startPolling(onEvent).catch((err) =>
@@ -1643,5 +1664,6 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBot {
     answerCallbackQuery,
     setMessageReaction,
     downloadFile,
+    stopAllTypingLoops,
   };
 }

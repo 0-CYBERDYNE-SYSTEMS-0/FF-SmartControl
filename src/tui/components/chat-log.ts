@@ -43,15 +43,26 @@ export class ChatLog extends Container {
     existing.setText(text);
   }
 
+  private pruneToolRunsForRunId(runId: string): void {
+    for (const key of this.toolRuns.keys()) {
+      if (key.startsWith(`${runId}:`)) {
+        this.toolRuns.delete(key);
+      }
+    }
+    this.lastToolByRun.delete(runId);
+  }
+
   finalizeAssistant(text: string, runId?: string) {
     const effectiveRunId = this.resolveRunId(runId);
     const existing = this.streamingRuns.get(effectiveRunId);
     if (existing) {
       existing.setText(text);
       this.streamingRuns.delete(effectiveRunId);
+      this.pruneToolRunsForRunId(effectiveRunId);
       return;
     }
     this.addChild(new AssistantMessageComponent(text));
+    this.pruneToolRunsForRunId(effectiveRunId);
   }
 
   dropAssistant(runId?: string) {
@@ -60,6 +71,7 @@ export class ChatLog extends Container {
     if (!existing) return;
     this.removeChild(existing);
     this.streamingRuns.delete(effectiveRunId);
+    this.pruneToolRunsForRunId(effectiveRunId);
   }
 
   upsertToolEvent(

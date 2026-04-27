@@ -47,3 +47,29 @@ CREATE TABLE IF NOT EXISTS hal_decision_log (
   decided_at  TEXT NOT NULL,
   completed_at TEXT
 );
+
+-- HAL Alert Rules: threshold-based alerting
+CREATE TABLE IF NOT EXISTS hal_alert_rules (
+  id          TEXT PRIMARY KEY,
+  device_id   TEXT NOT NULL REFERENCES hal_devices(id) ON DELETE CASCADE,
+  metric      TEXT NOT NULL,       -- 'temperature' | 'humidity' | 'co2' | ...
+  operator    TEXT NOT NULL,       -- 'gt' | 'lt' | 'eq'
+  threshold   REAL NOT NULL,
+  cooldown_ms INTEGER NOT NULL DEFAULT 300000,
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  created_at  TEXT NOT NULL
+);
+
+-- HAL Alerts: fired alert instances
+CREATE TABLE IF NOT EXISTS hal_alerts (
+  id          TEXT PRIMARY KEY,
+  rule_id     TEXT NOT NULL REFERENCES hal_alert_rules(id) ON DELETE CASCADE,
+  device_id   TEXT NOT NULL REFERENCES hal_devices(id) ON DELETE CASCADE,
+  metric      TEXT NOT NULL,
+  value       REAL NOT NULL,
+  threshold   REAL NOT NULL,
+  operator    TEXT NOT NULL,
+  message     TEXT NOT NULL,
+  acknowledged INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL
+);

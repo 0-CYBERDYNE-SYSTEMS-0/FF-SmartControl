@@ -281,6 +281,12 @@ export interface TelegramCommandDeps {
     allowed: boolean,
     reason: string,
   ) => void;
+  logger?: {
+    error?: (payload: unknown, message?: string) => void;
+    warn?: (payload: unknown, message?: string) => void;
+    info?: (payload: unknown, message?: string) => void;
+    debug?: (payload: unknown, message?: string) => void;
+  };
   whatsappEnabled?: boolean;
   hasWhatsAppSocket?: () => boolean;
   syncGroupMetadata?: (force?: boolean) => Promise<void>;
@@ -345,9 +351,16 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
     if (normalizedDetail) {
       message += `\n\n${normalizedDetail}`;
     }
-    const sent = await deps.sendAgentResultMessage(params.chatJid, message);
-    if (!sent) {
-      await deps.sendMessage(params.chatJid, message);
+    try {
+      const sent = await deps.sendAgentResultMessage(params.chatJid, message);
+      if (!sent) {
+        await deps.sendMessage(params.chatJid, message);
+      }
+    } catch (err) {
+      deps.logger?.error?.(
+        { err, chatJid: params.chatJid, requestId: params.requestId },
+        'Failed to send coder/subagent terminal message',
+      );
     }
   }
 
@@ -366,15 +379,6 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
       return;
     }
 
-    const existingRun = deps.activeChatRuns.get(params.chatJid);
-    if (existingRun) {
-      await deps.sendMessage(
-        params.chatJid,
-        `Cannot start coder while another run is active (${existingRun.requestId || 'unknown'}). Use /stop first.`,
-      );
-      return;
-    }
-
     const abortController = new AbortController();
     const activeRun = {
       chatJid: params.chatJid,
@@ -382,6 +386,14 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
       requestId: params.requestId,
       abortController,
     };
+    if (deps.activeChatRuns.has(params.chatJid)) {
+      const existingRun = deps.activeChatRuns.get(params.chatJid);
+      await deps.sendMessage(
+        params.chatJid,
+        `Cannot start coder while another run is active (${existingRun?.requestId || 'unknown'}). Use /stop first.`,
+      );
+      return;
+    }
     deps.activeChatRuns.set(params.chatJid, activeRun);
     deps.activeChatRunsById?.set(params.requestId, activeRun);
     deps.emitTuiChatEvent({
@@ -454,13 +466,20 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
           phase: 'error',
           detail: 'coder run failed',
         });
-        await sendRunTerminalMessage({
-          chatJid: params.chatJid,
-          requestId: params.requestId,
-          kind: 'coder',
-          status: 'failed',
-          detail: run.result,
-        });
+        try {
+          await sendRunTerminalMessage({
+            chatJid: params.chatJid,
+            requestId: params.requestId,
+            kind: 'coder',
+            status: 'failed',
+            detail: run.result,
+          });
+        } catch (err) {
+          deps.logger?.error?.(
+            { err, chatJid: params.chatJid, requestId: params.requestId },
+            'Failed to send coder failed terminal message',
+          );
+        }
       } else if (runWasAborted) {
         deps.emitTuiChatEvent({
           runId: params.requestId,
@@ -473,12 +492,19 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
           phase: 'end',
           detail: 'aborted',
         });
-        await sendRunTerminalMessage({
-          chatJid: params.chatJid,
-          requestId: params.requestId,
-          kind: 'coder',
-          status: 'aborted',
-        });
+        try {
+          await sendRunTerminalMessage({
+            chatJid: params.chatJid,
+            requestId: params.requestId,
+            kind: 'coder',
+            status: 'aborted',
+          });
+        } catch (err) {
+          deps.logger?.error?.(
+            { err, chatJid: params.chatJid, requestId: params.requestId },
+            'Failed to send coder aborted terminal message',
+          );
+        }
       } else if (run.result) {
         deps.persistAssistantHistory(
           params.chatJid,
@@ -486,7 +512,14 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
           params.requestId,
         );
         if (!run.streamed) {
-          await deps.sendAgentResultMessage(params.chatJid, run.result);
+          try {
+            await deps.sendAgentResultMessage(params.chatJid, run.result);
+          } catch (err) {
+            deps.logger?.error?.(
+              { err, chatJid: params.chatJid, requestId: params.requestId },
+              'Failed to send coder result message',
+            );
+          }
         }
         deps.emitTuiChatEvent({
           runId: params.requestId,
@@ -502,12 +535,19 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
           detail: run.streamed ? 'streamed' : 'complete',
         });
       } else {
-        await sendRunTerminalMessage({
-          chatJid: params.chatJid,
-          requestId: params.requestId,
-          kind: 'coder',
-          status: 'completed',
-        });
+        try {
+          await sendRunTerminalMessage({
+            chatJid: params.chatJid,
+            requestId: params.requestId,
+            kind: 'coder',
+            status: 'completed',
+          });
+        } catch (err) {
+          deps.logger?.error?.(
+            { err, chatJid: params.chatJid, requestId: params.requestId },
+            'Failed to send coder completed terminal message',
+          );
+        }
         deps.emitTuiAgentEvent({
           runId: params.requestId,
           sessionKey: deps.getSessionKeyForChat(params.chatJid),
@@ -1205,6 +1245,54 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
     return 'HAL commands: /hal list | discover | on <device> | off <device> | sensors | history <device>';
   }
 
+  // Diagnostic command - read-only troubleshooting
+  async function handleDiagnoseCommand(chatId: string): Promise<string> {
+    try {
+      const { runDiagnostic, formatDiagnosticReport } = await import('./agent/diagnostic.js');
+      deps.logger?.info?.('Running diagnostic analysis');
+      await deps.sendMessage(chatId, 'Running diagnostic analysis...');
+      const report = await runDiagnostic();
+      return formatDiagnosticReport(report);
+    } catch (err) {
+      deps.logger?.error?.({ err }, 'Diagnostic command failed');
+      return `Diagnostic failed: ${err}`;
+    }
+  }
+
+  // Reflector command - on-demand self-learning analysis
+  async function handleReflectorCommand(chatId: string): Promise<string> {
+    try {
+      const { runReflector } = await import('./agent/reflector.js');
+      deps.logger?.info?.('Running reflector analysis');
+      await deps.sendMessage(chatId, 'Running weekly reflection analysis...');
+      const report = await runReflector();
+      
+      if (report.suggestions.length === 0) {
+        return '📊 Weekly Reflection Complete\n\nNo actionable suggestions this week. Your farm is running well!';
+      }
+      
+      const lines = [
+        '📊 Weekly Reflection Complete',
+        '',
+        `Decisions: ${report.decisionCount} | Success rate: ${(report.successRate * 100).toFixed(1)}%`,
+        '',
+        '💡 Suggestions:',
+      ];
+      
+      for (const s of report.suggestions) {
+        lines.push(`  [${s.category}] ${s.currentValue} → ${s.suggestedValue}`);
+        lines.push(`    Confidence: ${(s.confidence * 100).toFixed(0)}%`);
+        lines.push(`    ${s.reasoning}`);
+        lines.push('');
+      }
+      
+      return lines.join('\n');
+    } catch (err) {
+      deps.logger?.error?.({ err }, 'Reflector command failed');
+      return `Reflection analysis failed: ${err}`;
+    }
+  }
+
   async function handleTelegramCommand(
     m: TelegramCommandMessage,
   ): Promise<boolean> {
@@ -1256,6 +1344,20 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
     if (cmd === '/hal') {
       const args = rest.join(' ');
       const responseText = await handleHALCommand(args, m.chatJid);
+      await deps.sendMessage(m.chatJid, responseText);
+      return true;
+    }
+
+    if (cmd === '/diagnose' || cmd === '/diagnostic') {
+      deps.logTelegramCommandAudit(m.chatJid, cmd, true, 'ok');
+      const responseText = await handleDiagnoseCommand(m.chatJid);
+      await deps.sendMessage(m.chatJid, responseText);
+      return true;
+    }
+
+    if (cmd === '/reflector') {
+      deps.logTelegramCommandAudit(m.chatJid, cmd, true, 'ok');
+      const responseText = await handleReflectorCommand(m.chatJid);
       await deps.sendMessage(m.chatJid, responseText);
       return true;
     }
@@ -2330,6 +2432,20 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
           requestId,
           abortController,
         };
+        if (deps.activeChatRuns.has(m.chatJid)) {
+          const existingRun = deps.activeChatRuns.get(m.chatJid);
+          deps.logTelegramCommandAudit(
+            m.chatJid,
+            cmd,
+            false,
+            'spawn blocked: active run',
+          );
+          await deps.sendMessage(
+            m.chatJid,
+            `Cannot spawn while another run is active (${existingRun?.requestId || 'unknown'}). Use /stop first.`,
+          );
+          return true;
+        }
         deps.activeChatRuns.set(m.chatJid, activeRun);
         deps.activeChatRunsById?.set(requestId, activeRun);
         deps.emitTuiChatEvent({
@@ -2396,13 +2512,20 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
               phase: 'error',
               detail: 'subagent run failed',
             });
-            await sendRunTerminalMessage({
-              chatJid: m.chatJid,
-              requestId,
-              kind: 'subagent',
-              status: 'failed',
-              detail: run.result,
-            });
+            try {
+              await sendRunTerminalMessage({
+                chatJid: m.chatJid,
+                requestId,
+                kind: 'subagent',
+                status: 'failed',
+                detail: run.result,
+              });
+            } catch (err) {
+              deps.logger?.error?.(
+                { err, chatJid: m.chatJid, requestId },
+                'Failed to send subagent failed terminal message',
+              );
+            }
           } else if (runWasAborted) {
             deps.emitTuiChatEvent({
               runId: requestId,
@@ -2415,16 +2538,30 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
               phase: 'end',
               detail: 'aborted',
             });
-            await sendRunTerminalMessage({
-              chatJid: m.chatJid,
-              requestId,
-              kind: 'subagent',
-              status: 'aborted',
-            });
+            try {
+              await sendRunTerminalMessage({
+                chatJid: m.chatJid,
+                requestId,
+                kind: 'subagent',
+                status: 'aborted',
+              });
+            } catch (err) {
+              deps.logger?.error?.(
+                { err, chatJid: m.chatJid, requestId },
+                'Failed to send subagent aborted terminal message',
+              );
+            }
           } else if (run.result) {
             deps.persistAssistantHistory(m.chatJid, run.result, requestId);
             if (!run.streamed) {
-              await deps.sendAgentResultMessage(m.chatJid, run.result);
+              try {
+                await deps.sendAgentResultMessage(m.chatJid, run.result);
+              } catch (err) {
+                deps.logger?.error?.(
+                  { err, chatJid: m.chatJid, requestId },
+                  'Failed to send subagent result message',
+                );
+              }
             }
             deps.emitTuiChatEvent({
               runId: requestId,
@@ -2440,12 +2577,19 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
               detail: run.streamed ? 'streamed' : 'complete',
             });
           } else {
-            await sendRunTerminalMessage({
-              chatJid: m.chatJid,
-              requestId,
-              kind: 'subagent',
-              status: 'completed',
-            });
+            try {
+              await sendRunTerminalMessage({
+                chatJid: m.chatJid,
+                requestId,
+                kind: 'subagent',
+                status: 'completed',
+              });
+            } catch (err) {
+              deps.logger?.error?.(
+                { err, chatJid: m.chatJid, requestId },
+                'Failed to send subagent completed terminal message',
+              );
+            }
             deps.emitTuiAgentEvent({
               runId: requestId,
               sessionKey: deps.getSessionKeyForChat(m.chatJid),

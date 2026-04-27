@@ -85,6 +85,16 @@ export type HostEvent =
       requestId?: string;
     })
   | (HostEventBase & {
+      kind: 'hal_alert';
+      alertId: string;
+      deviceId: string;
+      metric: string;
+      value: number;
+      threshold: number;
+      operator: string;
+      message: string;
+    })
+  | (HostEventBase & {
       kind: 'chat_state_changed';
       runId: string;
       sessionKey: string;
@@ -388,6 +398,20 @@ export function projectEventToGatewayFrame(
             ...(event.output ? { output: event.output } : {}),
             ...(event.error ? { error: event.error } : {}),
           },
+        },
+      };
+    case 'hal_alert':
+      return {
+        event: 'hal_alert',
+        payload: {
+          alertId: event.alertId,
+          deviceId: event.deviceId,
+          metric: event.metric,
+          value: event.value,
+          threshold: event.threshold,
+          operator: event.operator,
+          message: event.message,
+          timestamp: event.createdAt,
         },
       };
     default:

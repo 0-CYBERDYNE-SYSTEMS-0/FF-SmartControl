@@ -3,6 +3,7 @@ export interface LLMOptions {
   temperature?: number;
   maxTokens?: number;
   system?: string;
+  image?: string; // Base64 encoded image for vision models
 }
 
 export interface LLMResponse {
@@ -12,13 +13,46 @@ export interface LLMResponse {
   finishReason?: string;
 }
 
+/**
+ * Ollama-first provider detection.
+ * Priority: ollama (local) > anthropic > openai > others
+ */
 function getProvider(): 'openai' | 'anthropic' | 'zai' | 'ollama' | 'lm-studio' {
-  const api = (process.env.PI_API || process.env.LLM_PROVIDER || 'openai').toLowerCase();
-  if (api === 'anthropic' || api === 'claude') return 'anthropic';
-  if (api === 'zai' || api === 'glm') return 'zai';
-  if (api === 'ollama') return 'ollama';
-  if (api === 'lm-studio' || api === 'lmstudio') return 'lm-studio';
-  return 'openai';
+  // Check explicit override first
+  const explicit = (process.env.LLM_PROVIDER || '').toLowerCase();
+  if (explicit) {
+    if (explicit === 'anthropic' || explicit === 'claude') return 'anthropic';
+    if (explicit === 'zai' || explicit === 'glm') return 'zai';
+    if (explicit === 'ollama') return 'ollama';
+    if (explicit === 'lm-studio' || explicit === 'lmstudio') return 'lm-studio';
+    if (explicit === 'openai') return 'openai';
+  }
+
+  // Default to Ollama if available (local-first)
+  if (process.env.OLLAMA_BASE_URL || isOllamaRunning()) {
+    return 'ollama';
+  }
+
+  // Fall back to cloud providers
+  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
+  if (process.env.OPENAI_API_KEY || process.env.PI_API_KEY) return 'openai';
+  if (process.env.ZAI_API_KEY) return 'zai';
+
+  // Ultimate fallback to Ollama
+  return 'ollama';
+}
+
+/**
+ * Check if Ollama is running locally
+ */
+function isOllamaRunning(): boolean {
+  try {
+    const { execSync } = require('child_process');
+    execSync('curl -s http://localhost:11434/api/tags', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function callLLM(prompt: string, options: LLMOptions = {}): Promise<LLMResponse> {
@@ -130,7 +164,29 @@ async function callZai(prompt: string, options: LLMOptions): Promise<LLMResponse
 
 async function callOllama(prompt: string, options: LLMOptions): Promise<LLMResponse> {
   const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-  const model = options.model || process.env.OLLAMA_MODEL || 'llama3.2';
+  
+  // Default to qwen3.5:2b for local-first (vision model with tool calling)
+  const model = options.model || process.env.OLLAMA_MODEL || 'qwen3.5:2b';
+  
+  // Support vision models (like qwen3.5) with image input
+  if (options.image) {
+    const res = await fetch(`${baseUrl}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        prompt,
+        images: [options.image],
+        system: options.system,
+        temperature: options.temperature ?? 0.7,
+        options: { num_predict: options.maxTokens ?? 2048 },
+      }),
+    });
+    if (!res.ok) throw new Error(`Ollama vision error: ${res.status}`);
+    const data = await res.json() as { response?: string; model?: string };
+    return { text: data.response || '', model: data.model || model };
+  }
+
   const res = await fetch(`${baseUrl}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

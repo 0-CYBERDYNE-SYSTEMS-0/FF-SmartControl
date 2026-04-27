@@ -184,6 +184,8 @@ function appendTelegramToolProgressLine(
   return next.slice(next.length - MAX_TELEGRAM_TOOL_PROGRESS_ENTRIES);
 }
 
+const MAX_TELEGRAM_TOOL_PROGRESS_PENDING = 24;
+
 export function enqueueTelegramToolProgressMessage(params: {
   bot: Pick<TelegramBot, 'sendStreamMessage' | 'editStreamMessage'>;
   runs: Map<string, TelegramToolProgressState>;
@@ -198,11 +200,18 @@ export function enqueueTelegramToolProgressMessage(params: {
     ({
       lines: [],
       chain: Promise.resolve(),
+      pendingCount: 0,
     } satisfies TelegramToolProgressState);
+
+  if (run.pendingCount >= MAX_TELEGRAM_TOOL_PROGRESS_PENDING) {
+    return;
+  }
+  run.pendingCount++;
 
   run.chain = run.chain
     .catch(() => {})
     .then(async () => {
+      run.pendingCount = Math.max(0, run.pendingCount - 1);
       const line = buildTelegramToolProgressLine(
         params.event,
         params.mode,
@@ -225,6 +234,9 @@ export function enqueueTelegramToolProgressMessage(params: {
         run.messageId,
         text,
       );
+    })
+    .catch(() => {
+      run.pendingCount = Math.max(0, run.pendingCount - 1);
     });
 
   params.runs.set(key, run);

@@ -130,6 +130,8 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
       triggerPattern: deps.constants.triggerPattern,
     });
 
+    const callbackLocks = new Map<string, Promise<void>>();
+
     deps.state.telegramBot.startPolling(async (event: any) => {
       try {
         deps.logger.debug?.(
@@ -138,7 +140,22 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
         );
 
         if (event.kind === 'callback_query') {
-          await deps.handleTelegramCallbackQuery(event);
+          const chatJid = event.chatJid as string;
+          const previous = callbackLocks.get(chatJid) ?? Promise.resolve();
+          const next = previous
+            .then(() => deps.handleTelegramCallbackQuery(event))
+            .catch((err) => {
+              deps.logger.error?.(
+                { err, chatJid, eventKind: event.kind },
+                'Unhandled exception in Telegram callback query handler',
+              );
+            })
+            .finally(() => {
+              if (callbackLocks.get(chatJid) === next) {
+                callbackLocks.delete(chatJid);
+              }
+            });
+          callbackLocks.set(chatJid, next);
           return;
         }
 
@@ -442,11 +459,23 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     }
   }
 
+  let halPollTimer: ReturnType<typeof setInterval> | null = null;
+  let halAlertTimer: ReturnType<typeof setInterval> | null = null;
+
   async function shutdownAndExit(
     signal: string,
     exitCode: number,
   ): Promise<void> {
     stopFarmServicesForShutdown(signal);
+    deps.state.telegramBot?.stopAllTypingLoops?.();
+    if (halPollTimer) {
+      clearInterval(halPollTimer);
+      halPollTimer = null;
+    }
+    if (halAlertTimer) {
+      clearInterval(halAlertTimer);
+      halAlertTimer = null;
+    }
     await deps.stopWebControlCenterService?.();
     await deps.stopTuiGatewayService?.();
     await deps.stopHalUiService?.();
@@ -521,7 +550,7 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     }
 
     // Periodic HAL poll every 5 minutes (skip in sim mode — simulator handles its own loop)
-    const halPollTimer = setInterval(async () => {
+    halPollTimer = setInterval(async () => {
       try {
         if (process.env.HAL_SIM_MODE === '1') {
           // Simulator runs its own tick loop; just trigger decision cycle if enabled
@@ -542,6 +571,25 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
       }
     }, 5 * 60 * 1000);
     halPollTimer.unref?.();
+
+    // HAL alert evaluator — check sensor thresholds every minute
+    halAlertTimer = setInterval(async () => {
+      try {
+        const { evaluateHalAlerts } = await import('./hal/alert-evaluator.js');
+        const alerts = await evaluateHalAlerts();
+        if (alerts.length > 0) {
+          for (const alert of alerts) {
+            deps.logger.info?.(
+              { alertId: alert.id, deviceId: alert.deviceId, metric: alert.metric },
+              'HAL alert fired',
+            );
+          }
+        }
+      } catch (err) {
+        deps.logger.error?.({ err }, '[HAL] Alert evaluation error');
+      }
+    }, 60_000);
+    halAlertTimer.unref?.();
 
     deps.loadState?.();
     deps.migrateLegacyClaudeMemoryFiles?.();

@@ -163,6 +163,10 @@ export function formatHelpText(isMainGroup: boolean): string {
     return [
       'Telegram commands:',
       ...common,
+      '/hal list - list HAL devices',
+      '/hal sensors - latest sensor readings',
+      '/hal on|off <device> - control a device',
+      '/hal history <device> - 24h sensor history',
       '',
       'Admin commands are only available in the main chat for safety.',
     ].join('\n');
@@ -191,5 +195,9 @@ export function formatHelpText(isMainGroup: boolean): string {
     '/coding <task> - alias for /coder',
     '/coder-plan <task> - explicit delegated planning run',
     '/subagents list|stop|spawn - manage delegated subagent runs',
+    '/hal list - list HAL devices',
+    '/hal sensors - latest sensor readings',
+    '/hal on|off <device> - control a device',
+    '/hal history <device> - 24h sensor history',
   ].join('\n');
 }

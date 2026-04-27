@@ -54,6 +54,10 @@ export interface FinalizeCompletedRunParams {
     text: string,
     opts?: { prefixWhatsApp?: boolean },
   ) => Promise<boolean>;
+  consumeTelegramHostStreamState?: (
+    chatJid: string,
+    runId: string,
+  ) => TelegramMessagePreviewState | null;
   emitTuiChatEvent: (payload: {
     runId: string;
     sessionKey: string;
@@ -658,6 +662,7 @@ export async function finalizeCompletedRun(
         params.telegramPreviewState.messageId,
       );
     }
+    params.consumeTelegramHostStreamState?.(params.chatJid, params.runId);
     params.emitTuiChatEvent({
       runId: params.runId,
       sessionKey: params.sessionKey,

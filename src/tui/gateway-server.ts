@@ -82,6 +82,36 @@ export interface TuiGatewayAdapters {
     action: 'status' | 'restart' | 'doctor';
   }) => Promise<{ ok: boolean; text: string }> | { ok: boolean; text: string };
   hostUpdate: () => { ok: boolean; text: string };
+  halDevices?: () => Array<{
+    id: string;
+    type: string;
+    protocol: string;
+    label: string;
+    host: string | null;
+    state: string;
+    last_value?: string | null;
+  }>;
+  halControl?: (params: {
+    deviceId: string;
+    action: 'on' | 'off';
+  }) => Promise<{ ok: boolean }>;
+  halSensors?: () => Array<{
+    device: { id: string; label: string };
+    temperature?: { value: number; unit: string; read_at: string } | null;
+    humidity?: { value: number; unit: string; read_at: string } | null;
+    co2?: { value: number; unit: string; read_at: string } | null;
+  }>;
+  halHistory?: (params: {
+    deviceId: string;
+    metric: string;
+    from?: string;
+    to?: string;
+  }) => Array<{ read_at: string; value: number; unit: string }>;
+  halStatus?: () => {
+    simMode: boolean;
+    deviceCount: number;
+    sensorCount: number;
+  };
 }
 
 const DEFAULT_PORT = Number(process.env.FFT_NANO_TUI_PORT || 3390);
@@ -151,12 +181,39 @@ function asBoolean(input: unknown, fallback = false): boolean {
   return fallback;
 }
 
+const pendingFrames = new WeakMap<WebSocket, Array<string>>();
+
+function queueFrame(ws: WebSocket, frame: GatewayResponseFrame | GatewayEventFrame): void {
+  const serialized = JSON.stringify(frame);
+  const queue = pendingFrames.get(ws) ?? [];
+  queue.push(serialized);
+  pendingFrames.set(ws, queue);
+}
+
+function flushPendingFrames(ws: WebSocket): void {
+  const queue = pendingFrames.get(ws);
+  if (!queue) return;
+  pendingFrames.delete(ws);
+  for (const serialized of queue) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(serialized);
+    }
+  }
+}
+
 function sendFrame(
   ws: WebSocket,
   frame: GatewayResponseFrame | GatewayEventFrame,
 ): void {
-  if (ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify(frame));
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(frame));
+    return;
+  }
+  if (ws.readyState === WebSocket.CONNECTING) {
+    queueFrame(ws, frame);
+    return;
+  }
+  // CLOSING or CLOSED — drop silently
 }
 
 function broadcast(clients: Set<WebSocket>, frame: GatewayEventFrame): void {
@@ -227,9 +284,18 @@ export async function startTuiGatewayServer(
   wss.on('connection', (ws) => {
     clients.add(ws);
 
+    ws.on('error', (err) => {
+      logger.debug({ err }, 'TUI client socket error');
+    });
+
+    ws.on('open', () => {
+      flushPendingFrames(ws);
+    });
+
     ws.on('close', () => {
       clients.delete(ws);
       authenticatedClients.delete(ws);
+      pendingFrames.delete(ws);
     });
 
     ws.on('message', (payload) => {
@@ -443,18 +509,18 @@ export async function startTuiGatewayServer(
             break;
           }
 
-          const runId = asText(params.runId).trim() || randomUUID();
+          const clientRunId = asText(params.runId).trim() || randomUUID();
           const deliver = asBoolean(params.deliver, false);
           void adapters
             .sendChat({
               chatJid,
               sessionKey: adapters.getSessionKeyForChat(chatJid),
               message: text,
-              runId,
+              runId: clientRunId,
               deliver,
             })
             .then((result) => {
-              sendFrame(ws, response(frame.id, { ok: true, ...result }));
+              sendFrame(ws, response(frame.id, { ok: true, runId: result.runId || clientRunId, status: result.status }));
             })
             .catch((err) => {
               sendFrame(
@@ -519,6 +585,76 @@ export async function startTuiGatewayServer(
                 ),
               );
             });
+          break;
+        }
+
+        case 'hal.devices': {
+          const devices = adapters.halDevices ? adapters.halDevices() : [];
+          sendFrame(ws, response(frame.id, { devices }));
+          break;
+        }
+
+        case 'hal.control': {
+          const deviceId = asText(params.deviceId).trim();
+          const action = asText(params.action).trim().toLowerCase();
+          if (!deviceId || (action !== 'on' && action !== 'off')) {
+            sendFrame(
+              ws,
+              failure(frame.id, 'deviceId and action (on|off) are required.'),
+            );
+            break;
+          }
+          if (!adapters.halControl) {
+            sendFrame(ws, failure(frame.id, 'HAL control not available.'));
+            break;
+          }
+          void adapters
+            .halControl({ deviceId, action: action as 'on' | 'off' })
+            .then((result) => {
+              sendFrame(ws, response(frame.id, result));
+            })
+            .catch((err) => {
+              sendFrame(
+                ws,
+                failure(
+                  frame.id,
+                  err instanceof Error ? err.message : String(err),
+                ),
+              );
+            });
+          break;
+        }
+
+        case 'hal.sensors': {
+          const sensors = adapters.halSensors ? adapters.halSensors() : [];
+          sendFrame(ws, response(frame.id, { sensors }));
+          break;
+        }
+
+        case 'hal.history': {
+          const deviceId = asText(params.deviceId).trim();
+          const metric = asText(params.metric).trim() || 'temperature';
+          const from = asText(params.from) || undefined;
+          const to = asText(params.to) || undefined;
+          if (!deviceId) {
+            sendFrame(
+              ws,
+              failure(frame.id, 'deviceId is required.'),
+            );
+            break;
+          }
+          const history = adapters.halHistory
+            ? adapters.halHistory({ deviceId, metric, from, to })
+            : [];
+          sendFrame(ws, response(frame.id, { history }));
+          break;
+        }
+
+        case 'hal.status': {
+          const status = adapters.halStatus
+            ? adapters.halStatus()
+            : { simMode: false, deviceCount: 0, sensorCount: 0 };
+          sendFrame(ws, response(frame.id, status));
           break;
         }
 
