@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FarmPal Overview Gradient Prototype</title>
+  <style>
+    :root {
+      --bg: #0b1410;
+      --card-a: #192a20;
+      --card-b: #08170f;
+      --border: #2b5c44;
+      --text: #dfe8e2;
+      --muted: #7b8b85;
+      --temp: #ffb000;
+      --hum: #10bdfc;
+      --co2: #18d47b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif;
+      padding: 28px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .wrap {
+      width: 100%;
+      max-width: 860px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      border-radius: 999px;
+      border: 1px solid #3a4c44;
+      background: #102019;
+      color: #bdd1c7;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 12px;
+    }
+
+    .pill.temp { border-color: color-mix(in srgb, var(--temp) 50%, #3a4c44); color: #ffe2aa; }
+    .pill.hum  { border-color: color-mix(in srgb, var(--hum)  50%, #3a4c44); color: #bcefff; }
+    .pill.co2  { border-color: color-mix(in srgb, var(--co2)  50%, #3a4c44); color: #baf7d8; }
+
+    .card {
+      background: linear-gradient(135deg, var(--card-a), var(--card-b) 55%);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .title {
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .value {
+      color: var(--temp);
+      font-weight: 800;
+      font-size: 38px;
+      line-height: 1;
+      text-align: right;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .delta {
+      color: #35d45c;
+      font-size: 11px;
+      text-align: right;
+      margin-top: 4px;
+    }
+
+    .chart {
+      width: 100%;
+      display: block;
+      margin-top: 8px;
+    }
+
+    .stats {
+      border-top: 1px solid #365347;
+      margin-top: 12px;
+      padding-top: 12px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .metric-name {
+      font-size: 28px;
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      line-height: 1;
+    }
+
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .metric-now {
+      font-size: 28px;
+      font-weight: 800;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      line-height: 1;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      font-size: 11px;
+      gap: 10px;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .footer {
+      border-top: 1px solid #1f3b2c;
+      margin-top: 12px;
+      padding-top: 8px;
+      font-size: 10px;
+      color: #81908a;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="pills">
+      <button class="pill temp">Temperature</button>
+      <button class="pill hum">Humidity</button>
+      <button class="pill co2">CO₂</button>
+    </div>
+
+    <section class="card" id="card-a"></section>
+    <section class="card" id="card-b"></section>
+  </main>
+
+  <script>
+    const palette = {
+      temperature: '#ffb000',
+      humidity: '#10bdfc',
+      co2: '#18d47b',
+    };
+
+    function fmt(v, key) {
+      if (key === 'co2') return `${Math.round(v)}ppm`;
+      if (key === 'humidity') return `${v.toFixed(1)}%`;
+      return `${v.toFixed(1)}°C`;
+    }
+
+    function computeStats(arr) {
+      const min = Math.min(...arr);
+      const max = Math.max(...arr);
+      const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
+      const now = arr[arr.length - 1];
+      const prev = arr[arr.length - 2] ?? now;
+      const delta = prev ? ((now - prev) / Math.abs(prev)) * 100 : 0;
+      return { min, max, avg, now, delta };
+    }
+
+    function makeLinePath(values, x, y) {
+      return values.map((v, i) => `${i ? 'L' : 'M'}${x(i)},${y(v)}`).join(' ');
+    }
+
+    function renderZoneCard(containerId, zoneName, series) {
+      const el = document.getElementById(containerId);
+      const keys = ['temperature', 'humidity', 'co2'];
+      const primaryKey = 'temperature';
+      const primaryStats = computeStats(series[primaryKey]);
+
+      const w = 566, h = 210;
+      const pad = { l: 100, r: 80, t: 30, b: 40 };
+      const cw = w - pad.l - pad.r;
+      const ch = h - pad.t - pad.b;
+      const len = series.temperature.length;
+
+      const x = i => pad.l + (i / (len - 1)) * cw;
+      const yFns = {};
+      const paths = {};
+      const areas = {};
+
+      keys.forEach(key => {
+        const values = series[key];
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const span = Math.max(0.0001, max - min);
+        const y = v => pad.t + ((max - v) / span) * ch;
+        yFns[key] = y;
+        paths[key] = makeLinePath(values, x, y);
+        areas[key] = `${paths[key]} L${x(len - 1)},${pad.t + ch} L${x(0)},${pad.t + ch} Z`;
+      });
+
+      const gridValues = [
+        Math.max(...series.temperature),
+        (Math.max(...series.temperature) + Math.min(...series.temperature)) / 2,
+        Math.min(...series.temperature),
+      ];
+
+      const grid = gridValues.map(v => {
+        const y = yFns.temperature(v);
+        return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="#3c5c48" />`;
+      }).join('');
+
+      const defs = `
+        <defs>
+          <linearGradient id="${containerId}-temp-grad" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="${palette.temperature}" stop-opacity="0.22"/>
+            <stop offset="100%" stop-color="${palette.temperature}" stop-opacity="0.01"/>
+          </linearGradient>
+          <linearGradient id="${containerId}-hum-grad" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="${palette.humidity}" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="${palette.humidity}" stop-opacity="0.01"/>
+          </linearGradient>
+          <linearGradient id="${containerId}-co2-grad" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="${palette.co2}" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="${palette.co2}" stop-opacity="0.01"/>
+          </linearGradient>
+        </defs>
+      `;
+
+      const lines = keys.map((key, i) => `
+        <path d="${paths[key]}" stroke="${palette[key]}" fill="none" stroke-width="${i === 0 ? 2.6 : 2.2}" />
+      `).join('');
+
+      const shade = keys.map(key => `
+        <path d="${areas[key]}" fill="url(#${containerId}-${key === 'temperature' ? 'temp' : key === 'humidity' ? 'hum' : 'co2'}-grad)" style="mix-blend-mode:screen"/>
+      `).join('');
+
+      const dots = keys.map(key => {
+        const arr = series[key];
+        return `<circle cx="${x(arr.length - 1)}" cy="${yFns[key](arr[arr.length - 1])}" r="4" fill="${palette[key]}"/>`;
+      }).join('');
+
+      const statsBlocks = keys.map(key => {
+        const s = computeStats(series[key]);
+        return `
+          <div>
+            <div class="metric-row">
+              <div class="metric-name" style="color:${palette[key]}">${key === 'co2' ? 'CO₂' : key[0].toUpperCase() + key.slice(1)}</div>
+              <div class="metric-now">${fmt(s.now, key)}</div>
+            </div>
+            <div class="grid">
+              <div><div class="muted">Min</div><b>${fmt(s.min, key)}</b></div>
+              <div><div class="muted">Avg</div><b>${fmt(s.avg, key)}</b></div>
+              <div><div class="muted">Max</div><b>${fmt(s.max, key)}</b></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      el.innerHTML = `
+        <div class="row">
+          <div>
+            <div class="title">
+              <span style="color:${palette.temperature}">Temperature</span> +
+              <span style="color:${palette.humidity}">Humidity</span> +
+              <span style="color:${palette.co2}">CO₂</span>
+            </div>
+            <div class="subtitle">${zoneName}</div>
+          </div>
+          <div>
+            <div class="value">${fmt(primaryStats.now, primaryKey)}</div>
+            <div class="delta">${primaryStats.delta >= 0 ? '↑' : '↓'} ${Math.abs(primaryStats.delta).toFixed(1)}%</div>
+          </div>
+        </div>
+
+        <svg class="chart" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
+          ${defs}
+          ${grid}
+          ${shade}
+          ${lines}
+          ${dots}
+        </svg>
+
+        <div class="stats">${statsBlocks}</div>
+        <div class="footer">${len} readings · zone average</div>
+      `;
+    }
+
+    // Demo zone-averaged series (prototype only)
+    const zoneA = {
+      temperature: [22.8,22.9,22.5,23.0,23.1,22.7,22.9,23.2,23.6,23.5,23.4,23.3,23.5,23.2,23.0,23.1,23.4,23.6,23.5,23.3,23.9],
+      humidity:    [61.2,60.5,59.8,58.3,57.5,56.9,56.4,56.0,55.8,55.7,56.1,56.5,56.9,57.4,58.0,58.7,59.3,60.1,61.0,62.0,67.5],
+      co2:         [620,640,680,760,820,860,910,980,1020,1040,1035,1050,1080,1060,1055,980,920,760,680,620,558],
+    };
+
+    const zoneB = {
+      temperature: [21.3,21.3,21.0,21.4,21.5,21.3,21.8,21.9,22.0,22.1,22.5,22.2,22.6,22.7,22.9,22.8,22.9,22.4,22.7,22.4,22.1],
+      humidity:    [69.0,70.2,70.1,70.3,70.4,69.8,69.6,69.4,68.9,68.5,67.2,66.4,65.5,64.7,63.9,63.0,62.3,62.0,61.8,62.2,57.1],
+      co2:         [720,760,810,870,940,980,970,920,900,860,820,760,700,680,660,620,610,600,602,598,584],
+    };
+
+    renderZoneCard('card-a', 'Tent A', zoneA);
+    renderZoneCard('card-b', 'Tent B', zoneB);
+  </script>
+</body>
+</html>

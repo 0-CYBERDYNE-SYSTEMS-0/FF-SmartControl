@@ -6,8 +6,8 @@ import { halApi, type HalSensorReading } from '../api.js';
 import { renderSystemStatus, injectSystemStatusStyles } from '../components/SystemStatus.js';
 import { renderLatestDecision, injectLatestDecisionStyles } from '../components/LatestDecision.js';
 import { renderKpiStrip, buildKpiData, injectKpiStyles } from '../components/KpiStrip.js';
-import { HERO_METRIC_KEYS, loadHeroChartData, renderHeroChart, injectHeroChartStyles, renderSparkline } from '../components/HeroChart.js';
-import { renderDashboardHeroCard, type DashboardHeroMetric, injectChartKitStyles } from '../components/ChartKit.js';
+import { loadHeroChartData, renderHeroChart, injectHeroChartStyles, renderSparkline } from '../components/HeroChart.js';
+import { renderDashboardOverviewCards, type DashboardHeroMetric, type DashboardOverviewZoneCard, injectChartKitStyles } from '../components/ChartKit.js';
 import { renderOperatorPanels, injectOperatorPanelStyles } from '../components/OperatorPanels.js';
 import { renderTerminal, buildLogEntries, injectTerminalStyles } from '../components/Terminal.js';
 
@@ -95,8 +95,9 @@ function renderCalmDeviceList(devices: ReturnType<typeof getStore>['devices']): 
 
 // Dashboard active metrics state (persisted in session)
 const dashActiveMetrics = new Set<string>(['temperature', 'humidity', 'co2']);
-let dashActiveZone = '';
 let dashLoadSequence = 0;
+const OVERVIEW_METRIC_KEYS = ['temperature', 'humidity', 'co2'] as const;
+type OverviewMetricKey = (typeof OVERVIEW_METRIC_KEYS)[number];
 
 const DASH_METRIC_META: Record<string, { label: string; color: string; unit: string }> = {
   temperature: { label: 'Temperature', color: '#F59E0B', unit: '°C' },
@@ -108,6 +109,69 @@ const DASH_METRIC_META: Record<string, { label: string; color: string; unit: str
   ph: { label: 'pH', color: '#A855F7', unit: '' },
   weight: { label: 'Weight', color: '#94A3B8', unit: 'kg' },
 };
+
+function sortZonesDeterministically(zones: string[]): string[] {
+  return zones.slice().sort((a, b) => {
+    if (a === 'Unzoned') return 1;
+    if (b === 'Unzoned') return -1;
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
+
+function aggregateZoneOverviewCards(
+  layers: Array<{ zoneName: string; metric: string; color: string; data: Array<{ timestamp: string; value: number }> }>,
+  zones: string[],
+  unitSystem: ReturnType<typeof getStore>['unitSystem']
+): DashboardOverviewZoneCard[] {
+  const zoneMetricBuckets = new Map<string, Map<OverviewMetricKey, Map<number, { sum: number; count: number }>>>();
+  for (const zone of zones) {
+    zoneMetricBuckets.set(zone, new Map([
+      ['temperature', new Map<number, { sum: number; count: number }>()],
+      ['humidity', new Map<number, { sum: number; count: number }>()],
+      ['co2', new Map<number, { sum: number; count: number }>()],
+    ]));
+  }
+
+  for (const layer of layers) {
+    if (!zoneMetricBuckets.has(layer.zoneName)) continue;
+    if (!OVERVIEW_METRIC_KEYS.includes(layer.metric as OverviewMetricKey)) continue;
+    const metricKey = layer.metric as OverviewMetricKey;
+    const metricBuckets = zoneMetricBuckets.get(layer.zoneName)!.get(metricKey)!;
+
+    for (const reading of layer.data) {
+      const timestampMs = new Date(reading.timestamp).getTime();
+      if (!Number.isFinite(timestampMs)) continue;
+      const bucketTs = Math.floor(timestampMs / 60000) * 60000;
+      const converted = formatSensorValue(reading.value, metricKey, unitSystem).value;
+      const current = metricBuckets.get(bucketTs) ?? { sum: 0, count: 0 };
+      current.sum += converted;
+      current.count += 1;
+      metricBuckets.set(bucketTs, current);
+    }
+  }
+
+  return zones.map(zoneName => {
+    const zoneBuckets = zoneMetricBuckets.get(zoneName);
+    const metrics: DashboardHeroMetric[] = OVERVIEW_METRIC_KEYS.map(key => {
+      const cfg = DASH_METRIC_META[key];
+      const dynamicUnit = formatSensorValue(0, key, unitSystem).unit;
+      const entries = Array.from((zoneBuckets?.get(key) ?? new Map()).entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([t, aggregate]) => ({
+          t,
+          v: aggregate.count > 0 ? aggregate.sum / aggregate.count : 0,
+        }));
+      return {
+        key,
+        label: cfg.label,
+        color: cfg.color,
+        unit: key === 'temperature' ? `°${dynamicUnit}` : cfg.unit,
+        data: entries,
+      };
+    });
+    return { zoneName, metrics };
+  });
+}
 
 async function renderOperatorDashboard(container: HTMLElement): Promise<void> {
   const store = getStore();
@@ -150,7 +214,7 @@ async function loadDashboardHeroCard(): Promise<void> {
     const store = getStore();
 
     // Derive zones from explicit layer zone names
-    const zones = [...new Set(layers.map(l => l.zoneName).filter(Boolean))];
+    const zones = sortZonesDeterministically([...new Set(layers.map(l => l.zoneName).filter(Boolean))]);
     // If no zones from data but we have sensors, infer Tent A/Tent B from ids.
     if (zones.length === 0) {
       const inferredZones = new Set<string>();
@@ -159,42 +223,20 @@ async function loadDashboardHeroCard(): Promise<void> {
         if (device.id.startsWith('tent_b_')) inferredZones.add('Tent B');
       }
       if (inferredZones.size > 0) {
-        zones.push(...Array.from(inferredZones));
+        zones.push(...sortZonesDeterministically(Array.from(inferredZones)));
       }
     }
 
-    if (dashActiveZone && !zones.includes(dashActiveZone)) {
-      dashActiveZone = '';
-    }
-
-    // Filter layers to only the selected zone
-    const zoneLayers = dashActiveZone
-      ? layers.filter(l => l.zoneName === dashActiveZone)
-      : layers;
-
-    // Build DashboardHeroMetric[] from zone-filtered layers
-    const allMetrics: DashboardHeroMetric[] = zoneLayers.map(l => {
-      const cfg = DASH_METRIC_META[l.metric] || { label: l.metric, color: l.color, unit: '' };
-
-      return {
-        key: l.metric,
-        label: cfg.label,
-        color: cfg.color,
-        unit: cfg.unit,
-        data: l.data.map(d => ({
-          t: new Date(d.timestamp).getTime(),
-          v: formatSensorValue(d.value, l.metric, store.unitSystem).value,
-        })),
-      };
-    });
-
-    const heroMetrics = allMetrics
-      .filter(m => HERO_METRIC_KEYS.includes(m.key as (typeof HERO_METRIC_KEYS)[number]))
-      .sort((a, b) => HERO_METRIC_KEYS.indexOf(a.key as (typeof HERO_METRIC_KEYS)[number]) - HERO_METRIC_KEYS.indexOf(b.key as (typeof HERO_METRIC_KEYS)[number]));
-
-    const availableMetricKeys = new Set(heroMetrics.filter(m => m.data.length > 0).map(m => m.key));
+    const zoneCards = aggregateZoneOverviewCards(layers, zones, store.unitSystem);
+    const availableMetricKeys = new Set(
+      zoneCards
+        .flatMap(zone => zone.metrics)
+        .filter(metric => metric.data.length > 0)
+        .map(metric => metric.key)
+        .filter((key): key is OverviewMetricKey => OVERVIEW_METRIC_KEYS.includes(key as OverviewMetricKey))
+    );
     const fallbackMetric =
-      ['temperature', 'humidity', 'co2'].find(key => availableMetricKeys.has(key)) ??
+      OVERVIEW_METRIC_KEYS.find(key => availableMetricKeys.has(key)) ??
       Array.from(availableMetricKeys)[0];
 
     for (const key of Array.from(dashActiveMetrics)) {
@@ -208,8 +250,7 @@ async function loadDashboardHeroCard(): Promise<void> {
 
     if (sequence !== dashLoadSequence) return;
 
-    renderDashboardHeroCard(heroMetrics, 'dash-hero-card', {
-      subtitle: 'Environment Overview',
+    renderDashboardOverviewCards(zoneCards, 'dash-hero-card', {
       activeKeys: new Set(dashActiveMetrics),
       onToggle: (key) => {
         if (!availableMetricKeys.has(key)) return;
@@ -223,14 +264,6 @@ async function loadDashboardHeroCard(): Promise<void> {
         }
         void loadDashboardHeroCard();
       },
-      zoneToggles: zones.length > 1 ? {
-        zones,
-        activeZone: dashActiveZone,
-        onZoneChange: (zone) => {
-          dashActiveZone = zone;
-          void loadDashboardHeroCard();
-        },
-      } : undefined,
     });
   } catch (err: any) {
     if (sequence !== dashLoadSequence) return;

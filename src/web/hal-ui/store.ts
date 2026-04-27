@@ -42,7 +42,7 @@ let state: HalStore = {
   theme: 'emerald',
   layout: 'operator',
   activeView: 'dashboard',
-  unitSystem: 'metric',
+  unitSystem: 'imperial',
   timeFormat: '24h',
   sidebarCollapsed: false,
   devices: [],

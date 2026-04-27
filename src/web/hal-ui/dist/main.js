@@ -140,7 +140,7 @@
         theme: "emerald",
         layout: "operator",
         activeView: "dashboard",
-        unitSystem: "metric",
+        unitSystem: "imperial",
         timeFormat: "24h",
         sidebarCollapsed: false,
         devices: [],
@@ -307,6 +307,7 @@
     renderBoxPlot: () => renderBoxPlot,
     renderBulletChart: () => renderBulletChart,
     renderDashboardHeroCard: () => renderDashboardHeroCard,
+    renderDashboardOverviewCards: () => renderDashboardOverviewCards,
     renderDecisionBarTrend: () => renderDecisionBarTrend,
     renderDecisionMarkers: () => renderDecisionMarkers,
     renderDualAxisCard: () => renderDualAxisCard,
@@ -554,6 +555,176 @@
     const footHtml = `<div class="ck-foot">${layers[0].data.length} readings</div>`;
     container.innerHTML = `${titleHtml}<div class="ck-chart">${svg}</div>${statsHtml}${footHtml}`;
   }
+  function renderOverviewZoneCard(zone, activeKeys) {
+    const metricsByKey = new Map(zone.metrics.map((metric) => [metric.key, metric]));
+    const activeMetrics = overviewMetricOrder.filter((key) => activeKeys.has(key)).map((key) => metricsByKey.get(key)).filter((metric) => Boolean(metric));
+    const chartMetrics = activeMetrics.filter((metric) => metric.data.length > 0);
+    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map((metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
+    if (chartMetrics.length === 0) {
+      return `
+      <article class="dhc-card">
+        <div class="dhc-head">
+          <div>
+            <div class="dhc-title">${titleHtml}</div>
+            <div class="dhc-subtitle">${escapeHtml3(zone.zoneName)}</div>
+          </div>
+          <div class="dhc-kpi">
+            <div class="dhc-kpi-val" style="color:var(--text-secondary)">--</div>
+            <div class="dhc-kpi-delta">No trend</div>
+          </div>
+        </div>
+        <div class="chart-empty">No data for selected metrics</div>
+      </article>
+    `;
+    }
+    const w = 566;
+    const h = 210;
+    const pad = { l: 100, r: 80, t: 30, b: 40 };
+    const cw = w - pad.l - pad.r;
+    const ch = h - pad.t - pad.b;
+    const times = Array.from(new Set(chartMetrics.flatMap((metric) => metric.data.map((point) => point.t)))).sort((a, b) => a - b);
+    const x = (i, len) => len <= 1 ? pad.l + cw / 2 : pad.l + i / (len - 1) * cw;
+    const xForTs = new Map(times.map((t, i) => [t, x(i, times.length)]));
+    const gradientPrefix = (zone.zoneName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "zone").slice(0, 40);
+    const series = chartMetrics.map((metric) => {
+      const exact = new Map(metric.data.map((point) => [point.t, point.v]));
+      let carry = metric.data[0]?.v ?? 0;
+      const values = times.map((t) => {
+        const found = exact.get(t);
+        if (typeof found === "number") carry = found;
+        return carry;
+      });
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const span = Math.max(1e-4, max - min);
+      const y = (v) => pad.t + (max - v) / span * ch;
+      const path = values.map((value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`).join(" ");
+      const areaPath = path ? `${path} L${x(times.length - 1, times.length)},${pad.t + ch} L${x(0, times.length)},${pad.t + ch} Z` : "";
+      return { metric, values, min, max, span, y, path, areaPath };
+    });
+    const primary = series[0];
+    const primaryGrid = [primary.max, primary.min + primary.span / 2, primary.min];
+    const gridLines = primaryGrid.map((value) => {
+      const y = primary.y(value);
+      return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 20%, var(--border))"/>`;
+    }).join("");
+    const defs = series.map((entry) => `
+    <linearGradient id="${gradientPrefix}-${entry.metric.key}-grad" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${entry.metric.color}" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="${entry.metric.color}" stop-opacity="0.01"/>
+    </linearGradient>
+  `).join("");
+    const shade = series.map((entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : "").join("");
+    const lines = series.map((entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`).join("");
+    const dots = series.map((entry) => {
+      const lastTs = times[times.length - 1];
+      const lastVal = entry.values[entry.values.length - 1];
+      if (lastTs == null || lastVal == null) return "";
+      return `<circle cx="${xForTs.get(lastTs)}" cy="${entry.y(lastVal)}" r="4" fill="${entry.metric.color}"/>`;
+    }).join("");
+    const svg = `
+    <svg class="hero-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
+      <defs>${defs}</defs>
+      ${gridLines}
+      ${shade}
+      ${lines}
+      ${dots}
+    </svg>
+  `;
+    const primaryCurrent = primary.values[primary.values.length - 1] ?? 0;
+    const primaryPrev = primary.values[primary.values.length - 2] ?? primaryCurrent;
+    const delta = primaryPrev ? (primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100 : 0;
+    const statsHtml = activeMetrics.map((metric) => {
+      if (metric.data.length === 0) {
+        return `
+        <div class="dhc-stats-row">
+          <div class="dhc-stats-metric" style="color:${metric.color}">${escapeHtml3(metric.label)}</div>
+          <div class="dhc-stats-current" style="color:var(--text-secondary)">No data</div>
+        </div>
+      `;
+      }
+      const values = metric.data.map((point) => point.v);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+      const current = values[values.length - 1] ?? 0;
+      const precision = metric.key === "co2" ? 0 : 1;
+      return `
+      <div class="dhc-stats-row">
+        <div class="dhc-stats-metric" style="color:${metric.color}">${escapeHtml3(metric.label)}</div>
+        <div class="dhc-stats-current">${current.toFixed(precision)}${metric.unit}</div>
+      </div>
+      <div class="dhc-stats-grid">
+        <div><div class="dhc-muted">Min</div><strong>${min.toFixed(precision)}${metric.unit}</strong></div>
+        <div><div class="dhc-muted">Avg</div><strong>${avg.toFixed(precision)}${metric.unit}</strong></div>
+        <div><div class="dhc-muted">Max</div><strong>${max.toFixed(precision)}${metric.unit}</strong></div>
+      </div>
+    `;
+    }).join("");
+    return `
+    <article class="dhc-card">
+      <div class="dhc-head">
+        <div>
+          <div class="dhc-title">${titleHtml}</div>
+          <div class="dhc-subtitle">${escapeHtml3(zone.zoneName)}</div>
+        </div>
+        <div class="dhc-kpi">
+          <div class="dhc-kpi-val" style="color:${primary.metric.color}">${primaryCurrent.toFixed(primary.metric.key === "co2" ? 0 : 1)}${primary.metric.unit}</div>
+          <div class="dhc-kpi-delta">${delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(delta).toFixed(1)}%</div>
+        </div>
+      </div>
+      <div class="dhc-chart">${svg}</div>
+      <div class="dhc-stats">${statsHtml}</div>
+      <div class="dhc-foot">${times.length} readings \xB7 zone average</div>
+    </article>
+  `;
+  }
+  function renderDashboardOverviewCards(zoneCards, containerId, opts = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (zoneCards.length === 0) {
+      container.innerHTML = '<div class="chart-empty">No sensor data</div>';
+      return;
+    }
+    const availableKeys = new Set(
+      zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key)
+    );
+    const activeFromState = opts.activeKeys ?? new Set(overviewMetricOrder);
+    const activeKeys = new Set(
+      overviewMetricOrder.filter((key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0))
+    );
+    if (activeKeys.size === 0) {
+      const fallback = overviewMetricOrder.find((key) => availableKeys.has(key)) ?? overviewMetricOrder[0];
+      activeKeys.add(fallback);
+    }
+    const metricMeta = new Map(
+      zoneCards.flatMap((zone) => zone.metrics).map((metric) => [metric.key, metric])
+    );
+    const togglesHtml = overviewMetricOrder.map((key) => {
+      const meta = metricMeta.get(key);
+      const label = meta?.label ?? key.toUpperCase();
+      const color = meta?.color ?? "#94A3B8";
+      const active = activeKeys.has(key);
+      const disabled = !availableKeys.has(key);
+      return `<button class="dhc-overview-toggle ${active ? "active" : ""}" ${disabled ? "disabled" : ""} data-metric="${key}" style="--toggle-color:${color}">${escapeHtml3(label)}</button>`;
+    }).join("");
+    const cardsHtml = zoneCards.map((zone) => renderOverviewZoneCard(zone, activeKeys)).join("");
+    container.innerHTML = `
+    <div class="dhc-overview-wrap">
+      <div class="dhc-overview-toggles">${togglesHtml}</div>
+      <div class="dhc-zone-grid">${cardsHtml}</div>
+    </div>
+  `;
+    if (opts.onToggle) {
+      container.querySelectorAll(".dhc-overview-toggle").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const key = btn.dataset.metric;
+          if (!key) return;
+          opts.onToggle(key);
+        });
+      });
+    }
+  }
   function renderDashboardHeroCard(metrics2, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -571,49 +742,97 @@
       if (fallbackKey) normalizedActiveKeys.add(fallbackKey);
     }
     const activeMetrics = metricsWithData.filter((m) => normalizedActiveKeys.has(m.key));
-    const chartMetrics = activeMetrics;
+    const chartMetrics = activeMetrics.filter((m) => m.data.length > 0);
+    if (chartMetrics.length === 0) {
+      container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
+      return;
+    }
+    const store = getStore();
     const w = 566;
-    const h = 210;
-    const pad = { l: 100, r: 80, t: 30, b: 40 };
+    const h = 220;
+    const pad = { l: 18, r: 16, t: 20, b: 24 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const allTimes = chartMetrics.flatMap((m) => m.data.map((d) => d.t));
-    const tMin = Math.min(...allTimes);
-    const tMax = Math.max(...allTimes);
-    const tSpan = Math.max(1, tMax - tMin);
-    const x = (i, len) => pad.l + i / (len - 1) * cw;
-    const computed = chartMetrics.map((m) => {
-      const values = m.data.map((d) => d.v);
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      return { ...m, min, max, vSpan: max - min || 1 };
-    });
-    const yScales = computed.map(
-      (m) => (v) => pad.t + (m.max - v) / m.vSpan * ch
-    );
-    function path(data, yFn) {
-      return data.map((d, i) => `${i ? "L" : "M"}${x(i, data.length)},${yFn(d.v)}`).join(" ");
+    const times = Array.from(new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))).sort((a, b) => a - b);
+    if (times.length === 0) {
+      container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
+      return;
     }
-    const primary = computed[0];
-    const gridValues = [primary.max, primary.min + primary.vSpan / 2, primary.min];
-    const gridLines = gridValues.map((v) => {
-      const y = yScales[0](v);
-      return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 20%, var(--border))"/>`;
+    const xForIndex = (i, len) => len <= 1 ? pad.l + cw / 2 : pad.l + i / (len - 1) * cw;
+    const normalizedSeries = chartMetrics.map((metric) => {
+      const cfg = metricConfig[metric.key];
+      const rawValues = metric.data.map((d) => d.v);
+      let axisMin = cfg?.minAxis ?? Math.min(...rawValues);
+      let axisMax = cfg?.maxAxis ?? Math.max(...rawValues);
+      if (metric.key === "temperature" && store.unitSystem === "imperial") {
+        axisMin = axisMin * 9 / 5 + 32;
+        axisMax = axisMax * 9 / 5 + 32;
+      }
+      const vSpan = Math.max(1, axisMax - axisMin);
+      const exact = new Map(metric.data.map((d) => [d.t, Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))]));
+      const firstNorm = exact.size > 0 ? exact.get(metric.data[0].t) ?? 0 : 0;
+      let carry = firstNorm;
+      const values = times.map((t) => {
+        const found = exact.get(t);
+        if (typeof found === "number") carry = found;
+        return { t, v: carry };
+      });
+      return { metric, values };
+    });
+    const stackedByTime = times.map((t, idx) => {
+      let total = 0;
+      const segments = normalizedSeries.map((series) => {
+        const v = series.values[idx]?.v ?? 0;
+        const y1 = total;
+        total += v;
+        return { metric: series.metric, y0: total, y1 };
+      });
+      return { t, idx, total, segments };
+    });
+    const maxTotal = Math.max(1, ...stackedByTime.map((s) => s.total));
+    const y = (v) => pad.t + (maxTotal - v) / maxTotal * ch;
+    const layerPaths = normalizedSeries.map((series, layerIndex) => {
+      const topPts = [];
+      const botPts = [];
+      for (const s of stackedByTime) {
+        const seg = s.segments[layerIndex];
+        const px = xForIndex(s.idx, times.length);
+        topPts.push({ x: px, y: y(seg?.y0 ?? 0) });
+        botPts.push({ x: px, y: y(seg?.y1 ?? 0) });
+      }
+      const topPath = monotoneCubicPath(topPts);
+      const topLine = topPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const botLine = botPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const area = topLine ? `${topLine} L${botPts[botPts.length - 1]?.x.toFixed(1)},${botPts[botPts.length - 1]?.y.toFixed(1)} ${botPts.slice().reverse().map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")} Z` : "";
+      return { series, area, topPath, topPts };
+    });
+    const gridLines = [0, 0.25, 0.5, 0.75, 1].map((step) => {
+      const gy = pad.t + step * ch;
+      return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${gy}" y2="${gy}" class="dhc-grid"/>`;
     }).join("");
-    const primaryPath = path(computed[0].data, yScales[0]);
-    const areaPath = primaryPath + ` L${x(computed[0].data.length - 1, computed[0].data.length)},${pad.t + ch} L${x(0, computed[0].data.length)},${pad.t + ch} Z`;
-    const linePaths = computed.map(
-      (m, i) => `<path d="${path(m.data, yScales[i])}" stroke="${m.color}" fill="none" stroke-width="${i === 0 ? 2.5 : 2}"/>`
+    const defs = layerPaths.map((lp, i) => `
+    <linearGradient id="dhc-lake-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${lp.series.metric.color}" stop-opacity="0.56"/>
+      <stop offset="100%" stop-color="${lp.series.metric.color}" stop-opacity="0.08"/>
+    </linearGradient>
+  `).join("");
+    const areas = layerPaths.map(
+      (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#dhc-lake-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
-    const dots = computed.map((m, i) => {
-      const lastIdx = m.data.length - 1;
-      return `<circle cx="${x(lastIdx, m.data.length)}" cy="${yScales[i](m.data[lastIdx].v)}" r="4" fill="${m.color}"/>`;
+    const edges = layerPaths.map(
+      (lp) => lp.topPath ? `<path d="${lp.topPath}" fill="none" stroke="${lp.series.metric.color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>` : ""
+    ).join("");
+    const dots = layerPaths.map((lp) => {
+      const last = lp.topPts[lp.topPts.length - 1];
+      if (!last) return "";
+      return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3.8" fill="${lp.series.metric.color}" stroke="var(--bg-primary)" stroke-width="1.4"/>`;
     }).join("");
     const svg = `
     <svg class="hero-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
+      <defs>${defs}</defs>
       ${gridLines}
-      <path d="${areaPath}" fill="color-mix(in srgb, ${primary.color} 15%, transparent)"/>
-      ${linePaths}
+      ${areas}
+      ${edges}
       ${dots}
     </svg>
   `;
@@ -643,7 +862,7 @@
       </div>
     `;
     }).join("");
-    const primaryMetric = computed[0];
+    const primaryMetric = chartMetrics[0];
     const primaryCurrent = primaryMetric.data[primaryMetric.data.length - 1].v;
     const primaryPrev = primaryMetric.data[primaryMetric.data.length - 2]?.v ?? primaryCurrent;
     const delta = primaryPrev ? (primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100 : 0;
@@ -654,6 +873,10 @@
       const isActive = z === opts.zoneToggles.activeZone;
       return `<button class="dhc-zone-toggle ${isActive ? "active" : ""}" data-zone="${escapeAttr(z)}">${escapeHtml3(z)}</button>`;
     }).join("")}
+      </div>` : "";
+    const overviewHealthHtml = opts.overviewHealth ? `<div class="dhc-overview-health ${opts.overviewHealth.state}">
+        <div class="dhc-overview-label">${escapeHtml3(opts.overviewHealth.zoneLabel)}</div>
+        <div class="dhc-overview-message">${escapeHtml3(opts.overviewHealth.message)}</div>
       </div>` : "";
     const seenKeys = /* @__PURE__ */ new Set();
     const toggleMetrics = [];
@@ -678,11 +901,12 @@
           <div class="dhc-kpi-delta">${delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(delta).toFixed(1)}%</div>
         </div>
       </div>
+      ${overviewHealthHtml}
       ${zoneToggleHtml}
       <div class="dhc-toggles">${toggleHtml}</div>
       <div class="dhc-chart">${svg}</div>
       <div class="dhc-stats">${statsHtml}</div>
-      <div class="dhc-foot">${primaryMetric.data.length} readings \xB7 ${escapeHtml3(opts.subtitle || "")}</div>
+      <div class="dhc-foot">${times.length} samples \xB7 ${escapeHtml3(opts.subtitle || "")}</div>
     </div>
   `;
     if (opts.zoneToggles) {
@@ -1361,6 +1585,72 @@
   font-size: 10px;
   margin-top: 2px;
 }
+.dhc-overview-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.dhc-overview-toggles {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.dhc-overview-toggle {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--toggle-color) 30%, var(--border));
+  background: color-mix(in srgb, var(--toggle-color) 8%, var(--bg-secondary));
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.dhc-overview-toggle.active {
+  background: color-mix(in srgb, var(--toggle-color) 20%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--toggle-color) 60%, var(--border));
+  color: var(--text-primary);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--toggle-color) 15%, transparent);
+}
+.dhc-overview-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dhc-zone-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+.dhc-overview-health {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 6px 12px;
+  margin-bottom: var(--space-2);
+  background: color-mix(in srgb, var(--bg-tertiary) 85%, transparent);
+}
+.dhc-overview-health.good {
+  border-color: color-mix(in srgb, var(--success) 55%, var(--border));
+}
+.dhc-overview-health.watch {
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--border));
+}
+.dhc-overview-health.alert {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+}
+.dhc-overview-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.dhc-overview-message {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: right;
+  font-family: var(--font-mono);
+}
 .dhc-zone-toggles {
   display: flex;
   gap: var(--space-2);
@@ -1413,6 +1703,9 @@
   display: block;
   width: 100%;
   height: auto;
+}
+.dhc-grid {
+  stroke: color-mix(in srgb, var(--text-tertiary) 16%, var(--border));
 }
 .dhc-stats {
   border-top: 1px solid var(--border);
@@ -1502,7 +1795,7 @@
 `;
     document.head.appendChild(style);
   }
-  var metricConfig, DECISION_COLORS;
+  var metricConfig, DECISION_COLORS, overviewMetricOrder;
   var init_ChartKit = __esm({
     "src/web/hal-ui/components/ChartKit.ts"() {
       "use strict";
@@ -1523,6 +1816,7 @@
         failure: "#FF5C6C",
         pending: "#FFC857"
       };
+      overviewMetricOrder = ["temperature", "humidity", "co2"];
     }
   });
 
@@ -3732,8 +4026,8 @@
   `).join("");
   }
   var dashActiveMetrics = /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]);
-  var dashActiveZone = "";
   var dashLoadSequence = 0;
+  var OVERVIEW_METRIC_KEYS = ["temperature", "humidity", "co2"];
   var DASH_METRIC_META = {
     temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C" },
     humidity: { label: "Humidity", color: "#38BDF8", unit: "%" },
@@ -3744,6 +4038,58 @@
     ph: { label: "pH", color: "#A855F7", unit: "" },
     weight: { label: "Weight", color: "#94A3B8", unit: "kg" }
   };
+  function sortZonesDeterministically(zones) {
+    return zones.slice().sort((a, b) => {
+      if (a === "Unzoned") return 1;
+      if (b === "Unzoned") return -1;
+      return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
+    });
+  }
+  function aggregateZoneOverviewCards(layers, zones, unitSystem) {
+    const zoneMetricBuckets = /* @__PURE__ */ new Map();
+    for (const zone of zones) {
+      zoneMetricBuckets.set(zone, /* @__PURE__ */ new Map([
+        ["temperature", /* @__PURE__ */ new Map()],
+        ["humidity", /* @__PURE__ */ new Map()],
+        ["co2", /* @__PURE__ */ new Map()]
+      ]));
+    }
+    for (const layer of layers) {
+      if (!zoneMetricBuckets.has(layer.zoneName)) continue;
+      if (!OVERVIEW_METRIC_KEYS.includes(layer.metric)) continue;
+      const metricKey = layer.metric;
+      const metricBuckets = zoneMetricBuckets.get(layer.zoneName).get(metricKey);
+      for (const reading of layer.data) {
+        const timestampMs = new Date(reading.timestamp).getTime();
+        if (!Number.isFinite(timestampMs)) continue;
+        const bucketTs = Math.floor(timestampMs / 6e4) * 6e4;
+        const converted = formatSensorValue(reading.value, metricKey, unitSystem).value;
+        const current = metricBuckets.get(bucketTs) ?? { sum: 0, count: 0 };
+        current.sum += converted;
+        current.count += 1;
+        metricBuckets.set(bucketTs, current);
+      }
+    }
+    return zones.map((zoneName) => {
+      const zoneBuckets = zoneMetricBuckets.get(zoneName);
+      const metrics2 = OVERVIEW_METRIC_KEYS.map((key) => {
+        const cfg = DASH_METRIC_META[key];
+        const dynamicUnit = formatSensorValue(0, key, unitSystem).unit;
+        const entries = Array.from((zoneBuckets?.get(key) ?? /* @__PURE__ */ new Map()).entries()).sort((a, b) => a[0] - b[0]).map(([t, aggregate]) => ({
+          t,
+          v: aggregate.count > 0 ? aggregate.sum / aggregate.count : 0
+        }));
+        return {
+          key,
+          label: cfg.label,
+          color: cfg.color,
+          unit: key === "temperature" ? `\xB0${dynamicUnit}` : cfg.unit,
+          data: entries
+        };
+      });
+      return { zoneName, metrics: metrics2 };
+    });
+  }
   async function renderOperatorDashboard(container) {
     const store = getStore();
     container.innerHTML = `
@@ -3778,7 +4124,7 @@
       const { layers } = await loadHeroChartData();
       if (sequence !== dashLoadSequence) return;
       const store = getStore();
-      const zones = [...new Set(layers.map((l) => l.zoneName).filter(Boolean))];
+      const zones = sortZonesDeterministically([...new Set(layers.map((l) => l.zoneName).filter(Boolean))]);
       if (zones.length === 0) {
         const inferredZones = /* @__PURE__ */ new Set();
         for (const device of store.devices.filter((d) => d.type === "sensor")) {
@@ -3786,29 +4132,14 @@
           if (device.id.startsWith("tent_b_")) inferredZones.add("Tent B");
         }
         if (inferredZones.size > 0) {
-          zones.push(...Array.from(inferredZones));
+          zones.push(...sortZonesDeterministically(Array.from(inferredZones)));
         }
       }
-      if (dashActiveZone && !zones.includes(dashActiveZone)) {
-        dashActiveZone = "";
-      }
-      const zoneLayers = dashActiveZone ? layers.filter((l) => l.zoneName === dashActiveZone) : layers;
-      const allMetrics = zoneLayers.map((l) => {
-        const cfg = DASH_METRIC_META[l.metric] || { label: l.metric, color: l.color, unit: "" };
-        return {
-          key: l.metric,
-          label: cfg.label,
-          color: cfg.color,
-          unit: cfg.unit,
-          data: l.data.map((d) => ({
-            t: new Date(d.timestamp).getTime(),
-            v: formatSensorValue(d.value, l.metric, store.unitSystem).value
-          }))
-        };
-      });
-      const heroMetrics = allMetrics.filter((m) => HERO_METRIC_KEYS.includes(m.key)).sort((a, b) => HERO_METRIC_KEYS.indexOf(a.key) - HERO_METRIC_KEYS.indexOf(b.key));
-      const availableMetricKeys = new Set(heroMetrics.filter((m) => m.data.length > 0).map((m) => m.key));
-      const fallbackMetric = ["temperature", "humidity", "co2"].find((key) => availableMetricKeys.has(key)) ?? Array.from(availableMetricKeys)[0];
+      const zoneCards = aggregateZoneOverviewCards(layers, zones, store.unitSystem);
+      const availableMetricKeys = new Set(
+        zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter((key) => OVERVIEW_METRIC_KEYS.includes(key))
+      );
+      const fallbackMetric = OVERVIEW_METRIC_KEYS.find((key) => availableMetricKeys.has(key)) ?? Array.from(availableMetricKeys)[0];
       for (const key of Array.from(dashActiveMetrics)) {
         if (!availableMetricKeys.has(key)) {
           dashActiveMetrics.delete(key);
@@ -3818,8 +4149,7 @@
         dashActiveMetrics.add(fallbackMetric);
       }
       if (sequence !== dashLoadSequence) return;
-      renderDashboardHeroCard(heroMetrics, "dash-hero-card", {
-        subtitle: "Environment Overview",
+      renderDashboardOverviewCards(zoneCards, "dash-hero-card", {
         activeKeys: new Set(dashActiveMetrics),
         onToggle: (key) => {
           if (!availableMetricKeys.has(key)) return;
@@ -3831,15 +4161,7 @@
             dashActiveMetrics.add(key);
           }
           void loadDashboardHeroCard();
-        },
-        zoneToggles: zones.length > 1 ? {
-          zones,
-          activeZone: dashActiveZone,
-          onZoneChange: (zone) => {
-            dashActiveZone = zone;
-            void loadDashboardHeroCard();
-          }
-        } : void 0
+        }
       });
     } catch (err) {
       if (sequence !== dashLoadSequence) return;
@@ -4703,6 +5025,7 @@
     activeMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
     availableMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
     activeZone: "",
+    zoneSelectionInitialized: false,
     decisions: []
   };
   var loadSequence = 0;
@@ -4885,14 +5208,29 @@
   function renderZoneToggles(zones) {
     const container = document.getElementById("zone-bar");
     if (!container) return;
+    const sortedZones = zones.slice().sort((a, b) => {
+      if (a === "Unzoned") return 1;
+      if (b === "Unzoned") return -1;
+      return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
+    });
+    if (sortedZones.length > 0) {
+      if (!viewState.zoneSelectionInitialized) {
+        viewState.activeZone = sortedZones[0];
+        viewState.zoneSelectionInitialized = true;
+      } else if (viewState.activeZone && !sortedZones.includes(viewState.activeZone)) {
+        viewState.activeZone = sortedZones[0];
+      }
+    } else {
+      viewState.activeZone = "";
+      viewState.zoneSelectionInitialized = false;
+    }
     if (zones.length <= 1) {
       container.innerHTML = "";
-      viewState.activeZone = "";
       return;
     }
     container.innerHTML = [
       `<button class="zone-pill ${viewState.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>`,
-      ...zones.map((z) => {
+      ...sortedZones.map((z) => {
         const isActive = z === viewState.activeZone;
         return `<button class="zone-pill ${isActive ? "active" : ""}" data-zone="${escapeAttr2(z)}">${escapeHtml8(z)}</button>`;
       })
@@ -4902,6 +5240,7 @@
         const zone = btn.dataset.zone;
         if (zone) {
           viewState.activeZone = zone === "__all__" ? "" : zone;
+          viewState.zoneSelectionInitialized = true;
           container.querySelectorAll(".zone-pill").forEach((pill) => {
             const pillZone = pill.dataset.zone || "";
             const normalized = pillZone === "__all__" ? "" : pillZone;

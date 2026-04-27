@@ -43,6 +43,7 @@ const viewState = {
   activeMetrics: new Set<MetricKey>(['temperature', 'humidity', 'co2']),
   availableMetrics: new Set<MetricKey>(['temperature', 'humidity', 'co2']),
   activeZone: '',
+  zoneSelectionInitialized: false,
   decisions: [] as HalDecision[],
 };
 
@@ -257,14 +258,32 @@ async function loadData(sensors: ReturnType<typeof getStore>['devices']): Promis
 function renderZoneToggles(zones: string[]): void {
   const container = document.getElementById('zone-bar');
   if (!container) return;
+
+  const sortedZones = zones.slice().sort((a, b) => {
+    if (a === 'Unzoned') return 1;
+    if (b === 'Unzoned') return -1;
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  });
+
+  if (sortedZones.length > 0) {
+    if (!viewState.zoneSelectionInitialized) {
+      viewState.activeZone = sortedZones[0]!;
+      viewState.zoneSelectionInitialized = true;
+    } else if (viewState.activeZone && !sortedZones.includes(viewState.activeZone)) {
+      viewState.activeZone = sortedZones[0]!;
+    }
+  } else {
+    viewState.activeZone = '';
+    viewState.zoneSelectionInitialized = false;
+  }
+
   if (zones.length <= 1) {
     container.innerHTML = '';
-    viewState.activeZone = '';
     return;
   }
   container.innerHTML = [
     `<button class="zone-pill ${viewState.activeZone ? '' : 'active'}" data-zone="__all__">All Zones</button>`,
-    ...zones.map(z => {
+    ...sortedZones.map(z => {
       const isActive = z === viewState.activeZone;
       return `<button class="zone-pill ${isActive ? 'active' : ''}" data-zone="${escapeAttr(z)}">${escapeHtml(z)}</button>`;
     }),
@@ -275,6 +294,7 @@ function renderZoneToggles(zones: string[]): void {
       const zone = (btn as HTMLElement).dataset.zone;
       if (zone) {
         viewState.activeZone = zone === '__all__' ? '' : zone;
+        viewState.zoneSelectionInitialized = true;
         // Update active visual state without full re-fetch
         container.querySelectorAll('.zone-pill').forEach(pill => {
           const pillZone = (pill as HTMLElement).dataset.zone || '';
