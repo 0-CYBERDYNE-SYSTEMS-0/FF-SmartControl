@@ -1846,12 +1846,9 @@
     <aside class="sidebar ${collapsed ? "collapsed" : ""}" id="hal-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-logo">
-          <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
-            <rect x="2" y="2" width="24" height="24" rx="4" fill="var(--accent)" opacity="0.15"/>
-            <rect x="6" y="6" width="16" height="16" rx="2" fill="var(--accent)" opacity="0.4"/>
-            <rect x="10" y="10" width="8" height="8" rx="1" fill="var(--accent)"/>
-          </svg>
-          <span class="sidebar-brand">FarmPal</span>
+          <img class="sidebar-logo-img" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
+          <span class="sidebar-brand sidebar-brand-long">FarmFriend_Smart_Control</span>
+          <span class="sidebar-brand sidebar-brand-short">FF_Smart_Control</span>
         </div>
         <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
           ${chevronIcon()}
@@ -1948,16 +1945,33 @@
   gap: var(--space-2);
   overflow: hidden;
 }
+.sidebar-logo-img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
 .sidebar-brand {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 13px;
   color: var(--text-primary);
   white-space: nowrap;
   transition: opacity var(--transition-fast);
 }
+.sidebar-brand-short {
+  display: none;
+}
 .sidebar.collapsed .sidebar-brand {
   opacity: 0;
   width: 0;
+}
+@media (max-width: 1560px) {
+  .sidebar:not(.collapsed) .sidebar-brand-long {
+    display: none;
+  }
+  .sidebar:not(.collapsed) .sidebar-brand-short {
+    display: inline;
+  }
 }
 .sidebar-toggle {
   background: none;
@@ -2077,6 +2091,12 @@
     opacity: 1;
     width: auto;
   }
+  .sidebar:not(.collapsed) .sidebar-brand-long {
+    display: inline;
+  }
+  .sidebar:not(.collapsed) .sidebar-brand-short {
+    display: none;
+  }
   .sidebar.collapsed .sidebar-item {
     justify-content: flex-start;
     padding: 10px var(--space-3);
@@ -2109,6 +2129,11 @@
         <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
+        <div class="hal-header-brand" title="FarmFriend_Smart_Control">
+          <img class="hal-header-brand-logo" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
+          <span class="hal-header-brand-text hal-header-brand-text-long">FarmFriend_Smart_Control</span>
+          <span class="hal-header-brand-text hal-header-brand-text-short">FF_Smart_Control</span>
+        </div>
         <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
       </div>
       <div class="hal-header-center">
@@ -2205,6 +2230,32 @@
   gap: var(--space-2);
   min-width: 0;
   flex-shrink: 1;
+}
+.hal-header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 8px 2px 2px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-tertiary) 82%, transparent);
+}
+.hal-header-brand-logo {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.hal-header-brand-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  white-space: nowrap;
+}
+.hal-header-brand-text-short {
+  display: none;
 }
 .hal-header-view-label {
   font-weight: 600;
@@ -2304,6 +2355,22 @@
   white-space: nowrap;
 }
 
+@media (max-width: 1560px) {
+  .hal-header-brand-text-long {
+    display: none;
+  }
+  .hal-header-brand-text-short {
+    display: inline;
+  }
+}
+@media (max-width: 1279px) {
+  .hal-header-brand {
+    padding-right: 2px;
+  }
+  .hal-header-brand-text {
+    display: none;
+  }
+}
 @media (max-width: 767px) {
   .hal-header { padding: 0 var(--space-3); }
   .hal-clock { font-size: 11px; }
@@ -3977,6 +4044,7 @@
     container.innerHTML = `
     <div class="dash-layout calm-layout">
       <div class="dash-main">
+        ${renderOverviewBrandChip()}
         <div class="calm-hero">
           <div class="calm-status-row">
             ${renderCalmKpi("Temperature", getLatestTemp(), "\xB0C", "#F59E0B")}
@@ -4095,6 +4163,7 @@
     container.innerHTML = `
     <div class="dash-layout">
       <div class="dash-main">
+        ${renderOverviewBrandChip()}
         ${renderKpiStrip(await buildKpiData())}
 
         <div id="dash-hero-card">
@@ -4174,6 +4243,7 @@
     container.innerHTML = `
     <div class="dash-layout diag-layout">
       <div class="dash-main">
+        ${renderOverviewBrandChip()}
         ${renderKpiStrip(await buildKpiData())}
 
         <div id="dash-hero-card">
@@ -4216,6 +4286,15 @@
     injectTerminalStyles();
     attachDashboardHandlers();
     await loadDashboardHeroCard();
+  }
+  function renderOverviewBrandChip() {
+    return `
+    <div class="dash-brand-chip" title="FarmFriend_Smart_Control">
+      <img class="dash-brand-logo" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
+      <span class="dash-brand-text dash-brand-text-long">FarmFriend_Smart_Control</span>
+      <span class="dash-brand-text dash-brand-text-short">FF_Smart_Control</span>
+    </div>
+  `;
   }
   function renderRawSnapshots(sensors, devices) {
     const entries = Object.entries(sensors);
@@ -4451,6 +4530,33 @@
   flex-direction: column;
   gap: var(--space-4);
   min-width: 0;
+}
+.dash-brand-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 var(--space-4);
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+  max-width: fit-content;
+}
+.dash-brand-logo {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.dash-brand-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  line-height: 1;
+}
+.dash-brand-text-short {
+  display: none;
 }
 
 /* \u2500\u2500 CALM mode \u2500\u2500 */
@@ -4742,11 +4848,15 @@
   .dash-sidebar { flex-direction: row; flex-wrap: wrap; }
   .dash-sidebar > * { flex: 1 1 260px; min-width: 0; }
   .calm-status-row { grid-template-columns: repeat(3, 1fr); }
+  .dash-brand-text-long { display: none; }
+  .dash-brand-text-short { display: inline; }
 }
 @media (max-width: 767px) {
   .dash-hero-header { flex-direction: column; align-items: flex-start; }
   .dash-live-bar { gap: var(--space-2); }
   .calm-status-row { grid-template-columns: 1fr; }
+  .dash-brand-chip { padding-right: 4px; }
+  .dash-brand-text { display: none; }
   .dash-sidebar {
     flex-direction: column;
   }

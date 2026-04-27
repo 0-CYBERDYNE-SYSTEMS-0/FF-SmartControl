@@ -29,12 +29,9 @@ export function renderSidebar(activeView: ViewId, collapsed: boolean): string {
     <aside class="sidebar ${collapsed ? 'collapsed' : ''}" id="hal-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-logo">
-          <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
-            <rect x="2" y="2" width="24" height="24" rx="4" fill="var(--accent)" opacity="0.15"/>
-            <rect x="6" y="6" width="16" height="16" rx="2" fill="var(--accent)" opacity="0.4"/>
-            <rect x="10" y="10" width="8" height="8" rx="1" fill="var(--accent)"/>
-          </svg>
-          <span class="sidebar-brand">FarmPal</span>
+          <img class="sidebar-logo-img" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
+          <span class="sidebar-brand sidebar-brand-long">FarmFriend_Smart_Control</span>
+          <span class="sidebar-brand sidebar-brand-short">FF_Smart_Control</span>
         </div>
         <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
           ${chevronIcon()}
@@ -146,16 +143,33 @@ function injectSidebarStyles(): void {
   gap: var(--space-2);
   overflow: hidden;
 }
+.sidebar-logo-img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
 .sidebar-brand {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 13px;
   color: var(--text-primary);
   white-space: nowrap;
   transition: opacity var(--transition-fast);
 }
+.sidebar-brand-short {
+  display: none;
+}
 .sidebar.collapsed .sidebar-brand {
   opacity: 0;
   width: 0;
+}
+@media (max-width: 1560px) {
+  .sidebar:not(.collapsed) .sidebar-brand-long {
+    display: none;
+  }
+  .sidebar:not(.collapsed) .sidebar-brand-short {
+    display: inline;
+  }
 }
 .sidebar-toggle {
   background: none;
@@ -274,6 +288,12 @@ function injectSidebarStyles(): void {
     display: block;
     opacity: 1;
     width: auto;
+  }
+  .sidebar:not(.collapsed) .sidebar-brand-long {
+    display: inline;
+  }
+  .sidebar:not(.collapsed) .sidebar-brand-short {
+    display: none;
   }
   .sidebar.collapsed .sidebar-item {
     justify-content: flex-start;

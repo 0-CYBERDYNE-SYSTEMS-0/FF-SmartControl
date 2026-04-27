@@ -39,6 +39,7 @@ async function renderCalmDashboard(container: HTMLElement): Promise<void> {
   container.innerHTML = `
     <div class="dash-layout calm-layout">
       <div class="dash-main">
+        ${renderOverviewBrandChip()}
         <div class="calm-hero">
           <div class="calm-status-row">
             ${renderCalmKpi('Temperature', getLatestTemp(), '°C', '#F59E0B')}
@@ -179,6 +180,7 @@ async function renderOperatorDashboard(container: HTMLElement): Promise<void> {
   container.innerHTML = `
     <div class="dash-layout">
       <div class="dash-main">
+        ${renderOverviewBrandChip()}
         ${renderKpiStrip(await buildKpiData())}
 
         <div id="dash-hero-card">
@@ -280,6 +282,7 @@ async function renderDiagnosticDashboard(container: HTMLElement): Promise<void> 
   container.innerHTML = `
     <div class="dash-layout diag-layout">
       <div class="dash-main">
+        ${renderOverviewBrandChip()}
         ${renderKpiStrip(await buildKpiData())}
 
         <div id="dash-hero-card">
@@ -323,6 +326,16 @@ async function renderDiagnosticDashboard(container: HTMLElement): Promise<void> 
   injectTerminalStyles();
   attachDashboardHandlers();
   await loadDashboardHeroCard();
+}
+
+function renderOverviewBrandChip(): string {
+  return `
+    <div class="dash-brand-chip" title="FarmFriend_Smart_Control">
+      <img class="dash-brand-logo" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
+      <span class="dash-brand-text dash-brand-text-long">FarmFriend_Smart_Control</span>
+      <span class="dash-brand-text dash-brand-text-short">FF_Smart_Control</span>
+    </div>
+  `;
 }
 
 function renderRawSnapshots(
@@ -625,6 +638,33 @@ function injectDashboardStyles(): void {
   gap: var(--space-4);
   min-width: 0;
 }
+.dash-brand-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 var(--space-4);
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+  max-width: fit-content;
+}
+.dash-brand-logo {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.dash-brand-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  line-height: 1;
+}
+.dash-brand-text-short {
+  display: none;
+}
 
 /* ── CALM mode ── */
 .calm-layout { grid-template-columns: minmax(0, 1fr) minmax(220px, 260px); }
@@ -915,11 +955,15 @@ function injectDashboardStyles(): void {
   .dash-sidebar { flex-direction: row; flex-wrap: wrap; }
   .dash-sidebar > * { flex: 1 1 260px; min-width: 0; }
   .calm-status-row { grid-template-columns: repeat(3, 1fr); }
+  .dash-brand-text-long { display: none; }
+  .dash-brand-text-short { display: inline; }
 }
 @media (max-width: 767px) {
   .dash-hero-header { flex-direction: column; align-items: flex-start; }
   .dash-live-bar { gap: var(--space-2); }
   .calm-status-row { grid-template-columns: 1fr; }
+  .dash-brand-chip { padding-right: 4px; }
+  .dash-brand-text { display: none; }
   .dash-sidebar {
     flex-direction: column;
   }
