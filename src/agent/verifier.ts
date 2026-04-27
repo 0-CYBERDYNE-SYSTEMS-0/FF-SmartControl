@@ -1,9 +1,9 @@
 /**
  * FarmPal Verifier Agent
- * 
+ *
  * Validates proposed farm actions against safety rules and current state.
  * Implements the Generator + Verifier pattern for reliable decision-making.
- * 
+ *
  * Safety rules that NEVER pass:
  * - Never turn off exhaust if temp > 30C
  * - Never turn off circulation if humidity > 80%
@@ -14,6 +14,7 @@
 import { callLLM } from './llm.js';
 import { halRegistry } from '../hal/registry.js';
 import { halSensors } from '../hal/sensors.js';
+import type { HalDevice, HalSensorReading, MetricType } from '../hal/types.js';
 
 export interface VerifierInput {
   proposedAction: {
@@ -34,7 +35,30 @@ export interface VerifierResult {
 interface SafetyRule {
   id: string;
   description: string;
-  check: () => { pass: boolean; message: string };
+  check: (ctx: DeterministicSafetyContext) => {
+    pass: boolean;
+    message: string;
+  };
+}
+
+export interface DeterministicSafetyDeps {
+  devices?: HalDevice[];
+  latest?: (
+    deviceId: string,
+    metric: MetricType,
+  ) => Pick<HalSensorReading, 'value'> | undefined;
+  now?: number;
+}
+
+interface DeterministicSafetyContext {
+  input: VerifierInput;
+  devices: HalDevice[];
+  device: HalDevice | null;
+  latest: (
+    deviceId: string,
+    metric: MetricType,
+  ) => Pick<HalSensorReading, 'value'> | undefined;
+  now: number;
 }
 
 // Hard safety rules that always apply
@@ -42,22 +66,46 @@ const HARD_SAFETY_RULES: SafetyRule[] = [
   {
     id: 'exhaust_temp',
     description: 'Never turn off exhaust if temperature > 30C',
-    check: () => {
-      const temp = halSensors.latest('temperature_sensor', 'temperature')?.value ?? 25;
+    check: (ctx) => {
+      const { input, device } = ctx;
+      if (
+        input.proposedAction.decision !== 'turn_off' ||
+        !device ||
+        !matchesDevice(device, ['exhaust', 'fan'])
+      ) {
+        return { pass: true, message: 'not an exhaust fan shutdown' };
+      }
+
+      const maxTemp = maxLatestMetric(ctx, 'temperature');
       return {
-        pass: true, // Only fails if action is turn_off exhaust AND temp > 30
-        message: `Temperature: ${temp}C`,
+        pass: maxTemp === null || maxTemp <= 30,
+        message:
+          maxTemp === null
+            ? 'Temperature: unavailable'
+            : `Temperature: ${maxTemp}C`,
       };
     },
   },
   {
     id: 'circulation_humidity',
     description: 'Never turn off circulation if humidity > 80%',
-    check: () => {
-      const humidity = halSensors.latest('humidity_sensor', 'humidity')?.value ?? 50;
+    check: (ctx) => {
+      const { input, device } = ctx;
+      if (
+        input.proposedAction.decision !== 'turn_off' ||
+        !device ||
+        !matchesDevice(device, ['circulation', 'fan'])
+      ) {
+        return { pass: true, message: 'not a circulation shutdown' };
+      }
+
+      const maxHumidity = maxLatestMetric(ctx, 'humidity');
       return {
-        pass: humidity <= 80,
-        message: `Humidity: ${humidity}%`,
+        pass: maxHumidity === null || maxHumidity <= 80,
+        message:
+          maxHumidity === null
+            ? 'Humidity: unavailable'
+            : `Humidity: ${maxHumidity}%`,
       };
     },
   },
@@ -67,32 +115,128 @@ const HARD_SAFETY_RULES: SafetyRule[] = [
 const recentActivations = new Map<string, number[]>();
 const MAX_ACTIVATIONS_PER_HOUR = 3;
 
-function checkRateLimit(deviceId: string): { pass: boolean; message: string } {
-  const now = Date.now();
+function checkRateLimit(
+  deviceId: string,
+  now = Date.now(),
+): { pass: boolean; message: string } {
   const oneHourAgo = now - 60 * 60 * 1000;
-  
+
   const activations = recentActivations.get(deviceId) || [];
-  const recentCount = activations.filter(t => t > oneHourAgo).length;
-  
+  const recentCount = activations.filter((t) => t > oneHourAgo).length;
+
   // Update the stored activations
-  recentActivations.set(deviceId, activations.filter(t => t > oneHourAgo));
-  
+  recentActivations.set(
+    deviceId,
+    activations.filter((t) => t > oneHourAgo),
+  );
+
   return {
     pass: recentCount < MAX_ACTIVATIONS_PER_HOUR,
     message: `Recent activations: ${recentCount}/${MAX_ACTIVATIONS_PER_HOUR} per hour`,
   };
 }
 
-function recordActivation(deviceId: string): void {
+function recordActivation(deviceId: string, now = Date.now()): void {
   const activations = recentActivations.get(deviceId) || [];
-  activations.push(Date.now());
+  activations.push(now);
   recentActivations.set(deviceId, activations);
+}
+
+export function resetVerifierRateLimitsForTests(): void {
+  recentActivations.clear();
+}
+
+function matchesDevice(device: HalDevice, terms: string[]): boolean {
+  const haystack = `${device.id} ${device.label || ''}`.toLowerCase();
+  return terms.some((term) => haystack.includes(term));
+}
+
+function isHumidifierLike(device: HalDevice): boolean {
+  return matchesDevice(device, ['humidifier', 'mist', 'fogger', 'mister']);
+}
+
+function isActuatorDecision(decision: string): boolean {
+  return decision === 'turn_on' || decision === 'turn_off';
+}
+
+function maxLatestMetric(
+  ctx: DeterministicSafetyContext,
+  metric: MetricType,
+): number | null {
+  let max: number | null = null;
+  for (const dev of ctx.devices.filter((d) => d.type === 'sensor')) {
+    const reading = ctx.latest(dev.id, metric);
+    if (!reading || typeof reading.value !== 'number') continue;
+    max = max === null ? reading.value : Math.max(max, reading.value);
+  }
+  return max;
+}
+
+export function evaluateDeterministicSafety(
+  input: VerifierInput,
+  deps: DeterministicSafetyDeps = {},
+): { approved: boolean; concerns: string[] } {
+  const devices = deps.devices ?? halRegistry.list();
+  const device = input.proposedAction.deviceId
+    ? (devices.find((d) => d.id === input.proposedAction.deviceId) ?? null)
+    : null;
+  const ctx: DeterministicSafetyContext = {
+    input,
+    devices,
+    device,
+    latest:
+      deps.latest ??
+      ((deviceId, metric) => halSensors.latest(deviceId, metric)),
+    now: deps.now ?? Date.now(),
+  };
+
+  const concerns: string[] = [];
+
+  if (isActuatorDecision(input.proposedAction.decision)) {
+    if (!input.proposedAction.deviceId) {
+      concerns.push('INVALID ACTION: actuator decision requires a device_id');
+    } else if (!device) {
+      concerns.push(
+        `INVALID ACTION: device ${input.proposedAction.deviceId} is not registered`,
+      );
+    }
+  }
+
+  for (const rule of HARD_SAFETY_RULES) {
+    const result = rule.check(ctx);
+    if (!result.pass) {
+      concerns.push(`SAFETY FAIL: ${rule.description} (${result.message})`);
+    }
+  }
+
+  if (
+    input.proposedAction.decision === 'turn_on' &&
+    device &&
+    (device.type === 'smart_plug' || device.type === 'relay') &&
+    isHumidifierLike(device)
+  ) {
+    const rateCheck = checkRateLimit(device.id, ctx.now);
+    if (!rateCheck.pass) {
+      concerns.push(
+        `RATE LIMIT: Max 3 humidifier activations per hour (${rateCheck.message})`,
+      );
+    }
+  }
+
+  if (input.proposedAction.confidence < 0.7) {
+    concerns.push(`LOW CONFIDENCE: ${input.proposedAction.confidence} < 0.7`);
+  }
+
+  return {
+    approved: concerns.length === 0,
+    concerns,
+  };
 }
 
 function buildSafetyPrompt(input: VerifierInput): string {
   const devices = halRegistry.list();
   const deviceMap = new Map(devices.map((d: any) => [d.id, d]));
-  
+
   const proposedDevice = input.proposedAction.deviceId
     ? deviceMap.get(input.proposedAction.deviceId)
     : null;
@@ -101,8 +245,10 @@ function buildSafetyPrompt(input: VerifierInput): string {
   for (const dev of devices.filter((d: any) => d.type === 'sensor')) {
     const temp = halSensors.latest(dev.id, 'temperature')?.value;
     const humidity = halSensors.latest(dev.id, 'humidity')?.value;
-    if (temp !== undefined) currentReadings.push(`${dev.label || dev.id}: temp=${temp}C`);
-    if (humidity !== undefined) currentReadings.push(`${dev.label || dev.id}: humidity=${humidity}%`);
+    if (temp !== undefined)
+      currentReadings.push(`${dev.label || dev.id}: temp=${temp}C`);
+    if (humidity !== undefined)
+      currentReadings.push(`${dev.label || dev.id}: humidity=${humidity}%`);
   }
 
   return [
@@ -115,7 +261,9 @@ function buildSafetyPrompt(input: VerifierInput): string {
     `  Confidence: ${input.proposedAction.confidence}`,
     '',
     'CURRENT STATE:',
-    currentReadings.length > 0 ? currentReadings.join('\n') : '  (no readings available)',
+    currentReadings.length > 0
+      ? currentReadings.join('\n')
+      : '  (no readings available)',
     '',
     'SAFETY RULES:',
     '  1. Never turn off exhaust fans if temperature > 30C (heat damage risk)',
@@ -130,38 +278,25 @@ function buildSafetyPrompt(input: VerifierInput): string {
   ].join('\n');
 }
 
-export async function runVerifier(input: VerifierInput): Promise<VerifierResult> {
-  const concerns: string[] = [];
-  
-  // Check hard safety rules first
-  for (const rule of HARD_SAFETY_RULES) {
-    const result = rule.check();
-    if (!result.pass) {
-      concerns.push(`SAFETY FAIL: ${rule.description} (${result.message})`);
-    }
-  }
+export async function runVerifier(
+  input: VerifierInput,
+): Promise<VerifierResult> {
+  const deterministic = evaluateDeterministicSafety(input);
+  const concerns = [...deterministic.concerns];
 
-  // Check rate limiting for humidifier-like devices
-  if (input.proposedAction.deviceId) {
-    const device = halRegistry.get(input.proposedAction.deviceId);
-    if (device?.type === 'smart_plug' || device?.type === 'relay') {
-      const rateCheck = checkRateLimit(input.proposedAction.deviceId);
-      if (!rateCheck.pass) {
-        concerns.push(`RATE LIMIT: Max 3 activations per hour (${rateCheck.message})`);
-      }
-    }
-  }
-
-  // Low confidence warning
-  if (input.proposedAction.confidence < 0.7) {
-    concerns.push(`LOW CONFIDENCE: ${input.proposedAction.confidence} < 0.7`);
+  if (!deterministic.approved) {
+    return {
+      approved: false,
+      reasoning: concerns.map((c) => `- ${c}`).join('\n'),
+      concerns,
+    };
   }
 
   // Use LLM for additional context-aware validation
   const systemPrompt = buildSafetyPrompt(input);
   const llmResult = await callLLM(
     'Evaluate this proposed farm action for safety. Consider device state, recent history, and environmental conditions.',
-    { system: systemPrompt, temperature: 0.1, maxTokens: 512 }
+    { system: systemPrompt, temperature: 0.1, maxTokens: 512 },
   );
 
   try {
@@ -172,7 +307,9 @@ export async function runVerifier(input: VerifierInput): Promise<VerifierResult>
         concerns.push(...parsed.concerns);
       }
       if (!parsed.approved) {
-        concerns.push('LLM_REJECTED: ' + (parsed.reasoning || 'no reason provided'));
+        concerns.push(
+          'LLM_REJECTED: ' + (parsed.reasoning || 'no reason provided'),
+        );
       }
     }
   } catch {
@@ -180,17 +317,28 @@ export async function runVerifier(input: VerifierInput): Promise<VerifierResult>
   }
 
   const approved = concerns.length === 0;
-  
+
   // Record successful verification for rate limiting
-  if (approved && input.proposedAction.deviceId) {
-    recordActivation(input.proposedAction.deviceId);
+  if (
+    approved &&
+    input.proposedAction.deviceId &&
+    input.proposedAction.decision === 'turn_on'
+  ) {
+    const device = halRegistry.get(input.proposedAction.deviceId);
+    if (
+      device &&
+      (device.type === 'smart_plug' || device.type === 'relay') &&
+      isHumidifierLike(device)
+    ) {
+      recordActivation(input.proposedAction.deviceId);
+    }
   }
 
   return {
     approved,
     reasoning: approved
       ? 'All safety checks passed'
-      : concerns.map(c => `- ${c}`).join('\n'),
+      : concerns.map((c) => `- ${c}`).join('\n'),
     concerns,
   };
 }
@@ -201,7 +349,7 @@ export async function runVerifier(input: VerifierInput): Promise<VerifierResult>
 export async function executeVerifiedAction(
   decision: string,
   deviceId: string | null,
-  toolCalls: Array<{ tool: string; args: Record<string, unknown> }>
+  toolCalls: Array<{ tool: string; args: Record<string, unknown> }>,
 ): Promise<{ success: boolean; message: string }> {
   if (!deviceId) {
     return { success: true, message: 'No-op decision' };
@@ -212,7 +360,7 @@ export async function executeVerifiedAction(
       await halRegistry.control(deviceId, 'on');
       return { success: true, message: `Turned on ${deviceId}` };
     }
-    
+
     if (decision === 'turn_off') {
       await halRegistry.control(deviceId, 'off');
       return { success: true, message: `Turned off ${deviceId}` };

@@ -1,6 +1,6 @@
 /**
  * FarmPal Generator Agent
- * 
+ *
  * Proposes farm control decisions based on sensor data, device states,
  * and user messages. Uses lightweight callLLM with structured output.
  */
@@ -9,7 +9,6 @@ import { callLLM } from './llm.js';
 import { halRegistry } from '../hal/registry.js';
 import { halSensors } from '../hal/sensors.js';
 import { halDecisions } from '../hal/decisions.js';
-import { halRelays } from '../hal/relays.js';
 
 export interface GeneratorResult {
   decision: 'turn_on' | 'turn_off' | 'adjust' | 'alert' | 'noop';
@@ -28,15 +27,17 @@ export interface GeneratorContext {
 function buildSystemPrompt(): string {
   const devices = halRegistry.list();
   const recentDecisions = halDecisions.recent(5);
-  
+
   const sensorSnapshot: Record<string, number> = {};
   for (const dev of devices.filter((d: any) => d.type === 'sensor')) {
     const reading = halSensors.latest(dev.id, 'temperature');
     if (reading) sensorSnapshot[`${dev.label || dev.id}_temp`] = reading.value;
     const humReading = halSensors.latest(dev.id, 'humidity');
-    if (humReading) sensorSnapshot[`${dev.label || dev.id}_humidity`] = humReading.value;
+    if (humReading)
+      sensorSnapshot[`${dev.label || dev.id}_humidity`] = humReading.value;
     const co2Reading = halSensors.latest(dev.id, 'co2');
-    if (co2Reading) sensorSnapshot[`${dev.label || dev.id}_co2`] = co2Reading.value;
+    if (co2Reading)
+      sensorSnapshot[`${dev.label || dev.id}_co2`] = co2Reading.value;
   }
 
   return [
@@ -44,24 +45,39 @@ function buildSystemPrompt(): string {
     'You control: smart plugs, sensors, cameras, GPIO devices, relays.',
     '',
     'Available devices:',
-    devices.map((d: any) => `  - ${d.label || d.id}: ${d.type} (${d.protocol}) state=${d.last_state}`).join('\n'),
+    devices
+      .map(
+        (d: any) =>
+          `  - ${d.label || d.id}: ${d.type} (${d.protocol}) state=${d.last_state}`,
+      )
+      .join('\n'),
     '',
     'Recent decisions:',
-    recentDecisions.length > 0 
-      ? recentDecisions.slice(0, 5).map((d: any) => `  - ${d.decision} (${d.outcome})${d.reasoning ? ': ' + d.reasoning : ''}`).join('\n')
+    recentDecisions.length > 0
+      ? recentDecisions
+          .slice(0, 5)
+          .map(
+            (d: any) =>
+              `  - ${d.decision} (${d.outcome})${d.reasoning ? ': ' + d.reasoning : ''}`,
+          )
+          .join('\n')
       : '  (none)',
     '',
     'Current sensor readings:',
-    Object.entries(sensorSnapshot).map(([k, v]) => `  - ${k}: ${v}`).join('\n'),
+    Object.entries(sensorSnapshot)
+      .map(([k, v]) => `  - ${k}: ${v}`)
+      .join('\n'),
     '',
     'Respond ONLY with valid JSON in this exact format:',
     '{"reasoning":"string","decision":"turn_on|turn_off|adjust|alert|noop","device_id":"string|null","confidence":0.0-1.0,"tool_calls":[]}',
   ].join('\n');
 }
 
-export async function runGenerator(ctx: GeneratorContext): Promise<GeneratorResult> {
+export async function runGenerator(
+  ctx: GeneratorContext,
+): Promise<GeneratorResult> {
   const systemPrompt = buildSystemPrompt();
-  
+
   const userPrompt = ctx.message
     ? `User message: ${ctx.message}\nChat: ${ctx.chatId}\n\nDecide what to do based on current farm state.`
     : `No user message. Run autonomous monitoring. Trigger: ${ctx.trigger}`;
@@ -96,16 +112,6 @@ export async function runGenerator(ctx: GeneratorContext): Promise<GeneratorResu
   } catch {
     // Keep defaults on parse failure
   }
-
-  // Log the decision
-  const decisionLog = halDecisions.log({
-    device_id: parsed.device_id || undefined,
-    decision: parsed.decision,
-    confidence: parsed.confidence,
-    reasoning: parsed.reasoning,
-    sensor_snapshot: {},
-    outcome: 'pending',
-  });
 
   return {
     decision: parsed.decision,
