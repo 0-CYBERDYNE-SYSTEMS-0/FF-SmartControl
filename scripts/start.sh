@@ -84,7 +84,7 @@ export FFT_NANO_TUI_PORT="${FFT_NANO_TUI_PORT:-3390}"
 export FFT_NANO_WEB_ENABLED="${FFT_NANO_WEB_ENABLED:-1}"
 export FFT_NANO_WEB_ACCESS_MODE="${FFT_NANO_WEB_ACCESS_MODE:-localhost}"
 export FFT_NANO_WEB_HOST="${FFT_NANO_WEB_HOST:-127.0.0.1}"
-export FFT_NANO_WEB_PORT="${FFT_NANO_WEB_PORT:-3391}"
+export FFT_NANO_WEB_PORT="${FFT_NANO_WEB_PORT:-3393}"
 
 # Prefer TELEGRAM_BOT_TOKEN from .env/exports; fall back to macOS Keychain.
 if [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] && [[ "$(uname -s)" == "Darwin" ]] && command -v security >/dev/null 2>&1; then
@@ -122,7 +122,7 @@ tui_port="${FFT_NANO_TUI_PORT:-3390}"
 web_enabled="${FFT_NANO_WEB_ENABLED:-1}"
 web_access="${FFT_NANO_WEB_ACCESS_MODE:-localhost}"
 web_host="${FFT_NANO_WEB_HOST:-127.0.0.1}"
-web_port="${FFT_NANO_WEB_PORT:-3391}"
+web_port="${FFT_NANO_WEB_PORT:-3393}"
 profile="${FFT_PROFILE:-core}"
 feature_farm="${FEATURE_FARM:-auto}"
 

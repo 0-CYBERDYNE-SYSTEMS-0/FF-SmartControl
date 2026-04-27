@@ -42,7 +42,7 @@ if [[ -f .env ]]; then
 fi
 
 web_host="${FFT_NANO_WEB_HOST:-127.0.0.1}"
-web_port="${FFT_NANO_WEB_PORT:-3391}"
+web_port="${FFT_NANO_WEB_PORT:-3393}"
 show_host="$web_host"
 if [[ "$show_host" == "0.0.0.0" || "$show_host" == "::" ]]; then
   show_host="127.0.0.1"

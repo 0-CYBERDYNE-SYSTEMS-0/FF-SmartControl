@@ -11,7 +11,7 @@ Single Node.js host process: receives chat messages (Telegram/WhatsApp), runs a 
 Additional surfaces:
 - HAL (hardware abstraction layer): sensors, relays, MQTT, GPIO, serial, camera, discovery, decisions, simulator
 - HAL UI: TypeScript/esbuild web dashboard served at `127.0.0.1:3392`
-- Web control center: Vite/React frontend at `127.0.0.1:3391`
+- Web control center: Vite/React frontend at `127.0.0.1:3393`
 - TUI: terminal UI gateway/client at `127.0.0.1:3390`
 
 ## Build & Test

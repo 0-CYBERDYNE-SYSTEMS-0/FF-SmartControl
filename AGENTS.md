@@ -146,7 +146,7 @@ npm run hal:ui:build
 - Port policy: do not use `28995` or any higher `289xx` port for local previews, service defaults, or fallback servers. This machine has many services in that range. Prefer the FarmPal local block `3390`-`3399` unless the user explicitly provides a different port.
 - Current FarmPal local surfaces:
   - TUI websocket default: `127.0.0.1:3390`
-  - Web control center default: `127.0.0.1:3391`
+  - Web control center default: `127.0.0.1:3393`
   - HAL UI default/standalone fallback: `127.0.0.1:3392`
 - FarmPal should be the only local service using the `3390`-`3399` block. If another checkout/service is squatting on those ports, fix the other service rather than moving FarmPal into the reserved `289xx` range.
 - Host runtime is the current target for FarmPal hardware development:

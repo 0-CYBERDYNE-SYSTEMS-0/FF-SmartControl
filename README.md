@@ -213,7 +213,7 @@ fft web
 # or: ./scripts/web.sh
 ```
 
-By default it listens on `http://127.0.0.1:3391`.
+By default it listens on `http://127.0.0.1:3393`.
 
 ### 5. Claim Telegram as main/admin
 
@@ -374,7 +374,7 @@ FFT CONTROL CENTER env:
 - `FFT_NANO_WEB_ENABLED` (`1` default)
 - `FFT_NANO_WEB_ACCESS_MODE` (`localhost|lan|remote`, default `localhost`)
 - `FFT_NANO_WEB_HOST` (default `127.0.0.1` for localhost mode, else `0.0.0.0`)
-- `FFT_NANO_WEB_PORT` (default `3391`)
+- `FFT_NANO_WEB_PORT` (default `3393`)
 - `FFT_NANO_WEB_AUTH_TOKEN` (required for `lan` and `remote` modes)
 
 TUI troubleshooting:

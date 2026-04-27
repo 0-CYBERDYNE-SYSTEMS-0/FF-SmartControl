@@ -182,7 +182,7 @@ export const FFT_NANO_WEB_ENABLED = envFlag(
 );
 export const FFT_NANO_WEB_PORT = envInt(
   process.env.FFT_NANO_WEB_PORT,
-  3391,
+  3393,
   1,
   65535,
 );
