@@ -186,7 +186,7 @@ export function renderDualAxisCard(
 
   const width = opts.width ?? 900;
   const height = opts.height ?? 320;
-  const pad = { top: 24, right: 52, bottom: 36, left: 52 };
+  const pad = { top: 24, right: 36, bottom: 36, left: 36 };
 
   const allTimes = layers.flatMap(l => l.data.map(d => d.t));
   const tMin = Math.min(...allTimes);
@@ -238,7 +238,8 @@ export function renderDualAxisCard(
     const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
     const v = primary.axisMax - (i / 5) * primary.vSpan;
     const prec = primary.layer.label === 'CO₂' ? 0 : 1;
-    return `<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(prec)}</text>`;
+    const unit = primary.layer.unit || '';
+    return `<text x="${pad.left - 6}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(prec)}${unit}</text>`;
   }).join('');
 
   // Right axis (second layer if exists)
@@ -248,7 +249,8 @@ export function renderDualAxisCard(
     rightAxisLabels = Array.from({ length: 6 }, (_, i) => {
       const y = pad.top + (i / 5) * (height - pad.top - pad.bottom);
       const v = sec.axisMax - (i / 5) * sec.vSpan;
-      return `<text x="${width - pad.right + 8}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.color}">${v.toFixed(1)}</text>`;
+      const unit = sec.layer.unit || '';
+      return `<text x="${width - pad.right + 6}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.color}">${v.toFixed(1)}${unit}</text>`;
     }).join('');
   }
 
@@ -391,7 +393,7 @@ function renderOverviewZoneCard(zone: DashboardOverviewZoneCard, activeKeys: Set
 
   const w = 566;
   const h = 210;
-  const pad = { l: 100, r: 80, t: 30, b: 40 };
+  const pad = { l: 48, r: 48, t: 24, b: 36 };
   const cw = w - pad.l - pad.r;
   const ch = h - pad.t - pad.b;
 
@@ -421,9 +423,13 @@ function renderOverviewZoneCard(zone: DashboardOverviewZoneCard, activeKeys: Set
 
   const primary = series[0]!;
   const primaryGrid = [primary.max, primary.min + primary.span / 2, primary.min];
-  const gridLines = primaryGrid.map(value => {
+  const primaryUnit = activeMetrics[0]?.unit || '';
+  const gridLines = primaryGrid.map((value, i) => {
     const y = primary.y(value);
-    return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 20%, var(--border))"/>`;
+    return `
+      <line x1="${pad.l - 4}" x2="${pad.l}" y1="${y}" y2="${y}" stroke="var(--text-tertiary)"/>
+      <line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 15%, var(--border))"/>
+    `;
   }).join('');
 
   const defs = series.map(entry => `
@@ -1737,9 +1743,10 @@ export function injectChartKitStyles(): void {
   stroke-dasharray: 2 3;
 }
 .chart-label {
-  fill: var(--text-tertiary);
-  font-size: 10px;
+  fill: var(--text-secondary);
+  font-size: 12px;
   font-family: var(--font-mono);
+  font-weight: 600;
 }
 .sparkline-svg {
   display: inline-block;
@@ -1824,7 +1831,9 @@ export function injectChartKitStyles(): void {
 }
 .dhc-zone-grid {
   display: grid;
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: stretch;
+  gap: var(--space-2);
 }
 .dhc-overview-health {
   display: flex;

@@ -438,7 +438,7 @@
     }
     const width = opts.width ?? 900;
     const height = opts.height ?? 320;
-    const pad = { top: 24, right: 52, bottom: 36, left: 52 };
+    const pad = { top: 24, right: 36, bottom: 36, left: 36 };
     const allTimes = layers.flatMap((l) => l.data.map((d) => d.t));
     const tMin = Math.min(...allTimes);
     const tMax = Math.max(...allTimes);
@@ -477,7 +477,8 @@
       const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
       const v = primary.axisMax - i / 5 * primary.vSpan;
       const prec = primary.layer.label === "CO\u2082" ? 0 : 1;
-      return `<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(prec)}</text>`;
+      const unit = primary.layer.unit || "";
+      return `<text x="${pad.left - 6}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(prec)}${unit}</text>`;
     }).join("");
     let rightAxisLabels = "";
     if (layerPaths.length > 1) {
@@ -485,7 +486,8 @@
       rightAxisLabels = Array.from({ length: 6 }, (_, i) => {
         const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
         const v = sec.axisMax - i / 5 * sec.vSpan;
-        return `<text x="${width - pad.right + 8}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.color}">${v.toFixed(1)}</text>`;
+        const unit = sec.layer.unit || "";
+        return `<text x="${width - pad.right + 6}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.color}">${v.toFixed(1)}${unit}</text>`;
       }).join("");
     }
     const defs = layerPaths.map((lp, i) => `
@@ -579,7 +581,7 @@
     }
     const w = 566;
     const h = 210;
-    const pad = { l: 100, r: 80, t: 30, b: 40 };
+    const pad = { l: 48, r: 48, t: 24, b: 36 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
     const times = Array.from(new Set(chartMetrics.flatMap((metric) => metric.data.map((point) => point.t)))).sort((a, b) => a - b);
@@ -604,9 +606,13 @@
     });
     const primary = series[0];
     const primaryGrid = [primary.max, primary.min + primary.span / 2, primary.min];
-    const gridLines = primaryGrid.map((value) => {
+    const primaryUnit = activeMetrics[0]?.unit || "";
+    const gridLines = primaryGrid.map((value, i) => {
       const y = primary.y(value);
-      return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 20%, var(--border))"/>`;
+      return `
+      <line x1="${pad.l - 4}" x2="${pad.l}" y1="${y}" y2="${y}" stroke="var(--text-tertiary)"/>
+      <line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 15%, var(--border))"/>
+    `;
     }).join("");
     const defs = series.map((entry) => `
     <linearGradient id="${gradientPrefix}-${entry.metric.key}-grad" x1="0" x2="0" y1="0" y2="1">
@@ -1531,9 +1537,10 @@
   stroke-dasharray: 2 3;
 }
 .chart-label {
-  fill: var(--text-tertiary);
-  font-size: 10px;
+  fill: var(--text-secondary);
+  font-size: 12px;
   font-family: var(--font-mono);
+  font-weight: 600;
 }
 .sparkline-svg {
   display: inline-block;
@@ -1618,7 +1625,9 @@
 }
 .dhc-zone-grid {
   display: grid;
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: stretch;
+  gap: var(--space-2);
 }
 .dhc-overview-health {
   display: flex;
@@ -3334,19 +3343,20 @@
     style.textContent = `
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
-  gap: var(--space-3);
-  margin-bottom: var(--space-6);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  align-items: stretch;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 .kpi-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   border-left: 3px solid var(--kpi-accent);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1);
   transition: border-color var(--transition-fast);
 }
 .kpi-card:hover {
@@ -3403,7 +3413,7 @@
   color: var(--danger);
 }
 @media (max-width: 767px) {
-  .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
+  .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
 }
 `;
     document.head.appendChild(style);
@@ -3637,9 +3647,10 @@
     style.textContent = `
 .operator-panels {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: stretch;
   gap: var(--space-4);
-  margin-top: var(--space-6);
+  margin-top: var(--space-4);
 }
 .op-panel {
   padding: var(--space-3);
@@ -3675,8 +3686,9 @@
 /* Device Grid */
 .op-device-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  align-items: stretch;
+  gap: var(--space-1);
 }
 .op-device-cell {
   display: flex;
@@ -4522,9 +4534,15 @@
 .dash-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+  align-items: stretch;
   gap: var(--space-3);
+  min-height: 0;
 }
-.dash-main { min-width: 0; }
+.dash-main { 
+  min-width: 0; 
+  display: flex;
+  flex-direction: column;
+}
 .dash-sidebar {
   display: flex;
   flex-direction: column;
@@ -4671,13 +4689,15 @@
 }
 .dash-bottom-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
 .device-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  align-items: stretch;
   gap: var(--space-1);
 }
 .device-mini-card {
@@ -4759,7 +4779,8 @@
 .diag-raw-data { margin: var(--space-3) 0; }
 .diag-snapshot-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  align-items: stretch;
   gap: var(--space-2);
 }
 .diag-snapshot {
@@ -5964,9 +5985,10 @@
 /* Viz cards */
 .viz-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-4);
-  margin-top: var(--space-6);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: stretch;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }
 .viz-card {
   background: var(--bg-secondary);
@@ -6088,7 +6110,8 @@
 }
 .horizon-strips-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-3);
 }

@@ -257,9 +257,10 @@ export function injectOperatorPanelStyles(): void {
   style.textContent = `
 .operator-panels {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: stretch;
   gap: var(--space-4);
-  margin-top: var(--space-6);
+  margin-top: var(--space-4);
 }
 .op-panel {
   padding: var(--space-3);
@@ -295,8 +296,9 @@ export function injectOperatorPanelStyles(): void {
 /* Device Grid */
 .op-device-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  align-items: stretch;
+  gap: var(--space-1);
 }
 .op-device-cell {
   display: flex;

@@ -241,19 +241,20 @@ export function injectKpiStyles(): void {
   style.textContent = `
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
-  gap: var(--space-3);
-  margin-bottom: var(--space-6);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  align-items: stretch;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 .kpi-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   border-left: 3px solid var(--kpi-accent);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1);
   transition: border-color var(--transition-fast);
 }
 .kpi-card:hover {
@@ -310,7 +311,7 @@ export function injectKpiStyles(): void {
   color: var(--danger);
 }
 @media (max-width: 767px) {
-  .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
+  .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
 }
 `;
   document.head.appendChild(style);

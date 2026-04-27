@@ -984,9 +984,10 @@ function injectSensorStyles(): void {
 /* Viz cards */
 .viz-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-4);
-  margin-top: var(--space-6);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: stretch;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }
 .viz-card {
   background: var(--bg-secondary);
@@ -1108,7 +1109,8 @@ function injectSensorStyles(): void {
 }
 .horizon-strips-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-3);
 }

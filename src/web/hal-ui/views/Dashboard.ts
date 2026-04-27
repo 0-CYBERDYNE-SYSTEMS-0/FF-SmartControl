@@ -629,9 +629,15 @@ function injectDashboardStyles(): void {
 .dash-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+  align-items: stretch;
   gap: var(--space-3);
+  min-height: 0;
 }
-.dash-main { min-width: 0; }
+.dash-main { 
+  min-width: 0; 
+  display: flex;
+  flex-direction: column;
+}
 .dash-sidebar {
   display: flex;
   flex-direction: column;
@@ -778,13 +784,15 @@ function injectDashboardStyles(): void {
 }
 .dash-bottom-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
 .device-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  align-items: stretch;
   gap: var(--space-1);
 }
 .device-mini-card {
@@ -866,7 +874,8 @@ function injectDashboardStyles(): void {
 .diag-raw-data { margin: var(--space-3) 0; }
 .diag-snapshot-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  align-items: stretch;
   gap: var(--space-2);
 }
 .diag-snapshot {
