@@ -7,7 +7,7 @@ export type ThemeName =
   | 'violet' | 'cyan' | 'orange' | 'slate';
 export type UnitSystem = 'metric' | 'imperial';
 export type TimeFormat = '12h' | '24h';
-export type ViewId = 'dashboard' | 'devices' | 'sensors' | 'decisions' | 'cameras' | 'system' | 'terminal';
+export type ViewId = 'dashboard' | 'devices' | 'sensors' | 'decisions' | 'cameras' | 'system' | 'terminal' | 'safety';
 export type DashboardLayout = 'calm' | 'operator' | 'diagnostic';
 
 export interface HalStore {
@@ -33,6 +33,12 @@ export interface HalStore {
   mqttStatus: 'connected' | 'disconnected';
   dbStatus: 'healthy' | 'error';
   autoMode: boolean;
+
+  // Safety state
+  safetyState: 'NORMAL' | 'WARNING' | 'EMERGENCY_STOP_ACTIVE';
+  safetyActiveRulesCount: number;
+  safetyWarningDevicesCount: number;
+  safetyDeniedLast24h: number;
 }
 
 type Listener = () => void;
@@ -56,6 +62,10 @@ let state: HalStore = {
   mqttStatus: 'connected',
   dbStatus: 'healthy',
   autoMode: true,
+  safetyState: 'NORMAL',
+  safetyActiveRulesCount: 0,
+  safetyWarningDevicesCount: 0,
+  safetyDeniedLast24h: 0,
 };
 
 export function getStore(): HalStore {

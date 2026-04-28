@@ -38,6 +38,10 @@ export function renderHeader(theme: ThemeName): string {
         <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
       </div>
       <div class="hal-header-center">
+        <div class="safety-state-indicator" id="safety-state-indicator" title="Safety State">
+          <span class="safety-state-dot"></span>
+          <span class="safety-state-label" id="safety-state-label">NORMAL</span>
+        </div>
         <button class="theme-picker-trigger" id="theme-picker-trigger" aria-label="Theme" style="--dot-color:${currentDef.accent}">
           <span class="theme-picker-trigger-dot"></span>
         </button>
@@ -67,6 +71,9 @@ function getViewLabel(): string {
     sensors: 'Sensors',
     decisions: 'Decisions',
     cameras: 'Cameras',
+    safety: 'Safety',
+    system: 'System',
+    terminal: 'Terminal',
   };
   return labels[location.hash.slice(1) || 'dashboard'] || 'Overview';
 }
@@ -83,7 +90,7 @@ export function initHeader(
   refreshEstopStatus();
 }
 
-// Refresh E-Stop status periodically
+// Refresh E-Stop status and safety state periodically
 let estopRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
 function refreshEstopStatus(): void {
@@ -96,6 +103,14 @@ function refreshEstopStatus(): void {
     } catch {
       // Silently ignore - E-Stop status will be stale
     }
+
+    // Also refresh safety state indicator
+    try {
+      const safetyState = await halApi.getSafetyState();
+      updateSafetyStateIndicator(safetyState.safetyState);
+    } catch {
+      // Silently ignore
+    }
   }, 5000);
 
   // Initial fetch
@@ -105,6 +120,40 @@ function refreshEstopStatus(): void {
       updateEstopUI(status.estop.active, status.estop.activatedAt);
     })
     .catch(() => {});
+
+  // Initial safety state
+  halApi
+    .getSafetyState()
+    .then((safetyState) => {
+      updateSafetyStateIndicator(safetyState.safetyState);
+    })
+    .catch(() => {});
+}
+
+function updateSafetyStateIndicator(state: 'NORMAL' | 'WARNING' | 'EMERGENCY_STOP_ACTIVE'): void {
+  const indicator = document.getElementById('safety-state-indicator');
+  const label = document.getElementById('safety-state-label');
+  if (!indicator || !label) return;
+
+  // Remove all state classes
+  indicator.classList.remove('normal', 'warning', 'emergency');
+
+  switch (state) {
+    case 'NORMAL':
+      indicator.classList.add('normal');
+      label.textContent = 'NORMAL';
+      break;
+    case 'WARNING':
+      indicator.classList.add('warning');
+      label.textContent = 'WARNING';
+      break;
+    case 'EMERGENCY_STOP_ACTIVE':
+      indicator.classList.add('emergency');
+      label.textContent = 'E-STOP';
+      break;
+    default:
+      label.textContent = state;
+  }
 }
 
 function updateEstopUI(active: boolean, activatedAt: string | null): void {
@@ -296,6 +345,73 @@ function injectHeaderStyles(): void {
   flex: 1;
   min-width: 0;
   position: relative;
+  gap: var(--space-4);
+}
+
+/* Safety State Indicator */
+.safety-state-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--bg-tertiary) 82%, transparent);
+  border: 1px solid var(--border);
+  cursor: default;
+  transition: all var(--transition-fast);
+}
+.safety-state-indicator.normal {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+.safety-state-indicator.warning {
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+}
+.safety-state-indicator.emergency {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  animation: safety-pulse 2s ease-in-out infinite;
+}
+.safety-state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.safety-state-indicator.normal .safety-state-dot {
+  background: var(--success);
+}
+.safety-state-indicator.warning .safety-state-dot {
+  background: var(--warning);
+}
+.safety-state-indicator.emergency .safety-state-dot {
+  background: var(--danger);
+  animation: safety-dot-pulse 1s ease-in-out infinite;
+}
+.safety-state-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+.safety-state-indicator.normal .safety-state-label {
+  color: var(--success);
+}
+.safety-state-indicator.warning .safety-state-label {
+  color: var(--warning);
+}
+.safety-state-indicator.emergency .safety-state-label {
+  color: var(--danger);
+}
+@keyframes safety-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+@keyframes safety-dot-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.3); }
 }
 
 /* Desktop theme dots */

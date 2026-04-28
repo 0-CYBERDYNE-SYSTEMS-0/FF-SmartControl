@@ -370,6 +370,399 @@ export async function startHalUiServer(
         return;
       }
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // SAFETY RULES API — CRUD for per-device safety rules
+      // ═══════════════════════════════════════════════════════════════════════
+
+      // GET /api/hal/safety/rules — list all safety rules
+      if (apiPath === '/safety/rules' && method === 'GET') {
+        const db = getDb();
+        const rows = db
+          .prepare(
+            `
+            SELECT id, device_id, rule_type, rule_config, enabled, priority, created_at, updated_at
+            FROM hal_safety_rules
+            ORDER BY priority ASC
+          `,
+          )
+          .all() as Array<Record<string, unknown>>;
+        const rules = rows.map((row) => ({
+          id: row.id,
+          deviceId: row.device_id,
+          ruleType: row.rule_type,
+          ruleConfig: JSON.parse(row.rule_config as string),
+          enabled: row.enabled === 1,
+          priority: row.priority,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }));
+        sendJson(res, 200, rules);
+        return;
+      }
+
+      // GET /api/hal/safety/rules/:id — get a specific rule
+      if (apiPath.match(/^\/safety\/rules\/([^/]+)$/) && method === 'GET') {
+        const ruleId = apiPath.split('/')[3];
+        const db = getDb();
+        const row = db
+          .prepare('SELECT * FROM hal_safety_rules WHERE id = ?')
+          .get(ruleId) as Record<string, unknown> | undefined;
+        if (!row) {
+          sendJson(res, 404, { error: 'Rule not found' });
+          return;
+        }
+        sendJson(res, 200, {
+          id: row.id,
+          deviceId: row.device_id,
+          ruleType: row.rule_type,
+          ruleConfig: JSON.parse(row.rule_config as string),
+          enabled: row.enabled === 1,
+          priority: row.priority,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        });
+        return;
+      }
+
+      // POST /api/hal/safety/rules — create a new rule
+      if (apiPath === '/safety/rules' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+
+        const { deviceId, ruleType, ruleConfig, enabled = true, priority = 0 } =
+          parsed;
+
+        if (!deviceId || !ruleType || !ruleConfig) {
+          sendJson(res, 400, {
+            error: 'deviceId, ruleType, and ruleConfig are required',
+          });
+          return;
+        }
+
+        const validRuleTypes = [
+          'max_on_duration',
+          'min_off_duration',
+          'max_activations_per_hour',
+          'allowed_schedule_windows',
+          'dependency',
+        ];
+        if (!validRuleTypes.includes(ruleType)) {
+          sendJson(res, 400, {
+            error: `ruleType must be one of: ${validRuleTypes.join(', ')}`,
+          });
+          return;
+        }
+
+        const id = `rule_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const now = new Date().toISOString();
+
+        try {
+          const db = getDb();
+          db.prepare(
+            `
+            INSERT INTO hal_safety_rules (id, device_id, rule_type, rule_config, enabled, priority, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          ).run(id, deviceId, ruleType, JSON.stringify(ruleConfig), enabled ? 1 : 0, priority, now, now);
+
+          sendJson(res, 201, {
+            id,
+            deviceId,
+            ruleType,
+            ruleConfig,
+            enabled,
+            priority,
+            createdAt: now,
+            updatedAt: now,
+          });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // PUT /api/hal/safety/rules/:id — update a rule
+      if (apiPath.match(/^\/safety\/rules\/([^/]+)$/) && method === 'PUT') {
+        const ruleId = apiPath.split('/')[3];
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+
+        const { ruleConfig, enabled, priority } = parsed;
+
+        if (ruleConfig === undefined && enabled === undefined && priority === undefined) {
+          sendJson(res, 400, {
+            error: 'At least one of ruleConfig, enabled, or priority must be provided',
+          });
+          return;
+        }
+
+        const db = getDb();
+        const existing = db
+          .prepare('SELECT * FROM hal_safety_rules WHERE id = ?')
+          .get(ruleId) as Record<string, unknown> | undefined;
+
+        if (!existing) {
+          sendJson(res, 404, { error: 'Rule not found' });
+          return;
+        }
+
+        const now = new Date().toISOString();
+        const newConfig = ruleConfig !== undefined ? JSON.stringify(ruleConfig) : existing.rule_config;
+        const newEnabled = enabled !== undefined ? (enabled ? 1 : 0) : existing.enabled;
+        const newPriority = priority !== undefined ? priority : existing.priority;
+
+        try {
+          db.prepare(
+            `
+            UPDATE hal_safety_rules
+            SET rule_config = ?, enabled = ?, priority = ?, updated_at = ?
+            WHERE id = ?
+          `,
+          ).run(newConfig, newEnabled, newPriority, now, ruleId);
+
+          sendJson(res, 200, {
+            id: ruleId,
+            deviceId: existing.device_id,
+            ruleType: existing.rule_type,
+            ruleConfig: JSON.parse(newConfig as string),
+            enabled: newEnabled === 1,
+            priority: newPriority,
+            createdAt: existing.created_at,
+            updatedAt: now,
+          });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // DELETE /api/hal/safety/rules/:id — delete a rule
+      if (apiPath.match(/^\/safety\/rules\/([^/]+)$/) && method === 'DELETE') {
+        const ruleId = apiPath.split('/')[3];
+        const db = getDb();
+        const existing = db
+          .prepare('SELECT * FROM hal_safety_rules WHERE id = ?')
+          .get(ruleId);
+
+        if (!existing) {
+          sendJson(res, 404, { error: 'Rule not found' });
+          return;
+        }
+
+        try {
+          db.prepare('DELETE FROM hal_safety_rules WHERE id = ?').run(ruleId);
+          sendJson(res, 200, { ok: true });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/hal/safety/audit — get recent audit log entries
+      if (apiPath === '/safety/audit' && method === 'GET') {
+        const limit = parseInt(url.searchParams.get('limit') || '50');
+        const deviceId = url.searchParams.get('deviceId');
+        const triggeredBy = url.searchParams.get('triggeredBy');
+        const result = url.searchParams.get('result');
+
+        let sql = 'SELECT * FROM hal_safety_audit WHERE 1=1';
+        const params: unknown[] = [];
+
+        if (deviceId) {
+          sql += ' AND device_id = ?';
+          params.push(deviceId);
+        }
+        if (triggeredBy) {
+          sql += ' AND triggered_by = ?';
+          params.push(triggeredBy);
+        }
+        if (result) {
+          sql += ' AND verifier_result = ?';
+          params.push(result);
+        }
+
+        sql += ' ORDER BY created_at DESC LIMIT ?';
+        params.push(limit);
+
+        const db = getDb();
+        const rows = db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
+        const entries = rows.map((row) => ({
+          id: row.id,
+          deviceId: row.device_id,
+          proposedAction: row.proposed_action,
+          verifierResult: row.verifier_result,
+          deniedReason: row.denied_reason,
+          conflictingRuleIds: row.conflicting_rule_ids
+            ? JSON.parse(row.conflicting_rule_ids as string)
+            : [],
+          sensorSnapshot: JSON.parse(row.sensor_snapshot as string),
+          decisionId: row.decision_id,
+          triggeredBy: row.triggered_by,
+          executed: row.executed === 1,
+          executedState: row.executed_state,
+          interrupted: row.interrupted === 1,
+          interruptedAtStep: row.interrupted_at_step,
+          revertedSteps: row.reverted_steps,
+          createdAt: row.created_at,
+        }));
+        sendJson(res, 200, entries);
+        return;
+      }
+
+      // GET /api/hal/safety/state — get current safety state (NORMAL/WARNING/EMERGENCY_STOP)
+      if (apiPath === '/safety/state' && method === 'GET') {
+        const { getEstopState } = await import('../safety/estop.js');
+        const { getFarmLoopState } = await import('../safety/estop.js');
+        const db = getDb();
+
+        const estop = getEstopState();
+        const farmLoop = getFarmLoopState();
+
+        // Count active rules
+        const activeRulesCount = (
+          db
+            .prepare('SELECT COUNT(*) as count FROM hal_safety_rules WHERE enabled = 1')
+            .get() as { count: number }
+        ).count;
+
+        // Count warning-state devices (within 10% of rule limits)
+        // For now, we check if any recent audit entries have warnings
+        const recentWarnings = (
+          db
+            .prepare(
+              `
+              SELECT COUNT(DISTINCT device_id) as count
+              FROM hal_safety_audit
+              WHERE verifier_result = 'APPROVED'
+                AND denied_reason IS NOT NULL
+                AND created_at > datetime('now', '-1 hour')
+              `,
+            )
+            .get() as { count: number }
+        ).count;
+
+        // Count denied actions in last 24h
+        const deniedLast24h = (
+          db
+            .prepare(
+              `
+              SELECT COUNT(*) as count FROM hal_safety_audit
+              WHERE verifier_result IN ('DENIED', 'DENIED_WITH_REASON')
+                AND created_at > datetime('now', '-24 hours')
+              `,
+            )
+            .get() as { count: number }
+        ).count;
+
+        // Determine overall safety state
+        let safetyState: 'NORMAL' | 'WARNING' | 'EMERGENCY_STOP_ACTIVE';
+        if (estop.active) {
+          safetyState = 'EMERGENCY_STOP_ACTIVE';
+        } else if (recentWarnings > 0 || farmLoop.safetyMode) {
+          safetyState = 'WARNING';
+        } else {
+          safetyState = 'NORMAL';
+        }
+
+        sendJson(res, 200, {
+          safetyState,
+          activeRulesCount,
+          warningDevicesCount: recentWarnings,
+          deniedLast24h,
+          estopActive: estop.active,
+          farmLoopSafetyMode: farmLoop.safetyMode,
+          lastDecisionAt: farmLoop.lastDecisionAt,
+          lastHeartbeatAt: farmLoop.lastHeartbeatAt,
+        });
+        return;
+      }
+
+      // GET /api/hal/safety/summary — get safety dashboard summary
+      if (apiPath === '/safety/summary' && method === 'GET') {
+        const db = getDb();
+
+        // Active rules count
+        const activeRulesCount = (
+          db
+            .prepare('SELECT COUNT(*) as count FROM hal_safety_rules WHERE enabled = 1')
+            .get() as { count: number }
+        ).count;
+
+        // Denied actions in last 24h
+        const deniedLast24h = (
+          db
+            .prepare(
+              `
+              SELECT COUNT(*) as count FROM hal_safety_audit
+              WHERE verifier_result IN ('DENIED', 'DENIED_WITH_REASON')
+                AND created_at > datetime('now', '-24 hours')
+              `,
+            )
+            .get() as { count: number }
+        ).count;
+
+        // Recent denied actions (last 10)
+        const recentDenied = db
+          .prepare(
+            `
+            SELECT sa.*, d.name as device_name
+            FROM hal_safety_audit sa
+            LEFT JOIN hal_devices d ON sa.device_id = d.id
+            WHERE sa.verifier_result IN ('DENIED', 'DENIED_WITH_REASON')
+              AND sa.created_at > datetime('now', '-24 hours')
+            ORDER BY sa.created_at DESC
+            LIMIT 10
+            `,
+          )
+          .all() as Array<Record<string, unknown>>;
+
+        // E-Stop status
+        const { getEstopState } = await import('../safety/estop.js');
+        const estop = getEstopState();
+
+        // Farm loop status
+        const { getFarmLoopState } = await import('../safety/estop.js');
+        const farmLoop = getFarmLoopState();
+
+        // Active rules per device
+        const rulesPerDevice = db
+          .prepare(
+            `
+            SELECT device_id, COUNT(*) as rule_count
+            FROM hal_safety_rules
+            WHERE enabled = 1
+            GROUP BY device_id
+            `,
+          )
+          .all() as Array<{ device_id: string; rule_count: number }>;
+
+        sendJson(res, 200, {
+          activeRulesCount,
+          deniedLast24h,
+          recentDenied: recentDenied.map((row) => ({
+            id: row.id,
+            deviceId: row.device_id,
+            deviceName: row.device_name,
+            proposedAction: row.proposed_action,
+            deniedReason: row.denied_reason,
+            triggeredBy: row.triggered_by,
+            createdAt: row.created_at,
+          })),
+          estopActive: estop.active,
+          estopActivatedAt: estop.activatedAt,
+          estopReason: estop.reason,
+          farmLoopSafetyMode: farmLoop.safetyMode,
+          lastDecisionAt: farmLoop.lastDecisionAt,
+          rulesPerDevice: rulesPerDevice.map((r) => ({
+            deviceId: r.device_id,
+            ruleCount: r.rule_count,
+          })),
+        });
+        return;
+      }
+
       sendJson(res, 404, { error: 'HAL API endpoint not found' });
       return;
     }

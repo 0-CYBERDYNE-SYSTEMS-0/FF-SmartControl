@@ -9,6 +9,7 @@ const navItems: { id: ViewId; label: string; icon: string }[] = [
   { id: 'sensors', label: 'Sensors', icon: sensorsIcon() },
   { id: 'decisions', label: 'Decisions', icon: decisionsIcon() },
   { id: 'cameras', label: 'Cameras', icon: camerasIcon() },
+  { id: 'safety', label: 'Safety', icon: safetyIcon() },
   { id: 'system', label: 'System', icon: systemIcon() },
   { id: 'terminal', label: 'Terminal', icon: terminalIcon() },
 ];
@@ -96,6 +97,10 @@ function decisionsIcon(): string {
 
 function camerasIcon(): string {
   return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
+}
+
+function safetyIcon(): string {
+  return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>`;
 }
 
 function systemIcon(): string {

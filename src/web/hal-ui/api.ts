@@ -348,4 +348,153 @@ export const halApi = {
   }> {
     return halGet('/farm-loop/status');
   },
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // Safety Rules API
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // GET /api/hal/safety/rules — list all safety rules
+  async getSafetyRules(): Promise<
+    Array<{
+      id: string;
+      deviceId: string;
+      ruleType: string;
+      ruleConfig: Record<string, unknown>;
+      enabled: boolean;
+      priority: number;
+      createdAt: string;
+      updatedAt: string;
+    }>
+  > {
+    return halGet('/safety/rules');
+  },
+
+  // GET /api/hal/safety/rules/:id — get a specific rule
+  async getSafetyRule(id: string): Promise<{
+    id: string;
+    deviceId: string;
+    ruleType: string;
+    ruleConfig: Record<string, unknown>;
+    enabled: boolean;
+    priority: number;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    return halGet(`/safety/rules/${id}`);
+  },
+
+  // POST /api/hal/safety/rules — create a new rule
+  async createSafetyRule(rule: {
+    deviceId: string;
+    ruleType: string;
+    ruleConfig: Record<string, unknown>;
+    enabled?: boolean;
+    priority?: number;
+  }): Promise<{
+    id: string;
+    deviceId: string;
+    ruleType: string;
+    ruleConfig: Record<string, unknown>;
+    enabled: boolean;
+    priority: number;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    return halPost('/safety/rules', rule);
+  },
+
+  // PUT /api/hal/safety/rules/:id — update a rule
+  async updateSafetyRule(
+    id: string,
+    updates: {
+      ruleConfig?: Record<string, unknown>;
+      enabled?: boolean;
+      priority?: number;
+    },
+  ): Promise<{
+    id: string;
+    deviceId: string;
+    ruleType: string;
+    ruleConfig: Record<string, unknown>;
+    enabled: boolean;
+    priority: number;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    return halPut(`/safety/rules/${id}`, updates);
+  },
+
+  // DELETE /api/hal/safety/rules/:id — delete a rule
+  async deleteSafetyRule(id: string): Promise<{ ok: boolean }> {
+    const res = await fetch(BASE + `/safety/rules/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error(`Failed to delete rule: ${res.status}`);
+    return { ok: true };
+  },
+
+  // GET /api/hal/safety/audit — get recent audit log entries
+  async getSafetyAudit(params?: {
+    limit?: number;
+    deviceId?: string;
+    triggeredBy?: string;
+    result?: string;
+  }): Promise<
+    Array<{
+      id: string;
+      deviceId: string | null;
+      proposedAction: string;
+      verifierResult: string;
+      deniedReason: string | null;
+      conflictingRuleIds: string[];
+      sensorSnapshot: Record<string, unknown>;
+      decisionId: string | null;
+      triggeredBy: string;
+      executed: boolean;
+      executedState: string | null;
+      interrupted: boolean;
+      interruptedAtStep: number | null;
+      revertedSteps: number | null;
+      createdAt: string;
+    }>
+  > {
+    return halGet('/safety/audit', params as Record<string, string>);
+  },
+
+  // GET /api/hal/safety/state — get current safety state
+  async getSafetyState(): Promise<{
+    safetyState: 'NORMAL' | 'WARNING' | 'EMERGENCY_STOP_ACTIVE';
+    activeRulesCount: number;
+    warningDevicesCount: number;
+    deniedLast24h: number;
+    estopActive: boolean;
+    farmLoopSafetyMode: boolean;
+    lastDecisionAt: string | null;
+    lastHeartbeatAt: string | null;
+  }> {
+    return halGet('/safety/state');
+  },
+
+  // GET /api/hal/safety/summary — get safety dashboard summary
+  async getSafetySummary(): Promise<{
+    activeRulesCount: number;
+    deniedLast24h: number;
+    recentDenied: Array<{
+      id: string;
+      deviceId: string | null;
+      deviceName: string | null;
+      proposedAction: string;
+      deniedReason: string | null;
+      triggeredBy: string;
+      createdAt: string;
+    }>;
+    estopActive: boolean;
+    estopActivatedAt: string | null;
+    estopReason: string | null;
+    farmLoopSafetyMode: boolean;
+    lastDecisionAt: string | null;
+    rulesPerDevice: Array<{ deviceId: string; ruleCount: number }>;
+  }> {
+    return halGet('/safety/summary');
+  },
 };

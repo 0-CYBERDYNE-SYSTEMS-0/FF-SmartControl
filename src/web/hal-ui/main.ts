@@ -19,6 +19,7 @@ import { renderDecisions } from './views/Decisions.js';
 import { renderCameras } from './views/Cameras.js';
 import { renderTerminalView } from './views/Terminal.js';
 import { renderSetupWizard } from './views/SetupWizard.js';
+import { renderSafety } from './views/Safety.js';
 
 import { halApi } from './api.js';
 import type { HalState } from './api.js';
@@ -34,6 +35,7 @@ const views: Record<ViewId, AsyncViewRenderer> = {
   sensors: renderSensors,
   decisions: renderDecisions,
   cameras: renderCameras,
+  safety: renderSafety,
   system: renderDashboard,
   terminal: renderTerminalView,
 };
