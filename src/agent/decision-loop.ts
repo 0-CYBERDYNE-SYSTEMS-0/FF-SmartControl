@@ -29,12 +29,21 @@ async function getHalRelays() {
   return halRelays;
 }
 
-async function getSensorSnapshot(halSensors: any, halRegistry: any): Promise<Record<string, number>> {
-  const snapshot: Record<string, number> = {};
+async function getSensorSnapshot(halSensors: any, halRegistry: any): Promise<Record<string, Record<string, number>>> {
+  const snapshot: Record<string, Record<string, number>> = {};
   const devices = halRegistry.list().filter((d: any) => d.type === 'sensor');
   for (const dev of devices) {
-    const reading = halSensors.latest(dev.id, 'temperature');
-    if (reading) snapshot[`${dev.label || dev.id}_temp`] = reading.value;
+    snapshot[dev.id] = {};
+    const tempReading = halSensors.latest(dev.id, 'temperature');
+    if (tempReading && typeof tempReading.value === 'number') snapshot[dev.id].temperature = tempReading.value;
+    const humReading = halSensors.latest(dev.id, 'humidity');
+    if (humReading && typeof humReading.value === 'number') snapshot[dev.id].humidity = humReading.value;
+    const co2Reading = halSensors.latest(dev.id, 'co2');
+    if (co2Reading && typeof co2Reading.value === 'number') snapshot[dev.id].co2 = co2Reading.value;
+    const lightReading = halSensors.latest(dev.id, 'light');
+    if (lightReading && typeof lightReading.value === 'number') snapshot[dev.id].light = lightReading.value;
+    const soilReading = halSensors.latest(dev.id, 'soil_moisture');
+    if (soilReading && typeof soilReading.value === 'number') snapshot[dev.id].soil_moisture = soilReading.value;
   }
   return snapshot;
 }
@@ -63,7 +72,10 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     recentDecisions.slice(0, 5).map((d: any) => `  - ${d.decision} (${d.outcome})${d.reasoning ? ': ' + d.reasoning : ''}`).join('\n'),
     '',
     'Current sensor readings:',
-    Object.entries(sensorSnapshot).map(([k, v]) => `  - ${k}: ${v}`).join('\n'),
+    Object.entries(sensorSnapshot)
+      .flatMap(([deviceId, metrics]) =>
+        Object.entries(metrics).map(([metric, value]) => `  - ${deviceId}/${metric}: ${value}`)
+      ).join('\n'),
     '',
     `Trigger: ${ctx.trigger}`,
     ctx.message ? `User message: ${ctx.message}` : '',
@@ -90,12 +102,20 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     parsed.reasoning = llmResult.text;
   }
 
+  // Convert sensor snapshot to flat format for decision log (backward compatible)
+  const flatSensorSnapshot: Record<string, number> = {};
+  for (const [deviceId, metrics] of Object.entries(sensorSnapshot)) {
+    for (const [metric, value] of Object.entries(metrics)) {
+      flatSensorSnapshot[`${deviceId}_${metric}`] = value;
+    }
+  }
+
   const decision = halDecisions.log({
     device_id: parsed.device_id || undefined,
     decision: parsed.decision || 'noop',
     confidence: parsed.confidence,
     reasoning: parsed.reasoning,
-    sensor_snapshot: sensorSnapshot,
+    sensor_snapshot: flatSensorSnapshot,
     outcome: 'pending',
   });
 
@@ -109,11 +129,45 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     }
   }
 
-  // Direct device control
+  // Direct device control - NOW GOES THROUGH SAFETY VERIFIER
   if (parsed.decision === 'turn_on' || parsed.decision === 'turn_off') {
     if (parsed.device_id) {
+      // Import verifier dynamically to avoid circular dependency
+      const { verifyAction, recordExecution } = await import('../safety/verifier.js');
+
+      const verifyResult = await verifyAction({
+        action: {
+          decision: parsed.decision,
+          deviceId: parsed.device_id,
+          reasoning: parsed.reasoning,
+          confidence: parsed.confidence,
+        },
+        triggeredBy: 'agent',
+        decisionId: decision.id,
+        sensorSnapshot,
+      });
+
+      if (!verifyResult.approved) {
+        // Action was DENIED by safety rules
+        console.log(`[DecisionLoop] Action ${parsed.decision} on ${parsed.device_id} DENIED: ${verifyResult.reason}`);
+        halDecisions.complete(decision.id, 'failure');
+        return {
+          decision: parsed.decision,
+          reasoning: `DENIED by safety policy: ${verifyResult.reason}`,
+          toolCalls: [],
+        };
+      }
+
+      // Action was APPROVED - proceed to hardware
       try {
         await halRegistry.control(parsed.device_id, parsed.decision === 'turn_on' ? 'on' : 'off');
+
+        // Record execution in audit log
+        await recordExecution(
+          verifyResult.auditEntry.id,
+          parsed.decision === 'turn_on' ? 'on' : 'off',
+        );
+
         halRelays.log({
           device_id: parsed.device_id,
           state: parsed.decision === 'turn_on' ? 'on' : 'off',
@@ -121,8 +175,9 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
           triggered_by: 'agent',
         });
         halDecisions.complete(decision.id, 'success');
-      } catch {
+      } catch (err) {
         halDecisions.complete(decision.id, 'failure');
+        throw err;
       }
     }
   } else {

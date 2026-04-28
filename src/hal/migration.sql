@@ -73,3 +73,34 @@ CREATE TABLE IF NOT EXISTS hal_alerts (
   acknowledged INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL
 );
+
+-- Safety Rules: per-device safety policies for deterministic enforcement
+CREATE TABLE IF NOT EXISTS hal_safety_rules (
+  id                TEXT PRIMARY KEY,
+  device_id         TEXT NOT NULL REFERENCES hal_devices(id) ON DELETE CASCADE,
+  rule_type         TEXT NOT NULL,  -- 'max_on_duration' | 'min_off_duration' | 'max_activations_per_hour' | 'allowed_schedule_windows' | 'dependency'
+  rule_config       TEXT NOT NULL,  -- JSON: threshold, condition, sensor_metric, operator, value
+  enabled           INTEGER NOT NULL DEFAULT 1,
+  priority          INTEGER NOT NULL DEFAULT 0,  -- higher = more restrictive (checked later)
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+
+-- Safety Audit Log: append-only log of all safety decisions
+CREATE TABLE IF NOT EXISTS hal_safety_audit (
+  id                  TEXT PRIMARY KEY,
+  device_id           TEXT REFERENCES hal_devices(id) ON DELETE SET NULL,
+  proposed_action     TEXT NOT NULL,  -- 'turn_on' | 'turn_off' | 'adjust' | 'noop'
+  verifier_result     TEXT NOT NULL,  -- 'APPROVED' | 'DENIED' | 'DENIED_WITH_REASON'
+  denied_reason       TEXT,
+  conflicting_rule_ids TEXT,           -- JSON array of rule IDs that caused denial
+  sensor_snapshot     TEXT NOT NULL,  -- JSON snapshot of relevant sensor values at verification time
+  decision_id         TEXT,           -- references hal_decision_log.id if applicable
+  triggered_by        TEXT NOT NULL,   -- 'agent' | 'manual_ui' | 'schedule'
+  executed            INTEGER NOT NULL DEFAULT 0,  -- 1 if hardware action was executed
+  executed_state      TEXT,           -- 'on' | 'off' | null - actual state applied
+  interrupted         INTEGER NOT NULL DEFAULT 0,   -- 1 if action was interrupted mid-execution
+  interrupted_at_step INTEGER,         -- step number where interrupted
+  reverted_steps      INTEGER,         -- number of steps reverted after interruption
+  created_at          TEXT NOT NULL
+);
