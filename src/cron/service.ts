@@ -23,6 +23,7 @@ import { logger } from '../logger.js';
 import { RegisteredGroup, ScheduledTask } from '../types.js';
 import { resolveNoContinueForTask } from './adapters.js';
 import { getEffectiveTimezone } from '../time-context.js';
+import { isEstopActive } from '../safety/estop.js';
 
 export interface CronServiceDependencies {
   sendMessage: (jid: string, text: string) => Promise<boolean>;
@@ -276,6 +277,23 @@ export async function runScheduledTaskV2(
   task: ScheduledTask,
   deps: CronServiceDependencies,
 ): Promise<void> {
+  // Check if E-Stop is active - skip task execution if so (VAL-SAFE-026)
+  if (isEstopActive()) {
+    logger.debug(
+      { taskId: task.id },
+      'Skipping scheduled task: E-Stop is active',
+    );
+    const nextRun = resolveTaskNextRun(task, Date.now(), false, 0);
+    updateTaskAfterRunV2({
+      id: task.id,
+      nextRun,
+      lastResult: 'Skipped: emergency_stop_active',
+      status: 'active',
+      consecutiveErrors: 0,
+    });
+    return;
+  }
+
   const startedAt = Date.now();
   const groups = deps.registeredGroups();
   const group = Object.values(groups).find(

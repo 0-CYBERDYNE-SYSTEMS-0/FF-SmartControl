@@ -175,11 +175,67 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     outcome: 'pending',
   });
 
-  // Execute tool calls
-  for (const tc of parsed.tool_calls || []) {
+  // Execute tool calls with mid-action violation checking (VAL-SAFE-004)
+  for (let stepIndex = 0; stepIndex < (parsed.tool_calls || []).length; stepIndex++) {
+    const tc = parsed.tool_calls[stepIndex];
     try {
       const { executeToolCall } = await import('./tool-executor.js');
+
+      // Capture pre-action state for device control actions (for rollback)
+      let preActionStates: Map<string, string | null> = new Map();
+      if (tc.tool === 'control_plug' || tc.tool === 'control_device') {
+        const deviceId = tc.args.device_id;
+        if (deviceId) {
+          const deviceBefore = halRegistry.get(deviceId);
+          preActionStates.set(deviceId, deviceBefore?.last_state ?? null);
+        }
+      }
+
       await executeToolCall(tc, halRegistry);
+
+      // For device control actions, check for mid-action violations after execution
+      if ((tc.tool === 'control_plug' || tc.tool === 'control_device') && tc.args.device_id) {
+        const deviceId = tc.args.device_id;
+        const action = tc.args.action;
+
+        // Re-verify the action against current sensor state
+        const { captureSensorSnapshot, verifyAction: verifyToolAction, recordInterruption } =
+          await import('../safety/verifier.js');
+
+        const freshSensorSnapshot = captureSensorSnapshot();
+        const verifyResult = await verifyToolAction({
+          action: {
+            decision: action,
+            deviceId: deviceId,
+            reasoning: 'mid-action verification',
+            confidence: 1.0,
+          },
+          triggeredBy: 'agent',
+          sensorSnapshot: freshSensorSnapshot,
+        });
+
+        if (!verifyResult.approved) {
+          console.log(
+            `[DecisionLoop] Mid-action violation at step ${stepIndex + 1} for ${deviceId}: ${verifyResult.reason}. Reverting.`,
+          );
+
+          // Revert to pre-action state
+          const preState = preActionStates.get(deviceId);
+          if (preState !== null && preState !== undefined) {
+            await halRegistry.control(deviceId, preState as 'on' | 'off');
+          }
+
+          // Record interruption and stop executing remaining steps
+          await recordInterruption(verifyResult.auditEntry.id, stepIndex + 1, stepIndex + 1);
+
+          halDecisions.complete(decision.id, 'failure');
+          return {
+            decision: 'noop',
+            reasoning: `MID-ACTION VIOLATION at step ${stepIndex + 1}: ${verifyResult.reason}. Action reverted.`,
+            toolCalls: parsed.tool_calls.slice(0, stepIndex + 1),
+          };
+        }
+      }
     } catch (err: any) {
       console.error('[DecisionLoop] Tool call error:', err.message);
     }
@@ -219,10 +275,55 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
 
       // Action was APPROVED - proceed to hardware
       try {
+        // Capture pre-action state for rollback (VAL-SAFE-004)
+        const deviceBefore = halRegistry.get(parsed.device_id);
+        const preActionState = deviceBefore?.last_state ?? null;
+
         await halRegistry.control(
           parsed.device_id,
           parsed.decision === 'turn_on' ? 'on' : 'off',
         );
+
+        // Re-verify after execution to detect mid-action violations
+        // Capture fresh sensor snapshot and re-check safety rules
+        const { captureSensorSnapshot } = await import('../safety/verifier.js');
+        const freshSensorSnapshot = captureSensorSnapshot();
+        const { verifyAction: reVerify } = await import('../safety/verifier.js');
+
+        const reVerifyResult = await reVerify({
+          action: {
+            decision: parsed.decision,
+            deviceId: parsed.device_id,
+            reasoning: parsed.reasoning,
+            confidence: parsed.confidence,
+          },
+          triggeredBy: 'agent',
+          decisionId: decision.id,
+          sensorSnapshot: freshSensorSnapshot,
+        });
+
+        // If action is now denied due to sensor change mid-action, rollback
+        if (!reVerifyResult.approved) {
+          console.log(
+            `[DecisionLoop] Mid-action violation detected for ${parsed.device_id}: ${reVerifyResult.reason}. Reverting to pre-action state.`,
+          );
+
+          // Revert to pre-action state
+          if (preActionState !== null) {
+            await halRegistry.control(parsed.device_id, preActionState as 'on' | 'off');
+          }
+
+          // Record interruption in audit log
+          const { recordInterruption } = await import('../safety/verifier.js');
+          await recordInterruption(verifyResult.auditEntry.id, 1, 1);
+
+          halDecisions.complete(decision.id, 'failure');
+          return {
+            decision: parsed.decision,
+            reasoning: `MID-ACTION VIOLATION: ${reVerifyResult.reason}. Action reverted.`,
+            toolCalls: [],
+          };
+        }
 
         // Record execution in audit log
         await recordExecution(

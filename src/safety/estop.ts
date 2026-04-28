@@ -474,7 +474,7 @@ export function recordDecisionComplete(): void {
  * Check if farm loop is hung (no decision for >5 minutes)
  * Returns true if hang detected and safety mode should be activated
  */
-export function checkFarmLoopHang(): boolean {
+export async function checkFarmLoopHang(): Promise<boolean> {
   const state = getFarmLoopState();
   const now = Date.now();
 
@@ -507,7 +507,7 @@ export function checkFarmLoopHang(): boolean {
       );
 
       // Trigger E-Stop due to farm loop hang
-      activateEstop(
+      await activateEstop(
         'farm_loop_hang',
         'farm_loop',
         `No decision made for ${Math.round(elapsed / 60000)} minutes`,
@@ -574,7 +574,7 @@ export function stopWatchdog(): void {
 /**
  * Single watchdog tick - sends sd_notify and logs heartbeat
  */
-function watchdogTick(): void {
+async function watchdogTick(): Promise<void> {
   const now = Date.now();
   const uptimeSeconds = Math.floor((now - watchdogStartTime) / 1000);
   const memUsage = process.memoryUsage();
@@ -583,24 +583,12 @@ function watchdogTick(): void {
   // Send sd_notify WATCHDOG=1
   // This tells systemd that the process is still alive
   try {
-    // Import sd_notify dynamically to avoid issues on non-systemd systems
-    const sdNotify = (global as any).__sd_notify;
-    if (typeof sdNotify === 'function') {
-      sdNotify('WATCHDOG=1');
-    } else {
-      // Try requiring the module if available
-      try {
-        const module = require('sd-notify');
-        if (module.notify) {
-          module.notify('WATCHDOG=1');
-        }
-      } catch {
-        // sd_notify not available - we're not running under systemd
-        // Just log the heartbeat
-      }
-    }
-  } catch (err) {
-    // Ignore sd_notify errors - watchdog continues
+    // Use sd-notify package if available (ESM compatible)
+    const { watchdog } = await import('sd-notify');
+    watchdog();
+  } catch {
+    // sd_notify not available - we're not running under systemd
+    // Just log the heartbeat (watchdog continues without systemd integration)
   }
 
   // Log heartbeat to audit log
