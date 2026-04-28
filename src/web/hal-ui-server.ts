@@ -202,26 +202,50 @@ export async function startHalUiServer(
         return;
       }
 
+      // GET /api/hal/sensors/latest — latest readings for all sensors and all metrics (VAL-DISC-060)
       if (apiPath === '/sensors/latest' && method === 'GET') {
         const devices = halRegistry
           .list()
           .filter((d: any) => d.type === 'sensor');
+        const allMetrics: Array<{
+          metric: MetricType;
+          fn: (id: string) => { value: number; unit?: string } | undefined;
+        }> = [
+          {
+            metric: 'temperature',
+            fn: (id) => halSensors.latest(id, 'temperature'),
+          },
+          { metric: 'humidity', fn: (id) => halSensors.latest(id, 'humidity') },
+          { metric: 'co2', fn: (id) => halSensors.latest(id, 'co2') },
+          { metric: 'light', fn: (id) => halSensors.latest(id, 'light') },
+          {
+            metric: 'soil_moisture',
+            fn: (id) => halSensors.latest(id, 'soil_moisture'),
+          },
+          {
+            metric: 'water_level',
+            fn: (id) => halSensors.latest(id, 'water_level'),
+          },
+          { metric: 'ph', fn: (id) => halSensors.latest(id, 'ph') },
+          { metric: 'weight', fn: (id) => halSensors.latest(id, 'weight') },
+        ];
         const readings = [];
         for (const dev of devices) {
           const calibrationOffset = dev.calibration_offset ?? 0;
-          const temp = halSensors.latest(dev.id, 'temperature');
-          const hum = halSensors.latest(dev.id, 'humidity');
-          if (temp || hum) {
-            readings.push({
-              device: dev,
-              // Apply calibration: calibrated_value = raw + offset (VAL-DISC-060)
-              temperature: temp
-                ? { ...temp, value: temp.value + calibrationOffset }
-                : undefined,
-              humidity: hum
-                ? { ...hum, value: hum.value + calibrationOffset }
-                : undefined,
-            });
+          const snapshot: Record<string, { value: number; unit?: string }> = {};
+          let hasAny = false;
+          for (const { metric, fn } of allMetrics) {
+            const reading = fn(dev.id);
+            if (reading) {
+              snapshot[metric] = {
+                ...reading,
+                value: reading.value + calibrationOffset,
+              };
+              hasAny = true;
+            }
+          }
+          if (hasAny) {
+            readings.push({ device: dev, ...snapshot });
           }
         }
         sendJson(res, 200, readings);
@@ -869,26 +893,132 @@ export async function startHalUiServer(
 
       // GET /api/hal/discovery/gpio/pins — get BCM pin status (VAL-DISC-011)
       if (apiPath === '/discovery/gpio/pins' && method === 'GET') {
-        // Returns list of BCM pins with state
+        // Returns list of BCM pins with state and pin diagram data
         const db = getDb();
         const devices = halRegistry
           .list()
           .filter((d: any) => d.protocol === 'gpio');
-        const usedPins = new Set<string>();
+        const usedPins = new Map<string, any>(); // bcm -> device
         const reservedPins = new Set<string>(['2', '3', '4', '14', '15']); // I2C, reserved
         for (const dev of devices) {
-          if (dev.host) usedPins.add(dev.host); // host stores BCM pin number
+          if (dev.host) usedPins.set(dev.host, dev); // host stores BCM pin number
         }
+
+        // Pin diagram data: BCM -> { physical, altFunctions, description }
+        // Physical pin numbers for the 40-pin header (Pi 4 / Pi 5)
+        const PIN_DIAGRAM: Record<
+          number,
+          { physical: number; altFunctions: string[]; description: string }
+        > = {
+          0: { physical: 27, altFunctions: ['SDA1'], description: 'I2C SDA' },
+          1: { physical: 28, altFunctions: ['SCL1'], description: 'I2C SCL' },
+          2: {
+            physical: 3,
+            altFunctions: ['SDA0'],
+            description: 'I2C SDA (reserved)',
+          },
+          3: {
+            physical: 5,
+            altFunctions: ['SCL0'],
+            description: 'I2C SCL (reserved)',
+          },
+          4: {
+            physical: 7,
+            altFunctions: ['GPCLK0'],
+            description: 'General clock (reserved)',
+          },
+          5: {
+            physical: 29,
+            altFunctions: ['GPCLK1'],
+            description: 'General clock',
+          },
+          6: {
+            physical: 31,
+            altFunctions: ['GPCLK2'],
+            description: 'General clock',
+          },
+          7: {
+            physical: 26,
+            altFunctions: ['SPI_CE1'],
+            description: 'SPI chip select',
+          },
+          8: {
+            physical: 24,
+            altFunctions: ['SPI_CE0'],
+            description: 'SPI chip select',
+          },
+          9: {
+            physical: 21,
+            altFunctions: ['SPI_MISO'],
+            description: 'SPI data',
+          },
+          10: {
+            physical: 19,
+            altFunctions: ['SPI_MOSI'],
+            description: 'SPI data',
+          },
+          11: {
+            physical: 23,
+            altFunctions: ['SPI_SCLK'],
+            description: 'SPI clock',
+          },
+          12: {
+            physical: 32,
+            altFunctions: ['PWM0'],
+            description: 'PWM channel 0',
+          },
+          13: {
+            physical: 33,
+            altFunctions: ['PWM1'],
+            description: 'PWM channel 1',
+          },
+          14: {
+            physical: 8,
+            altFunctions: ['TXD0'],
+            description: 'Serial TX (reserved)',
+          },
+          15: {
+            physical: 10,
+            altFunctions: ['RXD0'],
+            description: 'Serial RX (reserved)',
+          },
+          16: { physical: 36, altFunctions: [], description: 'GPIO 16' },
+          17: { physical: 11, altFunctions: [], description: 'GPIO 17' },
+          18: {
+            physical: 12,
+            altFunctions: ['PWM0'],
+            description: 'PWM channel 0 / GPIO 18',
+          },
+          19: { physical: 35, altFunctions: [], description: 'GPIO 19' },
+          20: { physical: 38, altFunctions: [], description: 'GPIO 20' },
+          21: { physical: 40, altFunctions: [], description: 'GPIO 21' },
+          22: { physical: 15, altFunctions: [], description: 'GPIO 22' },
+          23: { physical: 16, altFunctions: [], description: 'GPIO 23' },
+          24: { physical: 18, altFunctions: [], description: 'GPIO 24' },
+          25: { physical: 22, altFunctions: [], description: 'GPIO 25' },
+          26: { physical: 37, altFunctions: [], description: 'GPIO 26' },
+          27: { physical: 13, altFunctions: [], description: 'GPIO 27' },
+        };
+
         // BCM 0-27 common GPIO pins
         const pins = [];
         for (let bcm = 0; bcm <= 27; bcm++) {
-          const pin = bcm;
-          const state = usedPins.has(String(pin))
+          const state = usedPins.has(String(bcm))
             ? 'in_use'
-            : reservedPins.has(String(pin))
+            : reservedPins.has(String(bcm))
               ? 'reserved'
               : 'available';
-          pins.push({ bcm: pin, state });
+          const diagram = PIN_DIAGRAM[bcm] || null;
+          pins.push({
+            bcm,
+            state,
+            physicalPin: diagram?.physical ?? null,
+            altFunctions: diagram?.altFunctions ?? [],
+            description: diagram?.description ?? `GPIO ${bcm}`,
+            registeredTo: usedPins.has(String(bcm))
+              ? (usedPins.get(String(bcm)) as any)?.label
+              : null,
+          });
         }
         sendJson(res, 200, { pins });
         return;
@@ -909,6 +1039,29 @@ export async function startHalUiServer(
           sendJson(res, 400, { error: 'Valid BCM pin (0-27) is required' });
           return;
         }
+        // Duplicate pin check
+        const existingDevices = halRegistry
+          .list()
+          .filter((d: any) => d.protocol === 'gpio');
+        const usedPins = new Set(existingDevices.map((d: any) => d.host));
+        if (usedPins.has(String(bcmPin))) {
+          const existing = existingDevices.find(
+            (d: any) => d.host === String(bcmPin),
+          );
+          sendJson(res, 409, {
+            error: `BCM pin ${bcmPin} is already registered as "${existing?.label || 'GPIO ' + bcmPin}". Remove the existing device first.`,
+            conflictingDevice: existing || null,
+          });
+          return;
+        }
+        // Reserved pin check
+        const reservedPins = new Set(['2', '3', '4', '14', '15']);
+        if (reservedPins.has(String(bcmPin))) {
+          sendJson(res, 400, {
+            error: `BCM pin ${bcmPin} is reserved (I2C or system). Choose a different pin.`,
+          });
+          return;
+        }
         try {
           const dev = halRegistry.register({
             type: 'relay',
@@ -926,13 +1079,161 @@ export async function startHalUiServer(
 
       // GET /api/hal/discovery/mqtt/devices — subscribe and collect MQTT discovery topics (VAL-DISC-020, VAL-DISC-021)
       if (apiPath === '/discovery/mqtt/devices' && method === 'GET') {
-        // In a real implementation, this would subscribe to MQTT topics and collect results.
-        // For now, return a placeholder indicating MQTT discovery needs broker configuration.
-        // The actual implementation would use the MQTT client from hal/mqtt.ts
+        const MQTT_BROKER =
+          process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
+        const MQTT_USERNAME = process.env.MQTT_USERNAME;
+        const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
+        const { connect } = await import('mqtt');
+
+        const discovered = new Map<string, any>();
+        const DISCOVERY_TIMEOUT_MS = 10_000;
+
+        let connectionError = '';
+        const client = connect(MQTT_BROKER, {
+          clientId: `farmpal_discovery_${Date.now()}`,
+          clean: true,
+          connectTimeout: 5000,
+          username: MQTT_USERNAME || undefined,
+          password: MQTT_PASSWORD || undefined,
+        });
+
+        const cleanup = () => {
+          try {
+            client.end(true);
+          } catch {}
+        };
+
+        const timeoutId = setTimeout(() => {
+          cleanup();
+        }, DISCOVERY_TIMEOUT_MS);
+
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const rejectOnce = (err: Error) => {
+              cleanup();
+              reject(err);
+            };
+            client.on('connect', () => {
+              client.subscribe('homeassistant/#', { qos: 1 }, (err) => {
+                if (err)
+                  console.error(
+                    '[MQTT discovery] homeassistant subscribe error:',
+                    err.message,
+                  );
+              });
+              client.subscribe('tele/+/SENSOR', { qos: 1 }, (err) => {
+                if (err)
+                  console.error(
+                    '[MQTT discovery] tele subscribe error:',
+                    err.message,
+                  );
+              });
+              // Give subscriptions time to establish before resolving
+              setTimeout(resolve, 500);
+            });
+            client.on('error', (err) => {
+              connectionError = err.message;
+              rejectOnce(err);
+            });
+            client.on('message', (topic: string, payload: Buffer) => {
+              try {
+                const msgStr = payload.toString();
+                // HomeAssistant auto-discovery: homeassistant/<domain>/<node>/<object>/config
+                if (
+                  topic.startsWith('homeassistant/') &&
+                  topic.endsWith('/config')
+                ) {
+                  let json: any;
+                  try {
+                    json = JSON.parse(msgStr);
+                  } catch {
+                    return;
+                  }
+                  const parts = topic.split('/');
+                  const objectId = parts[2] || parts[1] || topic;
+                  const deviceInfo = json.device || {};
+                  const name = json.name || deviceInfo.name || objectId;
+                  const domain = parts[1] || 'unknown';
+                  const key = `ha_${objectId}`;
+                  if (!discovered.has(key)) {
+                    discovered.set(key, {
+                      host: topic,
+                      protocol: 'mqtt',
+                      type: domain === 'switch' ? 'relay' : 'sensor',
+                      label: name,
+                      online: true,
+                      discoveryType: 'homeassistant',
+                      manufacturer: deviceInfo.manufacturer,
+                      model: deviceInfo.model,
+                    });
+                  }
+                }
+                // Tasmota telemetry: tele/<topic>/SENSOR
+                else if (
+                  topic.startsWith('tele/') &&
+                  topic.endsWith('/SENSOR')
+                ) {
+                  const parts = topic.split('/');
+                  const deviceTopic = parts[1];
+                  let json: any;
+                  try {
+                    json = JSON.parse(msgStr);
+                  } catch {
+                    return;
+                  }
+                  const key = `tele_${deviceTopic}`;
+                  if (!discovered.has(key)) {
+                    const firstSensor = Object.keys(json).find(
+                      (k) => k !== 'sn' && k !== 'Version' && k !== 'wifi',
+                    );
+                    discovered.set(key, {
+                      host: topic,
+                      protocol: 'mqtt',
+                      type: 'sensor',
+                      label: `Tasmota ${deviceTopic}`,
+                      online: true,
+                      discoveryType: 'tasmota',
+                      sensorType: firstSensor || 'multi',
+                    });
+                  }
+                }
+              } catch (err: any) {
+                console.error(
+                  '[MQTT discovery] message parse error:',
+                  err.message,
+                );
+              }
+            });
+
+            // Connection timeout
+            setTimeout(() => {
+              if (client.disconnected) {
+                rejectOnce(new Error(connectionError || 'Connection timeout'));
+              }
+            }, 6000);
+          });
+        } catch (err: any) {
+          clearTimeout(timeoutId);
+          cleanup();
+          sendJson(res, 200, {
+            devices: [],
+            note: `MQTT broker unreachable (${err.message}). Check MQTT broker URL in settings.`,
+            topics: ['homeassistant/#', 'tele/+/SENSOR'],
+            error: connectionError,
+          });
+          return;
+        }
+
+        clearTimeout(timeoutId);
+        cleanup();
+        const devices = Array.from(discovered.values());
         sendJson(res, 200, {
-          devices: [],
-          note: 'MQTT discovery requires the MQTT broker to be configured and reachable. Configure MQTT in settings to enable auto-discovery.',
-          topics: ['homeassistant/+/+', 'tele/+/SENSOR'],
+          devices,
+          note:
+            devices.length === 0
+              ? 'No MQTT devices discovered. Ensure devices are publishing to homeassistant/# or tele/+/SENSOR topics.'
+              : `${devices.length} device${devices.length !== 1 ? 's' : ''} discovered.`,
+          topics: ['homeassistant/#', 'tele/+/SENSOR'],
         });
         return;
       }

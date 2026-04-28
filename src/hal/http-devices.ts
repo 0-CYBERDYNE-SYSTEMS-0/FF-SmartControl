@@ -78,12 +78,14 @@ export class KasaClient {
     try {
       // Try kasa CLI tool (available via `npm install -g kasa` or system install)
       const { execSync } = await import('child_process');
-      const out = execSync(`kasa device ${this.host}`, { timeout: 5000 }).toString();
+      const out = execSync(`kasa device ${this.host}`, {
+        timeout: 5000,
+      }).toString();
       const on = out.toLowerCase().includes('state: on');
       const wattsMatch = out.match(/power:\s*([\d.])\s*W/);
       return {
         state: on ? 'on' : 'off',
-        watts: wattsMatch ? parseFloat(wattsMatch[1]) : undefined
+        watts: wattsMatch ? parseFloat(wattsMatch[1]) : undefined,
       };
     } catch {
       return { state: 'unknown' };
@@ -92,15 +94,23 @@ export class KasaClient {
 
   async setPower(on: boolean): Promise<void> {
     const { execSync } = await import('child_process');
-    execSync(`kasa device ${this.host} --type plug ${on ? 'on' : 'off'}`, { timeout: 5000 });
+    execSync(`kasa device ${this.host} --type plug ${on ? 'on' : 'off'}`, {
+      timeout: 5000,
+    });
   }
 }
 
 // Factory
-export async function createHttpClient(host: string, protocol: 'tasmota' | 'shelly' | 'kasa') {
+export async function createHttpClient(
+  host: string,
+  protocol: 'tasmota' | 'shelly' | 'kasa',
+) {
   switch (protocol) {
-    case 'tasmota': return new TasmotaClient(host);
-    case 'shelly': return new ShellyClient(host);
-    case 'kasa': return new KasaClient(host);
+    case 'tasmota':
+      return new TasmotaClient(host);
+    case 'shelly':
+      return new ShellyClient(host);
+    case 'kasa':
+      return new KasaClient(host);
   }
 }

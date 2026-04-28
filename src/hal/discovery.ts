@@ -12,7 +12,7 @@ function pingScan(subnet: string, _timeout = 1000): string[] {
   try {
     const out = execSync(
       `for i in $(seq 1 254); do ping -c1 -W1 ${subnet}.$i 2>/dev/null & done; wait`,
-      { timeout: 30000 }
+      { timeout: 30000 },
     ).toString();
     const ips = new Set<string>();
     const re = /(\d+\.\d+\.\d+\.\d+)/g;
@@ -26,22 +26,24 @@ function pingScan(subnet: string, _timeout = 1000): string[] {
 
 function probeTasmota(host: string): boolean {
   try {
-    const out = execSync(
-      `curl -s --max-time 2 http://${host}/cm?cmnd=Status`,
-      { timeout: 3000 }
-    ).toString();
+    const out = execSync(`curl -s --max-time 2 http://${host}/cm?cmnd=Status`, {
+      timeout: 3000,
+    }).toString();
     return out.includes('Status') || out.includes('Tasmota');
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 function probeShelly(host: string): boolean {
   try {
-    const out = execSync(
-      `curl -s --max-time 2 http://${host}/shelly`,
-      { timeout: 3000 }
-    ).toString();
+    const out = execSync(`curl -s --max-time 2 http://${host}/shelly`, {
+      timeout: 3000,
+    }).toString();
     return out.includes('Shelly') || out.includes('shelly');
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 function probeKasa(host: string): boolean {
@@ -49,16 +51,20 @@ function probeKasa(host: string): boolean {
   try {
     execSync(`kasa device ${host} --type plug`, { timeout: 5000 });
     return true;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 export interface DiscoveryOptions {
-  subnet?: string;       // e.g. '192.168.1' (pings .1-.254)
+  subnet?: string; // e.g. '192.168.1' (pings .1-.254)
   types?: DeviceProtocol[];
   maxDevices?: number;
 }
 
-export async function discoverDevices(options: DiscoveryOptions = {}): Promise<DiscoveredDevice[]> {
+export async function discoverDevices(
+  options: DiscoveryOptions = {},
+): Promise<DiscoveredDevice[]> {
   const {
     subnet = '192.168.1',
     types = ['tasmota', 'shelly', 'kasa'],
@@ -89,7 +95,9 @@ export async function discoverDevices(options: DiscoveryOptions = {}): Promise<D
   return results;
 }
 
-export async function autoRegisterDiscovered(devices: DiscoveredDevice[]): Promise<void> {
+export async function autoRegisterDiscovered(
+  devices: DiscoveredDevice[],
+): Promise<void> {
   for (const dev of devices) {
     halRegistry.register({
       type: 'smart_plug',

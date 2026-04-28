@@ -8,8 +8,8 @@ const MQTT_USERNAME = process.env.MQTT_USERNAME;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
 
 export interface MQTTSensorConfig {
-  topic: string;        // e.g. 'sensors/living-room/temperature/c/state'
-  device_id: string;   // maps to a hal_device id
+  topic: string; // e.g. 'sensors/living-room/temperature/c/state'
+  device_id: string; // maps to a hal_device id
   metric: MetricType;
   unit: SensorUnit;
 }
@@ -36,7 +36,11 @@ export class MQTTSubscriber {
         console.log('[HAL/MQTT] Connected to broker');
         for (const sub of this.subscriptions) {
           this.client!.subscribe(sub.topic, { qos: 1 }, (err) => {
-            if (err) console.error(`[HAL/MQTT] Subscribe error for ${sub.topic}:`, err.message);
+            if (err)
+              console.error(
+                `[HAL/MQTT] Subscribe error for ${sub.topic}:`,
+                err.message,
+              );
           });
         }
         resolve();
@@ -57,7 +61,7 @@ export class MQTTSubscriber {
     const value = parseFloat(payload.toString());
     if (isNaN(value)) return;
 
-    const sub = this.subscriptions.find(s => s.topic === topic);
+    const sub = this.subscriptions.find((s) => s.topic === topic);
     if (!sub) return;
 
     try {

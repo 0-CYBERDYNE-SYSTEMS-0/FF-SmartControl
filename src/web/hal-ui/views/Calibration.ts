@@ -1,5 +1,9 @@
 // Calibration view — per-device per-channel offset calibration (VAL-DISC-060 to VAL-DISC-063)
 // calibrated_value = raw + offset
+// Bug fixes (VAL-DISC-060 to VAL-DISC-063):
+// 1. store.sensors contains calibrated values; reverse-calculate raw = calibrated - offset
+// 2. /sensors/latest now returns all metrics, not just temperature/humidity
+// 3. Show calibration card per (device, metric) pair, not just first metric per device
 
 import { getStore, formatSensorValue } from '../store.js';
 import { halApi, HalDevice, HalSensorReading } from '../api.js';
@@ -8,8 +12,8 @@ import { injectChartKitStyles } from '../components/ChartKit.js';
 
 interface CalibrationDevice {
   device: HalDevice;
-  rawValue: number | null;
-  calibratedValue: number | null;
+  rawValue: number; // reverse-calculated from calibrated - offset
+  calibratedValue: number;
   offset: number;
   metric: string;
   unit: string;
@@ -40,58 +44,45 @@ export async function renderCalibration(container: HTMLElement): Promise<void> {
     return;
   }
 
-  // Build calibration data for each sensor
-  const calibrationData: CalibrationDevice[] = sensors.map((sensor) => {
-    const snap = store.sensors[sensor.id];
+  // Build calibration data for each sensor — one card per (device, metric) pair
+  // store.sensors contains calibrated values, so reverse-calculate: raw = calibrated - offset
+  const allMetricDefs: Array<{ metric: string; unit: string }> = [
+    { metric: 'temperature', unit: '°C' },
+    { metric: 'humidity', unit: '%' },
+    { metric: 'co2', unit: 'ppm' },
+    { metric: 'soil_moisture', unit: '%' },
+    { metric: 'light', unit: 'lux' },
+    { metric: 'water_level', unit: '%' },
+    { metric: 'ph', unit: '' },
+    { metric: 'weight', unit: 'kg' },
+  ];
+
+  const calibrationData: CalibrationDevice[] = sensors.flatMap((sensor) => {
+    const snap = store.sensors[sensor.id] ?? {};
     const calibrationOffset = sensor.calibration_offset ?? 0;
 
-    // Find the primary metric for this sensor
-    let rawValue: number | null = null;
-    let metric = 'temperature';
-    let unit = '°C';
+    return allMetricDefs
+      .map(({ metric, unit }) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const snapMetric = (snap as any)?.[metric] as
+          | { value: number; unit?: string }
+          | undefined;
+        if (!snapMetric || snapMetric.value == null) return null;
 
-    if (snap?.temperature?.value != null) {
-      rawValue = snap.temperature.value;
-      metric = 'temperature';
-      unit = '°C';
-    } else if (snap?.humidity?.value != null) {
-      rawValue = snap.humidity.value;
-      metric = 'humidity';
-      unit = '%';
-    } else if (snap?.co2?.value != null) {
-      rawValue = snap.co2.value;
-      metric = 'co2';
-      unit = 'ppm';
-    } else if (snap?.soil_moisture?.value != null) {
-      rawValue = snap.soil_moisture.value;
-      metric = 'soil_moisture';
-      unit = '%';
-    } else if (snap?.light?.value != null) {
-      rawValue = snap.light.value;
-      metric = 'light';
-      unit = 'lux';
-    } else if (snap?.water_level?.value != null) {
-      rawValue = snap.water_level.value;
-      metric = 'water_level';
-      unit = '%';
-    } else if (snap?.ph?.value != null) {
-      rawValue = snap.ph.value;
-      metric = 'ph';
-      unit = '';
-    } else if (snap?.weight?.value != null) {
-      rawValue = snap.weight.value;
-      metric = 'weight';
-      unit = 'kg';
-    }
+        // store.sensors is calibrated; reverse-calculate to get true raw value
+        const calibratedValue = snapMetric.value;
+        const rawValue = calibratedValue - calibrationOffset;
 
-    return {
-      device: sensor,
-      rawValue,
-      calibratedValue: rawValue !== null ? rawValue + calibrationOffset : null,
-      offset: calibrationOffset,
-      metric,
-      unit,
-    };
+        return {
+          device: sensor,
+          rawValue,
+          calibratedValue,
+          offset: calibrationOffset,
+          metric,
+          unit,
+        };
+      })
+      .filter((e): e is CalibrationDevice => e !== null);
   });
 
   container.innerHTML = `
@@ -117,21 +108,26 @@ export async function renderCalibration(container: HTMLElement): Promise<void> {
 
 function renderCalibrationCard(cd: CalibrationDevice): string {
   const { device, rawValue, calibratedValue, offset, metric, unit } = cd;
-  const hasData = rawValue !== null;
 
-  const formattedRaw = hasData ? formatValue(rawValue!, unit) : '--';
-  const formattedCalibrated = hasData
-    ? formatValue(calibratedValue!, unit)
-    : '--';
+  // Metric label for display (e.g. "Temperature" instead of "temperature")
+  const metricLabel =
+    metric.charAt(0).toUpperCase() + metric.slice(1).replace('_', ' ');
+
+  const formattedRaw = formatValue(rawValue, unit);
+  const formattedCalibrated = formatValue(calibratedValue, unit);
   const formattedOffset = offset !== 0 ? formatValue(offset, unit) : '0';
 
+  // Unique ID per (device, metric) pair since we now show all metrics
+  const inputId = `ref-${device.id}-${metric}`;
+
   return `
-    <div class="cal-card" data-device-id="${device.id}">
+    <div class="cal-card" data-device-id="${device.id}" data-metric="${metric}">
       <div class="cal-card-header">
         <div class="cal-device-icon">${getDeviceIcon(device)}</div>
         <div class="cal-device-info">
           <div class="cal-device-name">${escapeHtml(device.name)}</div>
           <div class="cal-device-meta">
+            <span class="hal-badge hal-badge-slate">${escapeHtml(metricLabel)}</span>
             <span class="hal-badge hal-badge-slate">${device.protocol}</span>
             ${(device as any).zone ? `<span class="cal-zone-tag">${escapeHtml((device as any).zone)}</span>` : ''}
           </div>
@@ -160,15 +156,14 @@ function renderCalibrationCard(cd: CalibrationDevice): string {
 
       <div class="cal-form">
         <div class="cal-form-row">
-          <label class="cal-form-label" for="ref-${device.id}">Reference Value</label>
+          <label class="cal-form-label" for="${inputId}">Reference Value</label>
           <div class="cal-input-group">
             <input
               class="cal-input"
               type="number"
-              id="ref-${device.id}"
+              id="${inputId}"
               placeholder="Enter reference value"
               step="any"
-              ${!hasData ? 'disabled' : ''}
             />
             <span class="cal-input-unit">${unit}</span>
           </div>
@@ -177,16 +172,16 @@ function renderCalibrationCard(cd: CalibrationDevice): string {
           <button
             class="hal-btn-primary cal-apply-btn"
             data-device-id="${device.id}"
-            data-raw-value="${rawValue}"
             data-metric="${metric}"
             data-unit="${unit}"
-            ${!hasData ? 'disabled' : ''}
+            data-raw-value="${rawValue}"
           >
             Apply Offset
           </button>
           <button
             class="hal-btn-secondary cal-reset-btn"
             data-device-id="${device.id}"
+            data-metric="${metric}"
             ${offset === 0 ? 'disabled' : ''}
           >
             Reset to Zero
@@ -198,16 +193,18 @@ function renderCalibrationCard(cd: CalibrationDevice): string {
 }
 
 function attachCalibrationHandlers(calibrationData: CalibrationDevice[]): void {
-  // Apply button handlers
+  // Apply button handlers — one per (device, metric) card
   document.querySelectorAll('.cal-apply-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const el = btn as HTMLButtonElement;
       const deviceId = el.dataset.deviceId!;
-      const rawValue = parseFloat(el.dataset.rawValue!);
+      const metric = el.dataset.metric!;
       const unit = el.dataset.unit!;
+      const rawValue = parseFloat(el.dataset.rawValue!);
 
+      // Unique input ID per (device, metric) pair
       const inputEl = document.getElementById(
-        `ref-${deviceId}`,
+        `ref-${deviceId}-${metric}`,
       ) as HTMLInputElement;
       const refValue = parseFloat(inputEl.value);
 
@@ -246,7 +243,12 @@ function attachCalibrationHandlers(calibrationData: CalibrationDevice[]): void {
       const el = btn as HTMLButtonElement;
       const deviceId = el.dataset.deviceId!;
 
-      if (!confirm('Reset calibration offset to zero for this sensor?')) {
+      const metric = el.dataset.metric!;
+      const metricLabel =
+        metric.charAt(0).toUpperCase() + metric.slice(1).replace('_', ' ');
+      if (
+        !confirm(`Reset calibration offset for ${metricLabel} on this sensor?`)
+      ) {
         return;
       }
 

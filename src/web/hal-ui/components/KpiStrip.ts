@@ -23,59 +23,81 @@ export function renderKpiStrip(kpis: KpiData[]): string {
     return '<div class="kpi-strip-empty">No KPI data available</div>';
   }
 
-  const cards = kpis.map(kpi => {
-    const statusColor = kpi.status === 'good' ? 'var(--success)' : kpi.status === 'warning' ? 'var(--warning)' : 'var(--danger)';
-    const trend = kpi.sparklineData.length >= 2
-      ? kpi.sparklineData[kpi.sparklineData.length - 1] - kpi.sparklineData[0]
-      : 0;
-    const trendIcon = trend > 0 ? '↑' : trend < 0 ? '↓' : '→';
+  const cards = kpis
+    .map((kpi) => {
+      const statusColor =
+        kpi.status === 'good'
+          ? 'var(--success)'
+          : kpi.status === 'warning'
+            ? 'var(--warning)'
+            : 'var(--danger)';
+      const trend =
+        kpi.sparklineData.length >= 2
+          ? kpi.sparklineData[kpi.sparklineData.length - 1] -
+            kpi.sparklineData[0]
+          : 0;
+      const trendIcon = trend > 0 ? '↑' : trend < 0 ? '↓' : '→';
 
-    const comp = kpi.comparison;
-    const compHtml = comp
-      ? `<span class="kpi-comparison ${comp.delta >= 0 ? 'up' : 'down'}">${comp.delta >= 0 ? '+' : ''}${comp.delta.toFixed(1)}% ${comp.label}</span>`
-      : '';
+      const comp = kpi.comparison;
+      const compHtml = comp
+        ? `<span class="kpi-comparison ${comp.delta >= 0 ? 'up' : 'down'}">${comp.delta >= 0 ? '+' : ''}${comp.delta.toFixed(1)}% ${comp.label}</span>`
+        : '';
 
-    return `
+      const hasData = kpi.sparklineData.length > 0 || kpi.value !== 0;
+      const displayValue = hasData
+        ? `${kpi.value.toFixed(kpi.precision)}<span class="kpi-unit">${kpi.unit}</span>`
+        : '<span class="kpi-no-data">No data</span>';
+      const displayColor = hasData ? statusColor : 'var(--text-tertiary)';
+
+      return `
       <div class="kpi-card" style="--kpi-accent: ${statusColor}">
         <div class="kpi-header">
           <span class="kpi-label">${kpi.label}</span>
-          <span class="kpi-trend" style="color: ${statusColor}">${trendIcon}</span>
+          <span class="kpi-trend" style="color: ${displayColor}">${trendIcon}</span>
         </div>
         <div class="kpi-value-row">
-          <span class="kpi-value text-mono" style="color: ${statusColor}">
-            ${kpi.value.toFixed(kpi.precision)}<span class="kpi-unit">${kpi.unit}</span>
+          <span class="kpi-value text-mono" style="color: ${displayColor}">
+            ${displayValue}
           </span>
         </div>
-        ${compHtml}
+        ${hasData ? compHtml : ''}
         <div class="kpi-sparkline">
-          ${renderSparkline(kpi.sparklineData, statusColor)}
+          ${hasData ? renderSparkline(kpi.sparklineData, statusColor) : '<div class="kpi-sparkline-empty"></div>'}
         </div>
       </div>
     `;
-  }).join('');
+    })
+    .join('');
 
   return `<div class="kpi-strip">${cards}</div>`;
 }
 
 export async function buildKpiData(): Promise<KpiData[]> {
   const store = getStore();
-  const sensors = store.devices.filter(d => d.type === 'sensor');
-  const relays = store.devices.filter(d => d.type === 'relay' || d.type === 'smart_plug');
-  const activeRelays = relays.filter(d => d.state === 'on');
-  const onlineDevices = store.devices.filter(d => d.online).length;
+  const sensors = store.devices.filter((d) => d.type === 'sensor');
+  const relays = store.devices.filter(
+    (d) => d.type === 'relay' || d.type === 'smart_plug',
+  );
+  const activeRelays = relays.filter((d) => d.state === 'on');
+  const onlineDevices = store.devices.filter((d) => d.online).length;
 
   // Fetch real 24h history for sparklines in parallel
-  const [tempHistory, humHistory, co2History] = await Promise.all([
-    fetchMetricSparkline(sensors, 'temperature', 12),
-    fetchMetricSparkline(sensors, 'humidity', 12),
-    fetchMetricSparkline(sensors, 'co2', 12),
-  ]);
+  const [tempHistory, humHistory, co2History, soilHistory, lightHistory] =
+    await Promise.all([
+      fetchMetricSparkline(sensors, 'temperature', 12),
+      fetchMetricSparkline(sensors, 'humidity', 12),
+      fetchMetricSparkline(sensors, 'co2', 12),
+      fetchMetricSparkline(sensors, 'soil_moisture', 12),
+      fetchMetricSparkline(sensors, 'light', 12),
+    ]);
 
   // Fetch 24h-48h history for comparison
-  const [tempPrev, humPrev, co2Prev] = await Promise.all([
+  const [tempPrev, humPrev, co2Prev, soilPrev, lightPrev] = await Promise.all([
     fetchMetricSparklinePrev(sensors, 'temperature', 12),
     fetchMetricSparklinePrev(sensors, 'humidity', 12),
     fetchMetricSparklinePrev(sensors, 'co2', 12),
+    fetchMetricSparklinePrev(sensors, 'soil_moisture', 12),
+    fetchMetricSparklinePrev(sensors, 'light', 12),
   ]);
 
   const kpis: KpiData[] = [];
@@ -92,30 +114,48 @@ export async function buildKpiData(): Promise<KpiData[]> {
   });
 
   // Temperature — average from sensors with real history sparkline
-  let tempSum = 0, tempCount = 0;
+  let tempSum = 0,
+    tempCount = 0;
   for (const s of sensors) {
     const snap = store.sensors[s.id];
     if (snap?.temperature?.value != null) {
-      const converted = formatSensorValue(snap.temperature.value, 'temperature', store.unitSystem);
+      const converted = formatSensorValue(
+        snap.temperature.value,
+        'temperature',
+        store.unitSystem,
+      );
       tempSum += converted.value;
       tempCount++;
     }
   }
   const avgTemp = tempCount > 0 ? tempSum / tempCount : 0;
   const tempComp = computeComparison(tempHistory, tempPrev);
+  const hasTemp = tempCount > 0;
   kpis.push({
     label: 'Temperature',
-    value: avgTemp,
+    value: hasTemp ? avgTemp : 0,
     unit: formatSensorValue(0, 'temperature', store.unitSystem).unit,
     precision: 1,
-    status: avgTemp >= 18 && avgTemp <= 28 ? 'good' : avgTemp >= 15 && avgTemp <= 32 ? 'warning' : 'critical',
-    sparklineData: tempHistory.length > 1 ? tempHistory : generateTrendData(avgTemp || 22, 12, 3),
-    sparklineColor: '#F59E0B',
+    status: hasTemp
+      ? avgTemp >= 18 && avgTemp <= 28
+        ? 'good'
+        : avgTemp >= 15 && avgTemp <= 32
+          ? 'warning'
+          : 'critical'
+      : 'good',
+    sparklineData:
+      tempHistory.length > 1
+        ? tempHistory
+        : hasTemp
+          ? generateTrendData(avgTemp, 12, 3)
+          : [],
+    sparklineColor: hasTemp ? '#F59E0B' : 'var(--text-tertiary)',
     comparison: tempComp,
   });
 
   // Humidity — average from sensors
-  let humSum = 0, humCount = 0;
+  let humSum = 0,
+    humCount = 0;
   for (const s of sensors) {
     const snap = store.sensors[s.id];
     if (snap?.humidity?.value != null) {
@@ -125,19 +165,102 @@ export async function buildKpiData(): Promise<KpiData[]> {
   }
   const avgHum = humCount > 0 ? humSum / humCount : 0;
   const humComp = computeComparison(humHistory, humPrev);
+  const hasHum = humCount > 0;
   kpis.push({
     label: 'Humidity',
-    value: avgHum,
+    value: hasHum ? avgHum : 0,
     unit: '%',
     precision: 0,
-    status: avgHum >= 40 && avgHum <= 70 ? 'good' : avgHum >= 30 && avgHum <= 80 ? 'warning' : 'critical',
-    sparklineData: humHistory.length > 1 ? humHistory : generateTrendData(avgHum || 60, 12, 10),
-    sparklineColor: '#38BDF8',
+    status: hasHum
+      ? avgHum >= 40 && avgHum <= 70
+        ? 'good'
+        : avgHum >= 30 && avgHum <= 80
+          ? 'warning'
+          : 'critical'
+      : 'good',
+    sparklineData:
+      humHistory.length > 1
+        ? humHistory
+        : hasHum
+          ? generateTrendData(avgHum, 12, 10)
+          : [],
+    sparklineColor: hasHum ? '#38BDF8' : 'var(--text-tertiary)',
     comparison: humComp,
   });
 
+  // Soil Moisture — average from sensors
+  let soilSum = 0,
+    soilCount = 0;
+  for (const s of sensors) {
+    const snap = store.sensors[s.id];
+    if (snap?.soil_moisture?.value != null) {
+      soilSum += snap.soil_moisture.value;
+      soilCount++;
+    }
+  }
+  const avgSoil = soilCount > 0 ? soilSum / soilCount : 0;
+  const soilComp = computeComparison(soilHistory, soilPrev);
+  const hasSoil = soilCount > 0;
+  kpis.push({
+    label: 'Soil Moisture',
+    value: hasSoil ? avgSoil : 0,
+    unit: '%',
+    precision: 0,
+    status: hasSoil
+      ? avgSoil >= 30 && avgSoil <= 70
+        ? 'good'
+        : avgSoil >= 20 && avgSoil <= 80
+          ? 'warning'
+          : 'critical'
+      : 'good',
+    sparklineData:
+      soilHistory.length > 1
+        ? soilHistory
+        : hasSoil
+          ? generateTrendData(avgSoil, 12, 5)
+          : [],
+    sparklineColor: hasSoil ? '#EF4444' : 'var(--text-tertiary)',
+    comparison: soilComp,
+  });
+
+  // Light — average from sensors
+  let lightSum = 0,
+    lightCount = 0;
+  for (const s of sensors) {
+    const snap = store.sensors[s.id];
+    if (snap?.light?.value != null) {
+      lightSum += snap.light.value;
+      lightCount++;
+    }
+  }
+  const avgLight = lightCount > 0 ? lightSum / lightCount : 0;
+  const lightComp = computeComparison(lightHistory, lightPrev);
+  const hasLight = lightCount > 0;
+  kpis.push({
+    label: 'Light',
+    value: hasLight ? avgLight : 0,
+    unit: 'lux',
+    precision: 0,
+    status: hasLight
+      ? avgLight >= 10000 && avgLight <= 50000
+        ? 'good'
+        : avgLight >= 5000 && avgLight <= 70000
+          ? 'warning'
+          : 'critical'
+      : 'good',
+    sparklineData:
+      lightHistory.length > 1
+        ? lightHistory
+        : hasLight
+          ? generateTrendData(avgLight / 1000, 12, 2)
+          : [],
+    sparklineColor: hasLight ? '#FACC15' : 'var(--text-tertiary)',
+    comparison: lightComp,
+  });
+
   // CO2 — from sensor snapshots or history
-  let co2Sum = 0, co2Count = 0;
+  let co2Sum = 0,
+    co2Count = 0;
   for (const s of sensors) {
     const snap = store.sensors[s.id];
     if (snap?.co2?.value != null) {
@@ -147,43 +270,37 @@ export async function buildKpiData(): Promise<KpiData[]> {
   }
   const avgCo2 = co2Count > 0 ? co2Sum / co2Count : 0;
   const co2Comp = computeComparison(co2History, co2Prev);
+  const hasCo2 = co2Count > 0;
   kpis.push({
     label: 'CO₂',
-    value: avgCo2,
+    value: hasCo2 ? avgCo2 : 0,
     unit: 'ppm',
     precision: 0,
-    status: avgCo2 < 1000 ? 'good' : avgCo2 < 1500 ? 'warning' : 'critical',
-    sparklineData: co2History.length > 1 ? co2History : generateTrendData(avgCo2 || 800, 12, 200),
-    sparklineColor: '#22C55E',
+    status: hasCo2
+      ? avgCo2 < 1000
+        ? 'good'
+        : avgCo2 < 1500
+          ? 'warning'
+          : 'critical'
+      : 'good',
+    sparklineData:
+      co2History.length > 1
+        ? co2History
+        : hasCo2
+          ? generateTrendData(avgCo2, 12, 200)
+          : [],
+    sparklineColor: hasCo2 ? '#22C55E' : 'var(--text-tertiary)',
     comparison: co2Comp,
-  });
-
-  // Devices — total online
-  kpis.push({
-    label: 'Devices',
-    value: onlineDevices,
-    unit: `/${store.devices.length}`,
-    precision: 0,
-    status: onlineDevices === store.devices.length ? 'good' : onlineDevices > 0 ? 'warning' : 'critical',
-    sparklineData: generateTrendData(onlineDevices || 1, 12),
-    sparklineColor: 'var(--accent)',
-  });
-
-  // Automations — decisions today
-  kpis.push({
-    label: 'Automations',
-    value: store.decisionsToday,
-    unit: 'today',
-    precision: 0,
-    status: store.decisionsToday > 0 ? 'good' : 'warning',
-    sparklineData: generateTrendData(store.decisionsToday || 0, 12, 2),
-    sparklineColor: 'var(--accent)',
   });
 
   return kpis;
 }
 
-async function fetchMetricSparkline(sensors: ReturnType<typeof getStore>['devices'], metric: string, buckets = 12): Promise<number[]> {
+async function fetchMetricSparkline(
+  sensors: ReturnType<typeof getStore>['devices'],
+  metric: string,
+  buckets = 12,
+): Promise<number[]> {
   if (sensors.length === 0) return [];
   const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const to = new Date().toISOString();
@@ -193,14 +310,23 @@ async function fetchMetricSparkline(sensors: ReturnType<typeof getStore>['device
       const data = await halApi.getSensorHistory(s.id, metric, from, to);
       if (data.length > 1) {
         const step = Math.max(1, Math.floor(data.length / buckets));
-        return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
+        return Array.from(
+          { length: Math.min(buckets, data.length) },
+          (_, i) => data[Math.min(i * step, data.length - 1)].value,
+        );
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return [];
 }
 
-async function fetchMetricSparklinePrev(sensors: ReturnType<typeof getStore>['devices'], metric: string, buckets = 12): Promise<number[]> {
+async function fetchMetricSparklinePrev(
+  sensors: ReturnType<typeof getStore>['devices'],
+  metric: string,
+  buckets = 12,
+): Promise<number[]> {
   if (sensors.length === 0) return [];
   const to = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const from = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
@@ -210,14 +336,22 @@ async function fetchMetricSparklinePrev(sensors: ReturnType<typeof getStore>['de
       const data = await halApi.getSensorHistory(s.id, metric, from, to);
       if (data.length > 1) {
         const step = Math.max(1, Math.floor(data.length / buckets));
-        return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
+        return Array.from(
+          { length: Math.min(buckets, data.length) },
+          (_, i) => data[Math.min(i * step, data.length - 1)].value,
+        );
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return [];
 }
 
-function computeComparison(current: number[], previous: number[]): { delta: number; label: string } | undefined {
+function computeComparison(
+  current: number[],
+  previous: number[],
+): { delta: number; label: string } | undefined {
   if (current.length === 0 || previous.length === 0) return undefined;
   const currAvg = current.reduce((a, b) => a + b, 0) / current.length;
   const prevAvg = previous.reduce((a, b) => a + b, 0) / previous.length;
@@ -226,7 +360,11 @@ function computeComparison(current: number[], previous: number[]): { delta: numb
   return { delta, label: 'vs yesterday' };
 }
 
-function generateTrendData(base: number, count: number, variance = 5): number[] {
+function generateTrendData(
+  base: number,
+  count: number,
+  variance = 5,
+): number[] {
   const data: number[] = [];
   for (let i = 0; i < count; i++) {
     data.push(base + (Math.random() - 0.5) * variance * 2);
@@ -312,6 +450,14 @@ export function injectKpiStyles(): void {
 }
 .kpi-comparison.down {
   color: var(--danger);
+}
+.kpi-no-data {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+.kpi-sparkline-empty {
+  height: 28px;
 }
 @media (max-width: 767px) {
   .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }

@@ -314,6 +314,10 @@ function renderStep2_Scan(): string {
         <p class="dw-empty-desc">
           Check that your devices are powered on and connected, then try again.
         </p>
+        <div class="dw-empty-actions">
+          <button class="dw-btn-primary" id="dw-retry-scan-btn">Retry</button>
+          <button class="dw-btn-secondary" id="dw-empty-add-manual-btn">Add Manually</button>
+        </div>
       </div>
     `;
   }
@@ -644,7 +648,7 @@ function attachStep2Handlers(): void {
   const overlay = document.getElementById('discovery-wizard-overlay');
   if (!overlay) return;
 
-  // Cancel scan
+  // Cancel scan (only visible while scanning)
   overlay
     .querySelector('#dw-cancel-scan-btn')
     ?.addEventListener('click', () => {
@@ -652,6 +656,20 @@ function attachStep2Handlers(): void {
       isScanning = false;
       currentStep = 1;
       renderWizard();
+    });
+
+  // Retry scan button (empty state)
+  overlay
+    .querySelector('#dw-retry-scan-btn')
+    ?.addEventListener('click', () => {
+      startScan();
+    });
+
+  // Add manually button (empty state)
+  overlay
+    .querySelector('#dw-empty-add-manual-btn')
+    ?.addEventListener('click', () => {
+      openManualAdd();
     });
 }
 
@@ -1187,7 +1205,8 @@ function injectWizardStyles(): void {
 .dw-empty-state { text-align: center; padding: var(--space-6) 0; }
 .dw-empty-icon { font-size: 48px; margin-bottom: var(--space-3); }
 .dw-empty-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: var(--space-2); }
-.dw-empty-desc { font-size: 14px; color: var(--text-secondary); }
+.dw-empty-desc { font-size: 14px; color: var(--text-secondary); margin-bottom: var(--space-4); }
+.dw-empty-actions { display: flex; gap: var(--space-2); justify-content: center; flex-wrap: wrap; }
 .dw-device-list { display: flex; flex-direction: column; gap: var(--space-2); }
 .dw-device-row {
   display: flex;

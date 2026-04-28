@@ -19,7 +19,9 @@ export class GPIOController {
   // Read digital pin (0 or 1)
   digitalRead(pin: number): boolean {
     try {
-      const out = execSync(`pigs r ${pin}`, { timeout: 2000 }).toString().trim();
+      const out = execSync(`pigs r ${pin}`, { timeout: 2000 })
+        .toString()
+        .trim();
       return parseInt(out) === 1;
     } catch {
       throw new Error(`GPIO digitalRead pin ${pin} failed`);
@@ -40,7 +42,9 @@ export class GPIOController {
   // Uses pigpio's built-in DHT22 support via `pigs dht22 <pin>`
   readDHT22(pin: number): { temperature: number; humidity: number } | null {
     try {
-      const out = execSync(`pigs dht22 ${pin}`, { timeout: 5000 }).toString().trim();
+      const out = execSync(`pigs dht22 ${pin}`, { timeout: 5000 })
+        .toString()
+        .trim();
       // Format: "0 24.1 48.2" = status humidity temperature
       const parts = out.split(' ').map(Number);
       if (parts[0] === 0 && !isNaN(parts[1]) && !isNaN(parts[2])) {

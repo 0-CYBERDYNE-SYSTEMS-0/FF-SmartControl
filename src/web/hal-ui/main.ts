@@ -26,7 +26,7 @@ import { halApi } from './api.js';
 import type { HalState } from './api.js';
 import { provisioningApi } from './api-provisioning.js';
 import { getStore, setStore, applyTheme } from './store.js';
-import type { ThemeName, ViewId } from './store.js';
+import type { ThemeName, ViewId, DashboardLayout } from './store.js';
 
 type AsyncViewRenderer = (container: HTMLElement) => Promise<void>;
 
@@ -90,7 +90,13 @@ async function init(): Promise<void> {
   // Render header
   const headerEl = document.getElementById('hal-header')!;
   headerEl.innerHTML = renderHeader(store.theme);
-  initHeader(store.theme, handleThemeChange);
+  initHeader(
+    store.theme,
+    handleThemeChange,
+    undefined,
+    handleLayoutChange,
+    handleSettingsClick,
+  );
 
   // Init sidebar
   initSidebar(handleViewChange);
@@ -112,6 +118,18 @@ function handleThemeChange(theme: ThemeName): void {
   setStore({ theme });
   applyTheme(theme);
   showToast(`Theme: ${theme}`, 'info', 2000);
+}
+
+function handleLayoutChange(layout: DashboardLayout): void {
+  setStore({ layout });
+  showToast(`Layout: ${layout.toUpperCase()}`, 'info', 2000);
+  // Re-render dashboard when layout changes
+  render();
+}
+
+function handleSettingsClick(): void {
+  // For now, show a toast. Later this will navigate to settings view.
+  showToast('Settings panel coming soon', 'info', 2000);
 }
 
 async function handleViewChange(viewId: ViewId): Promise<void> {

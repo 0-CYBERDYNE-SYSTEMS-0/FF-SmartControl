@@ -218,26 +218,33 @@ export const halApi = {
     return halPost<{ ok: boolean }>(`/devices/${id}/control`, { action });
   },
 
-  // GET /api/hal/sensors/latest
+  // GET /api/hal/sensors/latest — returns all sensor metrics (not just temperature/humidity)
   async getSensorsLatest(): Promise<
-    Array<{
-      device: HalDevice;
-      temperature?: HalSensorReading;
-      humidity?: HalSensorReading;
-    }>
+    Array<
+      {
+        device: HalDevice;
+      } & SensorMetricSnapshot
+    >
   > {
     const readings = await halGet<
-      Array<{
-        device: RawHalDevice;
-        temperature?: RawHalSensorReading;
-        humidity?: RawHalSensorReading;
-      }>
+      Array<
+        {
+          device: RawHalDevice;
+        } & Partial<Record<string, RawHalSensorReading>>
+      >
     >('/sensors/latest');
-    return readings.map((reading) => ({
-      device: normalizeDevice(reading.device),
-      temperature: normalizeSensorReading(reading.temperature),
-      humidity: normalizeSensorReading(reading.humidity),
-    }));
+    return readings.map((reading) => {
+      const result: ReturnType<typeof halApi.getSensorsLatest>[number] = {
+        device: normalizeDevice(reading.device),
+      };
+      for (const [metric, r] of Object.entries(reading)) {
+        if (metric !== 'device' && r) {
+          (result as Record<string, HalSensorReading>)[metric] =
+            normalizeSensorReading(r as RawHalSensorReading)!;
+        }
+      }
+      return result;
+    });
   },
 
   // GET /api/hal/sensors/history
@@ -520,7 +527,14 @@ export const halApi = {
 
   // GET /api/hal/discovery/gpio/pins — get BCM pin status (VAL-DISC-011)
   async getGpioPins(): Promise<{
-    pins: Array<{ bcm: number; state: string }>;
+    pins: Array<{
+      bcm: number;
+      state: string;
+      physicalPin: number | null;
+      altFunctions: string[];
+      description: string;
+      registeredTo: string | null;
+    }>;
   }> {
     return halGet('/discovery/gpio/pins');
   },
@@ -536,9 +550,20 @@ export const halApi = {
 
   // GET /api/hal/discovery/mqtt/devices — MQTT auto-discovery (VAL-DISC-020, VAL-DISC-021)
   async getMqttDevices(): Promise<{
-    devices: unknown[];
+    devices: Array<{
+      host: string;
+      protocol: string;
+      type: string;
+      label: string;
+      online: boolean;
+      discoveryType?: string;
+      manufacturer?: string;
+      model?: string;
+      sensorType?: string;
+    }>;
     note: string;
     topics: string[];
+    error?: string;
   }> {
     return halGet('/discovery/mqtt/devices');
   },

@@ -533,7 +533,21 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
             { deviceId: device.id, error: err.message },
             'Shutdown: failed to set relay safe state',
           );
-          // VAL-SAFE-058: Log failure - UI warning handled separately via audit log
+          // VAL-SAFE-058: Log failure to audit log
+          try {
+            const { createAuditEntry } = await import('./safety/audit-log.js');
+            createAuditEntry({
+              deviceId: device.id,
+              proposedAction: 'noop',
+              verifierResult: 'DENIED_WITH_REASON',
+              deniedReason: `shutdown_safe_state_failed: ${err.message}`,
+              sensorSnapshot: {},
+              triggeredBy: 'estop_system',
+              executed: false,
+            });
+          } catch {
+            // Ignore audit log errors during shutdown
+          }
         }
 
         // Wait 100ms before next relay (VAL-DISC-072: 100ms between relays)

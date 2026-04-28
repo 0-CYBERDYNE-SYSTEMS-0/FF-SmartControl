@@ -1,6 +1,11 @@
-// Header — 48px, theme picker center, clock right, E-Stop button
+// Header — 48px, theme picker center, clock right, E-Stop button, layout selector, settings gear
 
-import { themeDefinitions, type ThemeName } from '../store.js';
+import {
+  themeDefinitions,
+  type ThemeName,
+  type DashboardLayout,
+  getStore,
+} from '../store.js';
 import { halApi } from '../api.js';
 
 export function renderHeader(theme: ThemeName): string {
@@ -23,6 +28,28 @@ export function renderHeader(theme: ThemeName): string {
     .join('');
 
   const currentDef = themeDefinitions[theme];
+  const store = getStore();
+  const currentLayout = store.layout;
+
+  const layoutButtons = (
+    ['calm', 'operator', 'diagnostic'] as DashboardLayout[]
+  )
+    .map((l) => {
+      const labels: Record<DashboardLayout, string> = {
+        calm: 'CALM',
+        operator: 'OPERATOR',
+        diagnostic: 'DIAG',
+      };
+      return `
+      <button
+        class="layout-btn ${l === currentLayout ? 'active' : ''}"
+        data-layout="${l}"
+        aria-label="${labels[l]} mode"
+        title="${labels[l]} mode"
+      >${labels[l]}</button>
+    `;
+    })
+    .join('');
 
   return `
     <header class="hal-header">
@@ -38,6 +65,9 @@ export function renderHeader(theme: ThemeName): string {
         <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
       </div>
       <div class="hal-header-center">
+        <div class="layout-selector" id="layout-selector" role="group" aria-label="Dashboard layout">
+          ${layoutButtons}
+        </div>
         <div class="safety-state-indicator" id="safety-state-indicator" title="Safety State">
           <span class="safety-state-dot"></span>
           <span class="safety-state-label" id="safety-state-label">NORMAL</span>
@@ -50,6 +80,12 @@ export function renderHeader(theme: ThemeName): string {
         </div>
       </div>
       <div class="hal-header-right">
+        <button class="settings-btn" id="settings-btn" aria-label="Settings" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
         <button class="estop-btn" id="estop-btn" aria-label="Emergency Stop" title="Emergency Stop">
           <span class="estop-btn-inner">ESTOP</span>
         </button>
@@ -82,11 +118,15 @@ export function initHeader(
   theme: ThemeName,
   onThemeChange: (t: ThemeName) => void,
   onEstopChange?: (active: boolean) => void,
+  onLayoutChange?: (layout: DashboardLayout) => void,
+  onSettingsClick?: () => void,
 ): void {
   injectHeaderStyles();
   startClock();
   setupThemeButtons(onThemeChange);
   setupEstopButton(onEstopChange);
+  setupLayoutButtons(onLayoutChange);
+  setupSettingsButton(onSettingsClick);
   refreshEstopStatus();
 }
 
@@ -130,7 +170,9 @@ function refreshEstopStatus(): void {
     .catch(() => {});
 }
 
-function updateSafetyStateIndicator(state: 'NORMAL' | 'WARNING' | 'EMERGENCY_STOP_ACTIVE'): void {
+function updateSafetyStateIndicator(
+  state: 'NORMAL' | 'WARNING' | 'EMERGENCY_STOP_ACTIVE',
+): void {
   const indicator = document.getElementById('safety-state-indicator');
   const label = document.getElementById('safety-state-label');
   if (!indicator || !label) return;
@@ -263,6 +305,27 @@ function setupThemeButtons(onThemeChange: (t: ThemeName) => void): void {
   mobileMenuBtn?.addEventListener('click', () => {
     const sidebar = document.getElementById('hal-sidebar');
     sidebar?.classList.toggle('open');
+  });
+}
+
+function setupLayoutButtons(
+  onLayoutChange?: (layout: DashboardLayout) => void,
+): void {
+  document.querySelectorAll<HTMLButtonElement>('.layout-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const layout = btn.dataset.layout as DashboardLayout;
+      document.querySelectorAll('.layout-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.layout === layout);
+      });
+      onLayoutChange?.(layout);
+    });
+  });
+}
+
+function setupSettingsButton(onSettingsClick?: () => void): void {
+  const btn = document.getElementById('settings-btn');
+  btn?.addEventListener('click', () => {
+    onSettingsClick?.();
   });
 }
 
@@ -482,6 +545,60 @@ function injectHeaderStyles(): void {
   justify-self: center;
 }
 
+/* Layout Selector */
+.layout-selector {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 2px;
+  gap: 2px;
+}
+.layout-btn {
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+.layout-btn:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-secondary) 60%, transparent);
+}
+.layout-btn.active {
+  background: var(--accent);
+  color: var(--on-primary);
+}
+
+/* Settings Button */
+.settings-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+.settings-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-tertiary));
+}
+
 .hal-header-right {
   display: flex;
   align-items: center;
@@ -580,10 +697,17 @@ function injectHeaderStyles(): void {
   .hal-header-brand-text {
     display: none;
   }
+  .layout-btn {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
 }
 @media (max-width: 767px) {
   .hal-header { padding: 0 var(--space-3); }
   .hal-clock { font-size: 11px; }
+  .layout-selector {
+    display: none;
+  }
 }
 @media (max-width: 480px) {
   .hal-header-view-label {
