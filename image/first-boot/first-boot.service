@@ -13,6 +13,7 @@ ExecStart=/bin/bash /opt/farmpal/image/first-boot/01-resize-partition.sh
 ExecStart=/bin/bash /opt/farmpal/image/first-boot/02-randomize-ssh-password.sh
 ExecStart=/bin/bash /opt/farmpal/image/first-boot/03-provisioning-check.sh
 ExecStart=/bin/bash /opt/farmpal/image/first-boot/04-farmpal-service.sh
+ExecStart=/bin/bash /opt/farmpal/image/first-boot/05-network-check.sh
 StandardOutput=journal
 StandardError=journal
 

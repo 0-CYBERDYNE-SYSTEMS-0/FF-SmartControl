@@ -751,12 +751,435 @@ export class ProvisioningManager {
     }
   }
 
+  /**
+   * Display IP address on HDMI console (VAL-IMG-011)
+   * Writes to all available TTYs
+   */
+  displayIpOnConsole(ip: string, hostname = 'farmpal'): void {
+    try {
+      const message = `
+==============================================
+  FarmPal Network Configuration
+==============================================
+
+  Hostname: ${hostname}
+  IP Address: ${ip}
+
+  Access FarmPal:
+    - Web UI: http://${hostname}.local:3392
+    - Or directly: http://${ip}:3392
+
+  Subnet scan (if mDNS doesn't work):
+    nmap -sn 192.168.1.0/24 | grep FarmPal
+
+  SSH access:
+    ssh farmpal@${ip}
+
+==============================================
+`;
+
+      // Try to write to common TTY devices
+      const ttys = [
+        '/dev/tty1',
+        '/dev/tty2',
+        '/dev/tty3',
+        '/dev/tty4',
+        '/dev/tty5',
+        '/dev/tty6',
+        '/dev/tty',
+      ];
+
+      for (const tty of ttys) {
+        try {
+          if (fs.existsSync(tty)) {
+            fs.writeFileSync(tty, message);
+          }
+        } catch {
+          // Ignore individual TTY failures
+        }
+      }
+
+      log('info', 'Displayed IP on HDMI console', { ip, hostname });
+    } catch (err) {
+      log('warn', 'Failed to display IP on console', { error: String(err) });
+    }
+  }
+
+  /**
+   * Log network info to network.log for discovery (VAL-IMG-011)
+   */
+  logNetworkInfo(ip: string, connectionType: string): void {
+    try {
+      const logFile = path.join(this.dataDir, 'network.log');
+      const entry = `${new Date().toISOString()} ${connectionType} ${ip}\n`;
+      fs.appendFileSync(logFile, entry);
+      log('info', 'Network info logged', { ip, connectionType });
+    } catch (err) {
+      log('warn', 'Failed to log network info', { error: String(err) });
+    }
+  }
+
+  /**
+   * Get current network state as structured info
+   */
+  getNetworkInfo(): {
+    state: 'connected' | 'disconnected' | 'wifi_available';
+    connectionType: 'ethernet' | 'wifi' | 'none';
+    primaryIp: string | null;
+    hostname: string;
+  } {
+    const ip = this.getPrimaryIpAddress();
+    const hostname = execSync('hostname', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+
+    if (ip) {
+      if (this.isEthernetConnected()) {
+        return { state: 'connected', connectionType: 'ethernet', primaryIp: ip, hostname };
+      }
+      if (this.isWifiConnected()) {
+        return { state: 'connected', connectionType: 'wifi', primaryIp: ip, hostname };
+      }
+      return { state: 'connected', connectionType: 'none', primaryIp: ip, hostname };
+    }
+
+    if (this.isWifiInterfaceAvailable()) {
+      return { state: 'wifi_available', connectionType: 'none', primaryIp: null, hostname };
+    }
+
+    return { state: 'disconnected', connectionType: 'none', primaryIp: null, hostname };
+  }
+
   isAvahiRunning(): boolean {
     try {
       execSync('pgrep -x avahi-daemon', { stdio: 'pipe' });
       return true;
     } catch {
       return false;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Network Detection - Ethernet/WiFi (VAL-IMG-009, VAL-IMG-012)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Check if Ethernet is connected with a global scope IP (VAL-IMG-009)
+   */
+  isEthernetConnected(): boolean {
+    try {
+      const output = execSync(
+        'ip -4 addr show scope global 2>/dev/null | grep -E "eth|en|lan" | grep "inet" || true',
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+      );
+      return /inet \d+\.\d+\.\d+\.\d+/.test(output);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Check if WiFi interface exists and is available
+   */
+  isWifiInterfaceAvailable(): boolean {
+    try {
+      const output = execSync(
+        'ip link show 2>/dev/null | grep -E "wlan|wl" || true',
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+      );
+      return output.trim().length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Check if WiFi is configured and connected (has global IP)
+   */
+  isWifiConnected(): boolean {
+    try {
+      const output = execSync(
+        'ip -4 addr show scope global 2>/dev/null | grep -E "wlan|wl" | grep "inet" || true',
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+      );
+      return /inet \d+\.\d+\.\d+\.\d+/.test(output);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get WiFi interface name (e.g., wlan0)
+   */
+  getWifiInterface(): string | null {
+    try {
+      const output = execSync(
+        'ip link show 2>/dev/null | grep -E "wlan|wl" | head -1 | awk -F": " \'{print $2}\' || true',
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+      );
+      const iface = output.trim();
+      return iface || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Scan for available WiFi networks (VAL-IMG-009)
+   */
+  scanWifiNetworks(): Array<{ ssid: string; signal?: number }> {
+    try {
+      const iface = this.getWifiInterface();
+      if (!iface) {
+        log('warn', 'No WiFi interface found for scanning');
+        return [];
+      }
+
+      // Bring interface up if not already
+      try {
+        execSync(`ip link set ${iface} up`, { stdio: 'pipe' });
+      } catch {
+        // May fail if already up
+      }
+
+      // Scan using iw
+      let scanOutput: string;
+      try {
+        scanOutput = execSync(`iw dev ${iface} scan 2>/dev/null`, {
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: 10000,
+        });
+      } catch {
+        log('warn', 'iw scan failed, trying iwlist');
+        scanOutput = execSync(`iwlist ${iface} scan 2>/dev/null`, {
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: 10000,
+        });
+      }
+
+      const networks: Array<{ ssid: string; signal?: number }> = [];
+
+      // Parse SSIDs from iw output
+      const ssidRegex = /SSID: (.+)/g;
+      let match;
+      while ((match = ssidRegex.exec(scanOutput)) !== null) {
+        const ssid = match[1].trim();
+        if (ssid && ssid.length > 0 && ssid.length <= 32) {
+          // Avoid duplicates
+          if (!networks.some((n) => n.ssid === ssid)) {
+            networks.push({ ssid });
+          }
+        }
+      }
+
+      // Try to extract signal strength if available
+      const signalRegex = /signal: (-?\d+)/g;
+      let signalIndex = 0;
+      while ((match = signalRegex.exec(scanOutput)) !== null) {
+        if (signalIndex < networks.length) {
+          networks[signalIndex].signal = parseInt(match[1], 10);
+          signalIndex++;
+        }
+      }
+
+      log('info', `WiFi scan found ${networks.length} networks`, {
+        networks: networks.map((n) => n.ssid),
+      });
+      return networks;
+    } catch (err) {
+      log('warn', 'WiFi scan failed', { error: String(err) });
+      return [];
+    }
+  }
+
+  /**
+   * Validate WiFi PSK encoding (VAL-IMG-017)
+   * Returns: { valid: true } | { valid: false; error: 'TOO_SHORT' | 'INVALID_CHARS' | 'INVALID_LENGTH' }
+   */
+  validateWifiPsk(psk: string): { valid: boolean; error?: string } {
+    if (!psk || psk.length === 0) {
+      return { valid: false, error: 'TOO_SHORT' };
+    }
+
+    // WPA2-PSK must be 8-63 ASCII characters OR exactly 64 hex characters
+    if (psk.length >= 8 && psk.length <= 63) {
+      // Check for valid ASCII printable characters
+      const asciiRegex =
+        /^[A-Za-z0-9!@#$%^&*()_+\-=\[\]{}|;':",./<>?`~\-]+$/;
+      if (asciiRegex.test(psk)) {
+        return { valid: true };
+      } else {
+        log('warn', 'WiFi PSK contains non-ASCII or unsupported special characters');
+        return { valid: false, error: 'INVALID_CHARS' };
+      }
+    } else if (psk.length === 64 && /^[a-fA-F0-9]+$/.test(psk)) {
+      // 64 hex characters - raw PSK
+      return { valid: true };
+    } else if (psk.length < 8) {
+      return { valid: false, error: 'TOO_SHORT' };
+    } else {
+      return { valid: false, error: 'INVALID_CHARS' };
+    }
+  }
+
+  /**
+   * Validate WiFi credentials and test connection (VAL-IMG-012, VAL-IMG-017, VAL-IMG-018)
+   * Returns: { success: true, ip: string } | { success: false; error: 'INVALID_SSID' | 'INVALID_PSK' | 'WRONG_PASSWORD' | 'CONNECTION_FAILED' | 'NO_INTERNET' }
+   */
+  async validateWifiCredentials(
+    ssid: string,
+    psk: string,
+  ): Promise<{
+    success: boolean;
+    ip?: string;
+    error?: string;
+  }> {
+    log('info', 'Validating WiFi credentials', { ssid });
+
+    // Validate PSK encoding first
+    const pskValidation = this.validateWifiPsk(psk);
+    if (!pskValidation.valid) {
+      if (pskValidation.error === 'INVALID_CHARS') {
+        return { success: false, error: 'INVALID_PSK' };
+      }
+      return { success: false, error: 'INVALID_PSK' };
+    }
+
+    // Validate SSID
+    if (!ssid || ssid.length === 0 || ssid.length > 32) {
+      return { success: false, error: 'INVALID_SSID' };
+    }
+
+    const iface = this.getWifiInterface();
+    if (!iface) {
+      log('error', 'No WiFi interface available');
+      return { success: false, error: 'CONNECTION_FAILED' };
+    }
+
+    try {
+      // Write wpa_supplicant config
+      const wpaConfigPath = `/tmp/wpa_test_${Date.now()}.conf`;
+      const escapedSsid = ssid.replace(/"/g, '\\"');
+      const escapedPsk = psk.replace(/"/g, '\\"');
+
+      const config = `ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+country=US
+
+network={
+    ssid="${escapedSsid}"
+    psk="${escapedPsk}"
+    key_mgmt=WPA-PSK
+    proto=RSN
+    pairwise=CCMP
+    group=CCMP
+}`;
+
+      fs.writeFileSync(wpaConfigPath, config, { mode: 0o600 });
+
+      // Kill any existing wpa_supplicant for this interface
+      try {
+        execSync(`pkill -f "wpa_supplicant.*${iface}" 2>/dev/null || true`, {
+          stdio: 'pipe',
+        });
+      } catch {
+        // Ignore
+      }
+
+      // Bring interface up
+      execSync(`ip link set ${iface} up`, { stdio: 'pipe' });
+
+      // Start wpa_supplicant
+      try {
+        execSync(
+          `wpa_supplicant -B -D nl80211,wext -i ${iface} -c ${wpaConfigPath} 2>/dev/null`,
+          { stdio: 'pipe', timeout: 10000 },
+        );
+      } catch (err) {
+        log('warn', 'wpa_supplicant start failed', { error: String(err) });
+        fs.unlinkSync(wpaConfigPath);
+        return { success: false, error: 'CONNECTION_FAILED' };
+      }
+
+      // Wait for connection (max 30 seconds)
+      let connected = false;
+      let ip: string | null = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Check for IP
+        try {
+          const ipOutput = execSync(
+            `ip -4 addr show ${iface} 2>/dev/null | grep "inet" | awk '{print $2}' | cut -d/ -f1 || true`,
+            { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+          );
+          ip = ipOutput.trim() || null;
+          if (ip) {
+            connected = true;
+            break;
+          }
+        } catch {
+          // No IP yet
+        }
+
+        // Check wpa_supplicant status
+        try {
+          const status = execSync(`wpa_cli -i ${iface} status 2>/dev/null | grep wpa_state || true`, {
+            encoding: 'utf-8',
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
+          if (status.includes('COMPLETED')) {
+            connected = true;
+            break;
+          }
+          if (status.includes('WRONG_PSK')) {
+            execSync(`pkill -f "wpa_supplicant.*${iface}" 2>/dev/null || true`, {
+              stdio: 'pipe',
+            });
+            fs.unlinkSync(wpaConfigPath);
+            log('warn', 'Wrong WiFi password detected');
+            return { success: false, error: 'WRONG_PASSWORD' };
+          }
+        } catch {
+          // Status check failed
+        }
+      }
+
+      // Cleanup
+      execSync(`pkill -f "wpa_supplicant.*${iface}" 2>/dev/null || true`, {
+        stdio: 'pipe',
+      });
+      try {
+        fs.unlinkSync(wpaConfigPath);
+      } catch {
+        // Ignore
+      }
+
+      if (!connected || !ip) {
+        log('warn', 'WiFi connection timeout');
+        return { success: false, error: 'CONNECTION_FAILED' };
+      }
+
+      // Test internet connectivity
+      try {
+        execSync('ping -c 2 -W 3 8.8.8.8 >/dev/null 2>&1', {
+          stdio: 'pipe',
+          timeout: 10000,
+        });
+      } catch {
+        // No internet - could be captive portal
+        log('warn', 'WiFi connected but no internet access');
+        return { success: false, error: 'NO_INTERNET' };
+      }
+
+      log('info', 'WiFi credentials validated successfully', { ssid, ip });
+      return { success: true, ip };
+    } catch (err) {
+      log('error', 'WiFi validation failed', { error: String(err) });
+      return { success: false, error: 'CONNECTION_FAILED' };
     }
   }
 

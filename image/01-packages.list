@@ -21,6 +21,11 @@ python3-gpiozero
 i2c-tools
 1wire
 
+# Network/WiFi support
+wpasupplicant
+wireless-tools
+iw
+
 # Build essentials for native modules
 build-essential
 python3-dev

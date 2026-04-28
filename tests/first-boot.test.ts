@@ -633,4 +633,73 @@ describe('ProvisioningManager', () => {
       assert.strictEqual(m2.isUnprovisioned(), false);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // VAL-IMG-009: Ethernet/WiFi Detection
+  // -------------------------------------------------------------------------
+
+  describe('WiFi PSK validation (VAL-IMG-017)', () => {
+    describe('validateWifiPsk()', () => {
+      it('accepts valid ASCII password (8-63 chars)', () => {
+        const result = mgr.validateWifiPsk('mypassword123');
+        assert.strictEqual(result.valid, true);
+      });
+
+      it('accepts password with special characters', () => {
+        const result = mgr.validateWifiPsk('MyP@ssw0rd!#');
+        assert.strictEqual(result.valid, true);
+      });
+
+      it('accepts 64-character hex PSK', () => {
+        const result = mgr.validateWifiPsk(
+          'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+        );
+        assert.strictEqual(result.valid, true);
+      });
+
+      it('rejects password shorter than 8 characters', () => {
+        const result = mgr.validateWifiPsk('short');
+        assert.strictEqual(result.valid, false);
+        assert.strictEqual(result.error, 'TOO_SHORT');
+      });
+
+      it('rejects empty password', () => {
+        const result = mgr.validateWifiPsk('');
+        assert.strictEqual(result.valid, false);
+        assert.strictEqual(result.error, 'TOO_SHORT');
+      });
+
+      it('rejects password with non-ASCII Unicode characters', () => {
+        // Unicode emoji or international characters that cause encoding issues
+        const result = mgr.validateWifiPsk('password\u4e2d\u6587');
+        assert.strictEqual(result.valid, false);
+        assert.strictEqual(result.error, 'INVALID_CHARS');
+      });
+
+      it('rejects 64-char string that is not valid hex', () => {
+        const result = mgr.validateWifiPsk(
+          'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz',
+        );
+        assert.strictEqual(result.valid, false);
+        assert.strictEqual(result.error, 'INVALID_CHARS');
+      });
+    });
+  });
+
+  describe('Network interface detection', () => {
+    describe('isWifiInterfaceAvailable()', () => {
+      it('returns boolean without throwing', () => {
+        // Just ensure it doesn't throw - actual result depends on system
+        const result = mgr.isWifiInterfaceAvailable();
+        assert.strictEqual(typeof result, 'boolean');
+      });
+    });
+
+    describe('getWifiInterface()', () => {
+      it('returns string or null without throwing', () => {
+        const result = mgr.getWifiInterface();
+        assert.ok(result === null || typeof result === 'string');
+      });
+    });
+  });
 });
