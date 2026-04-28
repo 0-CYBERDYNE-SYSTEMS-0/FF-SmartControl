@@ -74,12 +74,19 @@ async function init(): Promise<void> {
     return;
   }
 
-  // Normal HAL UI shell
+  // Normal HAL UI shell - use initial view from URL hash
+  const initialView = getInitialView();
   const store = getStore();
   applyTheme(store.theme);
+  
+  // Set initial hash if not present
+  if (!location.hash) {
+    history.replaceState(null, '', `#${initialView}`);
+  }
+  
   app.innerHTML = `
     <div class="app-layout" id="app-layout">
-      ${renderSidebar(store.activeView, store.sidebarCollapsed)}
+      ${renderSidebar(initialView, store.sidebarCollapsed)}
       <div class="app-main">
         <div id="hal-header"></div>
         <main class="main-content" id="view-container"></main>
@@ -87,7 +94,7 @@ async function init(): Promise<void> {
     </div>
   `;
 
-  // Render header
+  // Render header with initial view label
   const headerEl = document.getElementById('hal-header')!;
   headerEl.innerHTML = renderHeader(store.theme);
   initHeader(
@@ -100,6 +107,9 @@ async function init(): Promise<void> {
 
   // Init sidebar
   initSidebar(handleViewChange);
+
+  // Listen for hash changes (browser back/forward, direct URL navigation)
+  window.addEventListener('hashchange', handleHashChange);
 
   // Initial data fetch
   await refreshHALData();
@@ -133,8 +143,60 @@ function handleSettingsClick(): void {
 }
 
 async function handleViewChange(viewId: ViewId): Promise<void> {
+  // Update URL hash for SPA routing
+  const newHash = `#${viewId}`;
+  if (location.hash !== newHash) {
+    history.replaceState(null, '', newHash);
+  }
+  // Update header view label reactively
+  updateHeaderViewLabel(viewId);
   setStore({ activeView: viewId });
   await render();
+}
+
+// Update the header view label when navigation changes
+function updateHeaderViewLabel(viewId: ViewId): void {
+  const labels: Record<ViewId, string> = {
+    dashboard: 'Overview',
+    devices: 'Devices',
+    sensors: 'Sensors',
+    decisions: 'Decisions',
+    cameras: 'Cameras',
+    safety: 'Safety',
+    system: 'System',
+    terminal: 'Terminal',
+    calibration: 'Calibration',
+  };
+  const labelEl = document.getElementById('header-view-label');
+  if (labelEl) {
+    labelEl.textContent = labels[viewId] || 'Overview';
+  }
+}
+
+// Handle hash changes (browser back/forward, direct URL access)
+function handleHashChange(): void {
+  const hash = location.hash.slice(1) || 'dashboard';
+  const validViews: ViewId[] = ['dashboard', 'devices', 'sensors', 'decisions', 'cameras', 'safety', 'system', 'terminal', 'calibration'];
+  const viewId = validViews.includes(hash as ViewId) ? hash as ViewId : 'dashboard';
+  
+  // Update sidebar active state
+  document.querySelectorAll('.sidebar-item').forEach((item) => {
+    item.classList.toggle('active', item.getAttribute('data-view') === viewId);
+  });
+  
+  // Update header view label
+  updateHeaderViewLabel(viewId);
+  
+  // Update store and re-render
+  setStore({ activeView: viewId });
+  render();
+}
+
+// Get initial view from URL hash or default to dashboard
+function getInitialView(): ViewId {
+  const hash = location.hash.slice(1) || 'dashboard';
+  const validViews: ViewId[] = ['dashboard', 'devices', 'sensors', 'decisions', 'cameras', 'safety', 'system', 'terminal', 'calibration'];
+  return validViews.includes(hash as ViewId) ? hash as ViewId : 'dashboard';
 }
 
 async function render(): Promise<void> {
