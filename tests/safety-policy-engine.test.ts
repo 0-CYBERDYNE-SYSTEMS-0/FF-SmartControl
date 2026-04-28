@@ -535,3 +535,108 @@ test('evaluateAction: schedule windows denies weekends', () => {
   assert.equal(violations.length, 1);
   assert.equal(violations[0].severity, 'block');
 });
+
+test('VAL-SAFE-014: concurrent decisions - first APPROVED, second DENIED by max_activations_per_hour', () => {
+  // Setup: max 1 activation per hour for device
+  const rules: SafetyRule[] = [
+    rule('max_act_concurrent', 'humidifier_1', 'max_activations_per_hour', {
+      maxPerHour: 1,
+    }),
+  ];
+
+  // First decision comes in - no prior activations in the last hour
+  // Should be APPROVED
+  const firstToggles = toggles(
+    // Existing toggle from 90 minutes ago - outside the 1-hour window
+    { deviceId: 'humidifier_1', state: 'on', switchedAt: new Date(NOW_MS - 90 * 60 * 1000).toISOString() },
+  );
+
+  const firstViolations = evaluateAction(
+    { decision: 'turn_on', deviceId: 'humidifier_1' },
+    snapshot({}),
+    deviceState('humidifier_1', 'smart_plug'),
+    firstToggles,
+    rules,
+    NOW_MS,
+  );
+
+  // First decision should pass - only 1 activation from 90 min ago (outside window)
+  assert.deepEqual(firstViolations, [], 'First concurrent decision should be APPROVED');
+
+  // Simulate first decision being logged - add the activation to recent toggles
+  // Now we have 2 activations in the last hour: one from 90 min ago, one from now
+  const secondToggles = toggles(
+    { deviceId: 'humidifier_1', state: 'on', switchedAt: new Date(NOW_MS - 90 * 60 * 1000).toISOString() },
+    { deviceId: 'humidifier_1', state: 'on', switchedAt: new Date(NOW_MS - 1 * 1000).toISOString() }, // Just approved
+  );
+
+  // Second concurrent decision comes in immediately - should be DENIED
+  const secondViolations = evaluateAction(
+    { decision: 'turn_on', deviceId: 'humidifier_1' },
+    snapshot({}),
+    deviceState('humidifier_1', 'smart_plug'),
+    secondToggles,
+    rules,
+    NOW_MS,
+  );
+
+  // Second decision should be DENIED - max_activations_per_hour exceeded
+  assert.equal(secondViolations.length, 1, 'Second concurrent decision should be DENIED');
+  assert.equal(secondViolations[0].severity, 'block', 'Severity should be block');
+  assert.match(secondViolations[0].message, /maxPerHour|2.*1|times in the last hour/, 'Message should mention max activations');
+
+  // Verify computeOutcome correctly handles this
+  const firstOutcome = computeOutcome(firstViolations);
+  assert.equal(firstOutcome.approved, true, 'First decision outcome should be APPROVED');
+
+  const secondOutcome = computeOutcome(secondViolations);
+  assert.equal(secondOutcome.approved, false, 'Second decision outcome should be DENIED');
+  assert.ok(secondOutcome.deniedReason !== null, 'Second decision should have denial reason');
+  assert.ok(secondOutcome.conflictingRuleIds.includes('max_act_concurrent'), 'Should reference the blocking rule');
+});
+
+test('VAL-SAFE-014: concurrent decisions with min_off_duration - first APPROVED, second DENIED', () => {
+  // Setup: min 5 minutes off duration for device
+  const rules: SafetyRule[] = [
+    rule('min_off_concurrent', 'pump_1', 'min_off_duration', {
+      minSeconds: 300, // 5 minutes
+    }),
+  ];
+
+  // First decision: device was turned off 10 minutes ago - OK to turn on
+  const firstToggles = toggles(
+    { deviceId: 'pump_1', state: 'off', switchedAt: new Date(NOW_MS - 10 * 60 * 1000).toISOString() },
+  );
+
+  const firstViolations = evaluateAction(
+    { decision: 'turn_on', deviceId: 'pump_1' },
+    snapshot({}),
+    deviceState('pump_1', 'relay'),
+    firstToggles,
+    rules,
+    NOW_MS,
+  );
+
+  assert.deepEqual(firstViolations, [], 'First decision should be APPROVED');
+
+  // Simulate first decision being logged - device was just turned on, then turned off
+  // Device was turned off only 30 seconds ago (right after the first approval)
+  const secondToggles = toggles(
+    { deviceId: 'pump_1', state: 'on', switchedAt: new Date(NOW_MS - 60 * 1000).toISOString() }, // Was on briefly
+    { deviceId: 'pump_1', state: 'off', switchedAt: new Date(NOW_MS - 30 * 1000).toISOString() }, // Just turned off
+  );
+
+  // Second concurrent decision - should be DENIED because min_off_duration not met
+  const secondViolations = evaluateAction(
+    { decision: 'turn_on', deviceId: 'pump_1' },
+    snapshot({}),
+    deviceState('pump_1', 'relay'),
+    secondToggles,
+    rules,
+    NOW_MS,
+  );
+
+  assert.equal(secondViolations.length, 1, 'Second concurrent decision should be DENIED');
+  assert.equal(secondViolations[0].severity, 'block');
+  assert.match(secondViolations[0].message, /300|min.*off/, 'Message should mention min off duration');
+});
