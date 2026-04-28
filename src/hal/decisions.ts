@@ -17,14 +17,15 @@ export class HalDecisionLog {
     outcome?: DecisionOutcome;
     triggered_by?: string;
     pending_status?: string;
+    model?: string; // LLM model used (VAL-AUTO-042)
   }): HalDecision {
     const id = genId('dec');
     const now = new Date().toISOString();
     this.db
       .prepare(
         `
-      INSERT INTO hal_decision_log (id, device_id, decision, confidence, reasoning, sensor_snapshot, outcome, decided_at, completed_at, triggered_by, pending_status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+      INSERT INTO hal_decision_log (id, device_id, decision, confidence, reasoning, sensor_snapshot, outcome, decided_at, completed_at, triggered_by, pending_status, model)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
     `,
       )
       .run(
@@ -38,6 +39,7 @@ export class HalDecisionLog {
         now,
         data.triggered_by ?? 'agent',
         data.pending_status ?? null,
+        data.model ?? null,
       );
     return this.get(id)!;
   }

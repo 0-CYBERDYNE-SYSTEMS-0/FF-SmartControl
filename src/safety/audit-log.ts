@@ -18,7 +18,12 @@ export type TriggeredBy =
 export interface AuditLogEntry {
   id: string;
   deviceId: string | null;
-  proposedAction: 'turn_on' | 'turn_off' | 'adjust' | 'noop';
+  proposedAction:
+    | 'turn_on'
+    | 'turn_off'
+    | 'adjust'
+    | 'noop'
+    | 'llm_unavailable';
   verifierResult: VerifierResult;
   deniedReason: string | null;
   conflictingRuleIds: string[] | null;
@@ -48,7 +53,12 @@ function getAuditDb() {
 
 export interface CreateAuditEntry {
   deviceId?: string | null;
-  proposedAction: 'turn_on' | 'turn_off' | 'adjust' | 'noop';
+  proposedAction:
+    | 'turn_on'
+    | 'turn_off'
+    | 'adjust'
+    | 'noop'
+    | 'llm_unavailable';
   verifierResult: VerifierResult;
   deniedReason?: string | null;
   conflictingRuleIds?: string[] | null;

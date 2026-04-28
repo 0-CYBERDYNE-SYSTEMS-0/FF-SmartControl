@@ -862,6 +862,359 @@ export async function startHalUiServer(
         return;
       }
 
+      // THRESHOLD API — per-device/zone min/max bounds for sensor metrics (VAL-AUTO-010)
+
+      // GET /api/hal/thresholds — list all thresholds
+      if (apiPath === '/thresholds' && method === 'GET') {
+        const db = getDb();
+        const deviceId = url.searchParams.get('deviceId');
+        const zone = url.searchParams.get('zone');
+        const metric = url.searchParams.get('metric');
+
+        let sql = 'SELECT * FROM hal_thresholds WHERE 1=1';
+        const params: unknown[] = [];
+
+        if (deviceId) {
+          sql += ' AND device_id = ?';
+          params.push(deviceId);
+        }
+        if (zone) {
+          sql += ' AND zone = ?';
+          params.push(zone);
+        }
+        if (metric) {
+          sql += ' AND metric = ?';
+          params.push(metric);
+        }
+
+        sql += ' ORDER BY created_at DESC';
+
+        try {
+          const rows = db.prepare(sql).all(...params) as Array<{
+            id: string;
+            device_id: string | null;
+            zone: string | null;
+            metric: string;
+            min_value: number | null;
+            max_value: number | null;
+            enabled: number;
+            created_at: string;
+            updated_at: string;
+          }>;
+          const thresholds = rows.map((row) => ({
+            id: row.id,
+            deviceId: row.device_id,
+            zone: row.zone,
+            metric: row.metric,
+            minValue: row.min_value,
+            maxValue: row.max_value,
+            enabled: row.enabled === 1,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+          }));
+          sendJson(res, 200, thresholds);
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/hal/thresholds/:id — get a specific threshold
+      if (apiPath.match(/^\/thresholds\/([^/]+)$/) && method === 'GET') {
+        const id = apiPath.match(/^\/thresholds\/([^/]+)$/)![1];
+        const db = getDb();
+        try {
+          const row = db
+            .prepare('SELECT * FROM hal_thresholds WHERE id = ?')
+            .get(id) as
+            | {
+                id: string;
+                device_id: string | null;
+                zone: string | null;
+                metric: string;
+                min_value: number | null;
+                max_value: number | null;
+                enabled: number;
+                created_at: string;
+                updated_at: string;
+              }
+            | undefined;
+          if (!row) {
+            sendJson(res, 404, { error: 'Threshold not found' });
+            return;
+          }
+          sendJson(res, 200, {
+            id: row.id,
+            deviceId: row.device_id,
+            zone: row.zone,
+            metric: row.metric,
+            minValue: row.min_value,
+            maxValue: row.max_value,
+            enabled: row.enabled === 1,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+          });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // POST /api/hal/thresholds — create a new threshold
+      if (apiPath === '/thresholds' && method === 'POST') {
+        const db = getDb();
+        let body = '';
+        req.on('data', (chunk) => (body += chunk));
+        req.on('end', async () => {
+          try {
+            const data = JSON.parse(body);
+            const {
+              deviceId,
+              zone,
+              metric,
+              minValue,
+              maxValue,
+              enabled = true,
+            } = data;
+
+            if (!metric) {
+              sendJson(res, 400, { error: 'metric is required' });
+              return;
+            }
+
+            const validMetrics = [
+              'temperature',
+              'humidity',
+              'soil_moisture',
+              'co2',
+              'light',
+            ];
+            if (!validMetrics.includes(metric)) {
+              sendJson(res, 400, {
+                error: `metric must be one of: ${validMetrics.join(', ')}`,
+              });
+              return;
+            }
+
+            if (minValue === undefined && maxValue === undefined) {
+              sendJson(res, 400, {
+                error: 'at least one of minValue or maxValue is required',
+              });
+              return;
+            }
+
+            const id = `thr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const now = new Date().toISOString();
+
+            db.prepare(
+              `INSERT INTO hal_thresholds (id, device_id, zone, metric, min_value, max_value, enabled, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ).run(
+              id,
+              deviceId || null,
+              zone || null,
+              metric,
+              minValue ?? null,
+              maxValue ?? null,
+              enabled ? 1 : 0,
+              now,
+              now,
+            );
+
+            // Log to safety audit (VAL-AUTO-011)
+            db.prepare(
+              `INSERT INTO hal_safety_audit (id, device_id, proposed_action, verifier_result, denied_reason, sensor_snapshot, triggered_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            ).run(
+              `thr_log_${Date.now()}`,
+              deviceId || null,
+              'threshold_create',
+              'INFO',
+              JSON.stringify({
+                action: 'create',
+                metric,
+                minValue,
+                maxValue,
+                deviceId,
+                zone,
+              }),
+              '{}',
+              'operator',
+              now,
+            );
+
+            sendJson(res, 201, {
+              id,
+              deviceId,
+              zone,
+              metric,
+              minValue,
+              maxValue,
+              enabled,
+              createdAt: now,
+              updatedAt: now,
+            });
+          } catch (err: any) {
+            sendJson(res, 500, { error: err.message });
+          }
+        });
+        return;
+      }
+
+      // PUT /api/hal/thresholds/:id — update a threshold
+      if (apiPath.match(/^\/thresholds\/([^/]+)$/) && method === 'PUT') {
+        const id = apiPath.match(/^\/thresholds\/([^/]+)$/)![1];
+        const db = getDb();
+
+        // Get current threshold for audit log
+        const current = db
+          .prepare('SELECT * FROM hal_thresholds WHERE id = ?')
+          .get(id) as
+          | {
+              id: string;
+              device_id: string | null;
+              zone: string | null;
+              metric: string;
+              min_value: number | null;
+              max_value: number | null;
+              enabled: number;
+              created_at: string;
+              updated_at: string;
+            }
+          | undefined;
+
+        if (!current) {
+          sendJson(res, 404, { error: 'Threshold not found' });
+          return;
+        }
+
+        let body = '';
+        req.on('data', (chunk) => (body += chunk));
+        req.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            const { deviceId, zone, metric, minValue, maxValue, enabled } =
+              data;
+            const now = new Date().toISOString();
+
+            db.prepare(
+              `UPDATE hal_thresholds
+               SET device_id = ?, zone = ?, metric = ?, min_value = ?, max_value = ?, enabled = ?, updated_at = ?
+               WHERE id = ?`,
+            ).run(
+              deviceId !== undefined ? deviceId : current.device_id,
+              zone !== undefined ? zone : current.zone,
+              metric !== undefined ? metric : current.metric,
+              minValue !== undefined ? minValue : current.min_value,
+              maxValue !== undefined ? maxValue : current.max_value,
+              enabled !== undefined ? (enabled ? 1 : 0) : current.enabled,
+              now,
+              id,
+            );
+
+            // Log to safety audit with old/new values (VAL-AUTO-011)
+            db.prepare(
+              `INSERT INTO hal_safety_audit (id, device_id, proposed_action, verifier_result, denied_reason, sensor_snapshot, triggered_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            ).run(
+              `thr_log_${Date.now()}`,
+              (deviceId !== undefined ? deviceId : current.device_id) || null,
+              'threshold_update',
+              'INFO',
+              JSON.stringify({
+                action: 'update',
+                id,
+                old: {
+                  minValue: current.min_value,
+                  maxValue: current.max_value,
+                  enabled: current.enabled === 1,
+                },
+                new: {
+                  minValue:
+                    minValue !== undefined ? minValue : current.min_value,
+                  maxValue:
+                    maxValue !== undefined ? maxValue : current.max_value,
+                  enabled:
+                    enabled !== undefined ? enabled : current.enabled === 1,
+                },
+              }),
+              '{}',
+              'operator',
+              now,
+            );
+
+            sendJson(res, 200, {
+              id,
+              deviceId: deviceId !== undefined ? deviceId : current.device_id,
+              zone: zone !== undefined ? zone : current.zone,
+              metric: metric !== undefined ? metric : current.metric,
+              minValue: minValue !== undefined ? minValue : current.min_value,
+              maxValue: maxValue !== undefined ? maxValue : current.max_value,
+              enabled: enabled !== undefined ? enabled : current.enabled === 1,
+              createdAt: current.created_at,
+              updatedAt: now,
+            });
+          } catch (err: any) {
+            sendJson(res, 500, { error: err.message });
+          }
+        });
+        return;
+      }
+
+      // DELETE /api/hal/thresholds/:id — delete a threshold
+      if (apiPath.match(/^\/thresholds\/([^/]+)$/) && method === 'DELETE') {
+        const id = apiPath.match(/^\/thresholds\/([^/]+)$/)![1];
+        const db = getDb();
+
+        const current = db
+          .prepare('SELECT * FROM hal_thresholds WHERE id = ?')
+          .get(id) as
+          | {
+              id: string;
+              device_id: string | null;
+              metric: string;
+              min_value: number | null;
+              max_value: number | null;
+            }
+          | undefined;
+
+        if (!current) {
+          sendJson(res, 404, { error: 'Threshold not found' });
+          return;
+        }
+
+        try {
+          db.prepare('DELETE FROM hal_thresholds WHERE id = ?').run(id);
+
+          // Log deletion to safety audit
+          const now = new Date().toISOString();
+          db.prepare(
+            `INSERT INTO hal_safety_audit (id, device_id, proposed_action, verifier_result, denied_reason, sensor_snapshot, triggered_by, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          ).run(
+            `thr_log_${Date.now()}`,
+            current.device_id || null,
+            'threshold_delete',
+            'INFO',
+            JSON.stringify({
+              action: 'delete',
+              id,
+              metric: current.metric,
+              minValue: current.min_value,
+              maxValue: current.max_value,
+            }),
+            '{}',
+            'operator',
+            now,
+          );
+
+          sendJson(res, 200, { ok: true });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
       // GET /api/hal/safety/state — get current safety state (NORMAL/WARNING/EMERGENCY_STOP)
       if (apiPath === '/safety/state' && method === 'GET') {
         const { getEstopState } = await import('../safety/estop.js');
@@ -1974,6 +2327,107 @@ export async function startHalUiServer(
       }
 
       sendJson(res, 404, { error: 'Provisioning endpoint not found' });
+      return;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // SETTINGS API — LLM provider/model and other farm settings
+    // ═══════════════════════════════════════════════════════════════════════
+    if (requestPath.startsWith('/api/settings/')) {
+      const settingsPath = requestPath.slice('/api/settings'.length);
+      const db = getDb();
+
+      // Import env file path helper
+      const { getFarmPalEnvFile } = await import('../first-boot.js');
+
+      // PUT /api/settings/llm — update LLM provider/model settings (VAL-AUTO-040)
+      if (settingsPath === '/llm' && method === 'PUT') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        try {
+          const data = JSON.parse(body);
+          const { llmProvider, llmEndpoint, llmApiKey, llmModel } = data;
+          const now = new Date().toISOString();
+
+          // Save to database for persistence (VAL-AUTO-040)
+          const settings = [
+            ['llm_provider', llmProvider || 'ollama'],
+            ['llm_endpoint', llmEndpoint || 'http://localhost:11434'],
+            ['llm_api_key', llmApiKey || ''],
+            ['llm_model', llmModel || ''],
+          ];
+
+          for (const [key, value] of settings) {
+            db.prepare(
+              `INSERT INTO hal_settings (key, value, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?`,
+            ).run(key, value, now, value, now);
+          }
+
+          // Also update .env file for runtime use
+          const envPath = getFarmPalEnvFile();
+          try {
+            let envContent = '';
+            if (fs.existsSync(envPath)) {
+              envContent = fs.readFileSync(envPath, 'utf-8');
+            }
+
+            const envUpdates: Record<string, string> = {
+              LLM_PROVIDER: llmProvider || 'ollama',
+              OLLAMA_BASE_URL: llmEndpoint || 'http://localhost:11434',
+              OPENAI_API_KEY: llmApiKey || '',
+              OLLAMA_MODEL: llmModel || '',
+              PI_MODEL: llmModel || '',
+            };
+
+            for (const [key, value] of Object.entries(envUpdates)) {
+              if (value !== undefined && value !== '') {
+                const regex = new RegExp(`^${key}=.*$`, 'm');
+                if (regex.test(envContent)) {
+                  envContent = envContent.replace(regex, `${key}=${value}`);
+                } else {
+                  envContent += `\n${key}=${value}`;
+                }
+              }
+            }
+            fs.writeFileSync(envPath, envContent.trim() + '\n');
+          } catch {
+            // Non-fatal - DB save is the primary persistence
+          }
+
+          sendJson(res, 200, { ok: true });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/settings/llm — get current LLM settings
+      if (settingsPath === '/llm' && method === 'GET') {
+        try {
+          const rows = db
+            .prepare('SELECT key, value FROM hal_settings WHERE key LIKE ?')
+            .all('llm_%') as Array<{ key: string; value: string }>;
+
+          const settings: Record<string, string> = {};
+          for (const row of rows) {
+            settings[row.key] = row.value;
+          }
+
+          sendJson(res, 200, {
+            llmProvider: settings['llm_provider'] || 'ollama',
+            llmEndpoint: settings['llm_endpoint'] || 'http://localhost:11434',
+            llmApiKey: settings['llm_api_key'] || '',
+            llmModel: settings['llm_model'] || '',
+          });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      sendJson(res, 404, { error: 'Settings endpoint not found' });
       return;
     }
 

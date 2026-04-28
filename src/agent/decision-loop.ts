@@ -137,25 +137,72 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     ? `Message: ${ctx.message}\nChat: ${ctx.chatId}\n\nDecide what to do.`
     : `No user message. Run autonomous monitoring. Trigger: ${ctx.trigger}`;
 
-  const llmResult = await callLLM(userPrompt, {
-    system: systemPrompt,
-    temperature: 0.3,
-    maxTokens: 1024,
-  });
+  // Call LLM with timeout and error handling (VAL-AUTO-041)
+  let llmResult: { text: string; model: string } | null = null;
+  let llmError: string | null = null;
+  try {
+    llmResult = await callLLM(userPrompt, {
+      system: systemPrompt,
+      temperature: 0.3,
+      maxTokens: 1024,
+    });
+  } catch (err: any) {
+    llmError = err.message || 'LLM unavailable';
+    console.error('[DecisionLoop] LLM call failed:', llmError);
+  }
+
+  // If LLM unavailable in AUTONOMOUS mode → safety hold (VAL-AUTO-041)
+  if (llmError) {
+    const { getAutomationMode } = await import('../automation/modes.js');
+    const mode = getAutomationMode();
+
+    // Log llm_unavailable event to safety audit (VAL-AUTO-041)
+    try {
+      const { createAuditEntry } = await import('../safety/audit-log.js');
+      const { captureSensorSnapshot } = await import('../safety/verifier.js');
+      createAuditEntry({
+        deviceId: null,
+        proposedAction: 'llm_unavailable',
+        verifierResult: 'DENIED',
+        deniedReason: `LLM unavailable: ${llmError}. Autonomous mode suspended until LLM recovers.`,
+        conflictingRuleIds: null,
+        sensorSnapshot: captureSensorSnapshot(),
+        decisionId: null,
+        triggeredBy: 'agent',
+        executed: false,
+      });
+    } catch {
+      // Non-fatal
+    }
+
+    // In AUTONOMOUS mode, suspend hardware actions when LLM is down
+    if (mode === 'AUTONOMOUS') {
+      return {
+        decision: 'noop',
+        reasoning: `LLM unavailable (${llmError}). AUTONOMOUS mode suspended — awaiting LLM recovery.`,
+        toolCalls: [],
+      };
+    }
+    // In other modes (SUGGEST, ASSISTED), continue with reasoning available
+    // (parsed will remain empty, decision will be noop)
+  }
 
   // Parse JSON from LLM response
   let parsed: any = {
     decision: 'noop',
-    reasoning: llmResult.text,
+    reasoning: llmResult?.text || (llmError ? `LLM error: ${llmError}` : ''),
     confidence: 0.5,
     tool_calls: [],
     device_id: null,
   };
-  try {
-    const jsonMatch = llmResult.text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
-  } catch {
-    parsed.reasoning = llmResult.text;
+  if (llmResult) {
+    try {
+      const jsonMatch = llmResult.text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+      else parsed.reasoning = llmResult.text;
+    } catch {
+      parsed.reasoning = llmResult.text;
+    }
   }
 
   // Convert sensor snapshot to flat format for decision log (backward compatible)
@@ -178,6 +225,7 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     sensor_snapshot: flatSensorSnapshot,
     outcome: 'pending',
     triggered_by: triggeredBy,
+    model: llmResult?.model, // VAL-AUTO-042: model in audit entries
   });
 
   // Import automation mode handler

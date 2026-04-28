@@ -47,7 +47,15 @@ CREATE TABLE IF NOT EXISTS hal_decision_log (
   decided_at      TEXT NOT NULL,
   completed_at    TEXT,
   triggered_by    TEXT DEFAULT 'agent', -- 'agent' | 'manual_ui' | 'schedule' (VAL-AUTO-023)
-  pending_status  TEXT                  -- 'pending_review' | 'pending_veto' | 'vetoed' | 'approved' | null (VAL-AUTO-022, VAL-AUTO-051)
+  pending_status  TEXT,                -- 'pending_review' | 'pending_veto' | 'vetoed' | 'approved' | null (VAL-AUTO-022, VAL-AUTO-051)
+  model           TEXT                 -- LLM model used for this decision (VAL-AUTO-042)
+);
+
+-- HAL Settings: key-value store for farm settings (VAL-AUTO-040)
+CREATE TABLE IF NOT EXISTS hal_settings (
+  key             TEXT PRIMARY KEY,
+  value           TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
 );
 
 -- HAL Alert Rules: threshold-based alerting
@@ -157,4 +165,18 @@ CREATE TABLE IF NOT EXISTS hal_automation_pending (
   approved_by       TEXT,                        -- operator ID if approved
   executed          INTEGER NOT NULL DEFAULT 0,   -- 1 = action was executed (auto or approved)
   created_at        TEXT NOT NULL
+);
+
+-- Thresholds: per-device or per-zone min/max bounds for sensor metrics (VAL-AUTO-010)
+-- Violations cause DENIED in safety engine
+CREATE TABLE IF NOT EXISTS hal_thresholds (
+  id                TEXT PRIMARY KEY,
+  device_id         TEXT,                        -- device this threshold applies to (NULL = all devices / zone-wide)
+  zone             TEXT,                        -- zone this threshold applies to (NULL = all zones)
+  metric            TEXT NOT NULL,               -- 'temperature' | 'humidity' | 'soil_moisture' | 'co2' | 'light'
+  min_value         REAL,                        -- minimum acceptable value (NULL = no min)
+  max_value         REAL,                        -- maximum acceptable value (NULL = no max)
+  enabled           INTEGER NOT NULL DEFAULT 1,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
 );

@@ -517,6 +517,102 @@ export const halApi = {
   },
 
   // ══════════════════════════════════════════════════════════════════════════════
+  // Threshold API (VAL-AUTO-010, VAL-AUTO-011, VAL-AUTO-012)
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // GET /api/hal/thresholds — list all thresholds
+  async getThresholds(params?: {
+    deviceId?: string;
+    zone?: string;
+    metric?: string;
+  }): Promise<
+    Array<{
+      id: string;
+      deviceId: string | null;
+      zone: string | null;
+      metric: string;
+      minValue: number | null;
+      maxValue: number | null;
+      enabled: boolean;
+      createdAt: string;
+      updatedAt: string;
+    }>
+  > {
+    return halGet('/thresholds', params as Record<string, string>);
+  },
+
+  // GET /api/hal/thresholds/:id — get a specific threshold
+  async getThreshold(id: string): Promise<{
+    id: string;
+    deviceId: string | null;
+    zone: string | null;
+    metric: string;
+    minValue: number | null;
+    maxValue: number | null;
+    enabled: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    return halGet(`/thresholds/${id}`);
+  },
+
+  // POST /api/hal/thresholds — create a new threshold
+  async createThreshold(data: {
+    deviceId?: string;
+    zone?: string;
+    metric: string;
+    minValue?: number;
+    maxValue?: number;
+    enabled?: boolean;
+  }): Promise<{
+    id: string;
+    deviceId: string | null;
+    zone: string | null;
+    metric: string;
+    minValue: number | null;
+    maxValue: number | null;
+    enabled: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    return halPost('/thresholds', data);
+  },
+
+  // PUT /api/hal/thresholds/:id — update a threshold
+  async updateThreshold(
+    id: string,
+    updates: {
+      deviceId?: string;
+      zone?: string;
+      metric?: string;
+      minValue?: number;
+      maxValue?: number;
+      enabled?: boolean;
+    },
+  ): Promise<{
+    id: string;
+    deviceId: string | null;
+    zone: string | null;
+    metric: string;
+    minValue: number | null;
+    maxValue: number | null;
+    enabled: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    return halPut(`/thresholds/${id}`, updates);
+  },
+
+  // DELETE /api/hal/thresholds/:id — delete a threshold
+  async deleteThreshold(id: string): Promise<{ ok: boolean }> {
+    const res = await fetch(BASE + `/thresholds/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error(`Failed to delete threshold: ${res.status}`);
+    return { ok: true };
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════
   // Discovery API (VAL-DISC-001 to VAL-DISC-052)
   // ══════════════════════════════════════════════════════════════════════════════
 

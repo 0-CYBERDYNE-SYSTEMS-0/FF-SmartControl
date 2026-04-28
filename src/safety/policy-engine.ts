@@ -20,7 +20,8 @@ export type RuleType =
   | 'min_off_duration'
   | 'max_activations_per_hour'
   | 'allowed_schedule_windows'
-  | 'dependency';
+  | 'dependency'
+  | 'threshold';
 
 export type Operator = 'gt' | 'lt' | 'eq' | 'gte' | 'lte' | 'neq';
 
@@ -53,12 +54,21 @@ export interface DependencyConfig {
   actionRequired: 'on' | 'off' | 'any'; // what the dependent device must be in
 }
 
+export interface ThresholdConfig {
+  metric: MetricType;
+  deviceId?: string; // device this threshold applies to (null = all)
+  zone?: string; // zone this threshold applies to (null = all)
+  minValue?: number;
+  maxValue?: number;
+}
+
 export type RuleConfig =
   | MaxOnDurationConfig
   | MinOffDurationConfig
   | MaxActivationsConfig
   | ScheduleWindowConfig
-  | DependencyConfig;
+  | DependencyConfig
+  | ThresholdConfig;
 
 export interface SafetyRule {
   id: string;
@@ -198,6 +208,187 @@ export function getRulesForDevice(
   return allRules.filter((r) => r.deviceId === deviceId);
 }
 
+// In-memory threshold cache
+interface ThresholdEntry {
+  id: string;
+  deviceId: string | null; // null = applies to all devices
+  zone: string | null; // null = applies to all zones
+  metric: MetricType;
+  minValue: number | null;
+  maxValue: number | null;
+  enabled: boolean;
+}
+
+let thresholdCache: ThresholdEntry[] = [];
+let thresholdCacheLoadedAt = 0;
+const THRESHOLD_CACHE_TTL_MS = 30_000; // 30 seconds
+
+export interface ThresholdViolation {
+  thresholdId: string;
+  metric: MetricType;
+  deviceId: string | null;
+  zone: string | null;
+  currentValue: number;
+  minValue: number | null;
+  maxValue: number | null;
+  violatedAt: string; // ISO timestamp
+}
+
+/**
+ * Load thresholds from SQLite into memory cache
+ */
+export function loadThresholds(deps: PolicyEngineDeps = {}): ThresholdEntry[] {
+  const db = deps.getDb?.() ?? getDb();
+  const now = Date.now();
+
+  if (
+    thresholdCache.length > 0 &&
+    now - thresholdCacheLoadedAt < THRESHOLD_CACHE_TTL_MS
+  ) {
+    return thresholdCache;
+  }
+
+  try {
+    const rows = db
+      .prepare(
+        `SELECT id, device_id, zone, metric, min_value, max_value, enabled
+         FROM hal_thresholds
+         WHERE enabled = 1`,
+      )
+      .all() as Array<{
+      id: string;
+      device_id: string | null;
+      zone: string | null;
+      metric: string;
+      min_value: number | null;
+      max_value: number | null;
+      enabled: number;
+    }>;
+
+    thresholdCache = rows.map((row) => ({
+      id: row.id,
+      deviceId: row.device_id,
+      zone: row.zone,
+      metric: row.metric as MetricType,
+      minValue: row.min_value,
+      maxValue: row.max_value,
+      enabled: row.enabled === 1,
+    }));
+
+    thresholdCacheLoadedAt = now;
+    return thresholdCache;
+  } catch (err) {
+    console.error('[SafetyPolicy] Failed to load thresholds:', err);
+    return thresholdCache;
+  }
+}
+
+/**
+ * Clear the threshold cache (forces reload on next access)
+ */
+export function clearThresholdCache(): void {
+  thresholdCache = [];
+  thresholdCacheLoadedAt = 0;
+}
+
+/**
+ * Evaluate sensor readings against configured thresholds.
+ * Returns all current threshold violations.
+ */
+export function evaluateThresholds(
+  sensorSnapshot: SensorSnapshot,
+  thresholds?: ThresholdEntry[],
+): ThresholdViolation[] {
+  const activeThresholds = thresholds ?? loadThresholds();
+  const violations: ThresholdViolation[] = [];
+  const now = new Date().toISOString();
+
+  for (const threshold of activeThresholds) {
+    // Find matching sensor readings
+    for (const [deviceId, metrics] of Object.entries(sensorSnapshot)) {
+      // Skip if threshold is device-specific and doesn't match
+      if (threshold.deviceId && threshold.deviceId !== deviceId) continue;
+
+      const metricValue = metrics[threshold.metric];
+      if (metricValue === undefined) continue;
+
+      // Check min violation
+      if (threshold.minValue !== null && metricValue < threshold.minValue) {
+        violations.push({
+          thresholdId: threshold.id,
+          metric: threshold.metric,
+          deviceId: threshold.deviceId,
+          zone: threshold.zone,
+          currentValue: metricValue,
+          minValue: threshold.minValue,
+          maxValue: threshold.maxValue,
+          violatedAt: now,
+        });
+      }
+
+      // Check max violation
+      if (threshold.maxValue !== null && metricValue > threshold.maxValue) {
+        violations.push({
+          thresholdId: threshold.id,
+          metric: threshold.metric,
+          deviceId: threshold.deviceId,
+          zone: threshold.zone,
+          currentValue: metricValue,
+          minValue: threshold.minValue,
+          maxValue: threshold.maxValue,
+          violatedAt: now,
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * Check if a proposed action would be affected by current threshold violations.
+ * If any sensor is in violation, relay turn_on actions are DENIED.
+ * (turn_off is allowed since it may help resolve the violation)
+ */
+export function checkThresholds(
+  action: ProposedAction,
+  sensorSnapshot: SensorSnapshot,
+  deviceState: DeviceState | null,
+  thresholds?: ThresholdEntry[],
+): RuleViolation[] {
+  // Only check turn_on actions for relays/smart_plugs
+  if (
+    action.decision !== 'turn_on' ||
+    !action.deviceId ||
+    !deviceState ||
+    !['relay', 'smart_plug'].includes(deviceState.type)
+  ) {
+    return [];
+  }
+
+  const violations = evaluateThresholds(sensorSnapshot, thresholds);
+
+  if (violations.length === 0) return [];
+
+  // Build a descriptive message of all violations
+  const violationMsgs = violations.map((v) => {
+    const cond =
+      v.minValue !== null && v.currentValue < v.minValue
+        ? `${v.metric}=${v.currentValue} < min=${v.minValue}`
+        : `${v.metric}=${v.currentValue} > max=${v.maxValue}`;
+    return cond;
+  });
+
+  return [
+    {
+      ruleId: violations[0].thresholdId,
+      ruleType: 'threshold',
+      message: `Threshold violation(s): ${violationMsgs.join('; ')}. Action denied to prevent worsening.`,
+      severity: 'block',
+    },
+  ];
+}
+
 /**
  * Evaluate a proposed action against all applicable safety rules.
  * Returns list of violations (empty = approved).
@@ -258,8 +449,15 @@ export function evaluateAction(
       case 'dependency':
         violations.push(...checkDependency(rule, action, sensorSnapshot));
         break;
+      case 'threshold':
+        // threshold type rules use checkThresholds function
+        // loaded from hal_thresholds table separately
+        break;
     }
   }
+
+  // Also check thresholds from hal_thresholds table (VAL-AUTO-013)
+  violations.push(...checkThresholds(action, sensorSnapshot, deviceState));
 
   return violations;
 }
