@@ -1,14 +1,37 @@
 "use strict";
 (() => {
+  var __create = Object.create;
   var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
   var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __getProtoOf = Object.getPrototypeOf;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __esm = (fn, res) => function __init() {
     return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  };
+  var __commonJS = (cb, mod) => function __require() {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
   };
   var __export = (target, all) => {
     for (var name in all)
       __defProp(target, name, { get: all[name], enumerable: true });
   };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+    // If the importer is in node compatibility mode or this is not an ESM
+    // file that has been converted to a CommonJS file using a Babel-
+    // compatible transform (i.e. "__esModule" has not been set), then set
+    // "default" to the CommonJS "module.exports" for node compatibility.
+    isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+    mod
+  ));
 
   // src/web/hal-ui/store.ts
   var store_exports = {};
@@ -88,9 +111,17 @@
   }
   function formatTimeValue(date, format) {
     if (format === "12h") {
-      return date.toLocaleTimeString("en-US", { hour12: true, hour: "2-digit", minute: "2-digit" });
+      return date.toLocaleTimeString("en-US", {
+        hour12: true,
+        hour: "2-digit",
+        minute: "2-digit"
+      });
     }
-    return date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+    return date.toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit"
+    });
   }
   function formatDateTimeValue(date, format) {
     if (format === "12h") {
@@ -425,7 +456,9 @@
       const y1 = pts[i].y + m[i] * dx[i] / 3;
       const x2 = pts[i + 1].x - dx[i] / 3;
       const y2 = pts[i + 1].y - m[i + 1] * dx[i] / 3;
-      parts.push(`C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`);
+      parts.push(
+        `C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`
+      );
     }
     return parts.join(" ");
   }
@@ -469,7 +502,10 @@
     const timeLabels = Array.from({ length: timeSteps + 1 }, (_, i) => {
       const t = tMin + i / timeSteps * tSpan;
       const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const label = new Date(t).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
       return `<text x="${x.toFixed(1)}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`;
     }).join("");
     const primary = layerPaths[0];
@@ -490,12 +526,14 @@
         return `<text x="${width - pad.right + 6}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.color}">${v.toFixed(1)}${unit}</text>`;
       }).join("");
     }
-    const defs = layerPaths.map((lp, i) => `
+    const defs = layerPaths.map(
+      (lp, i) => `
     <linearGradient id="ck-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.28"/>
       <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.02"/>
     </linearGradient>
-  `).join("");
+  `
+    ).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#ck-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -531,7 +569,8 @@
     const kpiDelta = `${primaryMetric.delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(primaryMetric.delta).toFixed(1)}%`;
     let statsHtml = "";
     if (opts.showStats !== false) {
-      statsHtml = `<div class="ck-stats">` + latestValues.map((l) => `
+      statsHtml = `<div class="ck-stats">` + latestValues.map(
+        (l) => `
         <div class="ck-stat-metric">
           <span class="ck-stat-label" style="color:${l.color}">${escapeHtml3(l.label)}</span>
           <span class="ck-stat-current" style="color:${l.color}">${l.current.toFixed(1)}${l.unit}</span>
@@ -541,7 +580,8 @@
           <div class="ck-stat-item"><label>Avg</label><strong>${l.avg.toFixed(1)}${l.unit}</strong></div>
           <div class="ck-stat-item"><label>Max</label><strong>${l.max.toFixed(1)}${l.unit}</strong></div>
         </div>
-      `).join("") + `</div>`;
+      `
+      ).join("") + `</div>`;
     }
     const titleHtml = opts.title ? `<div class="ck-head">
          <div>
@@ -558,10 +598,14 @@
     container.innerHTML = `${titleHtml}<div class="ck-chart">${svg}</div>${statsHtml}${footHtml}`;
   }
   function renderOverviewZoneCard(zone, activeKeys) {
-    const metricsByKey = new Map(zone.metrics.map((metric) => [metric.key, metric]));
+    const metricsByKey = new Map(
+      zone.metrics.map((metric) => [metric.key, metric])
+    );
     const activeMetrics = overviewMetricOrder.filter((key) => activeKeys.has(key)).map((key) => metricsByKey.get(key)).filter((metric) => Boolean(metric));
     const chartMetrics = activeMetrics.filter((metric) => metric.data.length > 0);
-    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map((metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
+    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map(
+      (metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`
+    ).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
     if (chartMetrics.length === 0) {
       return `
       <article class="dhc-card">
@@ -584,7 +628,11 @@
     const pad = { l: 48, r: 48, t: 24, b: 36 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const times = Array.from(new Set(chartMetrics.flatMap((metric) => metric.data.map((point) => point.t)))).sort((a, b) => a - b);
+    const times = Array.from(
+      new Set(
+        chartMetrics.flatMap((metric) => metric.data.map((point) => point.t))
+      )
+    ).sort((a, b) => a - b);
     const x = (i, len) => len <= 1 ? pad.l + cw / 2 : pad.l + i / (len - 1) * cw;
     const xForTs = new Map(times.map((t, i) => [t, x(i, times.length)]));
     const gradientPrefix = (zone.zoneName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "zone").slice(0, 40);
@@ -600,12 +648,18 @@
       const max = Math.max(...values);
       const span = Math.max(1e-4, max - min);
       const y = (v) => pad.t + (max - v) / span * ch;
-      const path = values.map((value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`).join(" ");
+      const path = values.map(
+        (value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`
+      ).join(" ");
       const areaPath = path ? `${path} L${x(times.length - 1, times.length)},${pad.t + ch} L${x(0, times.length)},${pad.t + ch} Z` : "";
       return { metric, values, min, max, span, y, path, areaPath };
     });
     const primary = series[0];
-    const primaryGrid = [primary.max, primary.min + primary.span / 2, primary.min];
+    const primaryGrid = [
+      primary.max,
+      primary.min + primary.span / 2,
+      primary.min
+    ];
     const primaryUnit = activeMetrics[0]?.unit || "";
     const gridLines = primaryGrid.map((value, i) => {
       const y = primary.y(value);
@@ -614,14 +668,20 @@
       <line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 15%, var(--border))"/>
     `;
     }).join("");
-    const defs = series.map((entry) => `
+    const defs = series.map(
+      (entry) => `
     <linearGradient id="${gradientPrefix}-${entry.metric.key}-grad" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${entry.metric.color}" stop-opacity="0.18"/>
       <stop offset="100%" stop-color="${entry.metric.color}" stop-opacity="0.01"/>
     </linearGradient>
-  `).join("");
-    const shade = series.map((entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : "").join("");
-    const lines = series.map((entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`).join("");
+  `
+    ).join("");
+    const shade = series.map(
+      (entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : ""
+    ).join("");
+    const lines = series.map(
+      (entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`
+    ).join("");
     const dots = series.map((entry) => {
       const lastTs = times[times.length - 1];
       const lastVal = entry.values[entry.values.length - 1];
@@ -697,7 +757,9 @@
     );
     const activeFromState = opts.activeKeys ?? new Set(overviewMetricOrder);
     const activeKeys = new Set(
-      overviewMetricOrder.filter((key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0))
+      overviewMetricOrder.filter(
+        (key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0)
+      )
     );
     if (activeKeys.size === 0) {
       const fallback = overviewMetricOrder.find((key) => availableKeys.has(key)) ?? overviewMetricOrder[0];
@@ -741,13 +803,19 @@
     }
     const activeKeys = opts.activeKeys ?? new Set(metrics2.map((m) => m.key));
     const normalizedActiveKeys = new Set(
-      Array.from(activeKeys).filter((key) => metricsWithData.some((metric) => metric.key === key))
+      Array.from(activeKeys).filter(
+        (key) => metricsWithData.some((metric) => metric.key === key)
+      )
     );
     if (normalizedActiveKeys.size === 0) {
-      const fallbackKey = ["temperature", "humidity", "co2"].find((key) => metricsWithData.some((metric) => metric.key === key)) ?? metricsWithData[0]?.key;
+      const fallbackKey = ["temperature", "humidity", "co2"].find(
+        (key) => metricsWithData.some((metric) => metric.key === key)
+      ) ?? metricsWithData[0]?.key;
       if (fallbackKey) normalizedActiveKeys.add(fallbackKey);
     }
-    const activeMetrics = metricsWithData.filter((m) => normalizedActiveKeys.has(m.key));
+    const activeMetrics = metricsWithData.filter(
+      (m) => normalizedActiveKeys.has(m.key)
+    );
     const chartMetrics = activeMetrics.filter((m) => m.data.length > 0);
     if (chartMetrics.length === 0) {
       container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
@@ -759,7 +827,9 @@
     const pad = { l: 18, r: 16, t: 20, b: 24 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const times = Array.from(new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))).sort((a, b) => a - b);
+    const times = Array.from(
+      new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))
+    ).sort((a, b) => a - b);
     if (times.length === 0) {
       container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
       return;
@@ -775,7 +845,12 @@
         axisMax = axisMax * 9 / 5 + 32;
       }
       const vSpan = Math.max(1, axisMax - axisMin);
-      const exact = new Map(metric.data.map((d) => [d.t, Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))]));
+      const exact = new Map(
+        metric.data.map((d) => [
+          d.t,
+          Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))
+        ])
+      );
       const firstNorm = exact.size > 0 ? exact.get(metric.data[0].t) ?? 0 : 0;
       let carry = firstNorm;
       const values = times.map((t) => {
@@ -807,8 +882,12 @@
         botPts.push({ x: px, y: y(seg?.y1 ?? 0) });
       }
       const topPath = monotoneCubicPath(topPts);
-      const topLine = topPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-      const botLine = botPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const topLine = topPts.map(
+        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
+      ).join(" ");
+      const botLine = botPts.map(
+        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
+      ).join(" ");
       const area = topLine ? `${topLine} L${botPts[botPts.length - 1]?.x.toFixed(1)},${botPts[botPts.length - 1]?.y.toFixed(1)} ${botPts.slice().reverse().map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")} Z` : "";
       return { series, area, topPath, topPts };
     });
@@ -816,12 +895,14 @@
       const gy = pad.t + step * ch;
       return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${gy}" y2="${gy}" class="dhc-grid"/>`;
     }).join("");
-    const defs = layerPaths.map((lp, i) => `
+    const defs = layerPaths.map(
+      (lp, i) => `
     <linearGradient id="dhc-lake-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.series.metric.color}" stop-opacity="0.56"/>
       <stop offset="100%" stop-color="${lp.series.metric.color}" stop-opacity="0.08"/>
     </linearGradient>
-  `).join("");
+  `
+    ).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#dhc-lake-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -872,7 +953,9 @@
     const primaryCurrent = primaryMetric.data[primaryMetric.data.length - 1].v;
     const primaryPrev = primaryMetric.data[primaryMetric.data.length - 2]?.v ?? primaryCurrent;
     const delta = primaryPrev ? (primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100 : 0;
-    const titleColors = activeMetrics.map((m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`).join(' <span style="color:var(--text-secondary)">+</span> ');
+    const titleColors = activeMetrics.map(
+      (m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`
+    ).join(' <span style="color:var(--text-secondary)">+</span> ');
     const zoneToggleHtml = opts.zoneToggles ? `<div class="dhc-zone-toggles">
         <button class="dhc-zone-toggle ${opts.zoneToggles.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>
         ${opts.zoneToggles.zones.map((z) => {
@@ -959,8 +1042,14 @@
     }).join("");
     const lx = x(vals.length - 1).toFixed(1);
     const ly = y(vals[vals.length - 1]).toFixed(1);
-    const t0 = new Date(data[0].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const t0 = new Date(data[0].ts).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
     container.innerHTML = `
     <svg class="og-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
       ${grids}
@@ -976,7 +1065,8 @@
   function renderStackedAreaChart(layers, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || layers.length === 0) {
-      if (container) container.innerHTML = '<div class="chart-empty">No data</div>';
+      if (container)
+        container.innerHTML = '<div class="chart-empty">No data</div>';
       return;
     }
     const colorGroups = /* @__PURE__ */ new Map();
@@ -1042,15 +1132,20 @@
     const timeLabels = Array.from({ length: 7 }, (_, i) => {
       const t = tMin + i / 6 * tSpan;
       const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const label = new Date(t).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
       return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
     }).join("");
-    const defs = layerPaths.map((lp, i) => `
+    const defs = layerPaths.map(
+      (lp, i) => `
     <linearGradient id="stack-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.55"/>
       <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.08"/>
     </linearGradient>
-  `).join("");
+  `
+    ).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#stack-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -1058,23 +1153,35 @@
       (lp) => lp.topPath ? `<path d="${lp.topPath}" fill="none" stroke="${lp.layer.color}" stroke-width="1.5" stroke-linejoin="round"/>` : ""
     ).join("");
     const svg = `
-    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
       <defs>${defs}</defs>
       ${gridLines}${areas}${lines}${timeLabels}
     </svg>
   `;
-    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map((l) => `
+    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map(
+      (l) => `
         <span class="legend-item" style="--metric-color:${l.color}">
           <span class="legend-dot"></span>${escapeHtml3(l.label)}
-        </span>`).join("")}</div>` : "";
+        </span>`
+    ).join("")}</div>` : "";
     container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
   }
   function renderAreaCard(data, metricKey, containerId, title) {
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const cfg = metricConfig[metricKey] || {
+      label: metricKey,
+      color: "#888",
+      unit: "",
+      minAxis: 0,
+      maxAxis: 100
+    };
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metricKey,
+      store.unitSystem
+    );
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -1090,7 +1197,10 @@
     const vSpan = Math.max(1, axisMax - axisMin);
     const points = data.map((d) => {
       const v = formatSensorValue(d.value, metricKey, store.unitSystem).value;
-      return { x: tx(new Date(d.timestamp).getTime()), y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b) };
+      return {
+        x: tx(new Date(d.timestamp).getTime()),
+        y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b)
+      };
     });
     const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
     const area = `${line} L${points[points.length - 1].x.toFixed(1)},${h - pad.b} L${points[0].x.toFixed(1)},${h - pad.b} Z`;
@@ -1113,8 +1223,18 @@
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const cfg = metricConfig[metricKey] || {
+      label: metricKey,
+      color: "#888",
+      unit: "",
+      minAxis: 0,
+      maxAxis: 100
+    };
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metricKey,
+      store.unitSystem
+    );
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -1142,8 +1262,18 @@
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const cfg = metricConfig[metricKey] || {
+      label: metricKey,
+      color: "#888",
+      unit: "",
+      minAxis: 0,
+      maxAxis: 100
+    };
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metricKey,
+      store.unitSystem
+    );
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -1170,7 +1300,8 @@
   function renderDecisionBarTrend(points, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || points.length === 0) {
-      if (container) container.innerHTML = '<div class="chart-empty">No decision data</div>';
+      if (container)
+        container.innerHTML = '<div class="chart-empty">No decision data</div>';
       return;
     }
     const W = opts.width ?? (container.clientWidth || 600);
@@ -1178,7 +1309,10 @@
     const pad = { t: 20, r: 16, b: 40, l: 40 };
     const chartW = W - pad.l - pad.r;
     const chartH = H - pad.t - pad.b;
-    const maxVal = Math.max(...points.flatMap((p) => [p.success, p.failure, p.pending]), 1);
+    const maxVal = Math.max(
+      ...points.flatMap((p) => [p.success, p.failure, p.pending]),
+      1
+    );
     const groupW = chartW / points.length;
     const barW = groupW * 0.22;
     const gap = groupW * 0.04;
@@ -1372,7 +1506,12 @@
     if (!container || cells.length === 0) return;
     const W = opts.width ?? (container.clientWidth || 600);
     const H = opts.height ?? 100;
-    const colorRange = opts.colorRange ?? ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B"];
+    const colorRange = opts.colorRange ?? [
+      "#0a1a12",
+      "#1a4030",
+      "#4aB070",
+      "#F59E0B"
+    ];
     const dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const hours = Array.from({ length: 24 }, (_, i) => i);
     const cellW = (W - 40) / 24;
@@ -1383,7 +1522,10 @@
     const vSpan = Math.max(1e-3, vMax - vMin);
     const colorFor = (v) => {
       const t = (v - vMin) / vSpan;
-      const idx = Math.min(colorRange.length - 1, Math.floor(t * colorRange.length));
+      const idx = Math.min(
+        colorRange.length - 1,
+        Math.floor(t * colorRange.length)
+      );
       return colorRange[idx];
     };
     const rects = cells.map((c) => {
@@ -1521,6 +1663,7 @@
 .hero-svg {
   display: block;
   width: 100%;
+  height: 100%;
   min-height: 0;
   flex: 1;
 }
@@ -1822,14 +1965,56 @@
       "use strict";
       init_store();
       metricConfig = {
-        temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
-        humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
-        soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
-        water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
+        temperature: {
+          label: "Temperature",
+          color: "#F59E0B",
+          unit: "\xB0C",
+          minAxis: 10,
+          maxAxis: 40
+        },
+        humidity: {
+          label: "Humidity",
+          color: "#38BDF8",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        soil_moisture: {
+          label: "Soil Moisture",
+          color: "#EF4444",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        water_level: {
+          label: "Water Level",
+          color: "#2563EB",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
         ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
-        co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
-        light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
-        weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
+        co2: {
+          label: "CO\u2082",
+          color: "#22C55E",
+          unit: "ppm",
+          minAxis: 0,
+          maxAxis: 2e3
+        },
+        light: {
+          label: "Light",
+          color: "#FACC15",
+          unit: "lux",
+          minAxis: 0,
+          maxAxis: 1e5
+        },
+        weight: {
+          label: "Weight",
+          color: "#94A3B8",
+          unit: "kg",
+          minAxis: 0,
+          maxAxis: 100
+        },
         vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
       };
       DECISION_COLORS = {
@@ -1838,6 +2023,12 @@
         pending: "#FFC857"
       };
       overviewMetricOrder = ["temperature", "humidity", "co2"];
+    }
+  });
+
+  // (disabled):crypto
+  var require_crypto = __commonJS({
+    "(disabled):crypto"() {
     }
   });
 
@@ -1853,7 +2044,8 @@
     { id: "terminal", label: "Terminal", icon: terminalIcon() }
   ];
   function renderSidebar(activeView, collapsed) {
-    const items = navItems.map((item) => `
+    const items = navItems.map(
+      (item) => `
     <button
       class="sidebar-item ${item.id === activeView ? "active" : ""}"
       data-view="${item.id}"
@@ -1862,7 +2054,8 @@
       <span class="sidebar-icon">${item.icon}</span>
       <span class="sidebar-label">${item.label}</span>
     </button>
-  `).join("");
+  `
+    ).join("");
     return `
     <aside class="sidebar ${collapsed ? "collapsed" : ""}" id="hal-sidebar">
       <div class="sidebar-header">
@@ -2134,7 +2327,8 @@
   init_store();
   function renderHeader(theme) {
     const themes = Object.entries(themeDefinitions);
-    const dots = themes.map(([key, def]) => `
+    const dots = themes.map(
+      ([key, def]) => `
     <button
       class="theme-dot ${key === theme ? "active" : ""}"
       data-theme="${key}"
@@ -2142,7 +2336,8 @@
       title="${def.label}"
       style="--dot-color:${def.accent}"
     ></button>
-  `).join("");
+  `
+    ).join("");
     const currentDef = themeDefinitions[theme];
     return `
     <header class="hal-header">
@@ -2221,7 +2416,9 @@
     function tick() {
       const el = document.getElementById("hal-clock");
       if (el) {
-        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", { hour12: false });
+        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
+          hour12: false
+        });
       }
     }
     tick();
@@ -2955,7 +3152,8 @@
       url += "?" + qs;
     }
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`HAL API ${url} failed: ${res.status} ${res.statusText}`);
+    if (!res.ok)
+      throw new Error(`HAL API ${url} failed: ${res.status} ${res.statusText}`);
     return res.json();
   }
   async function halPost(path, body) {
@@ -2964,7 +3162,8 @@
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : void 0
     });
-    if (!res.ok) throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
+    if (!res.ok)
+      throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
     return res.json();
   }
   function normalizeDevice(device) {
@@ -2995,7 +3194,9 @@
       normalized[deviceId] = {};
       for (const [metric, reading] of Object.entries(snapshot)) {
         if (reading && typeof reading === "object") {
-          const normalizedReading = normalizeSensorReading(reading);
+          const normalizedReading = normalizeSensorReading(
+            reading
+          );
           if (normalizedReading) {
             normalized[deviceId][metric] = normalizedReading;
           }
@@ -3059,7 +3260,9 @@
     },
     // GET /api/hal/decisions
     async getDecisions(limit = 20) {
-      const decisions = await halGet("/decisions", { limit: String(limit) });
+      const decisions = await halGet("/decisions", {
+        limit: String(limit)
+      });
       return decisions.map(normalizeDecision);
     },
     // GET /api/hal/cameras
@@ -3086,14 +3289,56 @@
     "weight"
   ];
   var metricConfig2 = {
-    temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
-    humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
-    soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
-    water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
+    temperature: {
+      label: "Temperature",
+      color: "#F59E0B",
+      unit: "\xB0C",
+      minAxis: 10,
+      maxAxis: 40
+    },
+    humidity: {
+      label: "Humidity",
+      color: "#38BDF8",
+      unit: "%",
+      minAxis: 0,
+      maxAxis: 100
+    },
+    soil_moisture: {
+      label: "Soil Moisture",
+      color: "#EF4444",
+      unit: "%",
+      minAxis: 0,
+      maxAxis: 100
+    },
+    water_level: {
+      label: "Water Level",
+      color: "#2563EB",
+      unit: "%",
+      minAxis: 0,
+      maxAxis: 100
+    },
     ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
-    co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
-    light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
-    weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
+    co2: {
+      label: "CO\u2082",
+      color: "#22C55E",
+      unit: "ppm",
+      minAxis: 0,
+      maxAxis: 2e3
+    },
+    light: {
+      label: "Light",
+      color: "#FACC15",
+      unit: "lux",
+      minAxis: 0,
+      maxAxis: 1e5
+    },
+    weight: {
+      label: "Weight",
+      color: "#94A3B8",
+      unit: "kg",
+      minAxis: 0,
+      maxAxis: 100
+    },
     vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
   };
   function resolveZoneName(deviceId, deviceName) {
@@ -3197,7 +3442,9 @@
   async function buildKpiData() {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
+    const relays = store.devices.filter(
+      (d) => d.type === "relay" || d.type === "smart_plug"
+    );
     const activeRelays = relays.filter((d) => d.state === "on");
     const onlineDevices = store.devices.filter((d) => d.online).length;
     const [tempHistory, humHistory, co2History] = await Promise.all([
@@ -3224,7 +3471,11 @@
     for (const s of sensors) {
       const snap = store.sensors[s.id];
       if (snap?.temperature?.value != null) {
-        const converted = formatSensorValue(snap.temperature.value, "temperature", store.unitSystem);
+        const converted = formatSensorValue(
+          snap.temperature.value,
+          "temperature",
+          store.unitSystem
+        );
         tempSum += converted.value;
         tempCount++;
       }
@@ -3310,7 +3561,10 @@
         const data = await halApi.getSensorHistory(s.id, metric, from, to);
         if (data.length > 1) {
           const step = Math.max(1, Math.floor(data.length / buckets));
-          return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
+          return Array.from(
+            { length: Math.min(buckets, data.length) },
+            (_, i) => data[Math.min(i * step, data.length - 1)].value
+          );
         }
       }
     } catch {
@@ -3326,7 +3580,10 @@
         const data = await halApi.getSensorHistory(s.id, metric, from, to);
         if (data.length > 1) {
           const step = Math.max(1, Math.floor(data.length / buckets));
-          return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
+          return Array.from(
+            { length: Math.min(buckets, data.length) },
+            (_, i) => data[Math.min(i * step, data.length - 1)].value
+          );
         }
       }
     } catch {
@@ -3442,7 +3699,9 @@
   async function renderOperatorPanels() {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
+    const relays = store.devices.filter(
+      (d) => d.type === "relay" || d.type === "smart_plug"
+    );
     const cameras = store.devices.filter((d) => d.type === "camera");
     const powerHistory = await fetchPowerHistory(relays);
     return `
@@ -3469,7 +3728,8 @@
       </div>
     `;
     }
-    const grid = relays.map((r) => `
+    const grid = relays.map(
+      (r) => `
     <div class="op-device-cell ${r.online ? "online" : "offline"}" data-device-id="${r.id}">
       <div class="op-device-icon">${r.type === "relay" ? "RLY" : "PLG"}</div>
       <div class="op-device-info">
@@ -3480,7 +3740,8 @@
         <div class="op-toggle-thumb"></div>
       </div>
     </div>
-  `).join("");
+  `
+    ).join("");
     const onCount = relays.filter((r) => r.state === "on").length;
     return `
     <div class="op-panel hal-card">
@@ -3497,17 +3758,21 @@
   function renderAutomationStatsPanel(decisions) {
     const now = Date.now();
     const oneHour = 60 * 60 * 1e3;
-    const recent = decisions.filter((d) => now - new Date(d.timestamp).getTime() < oneHour);
+    const recent = decisions.filter(
+      (d) => now - new Date(d.timestamp).getTime() < oneHour
+    );
     const successCount = recent.filter((d) => d.status === "success").length;
     const successRate = recent.length > 0 ? successCount / recent.length * 100 : 0;
     const buckets = [];
     for (let h = 5; h >= 0; h--) {
       const start = now - (h + 1) * oneHour;
       const end = now - h * oneHour;
-      buckets.push(decisions.filter((d) => {
-        const t = new Date(d.timestamp).getTime();
-        return t >= start && t < end;
-      }).length);
+      buckets.push(
+        decisions.filter((d) => {
+          const t = new Date(d.timestamp).getTime();
+          return t >= start && t < end;
+        }).length
+      );
     }
     return `
     <div class="op-panel hal-card">
@@ -3539,12 +3804,22 @@
     const alerts = [];
     for (const s of sensors) {
       if (!s.online) {
-        alerts.push({ level: "critical", text: `${s.name} offline`, time: "now" });
+        alerts.push({
+          level: "critical",
+          text: `${s.name} offline`,
+          time: "now"
+        });
       }
     }
-    const failed = decisions.filter((d) => d.status === "failure" && now - new Date(d.timestamp).getTime() < 36e5);
+    const failed = decisions.filter(
+      (d) => d.status === "failure" && now - new Date(d.timestamp).getTime() < 36e5
+    );
     for (const d of failed.slice(0, 3)) {
-      alerts.push({ level: "warning", text: d.decision.slice(0, 40), time: formatRelTime(d.timestamp) });
+      alerts.push({
+        level: "warning",
+        text: d.decision.slice(0, 40),
+        time: formatRelTime(d.timestamp)
+      });
     }
     if (alerts.length === 0) {
       return `
@@ -3567,13 +3842,15 @@
         ${criticalCount > 0 ? `<span class="status-chip status-chip--offline">${criticalCount} critical</span>` : `<span class="status-chip status-chip--online">Clear</span>`}
       </div>
       <div class="op-panel-body">
-        ${alerts.slice(0, 5).map((a) => `
+        ${alerts.slice(0, 5).map(
+      (a) => `
           <div class="op-alert ${a.level}">
             <span class="op-alert-dot"></span>
             <span class="op-alert-text">${escapeHtml4(a.text)}</span>
             <span class="op-alert-time text-xs text-secondary">${a.time}</span>
           </div>
-        `).join("")}
+        `
+    ).join("")}
       </div>
     </div>
   `;
@@ -3919,13 +4196,15 @@
       </div>
     `;
     }
-    const lines = entries.map((e) => `
+    const lines = entries.map(
+      (e) => `
     <div class="terminal-line ${e.level}">
       <span class="terminal-time text-mono">${formatTime2(e.timestamp)}</span>
       <span class="terminal-source">${escapeHtml5(e.source)}</span>
       <span class="terminal-msg">${escapeHtml5(e.message)}</span>
     </div>
-  `).join("");
+  `
+    ).join("");
     return `
     <div class="terminal-wrap hal-card">
       <div class="terminal-header">
@@ -3967,12 +4246,19 @@
         message: `${d.decision} [${(d.confidence * 100).toFixed(0)}%]`
       });
     }
-    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    entries.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
     return entries;
   }
   function formatTime2(iso) {
     try {
-      return new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      return new Date(iso).toLocaleTimeString("en-US", {
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
     } catch {
       return "--:--:--";
     }
@@ -4114,14 +4400,17 @@
   `;
   }
   function renderCalmDeviceList(devices) {
-    if (devices.length === 0) return '<p class="text-secondary text-sm">No active devices</p>';
-    return devices.slice(0, 6).map((d) => `
+    if (devices.length === 0)
+      return '<p class="text-secondary text-sm">No active devices</p>';
+    return devices.slice(0, 6).map(
+      (d) => `
     <div class="calm-device-item ${d.online ? "online" : "offline"}">
       <span class="calm-device-dot"></span>
       <span class="calm-device-name">${escapeHtml6(d.name)}</span>
       <span class="calm-device-type text-xs text-secondary">${d.type}</span>
     </div>
-  `).join("");
+  `
+    ).join("");
   }
   var dashActiveMetrics = /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]);
   var dashLoadSequence = 0;
@@ -4140,28 +4429,39 @@
     return zones.slice().sort((a, b) => {
       if (a === "Unzoned") return 1;
       if (b === "Unzoned") return -1;
-      return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
+      return a.localeCompare(b, void 0, {
+        numeric: true,
+        sensitivity: "base"
+      });
     });
   }
   function aggregateZoneOverviewCards(layers, zones, unitSystem) {
     const zoneMetricBuckets = /* @__PURE__ */ new Map();
     for (const zone of zones) {
-      zoneMetricBuckets.set(zone, /* @__PURE__ */ new Map([
-        ["temperature", /* @__PURE__ */ new Map()],
-        ["humidity", /* @__PURE__ */ new Map()],
-        ["co2", /* @__PURE__ */ new Map()]
-      ]));
+      zoneMetricBuckets.set(
+        zone,
+        /* @__PURE__ */ new Map([
+          ["temperature", /* @__PURE__ */ new Map()],
+          ["humidity", /* @__PURE__ */ new Map()],
+          ["co2", /* @__PURE__ */ new Map()]
+        ])
+      );
     }
     for (const layer of layers) {
       if (!zoneMetricBuckets.has(layer.zoneName)) continue;
-      if (!OVERVIEW_METRIC_KEYS.includes(layer.metric)) continue;
+      if (!OVERVIEW_METRIC_KEYS.includes(layer.metric))
+        continue;
       const metricKey = layer.metric;
       const metricBuckets = zoneMetricBuckets.get(layer.zoneName).get(metricKey);
       for (const reading of layer.data) {
         const timestampMs = new Date(reading.timestamp).getTime();
         if (!Number.isFinite(timestampMs)) continue;
         const bucketTs = Math.floor(timestampMs / 6e4) * 6e4;
-        const converted = formatSensorValue(reading.value, metricKey, unitSystem).value;
+        const converted = formatSensorValue(
+          reading.value,
+          metricKey,
+          unitSystem
+        ).value;
         const current = metricBuckets.get(bucketTs) ?? { sum: 0, count: 0 };
         current.sum += converted;
         current.count += 1;
@@ -4223,7 +4523,9 @@
       const { layers } = await loadHeroChartData();
       if (sequence !== dashLoadSequence) return;
       const store = getStore();
-      const zones = sortZonesDeterministically([...new Set(layers.map((l) => l.zoneName).filter(Boolean))]);
+      const zones = sortZonesDeterministically([
+        ...new Set(layers.map((l) => l.zoneName).filter(Boolean))
+      ]);
       if (zones.length === 0) {
         const inferredZones = /* @__PURE__ */ new Set();
         for (const device of store.devices.filter((d) => d.type === "sensor")) {
@@ -4234,9 +4536,15 @@
           zones.push(...sortZonesDeterministically(Array.from(inferredZones)));
         }
       }
-      const zoneCards = aggregateZoneOverviewCards(layers, zones, store.unitSystem);
+      const zoneCards = aggregateZoneOverviewCards(
+        layers,
+        zones,
+        store.unitSystem
+      );
       const availableMetricKeys = new Set(
-        zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter((key) => OVERVIEW_METRIC_KEYS.includes(key))
+        zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter(
+          (key) => OVERVIEW_METRIC_KEYS.includes(key)
+        )
       );
       const fallbackMetric = OVERVIEW_METRIC_KEYS.find((key) => availableMetricKeys.has(key)) ?? Array.from(availableMetricKeys)[0];
       for (const key of Array.from(dashActiveMetrics)) {
@@ -4252,7 +4560,9 @@
         activeKeys: new Set(dashActiveMetrics),
         onToggle: (key) => {
           if (!availableMetricKeys.has(key)) return;
-          const currentlyActive = Array.from(dashActiveMetrics).filter((metricKey) => availableMetricKeys.has(metricKey));
+          const currentlyActive = Array.from(dashActiveMetrics).filter(
+            (metricKey) => availableMetricKeys.has(metricKey)
+          );
           if (dashActiveMetrics.has(key)) {
             if (currentlyActive.length <= 1) return;
             dashActiveMetrics.delete(key);
@@ -4376,7 +4686,10 @@
         if (snap?.[m]?.value != null) values.push(snap[m].value);
       }
       const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-      const trend = Array.from({ length: 20 }, (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1));
+      const trend = Array.from(
+        { length: 20 },
+        (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1)
+      );
       const spark = renderSparkline(trend, metricColors[m] || "#888", 120, 28);
       const label = m.charAt(0).toUpperCase() + m.slice(1);
       return `
@@ -4393,7 +4706,9 @@
   }
   function renderDiagnosticExtras(store) {
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
+    const relays = store.devices.filter(
+      (d) => d.type === "relay" || d.type === "smart_plug"
+    );
     const cameras = store.devices.filter((d) => d.type === "camera");
     return `
     <div class="diag-extras hal-card">
@@ -4457,7 +4772,8 @@
     if (devices.length === 0) {
       return '<div class="empty-state"><p>No devices registered</p></div>';
     }
-    return devices.map((d) => `
+    return devices.map(
+      (d) => `
     <div class="device-mini-card ${d.online ? "online" : "offline"}" data-device-id="${d.id}">
       <div class="device-mini-icon">${deviceIcon(d.type)}</div>
       <div class="device-mini-info">
@@ -4470,13 +4786,15 @@
         </div>
       ` : ""}
     </div>
-  `).join("");
+  `
+    ).join("");
   }
   function renderRecentDecisions(decisions) {
     if (decisions.length === 0) {
       return '<div class="empty-state"><p>No decisions yet</p></div>';
     }
-    return decisions.map((d) => `
+    return decisions.map(
+      (d) => `
     <div class="decision-row ${d.status || "pending"}">
       <div class="decision-time text-mono text-xs text-secondary">${formatTime3(d.timestamp)}</div>
       <div class="decision-trigger text-sm">${escapeHtml6(d.trigger)}</div>
@@ -4486,7 +4804,8 @@
         <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor2(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
       </div>
     </div>
-  `).join("");
+  `
+    ).join("");
   }
   function attachDashboardHandlers() {
     document.querySelectorAll(".device-mini-card").forEach((card) => {
@@ -4973,7 +5292,10 @@
         continue;
       }
       const base = values[0];
-      const trend = Array.from({ length: 15 }, (_, i) => base + Math.sin(i * 0.8) * (base * 0.05));
+      const trend = Array.from(
+        { length: 15 },
+        (_, i) => base + Math.sin(i * 0.8) * (base * 0.05)
+      );
       let color;
       if (snap.temperature?.value != null) {
         const idx = tempSensors.indexOf(s);
@@ -5015,9 +5337,15 @@
     }).join("");
   }
   function attachDevicesHandlers() {
-    const filterInput = document.getElementById("device-filter");
-    const typeSelect = document.getElementById("device-type-filter");
-    const statusSelect = document.getElementById("device-status-filter");
+    const filterInput = document.getElementById(
+      "device-filter"
+    );
+    const typeSelect = document.getElementById(
+      "device-type-filter"
+    );
+    const statusSelect = document.getElementById(
+      "device-status-filter"
+    );
     function applyFilter() {
       const q = filterInput?.value.toLowerCase() || "";
       const type = typeSelect?.value || "";
@@ -5163,14 +5491,86 @@
   // src/web/hal-ui/views/Sensors.ts
   init_store();
   var metrics = [
-    { key: "temperature", label: "Temperature", shortLabel: "Temp", fallbackUnit: "\xB0C", color: "#F59E0B", description: "Air / probe temperature", minAxis: 10, maxAxis: 40 },
-    { key: "humidity", label: "Humidity", shortLabel: "RH", fallbackUnit: "%", color: "#38BDF8", description: "Relative humidity", minAxis: 0, maxAxis: 100 },
-    { key: "soil_moisture", label: "Soil Moisture", shortLabel: "Soil", fallbackUnit: "%", color: "#EF4444", description: "Volumetric water content", minAxis: 0, maxAxis: 100 },
-    { key: "co2", label: "CO\u2082", shortLabel: "CO\u2082", fallbackUnit: "ppm", color: "#22C55E", description: "Carbon dioxide", minAxis: 0, maxAxis: 2e3 },
-    { key: "light", label: "Light", shortLabel: "Light", fallbackUnit: "lux", color: "#FACC15", description: "PAR / illuminance", minAxis: 0, maxAxis: 1e5 },
-    { key: "water_level", label: "Water Level", shortLabel: "Water", fallbackUnit: "%", color: "#2563EB", description: "Reservoir level", minAxis: 0, maxAxis: 100 },
-    { key: "ph", label: "pH", shortLabel: "pH", fallbackUnit: "", color: "#A855F7", description: "Acidity / alkalinity", minAxis: 0, maxAxis: 14 },
-    { key: "weight", label: "Weight", shortLabel: "Weight", fallbackUnit: "kg", color: "#94A3B8", description: "Load cell", minAxis: 0, maxAxis: 100 }
+    {
+      key: "temperature",
+      label: "Temperature",
+      shortLabel: "Temp",
+      fallbackUnit: "\xB0C",
+      color: "#F59E0B",
+      description: "Air / probe temperature",
+      minAxis: 10,
+      maxAxis: 40
+    },
+    {
+      key: "humidity",
+      label: "Humidity",
+      shortLabel: "RH",
+      fallbackUnit: "%",
+      color: "#38BDF8",
+      description: "Relative humidity",
+      minAxis: 0,
+      maxAxis: 100
+    },
+    {
+      key: "soil_moisture",
+      label: "Soil Moisture",
+      shortLabel: "Soil",
+      fallbackUnit: "%",
+      color: "#EF4444",
+      description: "Volumetric water content",
+      minAxis: 0,
+      maxAxis: 100
+    },
+    {
+      key: "co2",
+      label: "CO\u2082",
+      shortLabel: "CO\u2082",
+      fallbackUnit: "ppm",
+      color: "#22C55E",
+      description: "Carbon dioxide",
+      minAxis: 0,
+      maxAxis: 2e3
+    },
+    {
+      key: "light",
+      label: "Light",
+      shortLabel: "Light",
+      fallbackUnit: "lux",
+      color: "#FACC15",
+      description: "PAR / illuminance",
+      minAxis: 0,
+      maxAxis: 1e5
+    },
+    {
+      key: "water_level",
+      label: "Water Level",
+      shortLabel: "Water",
+      fallbackUnit: "%",
+      color: "#2563EB",
+      description: "Reservoir level",
+      minAxis: 0,
+      maxAxis: 100
+    },
+    {
+      key: "ph",
+      label: "pH",
+      shortLabel: "pH",
+      fallbackUnit: "",
+      color: "#A855F7",
+      description: "Acidity / alkalinity",
+      minAxis: 0,
+      maxAxis: 14
+    },
+    {
+      key: "weight",
+      label: "Weight",
+      shortLabel: "Weight",
+      fallbackUnit: "kg",
+      color: "#94A3B8",
+      description: "Load cell",
+      minAxis: 0,
+      maxAxis: 100
+    }
   ];
   var viewState = {
     deviceId: "all",
@@ -5266,7 +5666,9 @@
     await loadData(sensors);
   }
   function attachHandlers(sensors) {
-    const deviceSelect = document.getElementById("sensor-device-select");
+    const deviceSelect = document.getElementById(
+      "sensor-device-select"
+    );
     deviceSelect?.addEventListener("change", () => {
       viewState.deviceId = deviceSelect.value || "all";
       void loadData(sensors);
@@ -5300,7 +5702,9 @@
         const metric = btn.dataset.metric;
         if (!viewState.availableMetrics.has(metric)) return;
         if (viewState.activeMetrics.has(metric)) {
-          const activeAvailable = Array.from(viewState.activeMetrics).filter((key) => viewState.availableMetrics.has(key));
+          const activeAvailable = Array.from(viewState.activeMetrics).filter(
+            (key) => viewState.availableMetrics.has(key)
+          );
           if (activeAvailable.length <= 1) return;
           viewState.activeMetrics.delete(metric);
         } else {
@@ -5318,16 +5722,24 @@
     viewState.availableMetrics = getAvailableMetrics(selectedDevices);
     reconcileActiveMetrics();
     syncMetricPills();
-    const activeMetricConfigs = metrics.filter((m) => viewState.activeMetrics.has(m.key));
+    const activeMetricConfigs = metrics.filter(
+      (m) => viewState.activeMetrics.has(m.key)
+    );
     const heroChart = document.getElementById("hero-chart");
-    if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
+    if (heroChart)
+      heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
     try {
       const layers = [];
       const [decisions] = await Promise.all([
         halApi.getDecisions(50).catch(() => []),
         ...selectedDevices.flatMap(
           (device) => activeMetricConfigs.map(async (metric) => {
-            const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
+            const data = await halApi.getSensorHistory(
+              device.id,
+              metric.key,
+              from,
+              to
+            );
             if (data.length > 0) {
               layers.push({
                 deviceId: device.id,
@@ -5355,7 +5767,8 @@
       renderVizCards(zoneLayers, decisions);
     } catch (err) {
       console.error("Sensor load failed:", err);
-      if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
+      if (heroChart)
+        heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
     }
   }
   function renderZoneToggles(zones) {
@@ -5364,7 +5777,10 @@
     const sortedZones = zones.slice().sort((a, b) => {
       if (a === "Unzoned") return 1;
       if (b === "Unzoned") return -1;
-      return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
+      return a.localeCompare(b, void 0, {
+        numeric: true,
+        sensitivity: "base"
+      });
     });
     if (sortedZones.length > 0) {
       if (!viewState.zoneSelectionInitialized) {
@@ -5431,7 +5847,9 @@
   function getAvailableMetrics(selectedDevices) {
     const store = getStore();
     const available = /* @__PURE__ */ new Set();
-    const zoneDevices = viewState.activeZone ? selectedDevices.filter((device) => resolveZoneName2(device.id, device.name) === viewState.activeZone) : selectedDevices;
+    const zoneDevices = viewState.activeZone ? selectedDevices.filter(
+      (device) => resolveZoneName2(device.id, device.name) === viewState.activeZone
+    ) : selectedDevices;
     for (const device of zoneDevices) {
       const snapshot = store.sensors[device.id];
       if (!snapshot) continue;
@@ -5458,7 +5876,9 @@
       }
     }
     if (viewState.activeMetrics.size > 0) return;
-    const fallback = ["temperature", "humidity", "co2"].find((key) => viewState.availableMetrics.has(key)) ?? Array.from(viewState.availableMetrics)[0];
+    const fallback = ["temperature", "humidity", "co2"].find(
+      (key) => viewState.availableMetrics.has(key)
+    ) ?? Array.from(viewState.availableMetrics)[0];
     if (fallback) viewState.activeMetrics.add(fallback);
   }
   function syncMetricPills() {
@@ -5466,8 +5886,14 @@
       const key = pill.dataset.metric;
       const available = viewState.availableMetrics.has(key);
       pill.style.display = available ? "" : "none";
-      pill.classList.toggle("active", available && viewState.activeMetrics.has(key));
-      pill.setAttribute("aria-pressed", available && viewState.activeMetrics.has(key) ? "true" : "false");
+      pill.classList.toggle(
+        "active",
+        available && viewState.activeMetrics.has(key)
+      );
+      pill.setAttribute(
+        "aria-pressed",
+        available && viewState.activeMetrics.has(key) ? "true" : "false"
+      );
     });
   }
   function escapeAttr2(s) {
@@ -5487,55 +5913,64 @@
       return;
     }
     const store = getStore();
-    const stackedLayers = layers.map((l) => {
-      const cfg = l.metric;
-      let axisMin = cfg.minAxis;
-      let axisMax = cfg.maxAxis;
-      if (cfg.key === "temperature" && store.unitSystem === "imperial") {
-        axisMin = axisMin * 9 / 5 + 32;
-        axisMax = axisMax * 9 / 5 + 32;
+    const metricBuckets = /* @__PURE__ */ new Map();
+    for (const layer of layers) {
+      const key = layer.metric.key;
+      if (!metricBuckets.has(key)) metricBuckets.set(key, /* @__PURE__ */ new Map());
+      const buckets = metricBuckets.get(key);
+      for (const reading of layer.data) {
+        const ts = new Date(reading.timestamp).getTime();
+        if (!Number.isFinite(ts)) continue;
+        const bucketTs = Math.floor(ts / 6e4) * 6e4;
+        const converted = formatSensorValue(
+          reading.value,
+          key,
+          store.unitSystem
+        ).value;
+        const current = buckets.get(bucketTs) ?? { sum: 0, count: 0 };
+        current.sum += converted;
+        current.count += 1;
+        buckets.set(bucketTs, current);
       }
-      const vSpan = Math.max(1, axisMax - axisMin);
-      return {
-        label: `${escapeHtml8(l.deviceName)} \u2014 ${cfg.label}`,
+    }
+    const stackedLayers = [];
+    for (const [key, buckets] of metricBuckets) {
+      const cfg = metrics.find((m) => m.key === key);
+      if (!cfg) continue;
+      const range = cfg.maxAxis - cfg.minAxis;
+      const entries = Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]).map(([t, agg]) => {
+        const raw = agg.count > 0 ? agg.sum / agg.count : 0;
+        const pct = range > 0 ? Math.max(0, Math.min(100, (raw - cfg.minAxis) / range * 100)) : 50;
+        return { t, v: pct };
+      });
+      if (entries.length === 0) continue;
+      stackedLayers.push({
+        label: cfg.label,
         color: cfg.color,
-        data: l.data.map((d) => ({
-          t: new Date(d.timestamp).getTime(),
-          v: (formatSensorValue(d.value, cfg.key, store.unitSystem).value - axisMin) / vSpan * 100
-        }))
-      };
-    });
+        data: entries
+      });
+    }
+    if (stackedLayers.length === 0) {
+      container.innerHTML = '<div class="chart-empty">No data for selection</div>';
+      if (legend) legend.textContent = "";
+      return;
+    }
     void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
-      if (expectedSequence !== void 0 && expectedSequence !== loadSequence) return;
-      m.renderStackedAreaChart(stackedLayers, "hero-chart", { showLegend: true });
+      if (expectedSequence !== void 0 && expectedSequence !== loadSequence)
+        return;
+      m.renderStackedAreaChart(stackedLayers, "hero-chart", {
+        showLegend: false
+      });
     });
     if (legend) {
-      const colorGroups = /* @__PURE__ */ new Map();
-      for (const l of layers) {
-        const list = colorGroups.get(l.metric.color) || [];
-        list.push(l);
-        colorGroups.set(l.metric.color, list);
-      }
-      void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
-        if (expectedSequence !== void 0 && expectedSequence !== loadSequence) return;
-        const shades = /* @__PURE__ */ new Map();
-        for (const [color, group] of colorGroups) {
-          if (group.length > 1) {
-            shades.set(color, m.generateDeviceShades(color, group.length));
-          }
-        }
-        legend.innerHTML = layers.map((l) => {
-          const group = colorGroups.get(l.metric.color);
-          const idx = group.indexOf(l);
-          const shade = group.length > 1 ? shades.get(l.metric.color)[idx] : l.metric.color;
-          return `
-          <span class="legend-item" style="--metric-color:${shade}">
-            <span class="legend-dot"></span>
-            ${escapeHtml8(l.deviceName)} \u2014 ${escapeHtml8(l.metric.label)}
-          </span>
-        `;
-        }).join("");
-      });
+      legend.innerHTML = stackedLayers.map(
+        (l) => `
+      <span class="legend-item" style="--metric-color:${l.color}">
+        <span class="legend-dot"></span>
+        ${escapeHtml8(l.label)}
+      </span>
+    `
+      ).join("");
     }
   }
   function renderDetailTable(layers) {
@@ -5545,12 +5980,19 @@
     const store = getStore();
     const rows = layers.flatMap(
       (layer) => layer.data.slice(-15).map((reading) => {
-        const converted = formatSensorValue(reading.value, layer.metric.key, store.unitSystem);
+        const converted = formatSensorValue(
+          reading.value,
+          layer.metric.key,
+          store.unitSystem
+        );
         return {
           time: reading.timestamp,
           device: layer.deviceName,
           metric: layer.metric.label,
-          value: formatValue(converted.value, converted.unit || layer.metric.fallbackUnit),
+          value: formatValue(
+            converted.value,
+            converted.unit || layer.metric.fallbackUnit
+          ),
           color: layer.metric.color
         };
       })
@@ -5560,14 +6002,16 @@
       tbody.innerHTML = '<tr><td colspan="4" class="empty-cell">No data</td></tr>';
       return;
     }
-    tbody.innerHTML = rows.map((r) => `
+    tbody.innerHTML = rows.map(
+      (r) => `
     <tr style="--metric-color:${r.color}">
       <td class="text-mono text-xs">${formatDateTimeValue(new Date(r.time), store.timeFormat)}</td>
       <td>${escapeHtml8(r.device)}</td>
       <td><span class="history-dot"></span>${escapeHtml8(r.metric)}</td>
       <td class="text-mono metric-value">${r.value}</td>
     </tr>
-  `).join("");
+  `
+    ).join("");
   }
   function updatePillValues(layers) {
     const store = getStore();
@@ -5581,7 +6025,10 @@
       }
       const latest = layer.data[layer.data.length - 1];
       const converted = formatSensorValue(latest.value, m.key, store.unitSystem);
-      el.textContent = formatValue(converted.value, converted.unit || m.fallbackUnit);
+      el.textContent = formatValue(
+        converted.value,
+        converted.unit || m.fallbackUnit
+      );
     });
   }
   function renderHorizonStrips(allLayers) {
@@ -5599,9 +6046,15 @@
     const strips = Array.from(byMetric.values()).map((layer) => {
       const { data, metric } = layer;
       if (data.length < 2) return "";
-      const converted = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+      const converted = formatSensorValue(
+        data[data.length - 1].value,
+        metric.key,
+        store.unitSystem
+      );
       const latestLabel = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
-      const values = data.map((d) => formatSensorValue(d.value, metric.key, store.unitSystem).value);
+      const values = data.map(
+        (d) => formatSensorValue(d.value, metric.key, store.unitSystem).value
+      );
       const vMin = Math.min(...values);
       const vMax = Math.max(...values);
       const vSpan = Math.max(1e-3, vMax - vMin);
@@ -5643,7 +6096,8 @@
     }
     const cards = [];
     const tempLayers = byMetric.get("temperature");
-    if (tempLayers) cards.push(renderAreaCard2(tempLayers[0], "Temperature Trend"));
+    if (tempLayers)
+      cards.push(renderAreaCard2(tempLayers[0], "Temperature Trend"));
     const humLayers = byMetric.get("humidity");
     if (humLayers) cards.push(renderLineCard2(humLayers[0], "Humidity Trend"));
     const co2Layers = byMetric.get("co2");
@@ -5656,7 +6110,11 @@
   function renderAreaCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metric.key,
+      store.unitSystem
+    );
     const unit = latest.unit || metric.fallbackUnit;
     const id = `area-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
@@ -5675,7 +6133,11 @@
   function renderLineCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metric.key,
+      store.unitSystem
+    );
     const unit = latest.unit || metric.fallbackUnit;
     const id = `line-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
@@ -5694,7 +6156,11 @@
   function renderBarCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metric.key,
+      store.unitSystem
+    );
     const unit = latest.unit || metric.fallbackUnit;
     const id = `bar-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
@@ -5713,9 +6179,19 @@
   function renderGaugeCard(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metric.key,
+      store.unitSystem
+    );
     const unit = latest.unit || metric.fallbackUnit;
-    const pct = Math.max(0, Math.min(1, (latest.value - metric.minAxis) / (metric.maxAxis - metric.minAxis)));
+    const pct = Math.max(
+      0,
+      Math.min(
+        1,
+        (latest.value - metric.minAxis) / (metric.maxAxis - metric.minAxis)
+      )
+    );
     const r = 42, cx = 80, cy = 56;
     const circ = 2 * Math.PI * r;
     const dash = pct * circ;
@@ -5748,7 +6224,10 @@
     for (const l of layers) {
       if (l.data.length === 0) continue;
       const last = l.data[l.data.length - 1];
-      latestMap.set(`${l.deviceId}:${l.metric.key}`, new Date(last.timestamp).getTime());
+      latestMap.set(
+        `${l.deviceId}:${l.metric.key}`,
+        new Date(last.timestamp).getTime()
+      );
     }
     const qualityColor = (ageMs) => {
       if (ageMs === void 0) return "#1A2822";
@@ -5776,7 +6255,9 @@
       }).join("");
       return `<tr><td class="qm-device">${escapeHtml8(name.length > 20 ? name.slice(0, 18) + "\u2026" : name)}</td>${cells}</tr>`;
     }).join("");
-    const recentDecisionCount = decisions.filter((d) => now - new Date(d.timestamp).getTime() < 36e5).length;
+    const recentDecisionCount = decisions.filter(
+      (d) => now - new Date(d.timestamp).getTime() < 36e5
+    ).length;
     return `
     <div class="viz-card wide">
       <div class="viz-card-header">
@@ -5813,6 +6294,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  flex-shrink: 0;
 }
 .sensors-hero-header {
   display: flex;
@@ -5955,15 +6437,32 @@
   border-radius: var(--radius-md);
   padding: var(--space-3);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 320px;
+  flex-shrink: 0;
 }
 .hero-chart {
   width: 100%;
-  min-height: 260px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.stack-chart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 .hero-svg {
   display: block;
   width: 100%;
-  height: auto;
+  flex: 1;
+  min-height: 0;
+  height: 0;
 }
 .chart-grid {
   stroke: color-mix(in srgb, var(--text-tertiary) 30%, var(--border));
@@ -6012,6 +6511,7 @@
   align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-4);
+  flex-shrink: 0;
 }
 .viz-card {
   background: var(--bg-secondary);
@@ -6069,6 +6569,7 @@
 }
 .sensor-detail-drawer {
   margin-top: var(--space-4);
+  flex-shrink: 0;
 }
 .detail-header {
   display: flex;
@@ -6133,6 +6634,7 @@
 /* \u2500\u2500 Horizon strips \u2500\u2500 */
 .horizon-strips-section {
   margin-top: var(--space-6);
+  flex-shrink: 0;
 }
 .horizon-strips-grid {
   display: grid;
@@ -6289,11 +6791,13 @@
 
     <div class="decisions-toolbar mb-4">
       <div class="filter-group" role="group" aria-label="Filter by status">
-        ${["all", "success", "failure", "pending"].map((s) => `
+        ${["all", "success", "failure", "pending"].map(
+      (s) => `
           <button class="filter-btn ${s === statusFilter ? "active" : ""}" data-filter="${s}">
             ${s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
-        `).join("")}
+        `
+    ).join("")}
       </div>
       <span class="text-xs text-secondary">${filtered.length} decisions</span>
     </div>
@@ -6329,9 +6833,12 @@
         cells.push({ dow, hour: h, value: val });
       }
     }
-    setTimeout(() => renderHeatmap(cells, "decisions-heatmap", {
-      colorRange: ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B", "#FF5C6C"]
-    }), 0);
+    setTimeout(
+      () => renderHeatmap(cells, "decisions-heatmap", {
+        colorRange: ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B", "#FF5C6C"]
+      }),
+      0
+    );
   }
   function renderDecisionsBarTrend(decisions) {
     if (decisions.length < 2) return;
@@ -6366,7 +6873,10 @@
         pending: bucket?.pending ?? 0
       });
     }
-    setTimeout(() => renderDecisionBarTrend(points, "decisions-bar-trend", { height: 180 }), 0);
+    setTimeout(
+      () => renderDecisionBarTrend(points, "decisions-bar-trend", { height: 180 }),
+      0
+    );
   }
   function attachFilterHandlers() {
     document.querySelectorAll(".filter-btn").forEach((btn) => {
@@ -6382,7 +6892,8 @@
     if (decisions.length === 0) {
       return `<div class="empty-state" style="padding: var(--space-8)"><p class="empty-state-title">No decisions</p><p class="empty-state-desc">${statusFilter === "all" ? "Decisions will appear here as the HAL makes them." : `No ${statusFilter} decisions found.`}</p></div>`;
     }
-    return decisions.map((d) => `
+    return decisions.map(
+      (d) => `
     <div class="decision-item" data-id="${d.id}">
       <div class="decision-summary">
         <div class="decision-left">
@@ -6417,13 +6928,16 @@
         </div>
       </div>
     </div>
-  `).join("");
+  `
+    ).join("");
   }
   function attachDecisionHandlers() {
     document.querySelectorAll(".decision-item").forEach((item) => {
       const summary = item.querySelector(".decision-summary");
       const detail = item.querySelector(".decision-detail");
-      const expandBtn = item.querySelector(".decision-expand-btn");
+      const expandBtn = item.querySelector(
+        ".decision-expand-btn"
+      );
       detail?.addEventListener("click", (event) => event.stopPropagation());
       summary?.addEventListener("click", () => {
         const isOpen = !detail?.hidden;
@@ -6625,7 +7139,11 @@
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(() => {
       document.querySelectorAll(".camera-time").forEach((el) => {
-        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
+          hour12: false,
+          hour: "2-digit",
+          minute: "2-digit"
+        });
       });
     }, 3e4);
   }
@@ -6811,6 +7329,3062 @@
   `;
   }
 
+  // src/web/hal-ui/api-provisioning.ts
+  var BASE2 = "/api/provisioning";
+  async function provGet(path) {
+    const url = BASE2 + path;
+    const res = await fetch(url);
+    if (!res.ok)
+      throw new Error(
+        `Provisioning API ${url} failed: ${res.status} ${res.statusText}`
+      );
+    return res.json();
+  }
+  async function provPost(path, body) {
+    const res = await fetch(BASE2 + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : void 0
+    });
+    if (!res.ok)
+      throw new Error(
+        `Provisioning API ${path} failed: ${res.status} ${res.statusText}`
+      );
+    return res.json();
+  }
+  var provisioningApi = {
+    // GET /api/provisioning/status
+    async getStatus() {
+      return provGet("/status");
+    },
+    // POST /api/provisioning/begin
+    async begin() {
+      return provPost("/begin");
+    },
+    // POST /api/provisioning/wizard-step
+    async updateWizardStep(step, data) {
+      return provPost("/wizard-step", {
+        step,
+        ...data
+      });
+    },
+    // GET /api/provisioning/wizard-session
+    async getWizardSession() {
+      try {
+        return await provGet("/wizard-session");
+      } catch {
+        return null;
+      }
+    },
+    // POST /api/provisioning/complete
+    async complete(data) {
+      return provPost("/complete", data);
+    },
+    // POST /api/provisioning/reset
+    async reset() {
+      return provPost("/reset");
+    },
+    // GET /api/provisioning/network
+    async getNetworkInfo() {
+      return provGet("/network");
+    }
+  };
+
+  // node_modules/bcryptjs/index.js
+  var import_crypto = __toESM(require_crypto(), 1);
+  var randomFallback = null;
+  function randomBytes(len) {
+    try {
+      return crypto.getRandomValues(new Uint8Array(len));
+    } catch {
+    }
+    try {
+      return import_crypto.default.randomBytes(len);
+    } catch {
+    }
+    if (!randomFallback) {
+      throw Error(
+        "Neither WebCryptoAPI nor a crypto module is available. Use bcrypt.setRandomFallback to set an alternative"
+      );
+    }
+    return randomFallback(len);
+  }
+  function setRandomFallback(random) {
+    randomFallback = random;
+  }
+  function genSaltSync(rounds, seed_length) {
+    rounds = rounds || GENSALT_DEFAULT_LOG2_ROUNDS;
+    if (typeof rounds !== "number")
+      throw Error(
+        "Illegal arguments: " + typeof rounds + ", " + typeof seed_length
+      );
+    if (rounds < 4) rounds = 4;
+    else if (rounds > 31) rounds = 31;
+    var salt = [];
+    salt.push("$2b$");
+    if (rounds < 10) salt.push("0");
+    salt.push(rounds.toString());
+    salt.push("$");
+    salt.push(base64_encode(randomBytes(BCRYPT_SALT_LEN), BCRYPT_SALT_LEN));
+    return salt.join("");
+  }
+  function genSalt(rounds, seed_length, callback) {
+    if (typeof seed_length === "function")
+      callback = seed_length, seed_length = void 0;
+    if (typeof rounds === "function") callback = rounds, rounds = void 0;
+    if (typeof rounds === "undefined") rounds = GENSALT_DEFAULT_LOG2_ROUNDS;
+    else if (typeof rounds !== "number")
+      throw Error("illegal arguments: " + typeof rounds);
+    function _async(callback2) {
+      nextTick(function() {
+        try {
+          callback2(null, genSaltSync(rounds));
+        } catch (err) {
+          callback2(err);
+        }
+      });
+    }
+    if (callback) {
+      if (typeof callback !== "function")
+        throw Error("Illegal callback: " + typeof callback);
+      _async(callback);
+    } else
+      return new Promise(function(resolve, reject) {
+        _async(function(err, res) {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve(res);
+        });
+      });
+  }
+  function hashSync(password, salt) {
+    if (typeof salt === "undefined") salt = GENSALT_DEFAULT_LOG2_ROUNDS;
+    if (typeof salt === "number") salt = genSaltSync(salt);
+    if (typeof password !== "string" || typeof salt !== "string")
+      throw Error("Illegal arguments: " + typeof password + ", " + typeof salt);
+    return _hash(password, salt);
+  }
+  function hash(password, salt, callback, progressCallback) {
+    function _async(callback2) {
+      if (typeof password === "string" && typeof salt === "number")
+        genSalt(salt, function(err, salt2) {
+          _hash(password, salt2, callback2, progressCallback);
+        });
+      else if (typeof password === "string" && typeof salt === "string")
+        _hash(password, salt, callback2, progressCallback);
+      else
+        nextTick(
+          callback2.bind(
+            this,
+            Error("Illegal arguments: " + typeof password + ", " + typeof salt)
+          )
+        );
+    }
+    if (callback) {
+      if (typeof callback !== "function")
+        throw Error("Illegal callback: " + typeof callback);
+      _async(callback);
+    } else
+      return new Promise(function(resolve, reject) {
+        _async(function(err, res) {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve(res);
+        });
+      });
+  }
+  function safeStringCompare(known, unknown) {
+    var diff = known.length ^ unknown.length;
+    for (var i = 0; i < known.length; ++i) {
+      diff |= known.charCodeAt(i) ^ unknown.charCodeAt(i);
+    }
+    return diff === 0;
+  }
+  function compareSync(password, hash2) {
+    if (typeof password !== "string" || typeof hash2 !== "string")
+      throw Error("Illegal arguments: " + typeof password + ", " + typeof hash2);
+    if (hash2.length !== 60) return false;
+    return safeStringCompare(
+      hashSync(password, hash2.substring(0, hash2.length - 31)),
+      hash2
+    );
+  }
+  function compare(password, hashValue, callback, progressCallback) {
+    function _async(callback2) {
+      if (typeof password !== "string" || typeof hashValue !== "string") {
+        nextTick(
+          callback2.bind(
+            this,
+            Error(
+              "Illegal arguments: " + typeof password + ", " + typeof hashValue
+            )
+          )
+        );
+        return;
+      }
+      if (hashValue.length !== 60) {
+        nextTick(callback2.bind(this, null, false));
+        return;
+      }
+      hash(
+        password,
+        hashValue.substring(0, 29),
+        function(err, comp) {
+          if (err) callback2(err);
+          else callback2(null, safeStringCompare(comp, hashValue));
+        },
+        progressCallback
+      );
+    }
+    if (callback) {
+      if (typeof callback !== "function")
+        throw Error("Illegal callback: " + typeof callback);
+      _async(callback);
+    } else
+      return new Promise(function(resolve, reject) {
+        _async(function(err, res) {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve(res);
+        });
+      });
+  }
+  function getRounds(hash2) {
+    if (typeof hash2 !== "string")
+      throw Error("Illegal arguments: " + typeof hash2);
+    return parseInt(hash2.split("$")[2], 10);
+  }
+  function getSalt(hash2) {
+    if (typeof hash2 !== "string")
+      throw Error("Illegal arguments: " + typeof hash2);
+    if (hash2.length !== 60)
+      throw Error("Illegal hash length: " + hash2.length + " != 60");
+    return hash2.substring(0, 29);
+  }
+  function truncates(password) {
+    if (typeof password !== "string")
+      throw Error("Illegal arguments: " + typeof password);
+    return utf8Length(password) > 72;
+  }
+  var nextTick = typeof setImmediate === "function" ? setImmediate : typeof scheduler === "object" && typeof scheduler.postTask === "function" ? scheduler.postTask.bind(scheduler) : setTimeout;
+  function utf8Length(string) {
+    var len = 0, c = 0;
+    for (var i = 0; i < string.length; ++i) {
+      c = string.charCodeAt(i);
+      if (c < 128) len += 1;
+      else if (c < 2048) len += 2;
+      else if ((c & 64512) === 55296 && (string.charCodeAt(i + 1) & 64512) === 56320) {
+        ++i;
+        len += 4;
+      } else len += 3;
+    }
+    return len;
+  }
+  function utf8Array(string) {
+    var offset = 0, c1, c2;
+    var buffer = new Array(utf8Length(string));
+    for (var i = 0, k = string.length; i < k; ++i) {
+      c1 = string.charCodeAt(i);
+      if (c1 < 128) {
+        buffer[offset++] = c1;
+      } else if (c1 < 2048) {
+        buffer[offset++] = c1 >> 6 | 192;
+        buffer[offset++] = c1 & 63 | 128;
+      } else if ((c1 & 64512) === 55296 && ((c2 = string.charCodeAt(i + 1)) & 64512) === 56320) {
+        c1 = 65536 + ((c1 & 1023) << 10) + (c2 & 1023);
+        ++i;
+        buffer[offset++] = c1 >> 18 | 240;
+        buffer[offset++] = c1 >> 12 & 63 | 128;
+        buffer[offset++] = c1 >> 6 & 63 | 128;
+        buffer[offset++] = c1 & 63 | 128;
+      } else {
+        buffer[offset++] = c1 >> 12 | 224;
+        buffer[offset++] = c1 >> 6 & 63 | 128;
+        buffer[offset++] = c1 & 63 | 128;
+      }
+    }
+    return buffer;
+  }
+  var BASE64_CODE = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".split("");
+  var BASE64_INDEX = [
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    0,
+    1,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1
+  ];
+  function base64_encode(b, len) {
+    var off = 0, rs = [], c1, c2;
+    if (len <= 0 || len > b.length) throw Error("Illegal len: " + len);
+    while (off < len) {
+      c1 = b[off++] & 255;
+      rs.push(BASE64_CODE[c1 >> 2 & 63]);
+      c1 = (c1 & 3) << 4;
+      if (off >= len) {
+        rs.push(BASE64_CODE[c1 & 63]);
+        break;
+      }
+      c2 = b[off++] & 255;
+      c1 |= c2 >> 4 & 15;
+      rs.push(BASE64_CODE[c1 & 63]);
+      c1 = (c2 & 15) << 2;
+      if (off >= len) {
+        rs.push(BASE64_CODE[c1 & 63]);
+        break;
+      }
+      c2 = b[off++] & 255;
+      c1 |= c2 >> 6 & 3;
+      rs.push(BASE64_CODE[c1 & 63]);
+      rs.push(BASE64_CODE[c2 & 63]);
+    }
+    return rs.join("");
+  }
+  function base64_decode(s, len) {
+    var off = 0, slen = s.length, olen = 0, rs = [], c1, c2, c3, c4, o, code;
+    if (len <= 0) throw Error("Illegal len: " + len);
+    while (off < slen - 1 && olen < len) {
+      code = s.charCodeAt(off++);
+      c1 = code < BASE64_INDEX.length ? BASE64_INDEX[code] : -1;
+      code = s.charCodeAt(off++);
+      c2 = code < BASE64_INDEX.length ? BASE64_INDEX[code] : -1;
+      if (c1 == -1 || c2 == -1) break;
+      o = c1 << 2 >>> 0;
+      o |= (c2 & 48) >> 4;
+      rs.push(String.fromCharCode(o));
+      if (++olen >= len || off >= slen) break;
+      code = s.charCodeAt(off++);
+      c3 = code < BASE64_INDEX.length ? BASE64_INDEX[code] : -1;
+      if (c3 == -1) break;
+      o = (c2 & 15) << 4 >>> 0;
+      o |= (c3 & 60) >> 2;
+      rs.push(String.fromCharCode(o));
+      if (++olen >= len || off >= slen) break;
+      code = s.charCodeAt(off++);
+      c4 = code < BASE64_INDEX.length ? BASE64_INDEX[code] : -1;
+      o = (c3 & 3) << 6 >>> 0;
+      o |= c4;
+      rs.push(String.fromCharCode(o));
+      ++olen;
+    }
+    var res = [];
+    for (off = 0; off < olen; off++) res.push(rs[off].charCodeAt(0));
+    return res;
+  }
+  var BCRYPT_SALT_LEN = 16;
+  var GENSALT_DEFAULT_LOG2_ROUNDS = 10;
+  var BLOWFISH_NUM_ROUNDS = 16;
+  var MAX_EXECUTION_TIME = 100;
+  var P_ORIG = [
+    608135816,
+    2242054355,
+    320440878,
+    57701188,
+    2752067618,
+    698298832,
+    137296536,
+    3964562569,
+    1160258022,
+    953160567,
+    3193202383,
+    887688300,
+    3232508343,
+    3380367581,
+    1065670069,
+    3041331479,
+    2450970073,
+    2306472731
+  ];
+  var S_ORIG = [
+    3509652390,
+    2564797868,
+    805139163,
+    3491422135,
+    3101798381,
+    1780907670,
+    3128725573,
+    4046225305,
+    614570311,
+    3012652279,
+    134345442,
+    2240740374,
+    1667834072,
+    1901547113,
+    2757295779,
+    4103290238,
+    227898511,
+    1921955416,
+    1904987480,
+    2182433518,
+    2069144605,
+    3260701109,
+    2620446009,
+    720527379,
+    3318853667,
+    677414384,
+    3393288472,
+    3101374703,
+    2390351024,
+    1614419982,
+    1822297739,
+    2954791486,
+    3608508353,
+    3174124327,
+    2024746970,
+    1432378464,
+    3864339955,
+    2857741204,
+    1464375394,
+    1676153920,
+    1439316330,
+    715854006,
+    3033291828,
+    289532110,
+    2706671279,
+    2087905683,
+    3018724369,
+    1668267050,
+    732546397,
+    1947742710,
+    3462151702,
+    2609353502,
+    2950085171,
+    1814351708,
+    2050118529,
+    680887927,
+    999245976,
+    1800124847,
+    3300911131,
+    1713906067,
+    1641548236,
+    4213287313,
+    1216130144,
+    1575780402,
+    4018429277,
+    3917837745,
+    3693486850,
+    3949271944,
+    596196993,
+    3549867205,
+    258830323,
+    2213823033,
+    772490370,
+    2760122372,
+    1774776394,
+    2652871518,
+    566650946,
+    4142492826,
+    1728879713,
+    2882767088,
+    1783734482,
+    3629395816,
+    2517608232,
+    2874225571,
+    1861159788,
+    326777828,
+    3124490320,
+    2130389656,
+    2716951837,
+    967770486,
+    1724537150,
+    2185432712,
+    2364442137,
+    1164943284,
+    2105845187,
+    998989502,
+    3765401048,
+    2244026483,
+    1075463327,
+    1455516326,
+    1322494562,
+    910128902,
+    469688178,
+    1117454909,
+    936433444,
+    3490320968,
+    3675253459,
+    1240580251,
+    122909385,
+    2157517691,
+    634681816,
+    4142456567,
+    3825094682,
+    3061402683,
+    2540495037,
+    79693498,
+    3249098678,
+    1084186820,
+    1583128258,
+    426386531,
+    1761308591,
+    1047286709,
+    322548459,
+    995290223,
+    1845252383,
+    2603652396,
+    3431023940,
+    2942221577,
+    3202600964,
+    3727903485,
+    1712269319,
+    422464435,
+    3234572375,
+    1170764815,
+    3523960633,
+    3117677531,
+    1434042557,
+    442511882,
+    3600875718,
+    1076654713,
+    1738483198,
+    4213154764,
+    2393238008,
+    3677496056,
+    1014306527,
+    4251020053,
+    793779912,
+    2902807211,
+    842905082,
+    4246964064,
+    1395751752,
+    1040244610,
+    2656851899,
+    3396308128,
+    445077038,
+    3742853595,
+    3577915638,
+    679411651,
+    2892444358,
+    2354009459,
+    1767581616,
+    3150600392,
+    3791627101,
+    3102740896,
+    284835224,
+    4246832056,
+    1258075500,
+    768725851,
+    2589189241,
+    3069724005,
+    3532540348,
+    1274779536,
+    3789419226,
+    2764799539,
+    1660621633,
+    3471099624,
+    4011903706,
+    913787905,
+    3497959166,
+    737222580,
+    2514213453,
+    2928710040,
+    3937242737,
+    1804850592,
+    3499020752,
+    2949064160,
+    2386320175,
+    2390070455,
+    2415321851,
+    4061277028,
+    2290661394,
+    2416832540,
+    1336762016,
+    1754252060,
+    3520065937,
+    3014181293,
+    791618072,
+    3188594551,
+    3933548030,
+    2332172193,
+    3852520463,
+    3043980520,
+    413987798,
+    3465142937,
+    3030929376,
+    4245938359,
+    2093235073,
+    3534596313,
+    375366246,
+    2157278981,
+    2479649556,
+    555357303,
+    3870105701,
+    2008414854,
+    3344188149,
+    4221384143,
+    3956125452,
+    2067696032,
+    3594591187,
+    2921233993,
+    2428461,
+    544322398,
+    577241275,
+    1471733935,
+    610547355,
+    4027169054,
+    1432588573,
+    1507829418,
+    2025931657,
+    3646575487,
+    545086370,
+    48609733,
+    2200306550,
+    1653985193,
+    298326376,
+    1316178497,
+    3007786442,
+    2064951626,
+    458293330,
+    2589141269,
+    3591329599,
+    3164325604,
+    727753846,
+    2179363840,
+    146436021,
+    1461446943,
+    4069977195,
+    705550613,
+    3059967265,
+    3887724982,
+    4281599278,
+    3313849956,
+    1404054877,
+    2845806497,
+    146425753,
+    1854211946,
+    1266315497,
+    3048417604,
+    3681880366,
+    3289982499,
+    290971e4,
+    1235738493,
+    2632868024,
+    2414719590,
+    3970600049,
+    1771706367,
+    1449415276,
+    3266420449,
+    422970021,
+    1963543593,
+    2690192192,
+    3826793022,
+    1062508698,
+    1531092325,
+    1804592342,
+    2583117782,
+    2714934279,
+    4024971509,
+    1294809318,
+    4028980673,
+    1289560198,
+    2221992742,
+    1669523910,
+    35572830,
+    157838143,
+    1052438473,
+    1016535060,
+    1802137761,
+    1753167236,
+    1386275462,
+    3080475397,
+    2857371447,
+    1040679964,
+    2145300060,
+    2390574316,
+    1461121720,
+    2956646967,
+    4031777805,
+    4028374788,
+    33600511,
+    2920084762,
+    1018524850,
+    629373528,
+    3691585981,
+    3515945977,
+    2091462646,
+    2486323059,
+    586499841,
+    988145025,
+    935516892,
+    3367335476,
+    2599673255,
+    2839830854,
+    265290510,
+    3972581182,
+    2759138881,
+    3795373465,
+    1005194799,
+    847297441,
+    406762289,
+    1314163512,
+    1332590856,
+    1866599683,
+    4127851711,
+    750260880,
+    613907577,
+    1450815602,
+    3165620655,
+    3734664991,
+    3650291728,
+    3012275730,
+    3704569646,
+    1427272223,
+    778793252,
+    1343938022,
+    2676280711,
+    2052605720,
+    1946737175,
+    3164576444,
+    3914038668,
+    3967478842,
+    3682934266,
+    1661551462,
+    3294938066,
+    4011595847,
+    840292616,
+    3712170807,
+    616741398,
+    312560963,
+    711312465,
+    1351876610,
+    322626781,
+    1910503582,
+    271666773,
+    2175563734,
+    1594956187,
+    70604529,
+    3617834859,
+    1007753275,
+    1495573769,
+    4069517037,
+    2549218298,
+    2663038764,
+    504708206,
+    2263041392,
+    3941167025,
+    2249088522,
+    1514023603,
+    1998579484,
+    1312622330,
+    694541497,
+    2582060303,
+    2151582166,
+    1382467621,
+    776784248,
+    2618340202,
+    3323268794,
+    2497899128,
+    2784771155,
+    503983604,
+    4076293799,
+    907881277,
+    423175695,
+    432175456,
+    1378068232,
+    4145222326,
+    3954048622,
+    3938656102,
+    3820766613,
+    2793130115,
+    2977904593,
+    26017576,
+    3274890735,
+    3194772133,
+    1700274565,
+    1756076034,
+    4006520079,
+    3677328699,
+    720338349,
+    1533947780,
+    354530856,
+    688349552,
+    3973924725,
+    1637815568,
+    332179504,
+    3949051286,
+    53804574,
+    2852348879,
+    3044236432,
+    1282449977,
+    3583942155,
+    3416972820,
+    4006381244,
+    1617046695,
+    2628476075,
+    3002303598,
+    1686838959,
+    431878346,
+    2686675385,
+    1700445008,
+    1080580658,
+    1009431731,
+    832498133,
+    3223435511,
+    2605976345,
+    2271191193,
+    2516031870,
+    1648197032,
+    4164389018,
+    2548247927,
+    300782431,
+    375919233,
+    238389289,
+    3353747414,
+    2531188641,
+    2019080857,
+    1475708069,
+    455242339,
+    2609103871,
+    448939670,
+    3451063019,
+    1395535956,
+    2413381860,
+    1841049896,
+    1491858159,
+    885456874,
+    4264095073,
+    4001119347,
+    1565136089,
+    3898914787,
+    1108368660,
+    540939232,
+    1173283510,
+    2745871338,
+    3681308437,
+    4207628240,
+    3343053890,
+    4016749493,
+    1699691293,
+    1103962373,
+    3625875870,
+    2256883143,
+    3830138730,
+    1031889488,
+    3479347698,
+    1535977030,
+    4236805024,
+    3251091107,
+    2132092099,
+    1774941330,
+    1199868427,
+    1452454533,
+    157007616,
+    2904115357,
+    342012276,
+    595725824,
+    1480756522,
+    206960106,
+    497939518,
+    591360097,
+    863170706,
+    2375253569,
+    3596610801,
+    1814182875,
+    2094937945,
+    3421402208,
+    1082520231,
+    3463918190,
+    2785509508,
+    435703966,
+    3908032597,
+    1641649973,
+    2842273706,
+    3305899714,
+    1510255612,
+    2148256476,
+    2655287854,
+    3276092548,
+    4258621189,
+    236887753,
+    3681803219,
+    274041037,
+    1734335097,
+    3815195456,
+    3317970021,
+    1899903192,
+    1026095262,
+    4050517792,
+    356393447,
+    2410691914,
+    3873677099,
+    3682840055,
+    3913112168,
+    2491498743,
+    4132185628,
+    2489919796,
+    1091903735,
+    1979897079,
+    3170134830,
+    3567386728,
+    3557303409,
+    857797738,
+    1136121015,
+    1342202287,
+    507115054,
+    2535736646,
+    337727348,
+    3213592640,
+    1301675037,
+    2528481711,
+    1895095763,
+    1721773893,
+    3216771564,
+    62756741,
+    2142006736,
+    835421444,
+    2531993523,
+    1442658625,
+    3659876326,
+    2882144922,
+    676362277,
+    1392781812,
+    170690266,
+    3921047035,
+    1759253602,
+    3611846912,
+    1745797284,
+    664899054,
+    1329594018,
+    3901205900,
+    3045908486,
+    2062866102,
+    2865634940,
+    3543621612,
+    3464012697,
+    1080764994,
+    553557557,
+    3656615353,
+    3996768171,
+    991055499,
+    499776247,
+    1265440854,
+    648242737,
+    3940784050,
+    980351604,
+    3713745714,
+    1749149687,
+    3396870395,
+    4211799374,
+    3640570775,
+    1161844396,
+    3125318951,
+    1431517754,
+    545492359,
+    4268468663,
+    3499529547,
+    1437099964,
+    2702547544,
+    3433638243,
+    2581715763,
+    2787789398,
+    1060185593,
+    1593081372,
+    2418618748,
+    4260947970,
+    69676912,
+    2159744348,
+    86519011,
+    2512459080,
+    3838209314,
+    1220612927,
+    3339683548,
+    133810670,
+    1090789135,
+    1078426020,
+    1569222167,
+    845107691,
+    3583754449,
+    4072456591,
+    1091646820,
+    628848692,
+    1613405280,
+    3757631651,
+    526609435,
+    236106946,
+    48312990,
+    2942717905,
+    3402727701,
+    1797494240,
+    859738849,
+    992217954,
+    4005476642,
+    2243076622,
+    3870952857,
+    3732016268,
+    765654824,
+    3490871365,
+    2511836413,
+    1685915746,
+    3888969200,
+    1414112111,
+    2273134842,
+    3281911079,
+    4080962846,
+    172450625,
+    2569994100,
+    980381355,
+    4109958455,
+    2819808352,
+    2716589560,
+    2568741196,
+    3681446669,
+    3329971472,
+    1835478071,
+    660984891,
+    3704678404,
+    4045999559,
+    3422617507,
+    3040415634,
+    1762651403,
+    1719377915,
+    3470491036,
+    2693910283,
+    3642056355,
+    3138596744,
+    1364962596,
+    2073328063,
+    1983633131,
+    926494387,
+    3423689081,
+    2150032023,
+    4096667949,
+    1749200295,
+    3328846651,
+    309677260,
+    2016342300,
+    1779581495,
+    3079819751,
+    111262694,
+    1274766160,
+    443224088,
+    298511866,
+    1025883608,
+    3806446537,
+    1145181785,
+    168956806,
+    3641502830,
+    3584813610,
+    1689216846,
+    3666258015,
+    3200248200,
+    1692713982,
+    2646376535,
+    4042768518,
+    1618508792,
+    1610833997,
+    3523052358,
+    4130873264,
+    2001055236,
+    3610705100,
+    2202168115,
+    4028541809,
+    2961195399,
+    1006657119,
+    2006996926,
+    3186142756,
+    1430667929,
+    3210227297,
+    1314452623,
+    4074634658,
+    4101304120,
+    2273951170,
+    1399257539,
+    3367210612,
+    3027628629,
+    1190975929,
+    2062231137,
+    2333990788,
+    2221543033,
+    2438960610,
+    1181637006,
+    548689776,
+    2362791313,
+    3372408396,
+    3104550113,
+    3145860560,
+    296247880,
+    1970579870,
+    3078560182,
+    3769228297,
+    1714227617,
+    3291629107,
+    3898220290,
+    166772364,
+    1251581989,
+    493813264,
+    448347421,
+    195405023,
+    2709975567,
+    677966185,
+    3703036547,
+    1463355134,
+    2715995803,
+    1338867538,
+    1343315457,
+    2802222074,
+    2684532164,
+    233230375,
+    2599980071,
+    2000651841,
+    3277868038,
+    1638401717,
+    4028070440,
+    3237316320,
+    6314154,
+    819756386,
+    300326615,
+    590932579,
+    1405279636,
+    3267499572,
+    3150704214,
+    2428286686,
+    3959192993,
+    3461946742,
+    1862657033,
+    1266418056,
+    963775037,
+    2089974820,
+    2263052895,
+    1917689273,
+    448879540,
+    3550394620,
+    3981727096,
+    150775221,
+    3627908307,
+    1303187396,
+    508620638,
+    2975983352,
+    2726630617,
+    1817252668,
+    1876281319,
+    1457606340,
+    908771278,
+    3720792119,
+    3617206836,
+    2455994898,
+    1729034894,
+    1080033504,
+    976866871,
+    3556439503,
+    2881648439,
+    1522871579,
+    1555064734,
+    1336096578,
+    3548522304,
+    2579274686,
+    3574697629,
+    3205460757,
+    3593280638,
+    3338716283,
+    3079412587,
+    564236357,
+    2993598910,
+    1781952180,
+    1464380207,
+    3163844217,
+    3332601554,
+    1699332808,
+    1393555694,
+    1183702653,
+    3581086237,
+    1288719814,
+    691649499,
+    2847557200,
+    2895455976,
+    3193889540,
+    2717570544,
+    1781354906,
+    1676643554,
+    2592534050,
+    3230253752,
+    1126444790,
+    2770207658,
+    2633158820,
+    2210423226,
+    2615765581,
+    2414155088,
+    3127139286,
+    673620729,
+    2805611233,
+    1269405062,
+    4015350505,
+    3341807571,
+    4149409754,
+    1057255273,
+    2012875353,
+    2162469141,
+    2276492801,
+    2601117357,
+    993977747,
+    3918593370,
+    2654263191,
+    753973209,
+    36408145,
+    2530585658,
+    25011837,
+    3520020182,
+    2088578344,
+    530523599,
+    2918365339,
+    1524020338,
+    1518925132,
+    3760827505,
+    3759777254,
+    1202760957,
+    3985898139,
+    3906192525,
+    674977740,
+    4174734889,
+    2031300136,
+    2019492241,
+    3983892565,
+    4153806404,
+    3822280332,
+    352677332,
+    2297720250,
+    60907813,
+    90501309,
+    3286998549,
+    1016092578,
+    2535922412,
+    2839152426,
+    457141659,
+    509813237,
+    4120667899,
+    652014361,
+    1966332200,
+    2975202805,
+    55981186,
+    2327461051,
+    676427537,
+    3255491064,
+    2882294119,
+    3433927263,
+    1307055953,
+    942726286,
+    933058658,
+    2468411793,
+    3933900994,
+    4215176142,
+    1361170020,
+    2001714738,
+    2830558078,
+    3274259782,
+    1222529897,
+    1679025792,
+    2729314320,
+    3714953764,
+    1770335741,
+    151462246,
+    3013232138,
+    1682292957,
+    1483529935,
+    471910574,
+    1539241949,
+    458788160,
+    3436315007,
+    1807016891,
+    3718408830,
+    978976581,
+    1043663428,
+    3165965781,
+    1927990952,
+    4200891579,
+    2372276910,
+    3208408903,
+    3533431907,
+    1412390302,
+    2931980059,
+    4132332400,
+    1947078029,
+    3881505623,
+    4168226417,
+    2941484381,
+    1077988104,
+    1320477388,
+    886195818,
+    18198404,
+    3786409e3,
+    2509781533,
+    112762804,
+    3463356488,
+    1866414978,
+    891333506,
+    18488651,
+    661792760,
+    1628790961,
+    3885187036,
+    3141171499,
+    876946877,
+    2693282273,
+    1372485963,
+    791857591,
+    2686433993,
+    3759982718,
+    3167212022,
+    3472953795,
+    2716379847,
+    445679433,
+    3561995674,
+    3504004811,
+    3574258232,
+    54117162,
+    3331405415,
+    2381918588,
+    3769707343,
+    4154350007,
+    1140177722,
+    4074052095,
+    668550556,
+    3214352940,
+    367459370,
+    261225585,
+    2610173221,
+    4209349473,
+    3468074219,
+    3265815641,
+    314222801,
+    3066103646,
+    3808782860,
+    282218597,
+    3406013506,
+    3773591054,
+    379116347,
+    1285071038,
+    846784868,
+    2669647154,
+    3771962079,
+    3550491691,
+    2305946142,
+    453669953,
+    1268987020,
+    3317592352,
+    3279303384,
+    3744833421,
+    2610507566,
+    3859509063,
+    266596637,
+    3847019092,
+    517658769,
+    3462560207,
+    3443424879,
+    370717030,
+    4247526661,
+    2224018117,
+    4143653529,
+    4112773975,
+    2788324899,
+    2477274417,
+    1456262402,
+    2901442914,
+    1517677493,
+    1846949527,
+    2295493580,
+    3734397586,
+    2176403920,
+    1280348187,
+    1908823572,
+    3871786941,
+    846861322,
+    1172426758,
+    3287448474,
+    3383383037,
+    1655181056,
+    3139813346,
+    901632758,
+    1897031941,
+    2986607138,
+    3066810236,
+    3447102507,
+    1393639104,
+    373351379,
+    950779232,
+    625454576,
+    3124240540,
+    4148612726,
+    2007998917,
+    544563296,
+    2244738638,
+    2330496472,
+    2058025392,
+    1291430526,
+    424198748,
+    50039436,
+    29584100,
+    3605783033,
+    2429876329,
+    2791104160,
+    1057563949,
+    3255363231,
+    3075367218,
+    3463963227,
+    1469046755,
+    985887462
+  ];
+  var C_ORIG = [
+    1332899944,
+    1700884034,
+    1701343084,
+    1684370003,
+    1668446532,
+    1869963892
+  ];
+  function _encipher(lr, off, P, S) {
+    var n, l = lr[off], r = lr[off + 1];
+    l ^= P[0];
+    n = S[l >>> 24];
+    n += S[256 | l >> 16 & 255];
+    n ^= S[512 | l >> 8 & 255];
+    n += S[768 | l & 255];
+    r ^= n ^ P[1];
+    n = S[r >>> 24];
+    n += S[256 | r >> 16 & 255];
+    n ^= S[512 | r >> 8 & 255];
+    n += S[768 | r & 255];
+    l ^= n ^ P[2];
+    n = S[l >>> 24];
+    n += S[256 | l >> 16 & 255];
+    n ^= S[512 | l >> 8 & 255];
+    n += S[768 | l & 255];
+    r ^= n ^ P[3];
+    n = S[r >>> 24];
+    n += S[256 | r >> 16 & 255];
+    n ^= S[512 | r >> 8 & 255];
+    n += S[768 | r & 255];
+    l ^= n ^ P[4];
+    n = S[l >>> 24];
+    n += S[256 | l >> 16 & 255];
+    n ^= S[512 | l >> 8 & 255];
+    n += S[768 | l & 255];
+    r ^= n ^ P[5];
+    n = S[r >>> 24];
+    n += S[256 | r >> 16 & 255];
+    n ^= S[512 | r >> 8 & 255];
+    n += S[768 | r & 255];
+    l ^= n ^ P[6];
+    n = S[l >>> 24];
+    n += S[256 | l >> 16 & 255];
+    n ^= S[512 | l >> 8 & 255];
+    n += S[768 | l & 255];
+    r ^= n ^ P[7];
+    n = S[r >>> 24];
+    n += S[256 | r >> 16 & 255];
+    n ^= S[512 | r >> 8 & 255];
+    n += S[768 | r & 255];
+    l ^= n ^ P[8];
+    n = S[l >>> 24];
+    n += S[256 | l >> 16 & 255];
+    n ^= S[512 | l >> 8 & 255];
+    n += S[768 | l & 255];
+    r ^= n ^ P[9];
+    n = S[r >>> 24];
+    n += S[256 | r >> 16 & 255];
+    n ^= S[512 | r >> 8 & 255];
+    n += S[768 | r & 255];
+    l ^= n ^ P[10];
+    n = S[l >>> 24];
+    n += S[256 | l >> 16 & 255];
+    n ^= S[512 | l >> 8 & 255];
+    n += S[768 | l & 255];
+    r ^= n ^ P[11];
+    n = S[r >>> 24];
+    n += S[256 | r >> 16 & 255];
+    n ^= S[512 | r >> 8 & 255];
+    n += S[768 | r & 255];
+    l ^= n ^ P[12];
+    n = S[l >>> 24];
+    n += S[256 | l >> 16 & 255];
+    n ^= S[512 | l >> 8 & 255];
+    n += S[768 | l & 255];
+    r ^= n ^ P[13];
+    n = S[r >>> 24];
+    n += S[256 | r >> 16 & 255];
+    n ^= S[512 | r >> 8 & 255];
+    n += S[768 | r & 255];
+    l ^= n ^ P[14];
+    n = S[l >>> 24];
+    n += S[256 | l >> 16 & 255];
+    n ^= S[512 | l >> 8 & 255];
+    n += S[768 | l & 255];
+    r ^= n ^ P[15];
+    n = S[r >>> 24];
+    n += S[256 | r >> 16 & 255];
+    n ^= S[512 | r >> 8 & 255];
+    n += S[768 | r & 255];
+    l ^= n ^ P[16];
+    lr[off] = r ^ P[BLOWFISH_NUM_ROUNDS + 1];
+    lr[off + 1] = l;
+    return lr;
+  }
+  function _streamtoword(data, offp) {
+    for (var i = 0, word = 0; i < 4; ++i)
+      word = word << 8 | data[offp] & 255, offp = (offp + 1) % data.length;
+    return { key: word, offp };
+  }
+  function _key(key, P, S) {
+    var offset = 0, lr = [0, 0], plen = P.length, slen = S.length, sw;
+    for (var i = 0; i < plen; i++)
+      sw = _streamtoword(key, offset), offset = sw.offp, P[i] = P[i] ^ sw.key;
+    for (i = 0; i < plen; i += 2)
+      lr = _encipher(lr, 0, P, S), P[i] = lr[0], P[i + 1] = lr[1];
+    for (i = 0; i < slen; i += 2)
+      lr = _encipher(lr, 0, P, S), S[i] = lr[0], S[i + 1] = lr[1];
+  }
+  function _ekskey(data, key, P, S) {
+    var offp = 0, lr = [0, 0], plen = P.length, slen = S.length, sw;
+    for (var i = 0; i < plen; i++)
+      sw = _streamtoword(key, offp), offp = sw.offp, P[i] = P[i] ^ sw.key;
+    offp = 0;
+    for (i = 0; i < plen; i += 2)
+      sw = _streamtoword(data, offp), offp = sw.offp, lr[0] ^= sw.key, sw = _streamtoword(data, offp), offp = sw.offp, lr[1] ^= sw.key, lr = _encipher(lr, 0, P, S), P[i] = lr[0], P[i + 1] = lr[1];
+    for (i = 0; i < slen; i += 2)
+      sw = _streamtoword(data, offp), offp = sw.offp, lr[0] ^= sw.key, sw = _streamtoword(data, offp), offp = sw.offp, lr[1] ^= sw.key, lr = _encipher(lr, 0, P, S), S[i] = lr[0], S[i + 1] = lr[1];
+  }
+  function _crypt(b, salt, rounds, callback, progressCallback) {
+    var cdata = C_ORIG.slice(), clen = cdata.length, err;
+    if (rounds < 4 || rounds > 31) {
+      err = Error("Illegal number of rounds (4-31): " + rounds);
+      if (callback) {
+        nextTick(callback.bind(this, err));
+        return;
+      } else throw err;
+    }
+    if (salt.length !== BCRYPT_SALT_LEN) {
+      err = Error(
+        "Illegal salt length: " + salt.length + " != " + BCRYPT_SALT_LEN
+      );
+      if (callback) {
+        nextTick(callback.bind(this, err));
+        return;
+      } else throw err;
+    }
+    rounds = 1 << rounds >>> 0;
+    var P, S, i = 0, j;
+    if (typeof Int32Array === "function") {
+      P = new Int32Array(P_ORIG);
+      S = new Int32Array(S_ORIG);
+    } else {
+      P = P_ORIG.slice();
+      S = S_ORIG.slice();
+    }
+    _ekskey(salt, b, P, S);
+    function next() {
+      if (progressCallback) progressCallback(i / rounds);
+      if (i < rounds) {
+        var start = Date.now();
+        for (; i < rounds; ) {
+          i = i + 1;
+          _key(b, P, S);
+          _key(salt, P, S);
+          if (Date.now() - start > MAX_EXECUTION_TIME) break;
+        }
+      } else {
+        for (i = 0; i < 64; i++)
+          for (j = 0; j < clen >> 1; j++) _encipher(cdata, j << 1, P, S);
+        var ret = [];
+        for (i = 0; i < clen; i++)
+          ret.push((cdata[i] >> 24 & 255) >>> 0), ret.push((cdata[i] >> 16 & 255) >>> 0), ret.push((cdata[i] >> 8 & 255) >>> 0), ret.push((cdata[i] & 255) >>> 0);
+        if (callback) {
+          callback(null, ret);
+          return;
+        } else return ret;
+      }
+      if (callback) nextTick(next);
+    }
+    if (typeof callback !== "undefined") {
+      next();
+    } else {
+      var res;
+      while (true) if (typeof (res = next()) !== "undefined") return res || [];
+    }
+  }
+  function _hash(password, salt, callback, progressCallback) {
+    var err;
+    if (typeof password !== "string" || typeof salt !== "string") {
+      err = Error("Invalid string / salt: Not a string");
+      if (callback) {
+        nextTick(callback.bind(this, err));
+        return;
+      } else throw err;
+    }
+    var minor, offset;
+    if (salt.charAt(0) !== "$" || salt.charAt(1) !== "2") {
+      err = Error("Invalid salt version: " + salt.substring(0, 2));
+      if (callback) {
+        nextTick(callback.bind(this, err));
+        return;
+      } else throw err;
+    }
+    if (salt.charAt(2) === "$") minor = String.fromCharCode(0), offset = 3;
+    else {
+      minor = salt.charAt(2);
+      if (minor !== "a" && minor !== "b" && minor !== "y" || salt.charAt(3) !== "$") {
+        err = Error("Invalid salt revision: " + salt.substring(2, 4));
+        if (callback) {
+          nextTick(callback.bind(this, err));
+          return;
+        } else throw err;
+      }
+      offset = 4;
+    }
+    if (salt.charAt(offset + 2) > "$") {
+      err = Error("Missing salt rounds");
+      if (callback) {
+        nextTick(callback.bind(this, err));
+        return;
+      } else throw err;
+    }
+    var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r2 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r2, real_salt = salt.substring(offset + 3, offset + 25);
+    password += minor >= "a" ? "\0" : "";
+    var passwordb = utf8Array(password), saltb = base64_decode(real_salt, BCRYPT_SALT_LEN);
+    function finish(bytes) {
+      var res = [];
+      res.push("$2");
+      if (minor >= "a") res.push(minor);
+      res.push("$");
+      if (rounds < 10) res.push("0");
+      res.push(rounds.toString());
+      res.push("$");
+      res.push(base64_encode(saltb, saltb.length));
+      res.push(base64_encode(bytes, C_ORIG.length * 4 - 1));
+      return res.join("");
+    }
+    if (typeof callback == "undefined")
+      return finish(_crypt(passwordb, saltb, rounds));
+    else {
+      _crypt(
+        passwordb,
+        saltb,
+        rounds,
+        function(err2, bytes) {
+          if (err2) callback(err2, null);
+          else callback(null, finish(bytes));
+        },
+        progressCallback
+      );
+    }
+  }
+  function encodeBase64(bytes, length) {
+    return base64_encode(bytes, length);
+  }
+  function decodeBase64(string, length) {
+    return base64_decode(string, length);
+  }
+  var bcryptjs_default = {
+    setRandomFallback,
+    genSaltSync,
+    genSalt,
+    hashSync,
+    hash,
+    compareSync,
+    compare,
+    getRounds,
+    getSalt,
+    truncates,
+    encodeBase64,
+    decodeBase64
+  };
+
+  // src/web/hal-ui/views/SetupWizard.ts
+  var DEFAULT_DATA = {
+    adminPassword: "",
+    adminPasswordHash: "",
+    farmName: "My Farm",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    wifiSsid: "",
+    wifiPassword: "",
+    wifiConfigured: false,
+    llmProvider: "ollama",
+    llmEndpoint: "http://localhost:11434",
+    llmApiKey: "",
+    llmModel: "",
+    telegramEnabled: false,
+    telegramBotToken: ""
+  };
+  var STEP_LABELS = {
+    1: "Admin Password",
+    2: "Farm Name",
+    3: "Timezone",
+    4: "WiFi",
+    5: "LLM Provider",
+    6: "Telegram"
+  };
+  var TOTAL_STEPS = [1, 2, 3, 4, 5, 6];
+  var currentStep = 1;
+  var wizardData = { ...DEFAULT_DATA };
+  var hasEthernet = false;
+  var isSubmitting = false;
+  async function renderSetupWizard(container) {
+    injectWizardStyles();
+    let status;
+    try {
+      status = await provisioningApi.getStatus();
+    } catch {
+      container.innerHTML = renderError("Could not connect to FarmPal. Please refresh.");
+      return;
+    }
+    if (!status.isUnprovisioned && status.state === "completed") {
+      window.location.hash = "#dashboard";
+      window.location.reload();
+      return;
+    }
+    try {
+      const session = await provisioningApi.getWizardSession();
+      if (session) {
+        wizardData = {
+          ...DEFAULT_DATA,
+          farmName: session.farmName || "My Farm",
+          timezone: session.timezone || wizardData.timezone,
+          wifiConfigured: session.wifiConfigured ?? false,
+          llmProvider: session.llmProvider || "ollama",
+          llmEndpoint: session.llmEndpoint || "http://localhost:11434",
+          telegramEnabled: session.telegramEnabled,
+          adminPasswordHash: session.adminPasswordHash || ""
+        };
+      }
+    } catch {
+    }
+    hasEthernet = status.hasNetworkConnectivity;
+    if (status.state === "unprovisioned") {
+      try {
+        await provisioningApi.begin();
+      } catch {
+      }
+    }
+    if (status.wizardStep && status.wizardStep >= 1 && status.wizardStep <= 6) {
+      currentStep = status.wizardStep;
+    }
+    render(container);
+  }
+  function render(container) {
+    const effectiveSteps = hasEthernet ? [1, 2, 3, 5, 6] : TOTAL_STEPS;
+    const currentIndex = effectiveSteps.indexOf(currentStep);
+    container.innerHTML = `
+    <div class="wizard-page">
+      <div class="wizard-card">
+        <div class="wizard-header">
+          <div class="wizard-logo">
+            <img src="./ff_logo_svg.svg" alt="FarmPal" />
+          </div>
+          <h1 class="wizard-title">Welcome to FarmPal</h1>
+          <p class="wizard-subtitle">Let's set up your farm controller in a few steps</p>
+        </div>
+
+        <div class="wizard-progress">
+          <div class="wizard-progress-steps">
+            ${effectiveSteps.map((step, idx) => renderProgressStep(step, idx, currentIndex, effectiveSteps)).join("")}
+          </div>
+          <div class="wizard-progress-bar">
+            <div class="wizard-progress-fill" style="width: ${currentIndex / (effectiveSteps.length - 1) * 100}%"></div>
+          </div>
+        </div>
+
+        <div class="wizard-body" id="wizard-body">
+          ${renderStepBody(currentStep)}
+        </div>
+
+        <div class="wizard-footer">
+          ${currentIndex > 0 ? '<button class="wizard-btn wizard-btn-back" id="wizard-back">Back</button>' : "<div></div>"}
+          <button class="wizard-btn wizard-btn-next" id="wizard-next" ${isSubmitting ? "disabled" : ""}>
+            ${isSubmitting ? "Saving..." : currentIndex === effectiveSteps.length - 1 ? "Complete Setup" : "Next"}
+          </button>
+        </div>
+
+        ${currentStep !== 1 ? '<button class="wizard-skip-label" id="wizard-back-to-start">\u2190 Start over</button>' : ""}
+      </div>
+    </div>
+  `;
+    attachWizardEvents(container, effectiveSteps, currentIndex);
+  }
+  function renderProgressStep(step, idx, currentIdx, effectiveSteps) {
+    const isComplete = idx < currentIdx;
+    const isCurrent = idx === currentIdx;
+    const label = hasEthernet && step === 4 ? "WiFi (skip)" : STEP_LABELS[step];
+    return `
+    <div class="progress-step ${isComplete ? "complete" : ""} ${isCurrent ? "current" : ""}">
+      <div class="progress-step-dot">${isComplete ? "\u2713" : idx + 1}</div>
+      <div class="progress-step-label">${label}</div>
+    </div>
+  `;
+  }
+  function renderStepBody(step) {
+    switch (step) {
+      case 1:
+        return renderPasswordStep();
+      case 2:
+        return renderFarmNameStep();
+      case 3:
+        return renderTimezoneStep();
+      case 4:
+        return renderWifiStep();
+      case 5:
+        return renderLlmStep();
+      case 6:
+        return renderTelegramStep();
+      default:
+        return "";
+    }
+  }
+  function renderPasswordStep() {
+    return `
+    <div class="wizard-step-content">
+      <h2 class="step-title">Create Admin Password</h2>
+      <p class="step-desc">This password protects your FarmPal settings. Keep it safe \u2014 it cannot be recovered.</p>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Admin Password</label>
+        <div class="input-wrapper">
+          <input
+            type="password"
+            id="password"
+            class="form-input"
+            placeholder="Minimum 8 characters"
+            value="${escapeHtml11(wizardData.adminPassword)}"
+            minlength="8"
+            autocomplete="new-password"
+          />
+          <button type="button" class="input-toggle" id="toggle-password" aria-label="Show password">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <div class="form-hint" id="password-hint"></div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password-confirm">Confirm Password</label>
+        <div class="input-wrapper">
+          <input
+            type="password"
+            id="password-confirm"
+            class="form-input"
+            placeholder="Repeat password"
+            minlength="8"
+            autocomplete="new-password"
+          />
+          <button type="button" class="input-toggle" id="toggle-password-confirm" aria-label="Show password">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <div class="form-hint" id="password-confirm-hint"></div>
+      </div>
+
+      <div class="form-group">
+        <div class="password-strength" id="password-strength">
+          <div class="strength-bars">
+            <div class="strength-bar" data-index="0"></div>
+            <div class="strength-bar" data-index="1"></div>
+            <div class="strength-bar" data-index="2"></div>
+            <div class="strength-bar" data-index="3"></div>
+          </div>
+          <span class="strength-label" id="strength-label">Enter a password</span>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  function renderFarmNameStep() {
+    return `
+    <div class="wizard-step-content">
+      <h2 class="step-title">Name Your Farm</h2>
+      <p class="step-desc">Give your farm a name. This appears in the dashboard header and notifications.</p>
+
+      <div class="form-group">
+        <label class="form-label" for="farm-name">Farm Name</label>
+        <input
+          type="text"
+          id="farm-name"
+          class="form-input"
+          placeholder="My Farm"
+          value="${escapeHtml11(wizardData.farmName)}"
+          maxlength="64"
+          autocomplete="off"
+        />
+        <div class="form-hint">Maximum 64 characters. Leave blank for "My Farm".</div>
+      </div>
+    </div>
+  `;
+  }
+  var COMMON_TIMEZONES = [
+    { value: "America/New_York", label: "US Eastern (New York)" },
+    { value: "America/Chicago", label: "US Central (Chicago)" },
+    { value: "America/Denver", label: "US Mountain (Denver)" },
+    { value: "America/Los_Angeles", label: "US Pacific (Los Angeles)" },
+    { value: "America/Phoenix", label: "US Arizona (Phoenix)" },
+    { value: "America/Anchorage", label: "US Alaska (Anchorage)" },
+    { value: "Pacific/Honolulu", label: "US Hawaii (Honolulu)" },
+    { value: "Europe/London", label: "UK (London)" },
+    { value: "Europe/Paris", label: "France (Paris)" },
+    { value: "Europe/Berlin", label: "Germany (Berlin)" },
+    { value: "Europe/Amsterdam", label: "Netherlands (Amsterdam)" },
+    { value: "Europe/Stockholm", label: "Sweden (Stockholm)" },
+    { value: "Europe/Madrid", label: "Spain (Madrid)" },
+    { value: "Europe/Rome", label: "Italy (Rome)" },
+    { value: "Asia/Dubai", label: "UAE (Dubai)" },
+    { value: "Asia/Kolkata", label: "India (Kolkata)" },
+    { value: "Asia/Singapore", label: "Singapore" },
+    { value: "Asia/Shanghai", label: "China (Shanghai)" },
+    { value: "Asia/Tokyo", label: "Japan (Tokyo)" },
+    { value: "Australia/Sydney", label: "Australia (Sydney)" },
+    { value: "Australia/Perth", label: "Australia (Perth)" },
+    { value: "Pacific/Auckland", label: "New Zealand (Auckland)" }
+  ];
+  function renderTimezoneStep() {
+    const currentTz = wizardData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const currentRegion = currentTz.split("/")[0] || "";
+    const regionGroups = {};
+    for (const tz of COMMON_TIMEZONES) {
+      const region = tz.value.split("/")[0];
+      if (!regionGroups[region]) regionGroups[region] = [];
+      regionGroups[region].push(tz);
+    }
+    const regionOptions = Object.keys(regionGroups).sort().map(
+      (region) => `
+      <optgroup label="${region}">
+        ${regionGroups[region].map(
+        (tz) => `
+          <option value="${tz.value}" ${tz.value === currentTz ? "selected" : ""}>
+            ${tz.label}
+          </option>
+        `
+      ).join("")}
+      </optgroup>
+    `
+    ).join("");
+    return `
+    <div class="wizard-step-content">
+      <h2 class="step-title">Set Your Timezone</h2>
+      <p class="step-desc">FarmPal uses this timezone for scheduling and decision logs.</p>
+
+      <div class="form-group">
+        <label class="form-label" for="timezone">Timezone</label>
+        <select id="timezone" class="form-select">
+          ${regionOptions}
+        </select>
+        <div class="form-hint">Detected: <strong id="detected-timezone">${escapeHtml11(currentTz)}</strong></div>
+      </div>
+    </div>
+  `;
+  }
+  var wifiNetworks = [];
+  function renderWifiStep() {
+    return `
+    <div class="wizard-step-content">
+      <h2 class="step-title">WiFi Connection</h2>
+      <p class="step-desc">Connect FarmPal to your network. Ethernet is recommended if available.</p>
+
+      <div class="form-group">
+        <label class="form-label" for="wifi-ssid">Network (SSID)</label>
+        <input
+          type="text"
+          id="wifi-ssid"
+          class="form-input"
+          placeholder="Enter network name or select below"
+          value="${escapeHtml11(wizardData.wifiSsid)}"
+          maxlength="32"
+          autocomplete="off"
+          list="wifi-networks-list"
+        />
+        <datalist id="wifi-networks-list">
+          ${wifiNetworks.map((n) => `<option value="${escapeHtml11(n.ssid)}">`).join("")}
+        </datalist>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="wifi-password">Password</label>
+        <div class="input-wrapper">
+          <input
+            type="password"
+            id="wifi-password"
+            class="form-input"
+            placeholder="Network password"
+            autocomplete="off"
+          />
+          <button type="button" class="input-toggle" id="toggle-wifi-password" aria-label="Show password">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="wifi-status" id="wifi-status"></div>
+    </div>
+  `;
+  }
+  var LLM_PROVIDERS = [
+    { id: "ollama", name: "Ollama (Local)", defaultEndpoint: "http://localhost:11434", supportsModel: true },
+    { id: "openai", name: "OpenAI", supportsApiKey: true },
+    { id: "anthropic", name: "Anthropic", supportsApiKey: true },
+    { id: "zai", name: "ZAI", supportsApiKey: true },
+    { id: "minimax", name: "MiniMax", supportsApiKey: true },
+    { id: "lmstudio", name: "LM Studio (Local)", defaultEndpoint: "http://localhost:1234", supportsModel: true }
+  ];
+  function renderLlmStep() {
+    const selectedProvider = LLM_PROVIDERS.find((p) => p.id === wizardData.llmProvider) || LLM_PROVIDERS[0];
+    const showApiKey = selectedProvider && "supportsApiKey" in selectedProvider && selectedProvider.supportsApiKey;
+    const showEndpoint = selectedProvider && "defaultEndpoint" in selectedProvider;
+    const showModel = selectedProvider && "supportsModel" in selectedProvider && selectedProvider.supportsModel;
+    return `
+    <div class="wizard-step-content">
+      <h2 class="step-title">AI Provider</h2>
+      <p class="step-desc">Choose how FarmPal connects to its AI brain. Local options run entirely on your network.</p>
+
+      <div class="form-group">
+        <label class="form-label">Provider</label>
+        <div class="provider-grid">
+          ${LLM_PROVIDERS.map(
+      (p) => `
+            <button type="button" class="provider-card ${p.id === wizardData.llmProvider ? "selected" : ""}" data-provider="${p.id}">
+              <div class="provider-name">${p.name}</div>
+            </button>
+          `
+    ).join("")}
+        </div>
+      </div>
+
+      ${showEndpoint ? `
+      <div class="form-group">
+        <label class="form-label" for="llm-endpoint">Endpoint URL</label>
+        <input
+          type="url"
+          id="llm-endpoint"
+          class="form-input"
+          placeholder="http://localhost:11434"
+          value="${escapeHtml11(wizardData.llmEndpoint)}"
+        />
+        <div class="form-hint">${wizardData.llmProvider === "ollama" ? "Ollama must be running on your device." : "LM Studio server address."}</div>
+      </div>
+      ` : ""}
+
+      ${showApiKey ? `
+      <div class="form-group">
+        <label class="form-label" for="llm-api-key">API Key</label>
+        <div class="input-wrapper">
+          <input
+            type="password"
+            id="llm-api-key"
+            class="form-input"
+            placeholder="sk-..."
+            value="${escapeHtml11(wizardData.llmApiKey)}"
+            autocomplete="off"
+          />
+          <button type="button" class="input-toggle" id="toggle-api-key" aria-label="Show API key">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <div class="form-hint">Your API key is stored securely in .env and never sent to our servers.</div>
+      </div>
+      ` : ""}
+
+      ${showModel ? `
+      <div class="form-group">
+        <label class="form-label" for="llm-model">Model</label>
+        <input
+          type="text"
+          id="llm-model"
+          class="form-input"
+          placeholder="${wizardData.llmProvider === "ollama" ? "llama3.2, mistral, etc." : "e.g., llama3.2"}"
+          value="${escapeHtml11(wizardData.llmModel)}"
+          autocomplete="off"
+        />
+        <div class="form-hint">Must match an installed model in your Ollama/LM Studio.</div>
+      </div>
+      ` : ""}
+    </div>
+  `;
+  }
+  function renderTelegramStep() {
+    return `
+    <div class="wizard-step-content">
+      <h2 class="step-title">Telegram <span class="badge-optional">Optional</span></h2>
+      <p class="step-desc">Connect Telegram to receive alerts and control FarmPal from your phone.</p>
+
+      <div class="form-group">
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Enable Telegram</div>
+            <div class="toggle-desc">Receive notifications and commands via Telegram bot</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="telegram-enabled" ${wizardData.telegramEnabled ? "checked" : ""}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group telegram-fields ${wizardData.telegramEnabled ? "" : "hidden"}">
+        <label class="form-label" for="telegram-token">Bot Token</label>
+        <div class="input-wrapper">
+          <input
+            type="password"
+            id="telegram-token"
+            class="form-input"
+            placeholder="123456789:ABCdefGHI..."
+            value="${escapeHtml11(wizardData.telegramBotToken)}"
+            autocomplete="off"
+          />
+          <button type="button" class="input-toggle" id="toggle-telegram-token" aria-label="Show token">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <div class="form-hint">Create a bot via <strong>@BotFather</strong> in Telegram to get your token.</div>
+      </div>
+
+      <div class="skip-note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Telegram can be configured later in Settings.
+      </div>
+    </div>
+  `;
+  }
+  function renderError(message) {
+    return `
+    <div class="wizard-page">
+      <div class="wizard-card wizard-error">
+        <div class="error-icon">\u26A0</div>
+        <h2>Setup Error</h2>
+        <p>${escapeHtml11(message)}</p>
+        <button class="wizard-btn wizard-btn-next" onclick="location.reload()">Refresh</button>
+      </div>
+    </div>
+  `;
+  }
+  function attachWizardEvents(container, effectiveSteps, currentIndex) {
+    setupPasswordToggle("toggle-password", "password");
+    setupPasswordToggle("toggle-password-confirm", "password-confirm");
+    setupPasswordToggle("toggle-wifi-password", "wifi-password");
+    setupPasswordToggle("toggle-api-key", "llm-api-key");
+    setupPasswordToggle("toggle-telegram-token", "telegram-token");
+    const passwordInput = document.getElementById("password");
+    const passwordConfirm = document.getElementById("password-confirm");
+    if (passwordInput) {
+      passwordInput.addEventListener("input", () => updatePasswordStrength(passwordInput.value));
+      passwordInput.addEventListener("blur", () => validatePasswordStep());
+    }
+    if (passwordConfirm) {
+      passwordConfirm.addEventListener("blur", () => validatePasswordStep());
+    }
+    document.querySelectorAll(".provider-card").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const provider = btn.dataset.provider;
+        wizardData.llmProvider = provider;
+        const p = LLM_PROVIDERS.find((x) => x.id === provider);
+        if (p && "defaultEndpoint" in p && p.defaultEndpoint) {
+          wizardData.llmEndpoint = p.defaultEndpoint;
+        }
+        const body = document.getElementById("wizard-body");
+        if (body) body.innerHTML = renderLlmStep();
+        attachWizardEvents(container, effectiveSteps, currentIndex);
+      });
+    });
+    const telegramToggle = document.getElementById("telegram-enabled");
+    const telegramFields = document.querySelector(".telegram-fields");
+    if (telegramToggle && telegramFields) {
+      telegramToggle.addEventListener("change", () => {
+        wizardData.telegramEnabled = telegramToggle.checked;
+        telegramFields.classList.toggle("hidden", !telegramToggle.checked);
+      });
+    }
+    const backBtn = document.getElementById("wizard-back");
+    backBtn?.addEventListener("click", async () => {
+      if (currentIndex > 0) {
+        await saveCurrentStep(currentStep, effectiveSteps[currentIndex]);
+        currentStep = effectiveSteps[currentIndex - 1];
+        wizardData = loadStepData(currentStep);
+        render(container);
+      }
+    });
+    const backToStart = document.getElementById("wizard-back-to-start");
+    backToStart?.addEventListener("click", async () => {
+      currentStep = effectiveSteps[0];
+      wizardData = { ...DEFAULT_DATA };
+      await provisioningApi.updateWizardStep(1, {});
+      render(container);
+    });
+    const nextBtn = document.getElementById("wizard-next");
+    nextBtn?.addEventListener("click", async () => {
+      if (!validateCurrentStep(currentStep)) return;
+      isSubmitting = true;
+      render(container);
+      try {
+        await saveCurrentStep(currentIndex, currentStep);
+        if (currentIndex < effectiveSteps.length - 1) {
+          currentStep = effectiveSteps[currentIndex + 1];
+          wizardData = loadStepData(currentStep);
+          render(container);
+        } else {
+          await completeWizard(container);
+        }
+      } catch (err) {
+        showStepError(currentStep, err.message || "An error occurred");
+        render(container);
+      } finally {
+        isSubmitting = false;
+      }
+    });
+  }
+  async function saveCurrentStep(currentIndex, step) {
+    switch (step) {
+      case 1: {
+        const pwd = document.getElementById("password")?.value || "";
+        wizardData.adminPassword = pwd;
+        if (pwd && !wizardData.adminPasswordHash) {
+          wizardData.adminPasswordHash = await bcryptjs_default.hash(pwd, 10);
+        }
+        break;
+      }
+      case 2: {
+        wizardData.farmName = document.getElementById("farm-name")?.value || "My Farm";
+        break;
+      }
+      case 3: {
+        wizardData.timezone = document.getElementById("timezone")?.value || wizardData.timezone;
+        break;
+      }
+      case 4: {
+        wizardData.wifiSsid = document.getElementById("wifi-ssid")?.value || "";
+        wizardData.wifiPassword = document.getElementById("wifi-password")?.value || "";
+        wizardData.wifiConfigured = !!wizardData.wifiSsid;
+        break;
+      }
+      case 5: {
+        wizardData.llmEndpoint = document.getElementById("llm-endpoint")?.value || wizardData.llmEndpoint;
+        wizardData.llmApiKey = document.getElementById("llm-api-key")?.value || "";
+        wizardData.llmModel = document.getElementById("llm-model")?.value || "";
+        break;
+      }
+      case 6: {
+        wizardData.telegramBotToken = document.getElementById("telegram-token")?.value || "";
+        break;
+      }
+    }
+    await provisioningApi.updateWizardStep(step, {
+      farmName: wizardData.farmName,
+      timezone: wizardData.timezone,
+      wifiConfigured: wizardData.wifiConfigured,
+      llmProvider: wizardData.llmProvider
+    });
+  }
+  function loadStepData(step) {
+    return wizardData;
+  }
+  function validateCurrentStep(step) {
+    switch (step) {
+      case 1:
+        return validatePasswordStep();
+      case 2:
+        return true;
+      // farm name always valid
+      case 3:
+        return true;
+      // timezone always valid
+      case 4:
+        return true;
+      // wifi optional
+      case 5:
+        return validateLlmStep();
+      case 6:
+        return true;
+      // telegram optional
+      default:
+        return true;
+    }
+  }
+  function validatePasswordStep() {
+    const pwd = document.getElementById("password")?.value || "";
+    const pwdConfirm = document.getElementById("password-confirm")?.value || "";
+    const hint = document.getElementById("password-hint");
+    const confirmHint = document.getElementById("password-confirm-hint");
+    if (!pwd) {
+      hint.textContent = "Admin password is required.";
+      hint.className = "form-hint text-danger";
+      return false;
+    }
+    if (pwd.length < 8) {
+      hint.textContent = "Password must be at least 8 characters.";
+      hint.className = "form-hint text-danger";
+      return false;
+    }
+    if (pwdConfirm && pwd !== pwdConfirm) {
+      hint.textContent = "";
+      confirmHint.textContent = "Passwords do not match.";
+      confirmHint.className = "form-hint text-danger";
+      return false;
+    }
+    if (hint) {
+      hint.textContent = "";
+      hint.className = "form-hint";
+    }
+    if (confirmHint) {
+      confirmHint.textContent = "";
+      confirmHint.className = "form-hint";
+    }
+    return true;
+  }
+  function validateLlmStep() {
+    const provider = wizardData.llmProvider;
+    const selectedProvider = LLM_PROVIDERS.find((p) => p.id === provider);
+    if (selectedProvider && "supportsApiKey" in selectedProvider && selectedProvider.supportsApiKey) {
+      const apiKey = document.getElementById("llm-api-key")?.value || "";
+      if (!apiKey) {
+        showStepError(5, "API key is required for cloud providers.");
+        return false;
+      }
+    }
+    return true;
+  }
+  function showStepError(step, message) {
+    const body = document.getElementById("wizard-body");
+    if (body) {
+      body.innerHTML = `
+      <div class="wizard-step-content">
+        <div class="step-error">${escapeHtml11(message)}</div>
+      </div>
+    `;
+    }
+  }
+  async function completeWizard(container) {
+    wizardData.farmName = document.getElementById("farm-name")?.value || "My Farm";
+    wizardData.timezone = document.getElementById("timezone")?.value || wizardData.timezone;
+    wizardData.wifiSsid = document.getElementById("wifi-ssid")?.value || "";
+    wizardData.wifiPassword = document.getElementById("wifi-password")?.value || "";
+    wizardData.llmEndpoint = document.getElementById("llm-endpoint")?.value || wizardData.llmEndpoint;
+    wizardData.llmApiKey = document.getElementById("llm-api-key")?.value || "";
+    wizardData.llmModel = document.getElementById("llm-model")?.value || "";
+    wizardData.telegramBotToken = document.getElementById("telegram-token")?.value || "";
+    if (!wizardData.adminPasswordHash) {
+      const pwd = document.getElementById("password")?.value;
+      if (pwd) wizardData.adminPasswordHash = await bcryptjs_default.hash(pwd, 10);
+    }
+    const completeData = {
+      farmName: wizardData.farmName || "My Farm",
+      adminPasswordHash: wizardData.adminPasswordHash,
+      timezone: wizardData.timezone,
+      wifiSsid: wizardData.wifiSsid || void 0,
+      wifiPassword: wizardData.wifiPassword || void 0,
+      wifiConfigured: wizardData.wifiConfigured,
+      llmProvider: wizardData.llmProvider,
+      llmEndpoint: wizardData.llmEndpoint,
+      llmApiKey: wizardData.llmApiKey,
+      llmModel: wizardData.llmModel,
+      telegramEnabled: wizardData.telegramEnabled,
+      telegramBotToken: wizardData.telegramBotToken
+    };
+    try {
+      await provisioningApi.complete(completeData);
+      window.location.hash = "#dashboard";
+      window.location.reload();
+    } catch (err) {
+      showStepError(6, err.message || "Setup could not be saved \u2014 please try again.");
+    }
+  }
+  function updatePasswordStrength(pwd) {
+    const bars = document.querySelectorAll(".strength-bar");
+    const label = document.getElementById("strength-label");
+    if (!bars.length || !label) return;
+    let score = 0;
+    if (pwd.length >= 8) score++;
+    if (pwd.length >= 12) score++;
+    if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
+    if (/[0-9]/.test(pwd) && /[^A-Za-z0-9]/.test(pwd)) score++;
+    const labels = ["Too weak", "Weak", "Fair", "Strong"];
+    const colors = ["#F85149", "#F85149", "#D29922", "#2EA043"];
+    bars.forEach((bar, i) => {
+      bar.style.background = i < score ? colors[Math.min(score - 1, 3)] : "var(--border)";
+    });
+    label.textContent = pwd.length === 0 ? "Enter a password" : labels[Math.min(score - 1, 3)] || "Too weak";
+    label.style.color = pwd.length === 0 ? "var(--text-secondary)" : colors[Math.min(score - 1, 3)];
+  }
+  function setupPasswordToggle(btnId, inputId) {
+    const btn = document.getElementById(btnId);
+    const input = document.getElementById(inputId);
+    if (!btn || !input) return;
+    btn.addEventListener("click", () => {
+      const isPassword = input.type === "password";
+      input.type = isPassword ? "text" : "password";
+      btn.setAttribute("aria-label", isPassword ? "Hide password" : "Show password");
+    });
+  }
+  function escapeHtml11(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+  function injectWizardStyles() {
+    if (document.getElementById("wizard-styles")) return;
+    const style = document.createElement("style");
+    style.id = "wizard-styles";
+    style.textContent = `
+/* ===== Wizard Page Layout ===== */
+.wizard-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--bg-primary);
+}
+
+.wizard-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 520px;
+  padding: var(--space-8);
+  box-shadow: var(--shadow-card-lg);
+}
+
+.wizard-card.wizard-error {
+  text-align: center;
+}
+
+.error-icon {
+  font-size: 48px;
+  margin-bottom: var(--space-4);
+}
+
+/* ===== Header ===== */
+.wizard-header {
+  text-align: center;
+  margin-bottom: var(--space-6);
+}
+
+.wizard-logo {
+  margin-bottom: var(--space-4);
+}
+
+.wizard-logo img {
+  width: 56px;
+  height: 56px;
+}
+
+.wizard-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2);
+}
+
+.wizard-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* ===== Progress ===== */
+.wizard-progress {
+  margin-bottom: var(--space-6);
+}
+
+.wizard-progress-steps {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+  position: relative;
+}
+
+.wizard-progress-steps::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: var(--border);
+  z-index: 0;
+}
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  z-index: 1;
+}
+
+.progress-step-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  transition: all var(--transition-base);
+}
+
+.progress-step.current .progress-step-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.progress-step.complete .progress-step-dot {
+  background: var(--success);
+  border-color: var(--success);
+  color: white;
+}
+
+.progress-step-label {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  text-align: center;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.progress-step.current .progress-step-label,
+.progress-step.complete .progress-step-label {
+  color: var(--text-secondary);
+}
+
+.wizard-progress-bar {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.wizard-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--transition-base);
+}
+
+/* ===== Step Body ===== */
+.wizard-body {
+  min-height: 280px;
+}
+
+.wizard-step-content {
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.step-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.step-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-6);
+  line-height: 1.5;
+}
+
+.step-error {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  color: var(--danger);
+  font-size: 14px;
+  margin-bottom: var(--space-4);
+}
+
+/* ===== Form Elements ===== */
+.form-group {
+  margin-bottom: var(--space-5);
+}
+
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.form-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--space-3);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.form-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.form-select {
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--space-3);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: var(--space-1);
+}
+
+.form-hint.text-danger {
+  color: var(--danger);
+}
+
+.input-wrapper {
+  position: relative;
+}
+
+.input-wrapper .form-input {
+  padding-right: 40px;
+}
+
+.input-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition-fast);
+}
+
+.input-toggle:hover {
+  color: var(--text-secondary);
+}
+
+/* ===== Password Strength ===== */
+.password-strength {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.strength-bars {
+  display: flex;
+  gap: 4px;
+}
+
+.strength-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background var(--transition-base);
+}
+
+.strength-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  transition: color var(--transition-base);
+}
+
+/* ===== Provider Grid ===== */
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
+}
+
+.provider-card {
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+
+.provider-card:hover {
+  border-color: var(--text-tertiary);
+}
+
+.provider-card.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-tertiary));
+}
+
+.provider-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* ===== Toggle ===== */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.toggle-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.toggle-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: all var(--transition-base);
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 2px;
+  top: 2px;
+  background: white;
+  border-radius: 50%;
+  transition: transform var(--transition-base);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+}
+
+/* ===== Telegram ===== */
+.badge-optional {
+  font-size: 11px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.skip-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ===== WiFi Status ===== */
+.wifi-status {
+  font-size: 13px;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-2);
+}
+
+.wifi-status.info {
+  background: color-mix(in srgb, var(--info) 10%, transparent);
+  color: var(--info);
+}
+
+.wifi-status.error {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+
+.wifi-status.success {
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  color: var(--success);
+}
+
+/* ===== Footer ===== */
+.wizard-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.wizard-btn {
+  height: 40px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+}
+
+.wizard-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wizard-btn-back {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.wizard-btn-back:hover:not(:disabled) {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.wizard-btn-next {
+  background: var(--accent);
+  color: white;
+}
+
+.wizard-btn-next:hover:not(:disabled) {
+  background: var(--accent-bright, var(--accent));
+}
+
+.wizard-skip-label {
+  display: block;
+  margin: var(--space-4) auto 0;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: var(--space-2);
+}
+
+.wizard-skip-label:hover {
+  color: var(--text-secondary);
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 600px) {
+  .wizard-card {
+    padding: var(--space-5);
+    border-radius: var(--radius-md);
+  }
+
+  .wizard-progress-steps {
+    gap: 0;
+  }
+
+  .progress-step-label {
+    display: none;
+  }
+
+  .provider-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wizard-footer {
+    gap: var(--space-3);
+  }
+
+  .wizard-btn-back {
+    padding: 0 var(--space-4);
+  }
+
+  .wizard-btn-next {
+    flex: 1;
+  }
+}
+`;
+    document.head.appendChild(style);
+  }
+
   // src/web/hal-ui/main.ts
   init_store();
   var views = {
@@ -6829,6 +10403,21 @@
     injectCardStyles();
     injectToggleStyles();
     injectModalStyles();
+    let isUnprovisioned = false;
+    try {
+      const status = await provisioningApi.getStatus();
+      isUnprovisioned = status.isUnprovisioned;
+    } catch {
+      isUnprovisioned = false;
+    }
+    if (isUnprovisioned) {
+      app.innerHTML = '<div id="view-container"></div>';
+      const container = document.getElementById("view-container");
+      if (container) {
+        await renderSetupWizard(container);
+      }
+      return;
+    }
     const store = getStore();
     applyTheme(store.theme);
     app.innerHTML = `
@@ -6845,7 +10434,7 @@
     initHeader(store.theme, handleThemeChange);
     initSidebar(handleViewChange);
     await refreshHALData();
-    await render();
+    await render2();
     startPolling();
     startUptimeCounter();
   }
@@ -6856,9 +10445,9 @@
   }
   async function handleViewChange(viewId) {
     setStore({ activeView: viewId });
-    await render();
+    await render2();
   }
-  async function render() {
+  async function render2() {
     const store = getStore();
     const container = document.getElementById("view-container");
     if (!container) return;
@@ -6899,7 +10488,9 @@
     setInterval(() => {
       const uptime = Math.floor((Date.now() - pageLoadTime) / 1e3);
       setStore({ uptime });
-      const uptimeEl = document.querySelector("[data-dashboard-uptime]");
+      const uptimeEl = document.querySelector(
+        "[data-dashboard-uptime]"
+      );
       if (uptimeEl) uptimeEl.textContent = formatUptime3(uptime);
     }, 1e3);
   }

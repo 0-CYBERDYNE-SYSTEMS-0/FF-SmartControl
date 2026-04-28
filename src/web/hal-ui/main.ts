@@ -18,22 +18,24 @@ import { renderSensors } from './views/Sensors.js';
 import { renderDecisions } from './views/Decisions.js';
 import { renderCameras } from './views/Cameras.js';
 import { renderTerminalView } from './views/Terminal.js';
+import { renderSetupWizard } from './views/SetupWizard.js';
 
 import { halApi } from './api.js';
 import type { HalState } from './api.js';
+import { provisioningApi } from './api-provisioning.js';
 import { getStore, setStore, applyTheme } from './store.js';
 import type { ThemeName, ViewId } from './store.js';
 
 type AsyncViewRenderer = (container: HTMLElement) => Promise<void>;
 
 const views: Record<ViewId, AsyncViewRenderer> = {
-  dashboard:  renderDashboard,
-  devices:    renderDevices,
-  sensors:    renderSensors,
-  decisions:  renderDecisions,
-  cameras:    renderCameras,
-  system:     renderDashboard,
-  terminal:   renderTerminalView,
+  dashboard: renderDashboard,
+  devices: renderDevices,
+  sensors: renderSensors,
+  decisions: renderDecisions,
+  cameras: renderCameras,
+  system: renderDashboard,
+  terminal: renderTerminalView,
 };
 
 // Uptime tracking
@@ -48,7 +50,27 @@ async function init(): Promise<void> {
   injectToggleStyles();
   injectModalStyles();
 
-  // Build shell
+  // Check provisioning status first
+  let isUnprovisioned = false;
+  try {
+    const status = await provisioningApi.getStatus();
+    isUnprovisioned = status.isUnprovisioned;
+  } catch {
+    // If we can't reach the API, assume provisioned and let the error show in dashboard
+    isUnprovisioned = false;
+  }
+
+  if (isUnprovisioned) {
+    // Render wizard — full page, no shell
+    app.innerHTML = '<div id="view-container"></div>';
+    const container = document.getElementById('view-container');
+    if (container) {
+      await renderSetupWizard(container);
+    }
+    return;
+  }
+
+  // Normal HAL UI shell
   const store = getStore();
   applyTheme(store.theme);
   app.innerHTML = `
@@ -110,7 +132,7 @@ async function refreshHALData(): Promise<void> {
     setStore({
       devices: state.devices,
       sensors: state.sensorSnapshots,
-      cameras: state.devices.filter(device => device.type === 'camera'),
+      cameras: state.devices.filter((device) => device.type === 'camera'),
       decisions: state.recentDecisions,
       decisionsToday: countTodayDecisions(state.recentDecisions),
     });
@@ -119,12 +141,16 @@ async function refreshHALData(): Promise<void> {
   }
 }
 
-function countTodayDecisions(decisions: ReturnType<typeof getStore>['decisions']): number {
+function countTodayDecisions(
+  decisions: ReturnType<typeof getStore>['decisions'],
+): number {
   const today = new Date().toDateString();
-  return decisions.filter(d => {
+  return decisions.filter((d) => {
     try {
       return new Date(d.timestamp).toDateString() === today;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }).length;
 }
 
@@ -139,7 +165,9 @@ function startUptimeCounter(): void {
   setInterval(() => {
     const uptime = Math.floor((Date.now() - pageLoadTime) / 1000);
     setStore({ uptime });
-    const uptimeEl = document.querySelector<HTMLElement>('[data-dashboard-uptime]');
+    const uptimeEl = document.querySelector<HTMLElement>(
+      '[data-dashboard-uptime]',
+    );
     if (uptimeEl) uptimeEl.textContent = formatUptime(uptime);
   }, 1000);
 }

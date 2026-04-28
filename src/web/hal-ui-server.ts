@@ -230,192 +230,6 @@ export async function startHalUiServer(
         return;
       }
 
-      // ═══════════════════════════════════════════════════════════════════════
-      // PROVISIONING API — Used by the setup wizard
-      // All /api/provisioning/* routes are unauthenticated
-      // ═══════════════════════════════════════════════════════════════════════
-      if (requestPath.startsWith('/api/provisioning/')) {
-        // Lazy import to avoid circular deps and allow this module to work standalone
-        const {
-          getProvisioningManager,
-          getProvisionedFlagFile,
-          getProvisioningStateFile,
-        } = await import('../first-boot.js');
-        const mgr = getProvisioningManager();
-        const provApiPath = requestPath.slice('/api/provisioning'.length);
-
-        // GET /api/provisioning/status — current provisioning state
-        if (provApiPath === '/status' && method === 'GET') {
-          const state = mgr.loadState();
-          const isUnprovisioned = mgr.isUnprovisioned();
-          const hasNetwork = mgr.hasNetworkConnectivity();
-          const primaryIp = mgr.getPrimaryIpAddress();
-          const avahiRunning = mgr.isAvahiRunning();
-          sendJson(res, 200, {
-            isUnprovisioned,
-            state: state?.state ?? 'unprovisioned',
-            wizardStep: state?.wizardStep ?? 0,
-            farmName: state?.farmName ?? null,
-            timezone: state?.timezone ?? null,
-            wifiConfigured: state?.wifiConfigured ?? false,
-            llmProvider: state?.llmProvider ?? null,
-            hasNetworkConnectivity: hasNetwork,
-            primaryIp,
-            avahiRunning,
-            errorMessage: state?.errorMessage ?? null,
-          });
-          return;
-        }
-
-        // POST /api/provisioning/begin — start provisioning (VAL-IMG-006)
-        if (provApiPath === '/begin' && method === 'POST') {
-          try {
-            // VAL-IMG-020: Acquire lock to prevent concurrent provisioning
-            let releaseLock: (() => void) | null = null;
-            try {
-              releaseLock = mgr.acquireProvisioningLock();
-            } catch (lockErr: any) {
-              if (lockErr.message === 'PROVISIONING_ALREADY_IN_PROGRESS') {
-                sendJson(res, 409, {
-                  error: 'Provisioning already in progress',
-                });
-                return;
-              }
-              throw lockErr;
-            }
-            const newState = mgr.beginProvisioning();
-            releaseLock();
-            sendJson(res, 200, { ok: true, state: newState.state });
-          } catch (err: any) {
-            sendJson(res, 500, { error: err.message });
-          }
-          return;
-        }
-
-        // POST /api/provisioning/wizard-step — update wizard step (VAL-IMG-018)
-        if (provApiPath === '/wizard-step' && method === 'POST') {
-          let body = '';
-          for await (const chunk of req) body += chunk;
-          const parsed = body ? JSON.parse(body) : {};
-          const { step, farmName, timezone, wifiConfigured, llmProvider } =
-            parsed;
-          try {
-            const state = mgr.updateWizardStep(step ?? 1, {
-              farmName,
-              timezone,
-              wifiConfigured,
-              llmProvider,
-            });
-            // Also auto-save wizard session for VAL-IMG-018
-            const existingSession = mgr.loadWizardSession() ?? {
-              step: step ?? 1,
-              farmName: farmName ?? 'My Farm',
-              timezone:
-                timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-              llmProvider: llmProvider ?? 'ollama',
-              wifiConfigured: wifiConfigured ?? false,
-              telegramEnabled: false,
-              savedAt: new Date().toISOString(),
-              expiresAt: new Date(
-                Date.now() + 2 * 60 * 60 * 1000,
-              ).toISOString(), // 2 hours
-            };
-            const updatedSession = {
-              ...existingSession,
-              step: step ?? existingSession.step,
-              farmName: farmName ?? existingSession.farmName,
-              timezone: timezone ?? existingSession.timezone,
-              wifiConfigured: wifiConfigured ?? existingSession.wifiConfigured,
-              llmProvider: llmProvider ?? existingSession.llmProvider,
-              savedAt: new Date().toISOString(),
-              expiresAt: new Date(
-                Date.now() + 2 * 60 * 60 * 1000,
-              ).toISOString(),
-            };
-            mgr.saveWizardSession(updatedSession);
-            sendJson(res, 200, { ok: true, wizardStep: state.wizardStep });
-          } catch (err: any) {
-            sendJson(res, 500, { error: err.message });
-          }
-          return;
-        }
-
-        // GET /api/provisioning/wizard-session — load auto-saved session (VAL-IMG-018)
-        if (provApiPath === '/wizard-session' && method === 'GET') {
-          const session = mgr.loadWizardSession();
-          if (!session) {
-            sendJson(res, 404, { error: 'No saved wizard session found' });
-            return;
-          }
-          sendJson(res, 200, session);
-          return;
-        }
-
-        // POST /api/provisioning/complete — write .env and mark complete (VAL-IMG-007, VAL-IMG-019)
-        if (provApiPath === '/complete' && method === 'POST') {
-          let body = '';
-          for await (const chunk of req) body += chunk;
-          const parsed = body ? JSON.parse(body) : {};
-          try {
-            // VAL-IMG-019: Atomic .env write - no partial file left on failure
-            // The generateEnv method uses write-to-temp-then-rename
-            await mgr.generateEnv(parsed);
-            const state = mgr.completeProvisioning();
-            sendJson(res, 200, { ok: true, state: state.state });
-          } catch (err: any) {
-            // VAL-IMG-019: If write fails, clear error shown, no redirect
-            mgr.failProvisioning(err.message);
-            sendJson(res, 500, {
-              error:
-                err.message ?? 'Setup could not be saved — please try again.',
-            });
-          }
-          return;
-        }
-
-        // POST /api/provisioning/reset — reset to unprovisioned state (VAL-IMG-015)
-        if (provApiPath === '/reset' && method === 'POST') {
-          const {
-            getProvisioningManager: gm2,
-            getFarmPalEnvFile: getEnv,
-            getProvisionedFlagFile: getFlag,
-            getProvisioningStateFile: getState,
-          } = await import('../first-boot.js');
-          const mgr2 = gm2();
-          try {
-            const envFile = getEnv();
-            for (const file of [envFile, getFlag(), getState()]) {
-              try {
-                if (fs.existsSync(file)) fs.unlinkSync(file);
-              } catch {
-                /* ignore */
-              }
-            }
-            mgr2.clearWizardSession();
-            sendJson(res, 200, { ok: true });
-          } catch (err: any) {
-            sendJson(res, 500, { error: err.message });
-          }
-          return;
-        }
-
-        // GET /api/provisioning/network — network status for HDMI fallback (VAL-IMG-016)
-        if (provApiPath === '/network' && method === 'GET') {
-          const hasNetwork = mgr.hasNetworkConnectivity();
-          const primaryIp = mgr.getPrimaryIpAddress();
-          const avahiRunning = mgr.isAvahiRunning();
-          sendJson(res, 200, {
-            hasNetworkConnectivity: hasNetwork,
-            primaryIp,
-            avahiRunning,
-            farmpalLocal: avahiRunning ? 'http://farmpal.local:3392' : null,
-          });
-          return;
-        }
-
-        sendJson(res, 404, { error: 'Provisioning endpoint not found' });
-        return;
-      }
 
       if (apiPath === '/cameras' && method === 'GET') {
         sendJson(
@@ -444,6 +258,192 @@ export async function startHalUiServer(
       }
 
       sendJson(res, 404, { error: 'HAL API endpoint not found' });
+      return;
+    }
+    // ═══════════════════════════════════════════════════════════════════════
+    // PROVISIONING API — Used by the setup wizard
+    // All /api/provisioning/* routes are unauthenticated
+    // ═══════════════════════════════════════════════════════════════════════
+    if (requestPath.startsWith('/api/provisioning/')) {
+      // Lazy import to avoid circular deps and allow this module to work standalone
+      const {
+        getProvisioningManager,
+        getProvisionedFlagFile,
+        getProvisioningStateFile,
+      } = await import('../first-boot.js');
+      const mgr = getProvisioningManager();
+      const provApiPath = requestPath.slice('/api/provisioning'.length);
+
+      // GET /api/provisioning/status — current provisioning state
+      if (provApiPath === '/status' && method === 'GET') {
+        const state = mgr.loadState();
+        const isUnprovisioned = mgr.isUnprovisioned();
+        const hasNetwork = mgr.hasNetworkConnectivity();
+        const primaryIp = mgr.getPrimaryIpAddress();
+        const avahiRunning = mgr.isAvahiRunning();
+        sendJson(res, 200, {
+          isUnprovisioned,
+          state: state?.state ?? 'unprovisioned',
+          wizardStep: state?.wizardStep ?? 0,
+          farmName: state?.farmName ?? null,
+          timezone: state?.timezone ?? null,
+          wifiConfigured: state?.wifiConfigured ?? false,
+          llmProvider: state?.llmProvider ?? null,
+          hasNetworkConnectivity: hasNetwork,
+          primaryIp,
+          avahiRunning,
+          errorMessage: state?.errorMessage ?? null,
+        });
+        return;
+      }
+
+      // POST /api/provisioning/begin — start provisioning (VAL-IMG-006)
+      if (provApiPath === '/begin' && method === 'POST') {
+        try {
+          // VAL-IMG-020: Acquire lock to prevent concurrent provisioning
+          let releaseLock: (() => void) | null = null;
+          try {
+            releaseLock = mgr.acquireProvisioningLock();
+          } catch (lockErr: any) {
+            if (lockErr.message === 'PROVISIONING_ALREADY_IN_PROGRESS') {
+              sendJson(res, 409, {
+                error: 'Provisioning already in progress',
+              });
+              return;
+            }
+            throw lockErr;
+          }
+          const newState = mgr.beginProvisioning();
+          releaseLock();
+          sendJson(res, 200, { ok: true, state: newState.state });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // POST /api/provisioning/wizard-step — update wizard step (VAL-IMG-018)
+      if (provApiPath === '/wizard-step' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const { step, farmName, timezone, wifiConfigured, llmProvider } =
+          parsed;
+        try {
+          const state = mgr.updateWizardStep(step ?? 1, {
+            farmName,
+            timezone,
+            wifiConfigured,
+            llmProvider,
+          });
+          // Also auto-save wizard session for VAL-IMG-018
+          const existingSession = mgr.loadWizardSession() ?? {
+            step: step ?? 1,
+            farmName: farmName ?? 'My Farm',
+            timezone:
+              timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+            llmProvider: llmProvider ?? 'ollama',
+            wifiConfigured: wifiConfigured ?? false,
+            telegramEnabled: false,
+            savedAt: new Date().toISOString(),
+            expiresAt: new Date(
+              Date.now() + 2 * 60 * 60 * 1000,
+            ).toISOString(), // 2 hours
+          };
+          const updatedSession = {
+            ...existingSession,
+            step: step ?? existingSession.step,
+            farmName: farmName ?? existingSession.farmName,
+            timezone: timezone ?? existingSession.timezone,
+            wifiConfigured: wifiConfigured ?? existingSession.wifiConfigured,
+            llmProvider: llmProvider ?? existingSession.llmProvider,
+            savedAt: new Date().toISOString(),
+            expiresAt: new Date(
+              Date.now() + 2 * 60 * 60 * 1000,
+            ).toISOString(),
+          };
+          mgr.saveWizardSession(updatedSession);
+          sendJson(res, 200, { ok: true, wizardStep: state.wizardStep });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/provisioning/wizard-session — load auto-saved session (VAL-IMG-018)
+      if (provApiPath === '/wizard-session' && method === 'GET') {
+        const session = mgr.loadWizardSession();
+        if (!session) {
+          sendJson(res, 404, { error: 'No saved wizard session found' });
+          return;
+        }
+        sendJson(res, 200, session);
+        return;
+      }
+
+      // POST /api/provisioning/complete — write .env and mark complete (VAL-IMG-007, VAL-IMG-019)
+      if (provApiPath === '/complete' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        try {
+          // VAL-IMG-019: Atomic .env write - no partial file left on failure
+          // The generateEnv method uses write-to-temp-then-rename
+          await mgr.generateEnv(parsed);
+          const state = mgr.completeProvisioning();
+          sendJson(res, 200, { ok: true, state: state.state });
+        } catch (err: any) {
+          // VAL-IMG-019: If write fails, clear error shown, no redirect
+          mgr.failProvisioning(err.message);
+          sendJson(res, 500, {
+            error:
+              err.message ?? 'Setup could not be saved — please try again.',
+          });
+        }
+        return;
+      }
+
+      // POST /api/provisioning/reset — reset to unprovisioned state (VAL-IMG-015)
+      if (provApiPath === '/reset' && method === 'POST') {
+        const {
+          getProvisioningManager: gm2,
+          getFarmPalEnvFile: getEnv,
+          getProvisionedFlagFile: getFlag,
+          getProvisioningStateFile: getState,
+        } = await import('../first-boot.js');
+        const mgr2 = gm2();
+        try {
+          const envFile = getEnv();
+          for (const file of [envFile, getFlag(), getState()]) {
+            try {
+              if (fs.existsSync(file)) fs.unlinkSync(file);
+            } catch {
+              /* ignore */
+            }
+          }
+          mgr2.clearWizardSession();
+          sendJson(res, 200, { ok: true });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/provisioning/network — network status for HDMI fallback (VAL-IMG-016)
+      if (provApiPath === '/network' && method === 'GET') {
+        const hasNetwork = mgr.hasNetworkConnectivity();
+        const primaryIp = mgr.getPrimaryIpAddress();
+        const avahiRunning = mgr.isAvahiRunning();
+        sendJson(res, 200, {
+          hasNetworkConnectivity: hasNetwork,
+          primaryIp,
+          avahiRunning,
+          farmpalLocal: avahiRunning ? 'http://farmpal.local:3392' : null,
+        });
+        return;
+      }
+
+      sendJson(res, 404, { error: 'Provisioning endpoint not found' });
       return;
     }
 
