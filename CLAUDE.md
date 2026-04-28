@@ -100,7 +100,7 @@ import { state, activeChatRuns, ... } from './app-state.js';
 
 ## Runtime and Service Notes
 
-- Singleton lock at `data/fft_nano.lock` — do not run a second foreground host while the installed service is active.
+- Singleton lock at `data/farmpal.lock` — do not run a second foreground host while the installed service is active.
 - **Port policy**: do not use `28995` or any `289xx` port. Use the FarmPal local block `3390`–`3399` unless explicitly told otherwise.
 - Service management:
   ```bash
