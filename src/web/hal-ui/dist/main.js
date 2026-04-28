@@ -127,23 +127,23 @@
         return "";
     }
   }
-  function formatTimeValue(date, format) {
+  function formatTimeValue(date2, format) {
     if (format === "12h") {
-      return date.toLocaleTimeString("en-US", {
+      return date2.toLocaleTimeString("en-US", {
         hour12: true,
         hour: "2-digit",
         minute: "2-digit"
       });
     }
-    return date.toLocaleTimeString("en-US", {
+    return date2.toLocaleTimeString("en-US", {
       hour12: false,
       hour: "2-digit",
       minute: "2-digit"
     });
   }
-  function formatDateTimeValue(date, format) {
+  function formatDateTimeValue(date2, format) {
     if (format === "12h") {
-      return date.toLocaleString("en-US", {
+      return date2.toLocaleString("en-US", {
         month: "short",
         day: "numeric",
         hour: "2-digit",
@@ -152,7 +152,7 @@
         hour12: true
       });
     }
-    return date.toLocaleString("en-US", {
+    return date2.toLocaleString("en-US", {
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -433,6 +433,9 @@
   function terminalIcon() {
     return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
   }
+  function calibrationIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+  }
   function chevronIcon() {
     return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
   }
@@ -641,6 +644,7 @@
         { id: "dashboard", label: "Overview", icon: overviewIcon() },
         { id: "devices", label: "Devices", icon: devicesIcon() },
         { id: "sensors", label: "Sensors", icon: sensorsIcon() },
+        { id: "calibration", label: "Calibration", icon: calibrationIcon() },
         { id: "decisions", label: "Decisions", icon: decisionsIcon() },
         { id: "cameras", label: "Cameras", icon: camerasIcon() },
         { id: "safety", label: "Safety", icon: safetyIcon() },
@@ -695,7 +699,8 @@
       online: typeof device.online === "boolean" ? device.online : state2 !== "unknown",
       lastSeen: device.lastSeen || device.last_seen || void 0,
       zone: device.zone ?? void 0,
-      calibration_offset: device.calibration_offset
+      calibration_offset: device.calibration_offset,
+      controlled_device_description: device.controlled_device_description ?? void 0
     };
   }
   function normalizeSensorReading(reading) {
@@ -762,14 +767,20 @@
         controlDevice(id, action) {
           return halPost(`/devices/${id}/control`, { action });
         },
-        // GET /api/hal/sensors/latest
+        // GET /api/hal/sensors/latest — returns all sensor metrics (not just temperature/humidity)
         async getSensorsLatest() {
           const readings = await halGet("/sensors/latest");
-          return readings.map((reading) => ({
-            device: normalizeDevice(reading.device),
-            temperature: normalizeSensorReading(reading.temperature),
-            humidity: normalizeSensorReading(reading.humidity)
-          }));
+          return readings.map((reading) => {
+            const result = {
+              device: normalizeDevice(reading.device)
+            };
+            for (const [metric, r] of Object.entries(reading)) {
+              if (metric !== "device" && r) {
+                result[metric] = normalizeSensorReading(r);
+              }
+            }
+            return result;
+          });
         },
         // GET /api/hal/sensors/history
         async getSensorHistory(device, metric, from, to) {
@@ -910,9 +921,13 @@
         async manualAddDevice(data) {
           return halPost("/discovery/manual", data);
         },
-        // PUT /api/hal/devices/:id — update device label and/or zone (VAL-DISC-050, VAL-DISC-052)
+        // PUT /api/hal/devices/:id — update device label, zone, and/or description (VAL-DISC-050, VAL-DISC-052, VAL-DISC-070)
         async updateDevice(id, data) {
           return halPut(`/devices/${id}`, data);
+        },
+        // PUT /api/hal/devices/:id/calibration — update calibration offset (VAL-DISC-060, VAL-DISC-061)
+        async updateDeviceCalibration(id, offset) {
+          return halPut(`/devices/${id}/calibration`, { offset });
         },
         // DELETE /api/hal/devices/:id — remove device
         async removeDevice(id) {
@@ -948,6 +963,23 @@
   `
     ).join("");
     const currentDef = themeDefinitions[theme];
+    const store = getStore();
+    const currentLayout = store.layout;
+    const layoutButtons = ["calm", "operator", "diagnostic"].map((l) => {
+      const labels = {
+        calm: "CALM",
+        operator: "OPERATOR",
+        diagnostic: "DIAG"
+      };
+      return `
+      <button
+        class="layout-btn ${l === currentLayout ? "active" : ""}"
+        data-layout="${l}"
+        aria-label="${labels[l]} mode"
+        title="${labels[l]} mode"
+      >${labels[l]}</button>
+    `;
+    }).join("");
     return `
     <header class="hal-header">
       <div class="hal-header-left">
@@ -962,6 +994,9 @@
         <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
       </div>
       <div class="hal-header-center">
+        <div class="layout-selector" id="layout-selector" role="group" aria-label="Dashboard layout">
+          ${layoutButtons}
+        </div>
         <div class="safety-state-indicator" id="safety-state-indicator" title="Safety State">
           <span class="safety-state-dot"></span>
           <span class="safety-state-label" id="safety-state-label">NORMAL</span>
@@ -974,6 +1009,12 @@
         </div>
       </div>
       <div class="hal-header-right">
+        <button class="settings-btn" id="settings-btn" aria-label="Settings" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
         <button class="estop-btn" id="estop-btn" aria-label="Emergency Stop" title="Emergency Stop">
           <span class="estop-btn-inner">ESTOP</span>
         </button>
@@ -1000,11 +1041,13 @@
     };
     return labels[location.hash.slice(1) || "dashboard"] || "Overview";
   }
-  function initHeader(theme, onThemeChange, onEstopChange) {
+  function initHeader(theme, onThemeChange, onEstopChange, onLayoutChange, onSettingsClick) {
     injectHeaderStyles();
     startClock();
     setupThemeButtons(onThemeChange);
     setupEstopButton(onEstopChange);
+    setupLayoutButtons(onLayoutChange);
+    setupSettingsButton(onSettingsClick);
     refreshEstopStatus();
   }
   function refreshEstopStatus() {
@@ -1061,8 +1104,8 @@
       if (banner) {
         banner.style.display = "flex";
         if (activatedAt && bannerTime) {
-          const date = new Date(activatedAt);
-          bannerTime.textContent = ` since ${date.toLocaleTimeString("en-US", { hour12: false })}`;
+          const date2 = new Date(activatedAt);
+          bannerTime.textContent = ` since ${date2.toLocaleTimeString("en-US", { hour12: false })}`;
         }
       }
     } else {
@@ -1141,6 +1184,23 @@ ${result.failures.join("\n")}`
     mobileMenuBtn?.addEventListener("click", () => {
       const sidebar = document.getElementById("hal-sidebar");
       sidebar?.classList.toggle("open");
+    });
+  }
+  function setupLayoutButtons(onLayoutChange) {
+    document.querySelectorAll(".layout-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const layout = btn.dataset.layout;
+        document.querySelectorAll(".layout-btn").forEach((b) => {
+          b.classList.toggle("active", b.dataset.layout === layout);
+        });
+        onLayoutChange?.(layout);
+      });
+    });
+  }
+  function setupSettingsButton(onSettingsClick) {
+    const btn = document.getElementById("settings-btn");
+    btn?.addEventListener("click", () => {
+      onSettingsClick?.();
     });
   }
   function startClock() {
@@ -1358,6 +1418,60 @@ ${result.failures.join("\n")}`
   justify-self: center;
 }
 
+/* Layout Selector */
+.layout-selector {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 2px;
+  gap: 2px;
+}
+.layout-btn {
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+.layout-btn:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-secondary) 60%, transparent);
+}
+.layout-btn.active {
+  background: var(--accent);
+  color: var(--on-primary);
+}
+
+/* Settings Button */
+.settings-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+.settings-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-tertiary));
+}
+
 .hal-header-right {
   display: flex;
   align-items: center;
@@ -1456,10 +1570,17 @@ ${result.failures.join("\n")}`
   .hal-header-brand-text {
     display: none;
   }
+  .layout-btn {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
 }
 @media (max-width: 767px) {
   .hal-header { padding: 0 var(--space-3); }
   .hal-clock { font-size: 11px; }
+  .layout-selector {
+    display: none;
+  }
 }
 @media (max-width: 480px) {
   .hal-header-view-label {
@@ -3894,20 +4015,23 @@ ${result.failures.join("\n")}`
       const trendIcon = trend > 0 ? "\u2191" : trend < 0 ? "\u2193" : "\u2192";
       const comp = kpi.comparison;
       const compHtml = comp ? `<span class="kpi-comparison ${comp.delta >= 0 ? "up" : "down"}">${comp.delta >= 0 ? "+" : ""}${comp.delta.toFixed(1)}% ${comp.label}</span>` : "";
+      const hasData = kpi.sparklineData.length > 0 || kpi.value !== 0;
+      const displayValue = hasData ? `${kpi.value.toFixed(kpi.precision)}<span class="kpi-unit">${kpi.unit}</span>` : '<span class="kpi-no-data">No data</span>';
+      const displayColor = hasData ? statusColor : "var(--text-tertiary)";
       return `
       <div class="kpi-card" style="--kpi-accent: ${statusColor}">
         <div class="kpi-header">
           <span class="kpi-label">${kpi.label}</span>
-          <span class="kpi-trend" style="color: ${statusColor}">${trendIcon}</span>
+          <span class="kpi-trend" style="color: ${displayColor}">${trendIcon}</span>
         </div>
         <div class="kpi-value-row">
-          <span class="kpi-value text-mono" style="color: ${statusColor}">
-            ${kpi.value.toFixed(kpi.precision)}<span class="kpi-unit">${kpi.unit}</span>
+          <span class="kpi-value text-mono" style="color: ${displayColor}">
+            ${displayValue}
           </span>
         </div>
-        ${compHtml}
+        ${hasData ? compHtml : ""}
         <div class="kpi-sparkline">
-          ${renderSparkline(kpi.sparklineData, statusColor)}
+          ${hasData ? renderSparkline(kpi.sparklineData, statusColor) : '<div class="kpi-sparkline-empty"></div>'}
         </div>
       </div>
     `;
@@ -3922,15 +4046,19 @@ ${result.failures.join("\n")}`
     );
     const activeRelays = relays.filter((d) => d.state === "on");
     const onlineDevices = store.devices.filter((d) => d.online).length;
-    const [tempHistory, humHistory, co2History] = await Promise.all([
+    const [tempHistory, humHistory, co2History, soilHistory, lightHistory] = await Promise.all([
       fetchMetricSparkline(sensors, "temperature", 12),
       fetchMetricSparkline(sensors, "humidity", 12),
-      fetchMetricSparkline(sensors, "co2", 12)
+      fetchMetricSparkline(sensors, "co2", 12),
+      fetchMetricSparkline(sensors, "soil_moisture", 12),
+      fetchMetricSparkline(sensors, "light", 12)
     ]);
-    const [tempPrev, humPrev, co2Prev] = await Promise.all([
+    const [tempPrev, humPrev, co2Prev, soilPrev, lightPrev] = await Promise.all([
       fetchMetricSparklinePrev(sensors, "temperature", 12),
       fetchMetricSparklinePrev(sensors, "humidity", 12),
-      fetchMetricSparklinePrev(sensors, "co2", 12)
+      fetchMetricSparklinePrev(sensors, "co2", 12),
+      fetchMetricSparklinePrev(sensors, "soil_moisture", 12),
+      fetchMetricSparklinePrev(sensors, "light", 12)
     ]);
     const kpis = [];
     kpis.push({
@@ -3957,14 +4085,15 @@ ${result.failures.join("\n")}`
     }
     const avgTemp = tempCount > 0 ? tempSum / tempCount : 0;
     const tempComp = computeComparison(tempHistory, tempPrev);
+    const hasTemp = tempCount > 0;
     kpis.push({
       label: "Temperature",
-      value: avgTemp,
+      value: hasTemp ? avgTemp : 0,
       unit: formatSensorValue(0, "temperature", store.unitSystem).unit,
       precision: 1,
-      status: avgTemp >= 18 && avgTemp <= 28 ? "good" : avgTemp >= 15 && avgTemp <= 32 ? "warning" : "critical",
-      sparklineData: tempHistory.length > 1 ? tempHistory : generateTrendData(avgTemp || 22, 12, 3),
-      sparklineColor: "#F59E0B",
+      status: hasTemp ? avgTemp >= 18 && avgTemp <= 28 ? "good" : avgTemp >= 15 && avgTemp <= 32 ? "warning" : "critical" : "good",
+      sparklineData: tempHistory.length > 1 ? tempHistory : hasTemp ? generateTrendData(avgTemp, 12, 3) : [],
+      sparklineColor: hasTemp ? "#F59E0B" : "var(--text-tertiary)",
       comparison: tempComp
     });
     let humSum = 0, humCount = 0;
@@ -3977,15 +4106,58 @@ ${result.failures.join("\n")}`
     }
     const avgHum = humCount > 0 ? humSum / humCount : 0;
     const humComp = computeComparison(humHistory, humPrev);
+    const hasHum = humCount > 0;
     kpis.push({
       label: "Humidity",
-      value: avgHum,
+      value: hasHum ? avgHum : 0,
       unit: "%",
       precision: 0,
-      status: avgHum >= 40 && avgHum <= 70 ? "good" : avgHum >= 30 && avgHum <= 80 ? "warning" : "critical",
-      sparklineData: humHistory.length > 1 ? humHistory : generateTrendData(avgHum || 60, 12, 10),
-      sparklineColor: "#38BDF8",
+      status: hasHum ? avgHum >= 40 && avgHum <= 70 ? "good" : avgHum >= 30 && avgHum <= 80 ? "warning" : "critical" : "good",
+      sparklineData: humHistory.length > 1 ? humHistory : hasHum ? generateTrendData(avgHum, 12, 10) : [],
+      sparklineColor: hasHum ? "#38BDF8" : "var(--text-tertiary)",
       comparison: humComp
+    });
+    let soilSum = 0, soilCount = 0;
+    for (const s of sensors) {
+      const snap = store.sensors[s.id];
+      if (snap?.soil_moisture?.value != null) {
+        soilSum += snap.soil_moisture.value;
+        soilCount++;
+      }
+    }
+    const avgSoil = soilCount > 0 ? soilSum / soilCount : 0;
+    const soilComp = computeComparison(soilHistory, soilPrev);
+    const hasSoil = soilCount > 0;
+    kpis.push({
+      label: "Soil Moisture",
+      value: hasSoil ? avgSoil : 0,
+      unit: "%",
+      precision: 0,
+      status: hasSoil ? avgSoil >= 30 && avgSoil <= 70 ? "good" : avgSoil >= 20 && avgSoil <= 80 ? "warning" : "critical" : "good",
+      sparklineData: soilHistory.length > 1 ? soilHistory : hasSoil ? generateTrendData(avgSoil, 12, 5) : [],
+      sparklineColor: hasSoil ? "#EF4444" : "var(--text-tertiary)",
+      comparison: soilComp
+    });
+    let lightSum = 0, lightCount = 0;
+    for (const s of sensors) {
+      const snap = store.sensors[s.id];
+      if (snap?.light?.value != null) {
+        lightSum += snap.light.value;
+        lightCount++;
+      }
+    }
+    const avgLight = lightCount > 0 ? lightSum / lightCount : 0;
+    const lightComp = computeComparison(lightHistory, lightPrev);
+    const hasLight = lightCount > 0;
+    kpis.push({
+      label: "Light",
+      value: hasLight ? avgLight : 0,
+      unit: "lux",
+      precision: 0,
+      status: hasLight ? avgLight >= 1e4 && avgLight <= 5e4 ? "good" : avgLight >= 5e3 && avgLight <= 7e4 ? "warning" : "critical" : "good",
+      sparklineData: lightHistory.length > 1 ? lightHistory : hasLight ? generateTrendData(avgLight / 1e3, 12, 2) : [],
+      sparklineColor: hasLight ? "#FACC15" : "var(--text-tertiary)",
+      comparison: lightComp
     });
     let co2Sum = 0, co2Count = 0;
     for (const s of sensors) {
@@ -3997,33 +4169,16 @@ ${result.failures.join("\n")}`
     }
     const avgCo2 = co2Count > 0 ? co2Sum / co2Count : 0;
     const co2Comp = computeComparison(co2History, co2Prev);
+    const hasCo2 = co2Count > 0;
     kpis.push({
       label: "CO\u2082",
-      value: avgCo2,
+      value: hasCo2 ? avgCo2 : 0,
       unit: "ppm",
       precision: 0,
-      status: avgCo2 < 1e3 ? "good" : avgCo2 < 1500 ? "warning" : "critical",
-      sparklineData: co2History.length > 1 ? co2History : generateTrendData(avgCo2 || 800, 12, 200),
-      sparklineColor: "#22C55E",
+      status: hasCo2 ? avgCo2 < 1e3 ? "good" : avgCo2 < 1500 ? "warning" : "critical" : "good",
+      sparklineData: co2History.length > 1 ? co2History : hasCo2 ? generateTrendData(avgCo2, 12, 200) : [],
+      sparklineColor: hasCo2 ? "#22C55E" : "var(--text-tertiary)",
       comparison: co2Comp
-    });
-    kpis.push({
-      label: "Devices",
-      value: onlineDevices,
-      unit: `/${store.devices.length}`,
-      precision: 0,
-      status: onlineDevices === store.devices.length ? "good" : onlineDevices > 0 ? "warning" : "critical",
-      sparklineData: generateTrendData(onlineDevices || 1, 12),
-      sparklineColor: "var(--accent)"
-    });
-    kpis.push({
-      label: "Automations",
-      value: store.decisionsToday,
-      unit: "today",
-      precision: 0,
-      status: store.decisionsToday > 0 ? "good" : "warning",
-      sparklineData: generateTrendData(store.decisionsToday || 0, 12, 2),
-      sparklineColor: "var(--accent)"
     });
     return kpis;
   }
@@ -4158,6 +4313,14 @@ ${result.failures.join("\n")}`
 }
 .kpi-comparison.down {
   color: var(--danger);
+}
+.kpi-no-data {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+.kpi-sparkline-empty {
+  height: 28px;
 }
 @media (max-width: 767px) {
   .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
@@ -5932,6 +6095,10 @@ ${result.failures.join("\n")}`
         <p class="dw-empty-desc">
           Check that your devices are powered on and connected, then try again.
         </p>
+        <div class="dw-empty-actions">
+          <button class="dw-btn-primary" id="dw-retry-scan-btn">Retry</button>
+          <button class="dw-btn-secondary" id="dw-empty-add-manual-btn">Add Manually</button>
+        </div>
       </div>
     `;
     }
@@ -6190,6 +6357,12 @@ ${result.failures.join("\n")}`
       isScanning = false;
       currentStep = 1;
       renderWizard();
+    });
+    overlay.querySelector("#dw-retry-scan-btn")?.addEventListener("click", () => {
+      startScan();
+    });
+    overlay.querySelector("#dw-empty-add-manual-btn")?.addEventListener("click", () => {
+      openManualAdd();
     });
   }
   function attachStep3Handlers() {
@@ -6649,7 +6822,8 @@ ${result.failures.join("\n")}`
 .dw-empty-state { text-align: center; padding: var(--space-6) 0; }
 .dw-empty-icon { font-size: 48px; margin-bottom: var(--space-3); }
 .dw-empty-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: var(--space-2); }
-.dw-empty-desc { font-size: 14px; color: var(--text-secondary); }
+.dw-empty-desc { font-size: 14px; color: var(--text-secondary); margin-bottom: var(--space-4); }
+.dw-empty-actions { display: flex; gap: var(--space-2); justify-content: center; flex-wrap: wrap; }
 .dw-device-list { display: flex; flex-direction: column; gap: var(--space-2); }
 .dw-device-row {
   display: flex;
@@ -6920,6 +7094,8 @@ ${result.failures.join("\n")}`
       const state2 = d.online ? "online" : "offline";
       const chartId = `dev-chart-${d.id}`;
       const zone = d.zone;
+      const safeState = d.safe_state;
+      const description = d.controlled_device_description;
       return `
       <div class="device-card hal-card" data-device-id="${d.id}" style="border-left: 3px solid ${state2 === "online" ? "var(--accent)" : "var(--danger)"}">
         <div class="device-card-header">
@@ -6933,11 +7109,16 @@ ${result.failures.join("\n")}`
           ${zone ? `<span class="device-zone-tag">${escapeHtml8(zone)}</span>` : ""}
           ${d.lastSeen ? `<span class="text-xs text-mono text-secondary">${formatRelativeTime(d.lastSeen)}</span>` : ""}
         </div>
+        ${description ? `<div class="device-description text-xs text-secondary">${escapeHtml8(description)}</div>` : ""}
         ${d.type === "sensor" ? `<div class="device-chart-wrap" id="${chartId}"></div>` : ""}
         ${d.type === "relay" ? `
+          <div class="device-card-relay-info">
+            <span class="text-xs text-secondary">Safe state:</span>
+            <span class="relay-safe-state text-xs" data-device-id="${d.id}">${safeState || "off"}</span>
+          </div>
           <div class="device-card-control">
             <span class="text-xs text-secondary">Power</span>
-            <div id="toggle-${d.id}" class="device-toggle"></div>
+            <div id="toggle-${d.id}" class="device-toggle" ${!d.online ? 'data-offline="true" title="Offline - cannot toggle"' : ""}></div>
           </div>
         ` : ""}
       </div>
@@ -6992,8 +7173,20 @@ ${result.failures.join("\n")}`
     relays.forEach((relay) => {
       const el = document.getElementById(`toggle-${relay.id}`);
       if (!el) return;
+      if (!relay.online) {
+        el.setAttribute("title", "Offline - cannot toggle");
+        el.style.opacity = "0.5";
+        el.style.cursor = "not-allowed";
+        return;
+      }
       const isOn = relay.state === "on";
       const toggle = createToggle(`toggle-${relay.id}`, isOn, async (on) => {
+        const currentDevice = store.devices.find((d) => d.id === relay.id);
+        if (!currentDevice?.online) {
+          showToast(`Cannot toggle ${relay.name}: device is offline`, "danger");
+          setToggleState(toggle, !on);
+          return;
+        }
         try {
           await halApi.controlDevice(relay.id, on ? "on" : "off");
           showToast(`${relay.name} turned ${on ? "on" : "off"}`, "success");
@@ -7185,6 +7378,28 @@ ${result.failures.join("\n")}`
   margin-bottom: var(--space-3);
   flex-wrap: wrap;
   gap: var(--space-1);
+}
+.device-description {
+  margin-bottom: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--accent);
+  color: var(--text-secondary);
+}
+.device-card-relay-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: color-mix(in srgb, var(--warning, #D29922) 10%, transparent);
+  border-radius: var(--radius-sm);
+}
+.relay-safe-state {
+  font-weight: 600;
+  color: var(--warning, #D29922);
+  text-transform: uppercase;
 }
 .device-zone-tag {
   font-size: 11px;
@@ -8884,6 +9099,15 @@ ${result.failures.join("\n")}`
   });
 
   // src/web/hal-ui/views/Cameras.ts
+  function isDemoCamera(camera) {
+    return !camera.online || !DEMO_IMAGES[camera.id];
+  }
+  function getLastCaptureTime(cameraId) {
+    return sessionStorage.getItem(`camera_capture_${cameraId}`);
+  }
+  function setLastCaptureTime(cameraId, timestamp) {
+    sessionStorage.setItem(`camera_capture_${cameraId}`, timestamp);
+  }
   async function renderCameras(container) {
     const store = getStore();
     const cameras = store.devices.filter((d) => d.type === "camera");
@@ -8905,39 +9129,74 @@ ${result.failures.join("\n")}`
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(() => {
       document.querySelectorAll(".camera-time").forEach((el) => {
-        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
-          hour12: false,
-          hour: "2-digit",
-          minute: "2-digit"
-        });
+        const cameraId = el.dataset.cameraId;
+        const lastCapture = cameraId ? getLastCaptureTime(cameraId) : null;
+        if (lastCapture) {
+          const date2 = new Date(lastCapture);
+          el.textContent = date2.toLocaleTimeString("en-US", {
+            hour12: false,
+            hour: "2-digit",
+            minute: "2-digit"
+          });
+        } else {
+          el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
+            hour12: false,
+            hour: "2-digit",
+            minute: "2-digit"
+          });
+        }
       });
     }, 3e4);
   }
   function renderCameraGrid(cameras) {
     if (cameras.length === 0) {
-      return `<div class="empty-state col-span-2"><p class="empty-state-title">No cameras registered</p><p class="empty-state-desc">Cameras will appear here once discovered.</p></div>`;
+      return `
+      <div class="empty-state col-span-2">
+        <p class="empty-state-title">No cameras registered</p>
+        <p class="empty-state-desc">Cameras will appear here once discovered.</p>
+        <div class="demo-mode-indicator">
+          <span class="demo-badge">DEMO MODE</span>
+          <span class="demo-text">Configure cameras in Devices view</span>
+        </div>
+      </div>
+    `;
     }
     return cameras.map((c) => {
       const demoImg = DEMO_IMAGES[c.id];
+      const isDemo = isDemoCamera(c);
+      const lastCapture = getLastCaptureTime(c.id);
+      const displayTime = lastCapture ? new Date(lastCapture).toLocaleTimeString("en-US", {
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit"
+      }) : (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit"
+      });
       return `
-    <div class="camera-card hal-card" data-camera-id="${c.id}">
+    <div class="camera-card hal-card ${c.online ? "" : "camera-offline"}" data-camera-id="${c.id}">
       <div class="camera-thumbnail" id="thumb-${c.id}">
-        ${demoImg ? `<img src="${demoImg}" alt="${escapeHtml11(c.name)}" class="camera-img" />` : `
+        ${demoImg && c.online ? `<img src="${demoImg}" alt="${escapeHtml11(c.name)}" class="camera-img" />` : `
         <div class="camera-placeholder">
           <span class="camera-icon">CAM</span>
-          <span class="text-secondary text-sm">No preview</span>
+          <span class="text-secondary text-sm">${c.online ? "No preview" : "Offline"}</span>
         </div>`}
         <div class="camera-overlay">
-          <span class="camera-live-badge">LIVE</span>
-          <span class="camera-time text-mono text-xs">${(/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}</span>
+          ${isDemo ? `<span class="camera-demo-badge">DEMO</span>` : `<span class="camera-live-badge">LIVE</span>`}
+          <span class="camera-time text-mono text-xs" data-camera-id="${c.id}">${displayTime}</span>
         </div>
       </div>
       <div class="camera-info">
         <div class="camera-name">${escapeHtml11(c.name)}</div>
-        <div class="camera-meta text-xs text-secondary">${c.protocol} \xB7 ${c.online ? "online" : "offline"}</div>
+        <div class="camera-meta text-xs text-secondary">
+          ${c.protocol}
+          ${c.online ? '<span class="camera-status-online">\xB7 online</span>' : '<span class="camera-status-offline">\xB7 offline</span>'}
+          ${isDemo ? '<span class="camera-demo-label">\xB7 demo</span>' : ""}
+        </div>
       </div>
-      <button class="hal-btn hal-btn-secondary camera-capture-btn" data-camera-id="${c.id}">
-        Capture
+      <button class="hal-btn hal-btn-secondary camera-capture-btn" data-camera-id="${c.id}" ${c.online ? "" : "disabled"}>
+        ${c.online ? "Capture" : "Offline"}
       </button>
     </div>
   `;
@@ -8948,11 +9207,22 @@ ${result.failures.join("\n")}`
       btn.addEventListener("click", async () => {
         const cameraId = btn.dataset.cameraId;
         const camera = cameras.find((c) => c.id === cameraId);
-        if (!camera) return;
+        if (!camera || !camera.online) return;
         btn.textContent = "Capturing...";
         btn.disabled = true;
         try {
           const result = await halApi.captureCamera(cameraId);
+          const captureTime = (/* @__PURE__ */ new Date()).toISOString();
+          setLastCaptureTime(cameraId, captureTime);
+          const timeEl = document.querySelector(`.camera-time[data-camera-id="${cameraId}"]`);
+          if (timeEl) {
+            const date2 = new Date(captureTime);
+            timeEl.textContent = date2.toLocaleTimeString("en-US", {
+              hour12: false,
+              hour: "2-digit",
+              minute: "2-digit"
+            });
+          }
           showToast(`Capture saved: ${result.path}`, "success");
           openModal(
             `${camera.name} \u2014 Capture`,
@@ -8967,6 +9237,10 @@ ${result.failures.join("\n")}`
                 <div class="capture-meta-row">
                   <span class="text-secondary text-xs">Size</span>
                   <span class="text-mono text-xs">${(result.size_bytes / 1024).toFixed(1)} KB</span>
+                </div>
+                <div class="capture-meta-row">
+                  <span class="text-secondary text-xs">Captured</span>
+                  <span class="text-mono text-xs">${date.toLocaleTimeString("en-US", { hour12: false })}</span>
                 </div>
               </div>
             </div>
@@ -8990,7 +9264,8 @@ ${result.failures.join("\n")}`
     const style = document.createElement("style");
     style.id = "hal-cameras-styles";
     style.textContent = `
-.camera-card { padding: 0; overflow: hidden; position: relative; }
+.camera-card { padding: 0; overflow: hidden; position: relative; border-left: 3px solid var(--accent); }
+.camera-card.camera-offline { border-left-color: var(--danger); }
 .camera-thumbnail {
   height: 200px;
   background: var(--bg-tertiary);
@@ -9022,7 +9297,16 @@ ${result.failures.join("\n")}`
   font-weight: 700;
   letter-spacing: 0.08em;
   color: #fff;
-  background: var(--danger);
+  background: var(--success);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.camera-demo-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: var(--warning);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
 }
@@ -9040,6 +9324,9 @@ ${result.failures.join("\n")}`
   padding: var(--space-3) var(--space-4);
 }
 .camera-name { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.camera-status-online { color: var(--success); }
+.camera-status-offline { color: var(--danger); }
+.camera-demo-label { color: var(--warning); }
 .camera-capture-btn {
   width: 100%;
   border-radius: 0;
@@ -9076,6 +9363,32 @@ ${result.failures.join("\n")}`
 .capture-meta { display: flex; flex-direction: column; gap: var(--space-2); }
 .capture-meta-row { display: flex; justify-content: space-between; align-items: center; }
 .col-span-2 { grid-column: 1 / -1; }
+
+/* Demo mode indicator for empty state */
+.demo-mode-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  border: 1px dashed var(--warning);
+  border-radius: var(--radius-md);
+}
+.demo-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--on-primary);
+  background: var(--warning);
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+}
+.demo-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 `;
     document.head.appendChild(style);
   }
@@ -13036,9 +13349,9 @@ ${result.failures.join("\n")}`
   }
   function formatRelativeTime2(isoString) {
     try {
-      const date = new Date(isoString);
+      const date2 = new Date(isoString);
       const now = /* @__PURE__ */ new Date();
-      const diffMs = now.getTime() - date.getTime();
+      const diffMs = now.getTime() - date2.getTime();
       const diffMins = Math.floor(diffMs / 6e4);
       const diffHours = Math.floor(diffMins / 60);
       const diffDays = Math.floor(diffHours / 24);
@@ -13046,7 +13359,7 @@ ${result.failures.join("\n")}`
       if (diffMins < 60) return `${diffMins}m ago`;
       if (diffHours < 24) return `${diffHours}h ago`;
       if (diffDays < 7) return `${diffDays}d ago`;
-      return date.toLocaleDateString();
+      return date2.toLocaleDateString();
     } catch {
       return isoString;
     }
@@ -13317,6 +13630,570 @@ ${result.failures.join("\n")}`
     }
   });
 
+  // src/web/hal-ui/views/Calibration.ts
+  async function renderCalibration(container) {
+    const store = getStore();
+    injectCalibrationStyles();
+    injectChartKitStyles();
+    const sensors = store.devices.filter((d) => d.type === "sensor");
+    if (sensors.length === 0) {
+      container.innerHTML = `
+      <div class="page-header">
+        <div class="page-header-left">
+          <h1 class="page-title">Calibration</h1>
+          <p class="page-subtitle">Adjust sensor readings with offset</p>
+        </div>
+      </div>
+      <div class="cal-empty-state">
+        <div class="cal-empty-icon">\u2699\uFE0F</div>
+        <p class="cal-empty-title">No sensors registered</p>
+        <p class="cal-empty-desc">Add sensors from the Devices view to calibrate their readings.</p>
+      </div>
+    `;
+      return;
+    }
+    const allMetricDefs = [
+      { metric: "temperature", unit: "\xB0C" },
+      { metric: "humidity", unit: "%" },
+      { metric: "co2", unit: "ppm" },
+      { metric: "soil_moisture", unit: "%" },
+      { metric: "light", unit: "lux" },
+      { metric: "water_level", unit: "%" },
+      { metric: "ph", unit: "" },
+      { metric: "weight", unit: "kg" }
+    ];
+    const calibrationData = sensors.flatMap((sensor) => {
+      const snap = store.sensors[sensor.id] ?? {};
+      const calibrationOffset = sensor.calibration_offset ?? 0;
+      return allMetricDefs.map(({ metric, unit }) => {
+        const snapMetric = snap?.[metric];
+        if (!snapMetric || snapMetric.value == null) return null;
+        const calibratedValue = snapMetric.value;
+        const rawValue = calibratedValue - calibrationOffset;
+        return {
+          device: sensor,
+          rawValue,
+          calibratedValue,
+          offset: calibrationOffset,
+          metric,
+          unit
+        };
+      }).filter((e) => e !== null);
+    });
+    container.innerHTML = `
+    <div class="page-header">
+      <div class="page-header-left">
+        <h1 class="page-title">Calibration</h1>
+        <p class="page-subtitle">Adjust sensor readings with offset \xB7 calibrated = raw + offset</p>
+      </div>
+    </div>
+
+    <div class="cal-info-banner">
+      <span class="cal-info-icon">\u2139\uFE0F</span>
+      <span>Enter a reference value from a calibrated instrument. The offset is calculated as <strong>reference \u2212 raw</strong> and applied to all readings.</span>
+    </div>
+
+    <div class="cal-grid" id="cal-grid">
+      ${calibrationData.map((cd) => renderCalibrationCard(cd)).join("")}
+    </div>
+  `;
+    attachCalibrationHandlers(calibrationData);
+  }
+  function renderCalibrationCard(cd) {
+    const { device, rawValue, calibratedValue, offset, metric, unit } = cd;
+    const metricLabel = metric.charAt(0).toUpperCase() + metric.slice(1).replace("_", " ");
+    const formattedRaw = formatValue2(rawValue, unit);
+    const formattedCalibrated = formatValue2(calibratedValue, unit);
+    const formattedOffset = offset !== 0 ? formatValue2(offset, unit) : "0";
+    const inputId = `ref-${device.id}-${metric}`;
+    return `
+    <div class="cal-card" data-device-id="${device.id}" data-metric="${metric}">
+      <div class="cal-card-header">
+        <div class="cal-device-icon">${getDeviceIcon(device)}</div>
+        <div class="cal-device-info">
+          <div class="cal-device-name">${escapeHtml14(device.name)}</div>
+          <div class="cal-device-meta">
+            <span class="hal-badge hal-badge-slate">${escapeHtml14(metricLabel)}</span>
+            <span class="hal-badge hal-badge-slate">${device.protocol}</span>
+            ${device.zone ? `<span class="cal-zone-tag">${escapeHtml14(device.zone)}</span>` : ""}
+          </div>
+        </div>
+        <div class="cal-status ${offset !== 0 ? "calibrated" : ""}">
+          ${offset !== 0 ? `<span class="cal-badge-active">Calibrated</span>` : `<span class="cal-badge-default">Default</span>`}
+        </div>
+      </div>
+
+      <div class="cal-readings">
+        <div class="cal-reading-block">
+          <div class="cal-reading-label">Raw Reading</div>
+          <div class="cal-reading-value cal-raw">${formattedRaw}</div>
+        </div>
+        <div class="cal-reading-arrow">\u2192</div>
+        <div class="cal-reading-block">
+          <div class="cal-reading-label">Calibrated</div>
+          <div class="cal-reading-value cal-calibrated">${formattedCalibrated}</div>
+        </div>
+      </div>
+
+      <div class="cal-current-offset">
+        <span class="cal-offset-label">Current offset:</span>
+        <span class="cal-offset-value ${offset !== 0 ? "has-offset" : ""}">${formattedOffset}</span>
+      </div>
+
+      <div class="cal-form">
+        <div class="cal-form-row">
+          <label class="cal-form-label" for="${inputId}">Reference Value</label>
+          <div class="cal-input-group">
+            <input
+              class="cal-input"
+              type="number"
+              id="${inputId}"
+              placeholder="Enter reference value"
+              step="any"
+            />
+            <span class="cal-input-unit">${unit}</span>
+          </div>
+        </div>
+        <div class="cal-form-actions">
+          <button
+            class="hal-btn-primary cal-apply-btn"
+            data-device-id="${device.id}"
+            data-metric="${metric}"
+            data-unit="${unit}"
+            data-raw-value="${rawValue}"
+          >
+            Apply Offset
+          </button>
+          <button
+            class="hal-btn-secondary cal-reset-btn"
+            data-device-id="${device.id}"
+            data-metric="${metric}"
+            ${offset === 0 ? "disabled" : ""}
+          >
+            Reset to Zero
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  function attachCalibrationHandlers(calibrationData) {
+    document.querySelectorAll(".cal-apply-btn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const el = btn;
+        const deviceId = el.dataset.deviceId;
+        const metric = el.dataset.metric;
+        const unit = el.dataset.unit;
+        const rawValue = parseFloat(el.dataset.rawValue);
+        const inputEl = document.getElementById(
+          `ref-${deviceId}-${metric}`
+        );
+        const refValue = parseFloat(inputEl.value);
+        if (isNaN(refValue)) {
+          showToast("Please enter a valid reference value", "warning");
+          return;
+        }
+        const offset = refValue - rawValue;
+        try {
+          await halApi.updateDeviceCalibration(deviceId, offset);
+          showToast(
+            `Calibration applied: offset = ${formatValue2(offset, unit)}`,
+            "success"
+          );
+          const { refreshHALData: refreshHALData2 } = await Promise.resolve().then(() => (init_main(), main_exports));
+          refreshHALData2();
+          const container = document.getElementById("view-container");
+          if (container) {
+            renderCalibration(container);
+          }
+        } catch (err) {
+          showToast(`Failed: ${err.message}`, "danger");
+        }
+      });
+    });
+    document.querySelectorAll(".cal-reset-btn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const el = btn;
+        const deviceId = el.dataset.deviceId;
+        const metric = el.dataset.metric;
+        const metricLabel = metric.charAt(0).toUpperCase() + metric.slice(1).replace("_", " ");
+        if (!confirm(`Reset calibration offset for ${metricLabel} on this sensor?`)) {
+          return;
+        }
+        try {
+          await halApi.updateDeviceCalibration(deviceId, 0);
+          showToast("Calibration reset to zero", "success");
+          const { refreshHALData: refreshHALData2 } = await Promise.resolve().then(() => (init_main(), main_exports));
+          refreshHALData2();
+          const container = document.getElementById("view-container");
+          if (container) {
+            renderCalibration(container);
+          }
+        } catch (err) {
+          showToast(`Failed: ${err.message}`, "danger");
+        }
+      });
+    });
+  }
+  function getDeviceIcon(device) {
+    switch (device.type) {
+      case "sensor":
+        return "\u{1F321}\uFE0F";
+      case "relay":
+        return "\u{1F50C}";
+      case "camera":
+        return "\u{1F4F7}";
+      default:
+        return "\u{1F4DF}";
+    }
+  }
+  function formatValue2(value, unit) {
+    const precision = Math.abs(value) >= 100 ? 0 : value % 1 === 0 ? 0 : 2;
+    return `${value.toFixed(precision)}${unit}`;
+  }
+  function escapeHtml14(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function injectCalibrationStyles() {
+    if (document.getElementById("hal-calibration-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-calibration-styles";
+    style.textContent = `
+.cal-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+}
+.cal-empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+.cal-empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+.cal-empty-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 400px;
+}
+
+.cal-info-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: var(--radius-md);
+  margin-bottom: 24px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.cal-info-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.cal-info-banner strong {
+  color: var(--text-primary);
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+.cal-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cal-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.cal-device-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.cal-device-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cal-device-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-device-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.cal-zone-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.cal-status {
+  flex-shrink: 0;
+}
+
+.cal-badge-active {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-tertiary));
+  color: var(--accent-bright);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.cal-badge-default {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
+.cal-readings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.cal-reading-block {
+  text-align: center;
+  flex: 1;
+}
+
+.cal-reading-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+
+.cal-reading-value {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.cal-raw {
+  color: var(--text-secondary);
+}
+
+.cal-calibrated {
+  color: var(--accent-bright);
+}
+
+.cal-reading-arrow {
+  font-size: 20px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.cal-current-offset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.cal-offset-label {
+  color: var(--text-secondary);
+}
+
+.cal-offset-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.cal-offset-value.has-offset {
+  color: var(--accent-bright);
+}
+
+.cal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cal-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cal-form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.cal-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.cal-input {
+  flex: 1;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  outline: none;
+  min-width: 0;
+}
+
+.cal-input:focus {
+  border-color: var(--accent);
+}
+
+.cal-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cal-input-unit {
+  height: 36px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.cal-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cal-apply-btn,
+.cal-reset-btn {
+  flex: 1;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all var(--transition-fast);
+}
+
+.cal-apply-btn {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.cal-apply-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.cal-apply-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cal-reset-btn {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.cal-reset-btn:hover:not(:disabled) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.cal-reset-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .cal-grid {
+    grid-template-columns: 1fr;
+  }
+  .cal-readings {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cal-reading-arrow {
+    transform: rotate(90deg);
+  }
+}
+`;
+    document.head.appendChild(style);
+  }
+  var init_Calibration = __esm({
+    "src/web/hal-ui/views/Calibration.ts"() {
+      "use strict";
+      init_store();
+      init_api();
+      init_Toast();
+      init_ChartKit();
+    }
+  });
+
   // src/web/hal-ui/main.ts
   var main_exports = {};
   __export(main_exports, {
@@ -13343,11 +14220,15 @@ ${result.failures.join("\n")}`
       }
       return;
     }
+    const initialView = getInitialView();
     const store = getStore();
     applyTheme(store.theme);
+    if (!location.hash) {
+      history.replaceState(null, "", `#${initialView}`);
+    }
     app.innerHTML = `
     <div class="app-layout" id="app-layout">
-      ${renderSidebar(store.activeView, store.sidebarCollapsed)}
+      ${renderSidebar(initialView, store.sidebarCollapsed)}
       <div class="app-main">
         <div id="hal-header"></div>
         <main class="main-content" id="view-container"></main>
@@ -13356,8 +14237,15 @@ ${result.failures.join("\n")}`
   `;
     const headerEl = document.getElementById("hal-header");
     headerEl.innerHTML = renderHeader(store.theme);
-    initHeader(store.theme, handleThemeChange);
+    initHeader(
+      store.theme,
+      handleThemeChange,
+      void 0,
+      handleLayoutChange,
+      handleSettingsClick
+    );
     initSidebar(handleViewChange);
+    window.addEventListener("hashchange", handleHashChange);
     await refreshHALData();
     await render2();
     startPolling();
@@ -13368,9 +14256,55 @@ ${result.failures.join("\n")}`
     applyTheme(theme);
     showToast(`Theme: ${theme}`, "info", 2e3);
   }
+  function handleLayoutChange(layout) {
+    setStore({ layout });
+    showToast(`Layout: ${layout.toUpperCase()}`, "info", 2e3);
+    render2();
+  }
+  function handleSettingsClick() {
+    showToast("Settings panel coming soon", "info", 2e3);
+  }
   async function handleViewChange(viewId) {
+    const newHash = `#${viewId}`;
+    if (location.hash !== newHash) {
+      history.replaceState(null, "", newHash);
+    }
+    updateHeaderViewLabel(viewId);
     setStore({ activeView: viewId });
     await render2();
+  }
+  function updateHeaderViewLabel(viewId) {
+    const labels = {
+      dashboard: "Overview",
+      devices: "Devices",
+      sensors: "Sensors",
+      decisions: "Decisions",
+      cameras: "Cameras",
+      safety: "Safety",
+      system: "System",
+      terminal: "Terminal",
+      calibration: "Calibration"
+    };
+    const labelEl = document.getElementById("header-view-label");
+    if (labelEl) {
+      labelEl.textContent = labels[viewId] || "Overview";
+    }
+  }
+  function handleHashChange() {
+    const hash2 = location.hash.slice(1) || "dashboard";
+    const validViews = ["dashboard", "devices", "sensors", "decisions", "cameras", "safety", "system", "terminal", "calibration"];
+    const viewId = validViews.includes(hash2) ? hash2 : "dashboard";
+    document.querySelectorAll(".sidebar-item").forEach((item) => {
+      item.classList.toggle("active", item.getAttribute("data-view") === viewId);
+    });
+    updateHeaderViewLabel(viewId);
+    setStore({ activeView: viewId });
+    render2();
+  }
+  function getInitialView() {
+    const hash2 = location.hash.slice(1) || "dashboard";
+    const validViews = ["dashboard", "devices", "sensors", "decisions", "cameras", "safety", "system", "terminal", "calibration"];
+    return validViews.includes(hash2) ? hash2 : "dashboard";
   }
   async function render2() {
     const store = getStore();
@@ -13445,6 +14379,7 @@ ${result.failures.join("\n")}`
       init_Terminal2();
       init_SetupWizard();
       init_Safety();
+      init_Calibration();
       init_api();
       init_api_provisioning();
       init_store();
@@ -13456,7 +14391,8 @@ ${result.failures.join("\n")}`
         cameras: renderCameras,
         safety: renderSafety,
         system: renderDashboard,
-        terminal: renderTerminalView
+        terminal: renderTerminalView,
+        calibration: renderCalibration
       };
       pageLoadTime = Date.now();
       pollInterval = null;
