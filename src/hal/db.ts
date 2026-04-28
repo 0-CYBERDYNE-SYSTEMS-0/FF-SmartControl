@@ -39,4 +39,13 @@ export function runMigrations(): void {
   } catch {
     /* column already exists */
   }
+
+  // Migration: add controlled_device_description column to hal_devices (VAL-DISC-070)
+  try {
+    db.exec(
+      `ALTER TABLE hal_devices ADD COLUMN controlled_device_description TEXT`,
+    );
+  } catch {
+    /* column already exists */
+  }
 }

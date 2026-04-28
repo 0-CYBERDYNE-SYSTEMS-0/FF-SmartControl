@@ -139,6 +139,8 @@ function renderDeviceCards(devices: HalDevice[]): string {
       const state = d.online ? 'online' : 'offline';
       const chartId = `dev-chart-${d.id}`;
       const zone = (d as any).zone as string | undefined;
+      const safeState = (d as any).safe_state as string | undefined; // VAL-DISC-071
+      const description = d.controlled_device_description as string | undefined; // VAL-DISC-070
       return `
       <div class="device-card hal-card" data-device-id="${d.id}" style="border-left: 3px solid ${state === 'online' ? 'var(--accent)' : 'var(--danger)'}">
         <div class="device-card-header">
@@ -152,13 +154,18 @@ function renderDeviceCards(devices: HalDevice[]): string {
           ${zone ? `<span class="device-zone-tag">${escapeHtml(zone)}</span>` : ''}
           ${d.lastSeen ? `<span class="text-xs text-mono text-secondary">${formatRelativeTime(d.lastSeen)}</span>` : ''}
         </div>
+        ${description ? `<div class="device-description text-xs text-secondary">${escapeHtml(description)}</div>` : ''}
         ${d.type === 'sensor' ? `<div class="device-chart-wrap" id="${chartId}"></div>` : ''}
         ${
           d.type === 'relay'
             ? `
+          <div class="device-card-relay-info">
+            <span class="text-xs text-secondary">Safe state:</span>
+            <span class="relay-safe-state text-xs" data-device-id="${d.id}">${safeState || 'off'}</span>
+          </div>
           <div class="device-card-control">
             <span class="text-xs text-secondary">Power</span>
-            <div id="toggle-${d.id}" class="device-toggle"></div>
+            <div id="toggle-${d.id}" class="device-toggle" ${!d.online ? 'data-offline="true" title="Offline - cannot toggle"' : ''}></div>
           </div>
         `
             : ''
@@ -229,8 +236,24 @@ function attachToggleHandlers(): void {
   relays.forEach((relay) => {
     const el = document.getElementById(`toggle-${relay.id}`);
     if (!el) return;
+
+    // VAL-DISC-073: Disable toggle for offline relays with tooltip
+    if (!relay.online) {
+      el.setAttribute('title', 'Offline - cannot toggle');
+      el.style.opacity = '0.5';
+      el.style.cursor = 'not-allowed';
+      return;
+    }
+
     const isOn = relay.state === 'on';
     const toggle = createToggle(`toggle-${relay.id}`, isOn, async (on) => {
+      // Double-check online status before sending command
+      const currentDevice = store.devices.find((d) => d.id === relay.id);
+      if (!currentDevice?.online) {
+        showToast(`Cannot toggle ${relay.name}: device is offline`, 'danger');
+        setToggleState(toggle, !on); // revert
+        return;
+      }
       try {
         await halApi.controlDevice(relay.id, on ? 'on' : 'off');
         showToast(`${relay.name} turned ${on ? 'on' : 'off'}`, 'success');
@@ -453,6 +476,28 @@ function injectDevicesStyles(): void {
   margin-bottom: var(--space-3);
   flex-wrap: wrap;
   gap: var(--space-1);
+}
+.device-description {
+  margin-bottom: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--accent);
+  color: var(--text-secondary);
+}
+.device-card-relay-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: color-mix(in srgb, var(--warning, #D29922) 10%, transparent);
+  border-radius: var(--radius-sm);
+}
+.relay-safe-state {
+  font-weight: 600;
+  color: var(--warning, #D29922);
+  text-transform: uppercase;
 }
 .device-zone-tag {
   font-size: 11px;

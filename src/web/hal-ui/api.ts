@@ -51,6 +51,8 @@ export interface HalDevice {
   lastSeen?: string;
   zone?: string | null; // VAL-DISC-050
   calibration_offset?: number;
+  controlled_device_description?: string | null; // VAL-DISC-070: what this relay controls
+  safe_state?: 'on' | 'off' | 'unknown' | 'no_change'; // VAL-DISC-071: safe state for E-Stop/shutdown
 }
 
 export interface HalSensorReading {
@@ -95,6 +97,7 @@ type RawHalDevice = Partial<HalDevice> & {
   last_seen?: string | null;
   zone?: string | null;
   calibration_offset?: number;
+  controlled_device_description?: string | null;
 };
 
 type RawHalSensorReading = Partial<HalSensorReading> & {
@@ -125,6 +128,8 @@ function normalizeDevice(device: RawHalDevice): HalDevice {
     lastSeen: device.lastSeen || device.last_seen || undefined,
     zone: device.zone ?? undefined,
     calibration_offset: device.calibration_offset,
+    controlled_device_description:
+      device.controlled_device_description ?? undefined,
   };
 }
 
@@ -619,10 +624,14 @@ export const halApi = {
     return halPost('/discovery/manual', data);
   },
 
-  // PUT /api/hal/devices/:id — update device label and/or zone (VAL-DISC-050, VAL-DISC-052)
+  // PUT /api/hal/devices/:id — update device label, zone, and/or description (VAL-DISC-050, VAL-DISC-052, VAL-DISC-070)
   async updateDevice(
     id: string,
-    data: { label?: string; zone?: string },
+    data: {
+      label?: string;
+      zone?: string;
+      controlled_device_description?: string;
+    },
   ): Promise<HalDevice> {
     return halPut(`/devices/${id}`, data);
   },

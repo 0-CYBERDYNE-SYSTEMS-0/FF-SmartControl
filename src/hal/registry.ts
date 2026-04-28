@@ -18,12 +18,13 @@ export class HalRegistry {
     host?: string | null;
     label?: string | null;
     zone?: string | null;
+    controlled_device_description?: string | null; // VAL-DISC-070
   }): HalDevice {
     const id = data.id ?? genId(data.type);
     const now = new Date().toISOString();
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO hal_devices (id, type, protocol, host, label, zone, last_state, last_seen, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'unknown', NULL, ?, ?)
+      INSERT OR REPLACE INTO hal_devices (id, type, protocol, host, label, zone, controlled_device_description, last_state, last_seen, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'unknown', NULL, ?, ?)
     `);
     stmt.run(
       id,
@@ -32,6 +33,7 @@ export class HalRegistry {
       data.host ?? null,
       data.label ?? null,
       data.zone ?? null,
+      data.controlled_device_description ?? null,
       now,
       now,
     );
@@ -45,6 +47,7 @@ export class HalRegistry {
       label?: string | null;
       zone?: string | null;
       calibration_offset?: number | null;
+      controlled_device_description?: string | null; // VAL-DISC-070
     },
   ): HalDevice {
     const existing = this.get(id);
@@ -54,7 +57,7 @@ export class HalRegistry {
       .prepare(
         `
       UPDATE hal_devices
-      SET label = ?, zone = ?, calibration_offset = ?, updated_at = ?
+      SET label = ?, zone = ?, calibration_offset = ?, controlled_device_description = ?, updated_at = ?
       WHERE id = ?
     `,
       )
@@ -64,6 +67,9 @@ export class HalRegistry {
         data.calibration_offset !== undefined
           ? data.calibration_offset
           : existing.calibration_offset,
+        data.controlled_device_description !== undefined
+          ? data.controlled_device_description
+          : ((existing as any).controlled_device_description ?? null),
         now,
         id,
       );

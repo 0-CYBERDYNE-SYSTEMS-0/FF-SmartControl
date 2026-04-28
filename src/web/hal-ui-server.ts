@@ -152,7 +152,16 @@ export async function startHalUiServer(
       }
 
       if (apiPath === '/devices' && method === 'GET') {
-        sendJson(res, 200, halRegistry.list());
+        // Get all devices and merge in safe states (VAL-DISC-070, VAL-DISC-071)
+        const devices = halRegistry.list();
+        const { getAllDeviceSafeStates } = await import('../safety/estop.js');
+        const safeStates = getAllDeviceSafeStates();
+        const safeStateMap = new Map(safeStates.map((ss) => [ss.deviceId, ss]));
+        const devicesWithSafeStates = devices.map((device) => ({
+          ...device,
+          safe_state: safeStateMap.get(device.id)?.safeState ?? 'off',
+        }));
+        sendJson(res, 200, devicesWithSafeStates);
         return;
       }
 
@@ -175,7 +184,7 @@ export async function startHalUiServer(
               device_id: deviceId,
               state: action,
               reason: 'manual',
-              triggered_by: 'hal-ui',
+              triggered_by: 'manual_ui', // VAL-DISC-073: manual toggle logged correctly
             });
           } else {
             await halRegistry.control(deviceId, action);
@@ -183,7 +192,7 @@ export async function startHalUiServer(
               device_id: deviceId,
               state: action,
               reason: 'manual',
-              triggered_by: 'hal-ui',
+              triggered_by: 'manual_ui', // VAL-DISC-073: manual toggle logged correctly
             });
           }
           sendJson(res, 200, { ok: true });
@@ -1221,15 +1230,19 @@ export async function startHalUiServer(
         return;
       }
 
-      // PUT /api/hal/devices/:id — update device label and/or zone (VAL-DISC-050, VAL-DISC-052)
+      // PUT /api/hal/devices/:id — update device label, zone, and/or description (VAL-DISC-050, VAL-DISC-052, VAL-DISC-070)
       if (apiPath.match(/^\/devices\/([^/]+)$/) && method === 'PUT') {
         const deviceId = apiPath.split('/')[2];
         let body = '';
         for await (const chunk of req) body += chunk;
         const parsed = body ? JSON.parse(body) : {};
-        const { label, zone } = parsed;
+        const { label, zone, controlled_device_description } = parsed;
         try {
-          const dev = halRegistry.updateDevice(deviceId, { label, zone });
+          const dev = halRegistry.updateDevice(deviceId, {
+            label,
+            zone,
+            controlled_device_description,
+          });
           sendJson(res, 200, dev);
         } catch (err: any) {
           sendJson(res, 404, { error: err.message });

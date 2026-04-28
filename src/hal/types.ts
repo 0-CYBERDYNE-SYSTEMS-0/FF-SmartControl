@@ -37,7 +37,8 @@ export type RelayReason =
   | 'manual'
   | 'auto_rule'
   | 'agent_decision'
-  | 'emergency_stop';
+  | 'emergency_stop'
+  | 'shutdown';
 
 // Decision types
 export type DecisionType = 'turn_on' | 'turn_off' | 'adjust' | 'alert' | 'noop';
@@ -51,6 +52,7 @@ export interface HalDevice {
   label: string | null;
   zone: string | null;
   calibration_offset: number | null;
+  controlled_device_description: string | null; // VAL-DISC-070: what this relay controls
   last_state: DeviceState;
   last_value: number | null;
   last_seen: string | null;

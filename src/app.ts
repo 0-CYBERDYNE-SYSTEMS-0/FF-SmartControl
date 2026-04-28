@@ -483,6 +483,66 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
       clearInterval(halAlertTimer);
       halAlertTimer = null;
     }
+
+    // VAL-QA-SV-002: Apply safe states to all relays before shutdown (100ms delay between relays)
+    try {
+      const { halRegistry: halReg } = await import('./hal/registry.js');
+      const { getAllDeviceSafeStates } = await import('./safety/estop.js');
+      const { halRelays } = await import('./hal/relays.js');
+
+      const devices = halReg
+        .list()
+        .filter((d) => d.type === 'relay' || d.type === 'smart_plug');
+      const safeStates = getAllDeviceSafeStates();
+      const safeStateMap = new Map(safeStates.map((ss) => [ss.deviceId, ss]));
+
+      deps.logger.info?.(
+        { relayCount: devices.length },
+        'Shutdown: applying safe states to all relays',
+      );
+
+      for (const device of devices) {
+        const safeState = safeStateMap.get(device.id);
+        const targetState = safeState?.safeState ?? 'off';
+
+        if (targetState === 'no_change' || targetState === 'unknown') {
+          deps.logger.info?.(
+            { deviceId: device.id, safeState: targetState },
+            'Shutdown: skipping relay (no_change or unknown safe state)',
+          );
+          // Wait 100ms before next relay
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          continue;
+        }
+
+        const turnOn = targetState === 'on';
+        try {
+          await halReg.control(device.id, turnOn ? 'on' : 'off');
+          halRelays.log({
+            device_id: device.id,
+            state: turnOn ? 'on' : 'off',
+            reason: 'shutdown',
+            triggered_by: 'shutdown_handler',
+          });
+          deps.logger.info?.(
+            { deviceId: device.id, targetState },
+            'Shutdown: relay set to safe state',
+          );
+        } catch (err: any) {
+          deps.logger.warn?.(
+            { deviceId: device.id, error: err.message },
+            'Shutdown: failed to set relay safe state',
+          );
+          // VAL-SAFE-058: Log failure - UI warning handled separately via audit log
+        }
+
+        // Wait 100ms before next relay (VAL-DISC-072: 100ms between relays)
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    } catch (err) {
+      deps.logger.warn?.({ err }, 'Shutdown: error applying relay safe states');
+    }
+
     // Stop watchdog
     try {
       const { stopWatchdog } = await import('./safety/estop.js');
