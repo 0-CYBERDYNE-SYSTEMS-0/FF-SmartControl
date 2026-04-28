@@ -37,15 +37,17 @@ CREATE TABLE IF NOT EXISTS hal_relays (
 
 -- HAL Decision Log: agent reasoning + action audit trail
 CREATE TABLE IF NOT EXISTS hal_decision_log (
-  id          TEXT PRIMARY KEY,
-  device_id   TEXT REFERENCES hal_devices(id) ON DELETE SET NULL,
-  decision    TEXT NOT NULL,       -- 'turn_on' | 'turn_off' | 'adjust' | 'alert' | 'noop'
-  confidence  REAL,                -- 0.0–1.0
-  reasoning   TEXT,                -- free-text why
-  sensor_snapshot TEXT,            -- JSON snapshot of relevant sensor values at decision time
-  outcome     TEXT,                -- 'success' | 'failure' | 'pending'
-  decided_at  TEXT NOT NULL,
-  completed_at TEXT
+  id              TEXT PRIMARY KEY,
+  device_id       TEXT REFERENCES hal_devices(id) ON DELETE SET NULL,
+  decision        TEXT NOT NULL,       -- 'turn_on' | 'turn_off' | 'adjust' | 'alert' | 'noop'
+  confidence      REAL,                -- 0.0–1.0
+  reasoning       TEXT,                -- free-text why
+  sensor_snapshot TEXT,                -- JSON snapshot of relevant sensor values at decision time
+  outcome         TEXT,                -- 'success' | 'failure' | 'pending'
+  decided_at      TEXT NOT NULL,
+  completed_at    TEXT,
+  triggered_by    TEXT DEFAULT 'agent', -- 'agent' | 'manual_ui' | 'schedule' (VAL-AUTO-023)
+  pending_status  TEXT                  -- 'pending_review' | 'pending_veto' | 'vetoed' | 'approved' | null (VAL-AUTO-022, VAL-AUTO-051)
 );
 
 -- HAL Alert Rules: threshold-based alerting
@@ -134,4 +136,25 @@ CREATE TABLE IF NOT EXISTS hal_farm_loop_state (
   hang_warnings     INTEGER NOT NULL DEFAULT 0,  -- count of hang warnings issued
   safety_mode       INTEGER NOT NULL DEFAULT 0,  -- 1 = safety mode active due to hang
   updated_at        TEXT NOT NULL
+);
+
+-- Automation Mode: persistent automation mode (VAL-AUTO-001, VAL-AUTO-002, VAL-AUTO-003)
+CREATE TABLE IF NOT EXISTS hal_automation_mode (
+  id                TEXT PRIMARY KEY DEFAULT 'global',
+  mode              TEXT NOT NULL DEFAULT 'AUTONOMOUS',  -- 'OBSERVE_ONLY' | 'SUGGEST' | 'ASSISTED_CONTROL' | 'AUTONOMOUS'
+  updated_at        TEXT NOT NULL
+);
+
+-- Automation Pending Decisions: tracks ASSISTED_CONTROL veto window and SUGGEST pending decisions (VAL-AUTO-021, VAL-AUTO-022)
+CREATE TABLE IF NOT EXISTS hal_automation_pending (
+  id                TEXT PRIMARY KEY,
+  decision_id       TEXT NOT NULL,               -- references hal_decision_log.id
+  mode              TEXT NOT NULL,               -- 'SUGGEST' | 'ASSISTED_CONTROL'
+  veto_deadline     TEXT,                        -- ISO timestamp when veto window closes (for ASSISTED_CONTROL)
+  vetoed            INTEGER NOT NULL DEFAULT 0,   -- 1 = operator vetoed
+  vetoed_by         TEXT,                        -- operator ID if vetoed
+  approved          INTEGER NOT NULL DEFAULT 0,  -- 1 = operator approved explicitly
+  approved_by       TEXT,                        -- operator ID if approved
+  executed          INTEGER NOT NULL DEFAULT 0,   -- 1 = action was executed (auto or approved)
+  created_at        TEXT NOT NULL
 );

@@ -445,6 +445,157 @@ export async function startHalUiServer(
       }
 
       // ═══════════════════════════════════════════════════════════════════════
+      // AUTOMATION MODE API — four automation modes (VAL-AUTO-001 to VAL-AUTO-003)
+      // ═══════════════════════════════════════════════════════════════════════
+
+      // GET /api/hal/automation/mode — get current automation mode
+      if (apiPath === '/automation/mode' && method === 'GET') {
+        const { getAutomationMode, MODE_COLORS } =
+          await import('../automation/modes.js');
+        const mode = getAutomationMode();
+        sendJson(res, 200, {
+          mode,
+          color: MODE_COLORS[mode],
+        });
+        return;
+      }
+
+      // PUT /api/hal/automation/mode — set automation mode
+      if (apiPath === '/automation/mode' && method === 'PUT') {
+        const { setAutomationMode, VALID_MODES } =
+          await import('../automation/modes.js');
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+
+        const mode = parsed.mode;
+        if (!mode || !VALID_MODES.includes(mode)) {
+          sendJson(res, 400, {
+            error: `mode must be one of: ${VALID_MODES.join(', ')}`,
+          });
+          return;
+        }
+
+        setAutomationMode(mode, parsed.operatorId || 'system');
+        sendJson(res, 200, { mode, ok: true });
+        return;
+      }
+
+      // GET /api/hal/automation/pending — get all pending decisions (for ASSISTED and SUGGEST)
+      if (apiPath === '/automation/pending' && method === 'GET') {
+        const { getAllPendingDecisions, getPendingDecisionsWithTimer } =
+          await import('../automation/modes.js');
+
+        // Get the associated decision info for each pending entry
+        const db = getDb();
+        const pending = getAllPendingDecisions();
+        const pendingWithTimer = getPendingDecisionsWithTimer();
+
+        // Build a map of decision_id -> remaining seconds
+        const timerMap = new Map(
+          pendingWithTimer.map((p) => [p.decision_id, p.remainingSeconds]),
+        );
+
+        // Fetch the actual decision records
+        const enriched = pending.map((p) => {
+          const decision = db
+            .prepare('SELECT * FROM hal_decision_log WHERE id = ?')
+            .get(p.decision_id) as Record<string, unknown> | undefined;
+          return {
+            ...p,
+            remainingSeconds: timerMap.get(p.decision_id) ?? null,
+            decision: decision
+              ? {
+                  id: decision.id,
+                  device_id: decision.device_id,
+                  decision: decision.decision,
+                  confidence: decision.confidence,
+                  reasoning: decision.reasoning,
+                  sensor_snapshot: decision.sensor_snapshot,
+                  outcome: decision.outcome,
+                  decided_at: decision.decided_at,
+                  completed_at: decision.completed_at,
+                  triggered_by: decision.triggered_by,
+                  pending_status: decision.pending_status,
+                }
+              : null,
+          };
+        });
+
+        sendJson(res, 200, enriched);
+        return;
+      }
+
+      // POST /api/hal/automation/veto — veto a pending decision
+      if (apiPath === '/automation/veto' && method === 'POST') {
+        const { vetoDecision } = await import('../automation/modes.js');
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+
+        const decisionId = parsed.decisionId;
+        const operatorId = parsed.operatorId || 'operator';
+
+        if (!decisionId) {
+          sendJson(res, 400, { error: 'decisionId is required' });
+          return;
+        }
+
+        const result = vetoDecision(decisionId, operatorId);
+        if (!result.success) {
+          sendJson(res, 400, { error: result.error });
+          return;
+        }
+
+        sendJson(res, 200, { ok: true, vetoed: true });
+        return;
+      }
+
+      // POST /api/hal/automation/approve — approve a pending decision
+      if (apiPath === '/automation/approve' && method === 'POST') {
+        const { approveDecision, getPendingDecision } =
+          await import('../automation/modes.js');
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+
+        const decisionId = parsed.decisionId;
+        const operatorId = parsed.operatorId || 'operator';
+
+        if (!decisionId) {
+          sendJson(res, 400, { error: 'decisionId is required' });
+          return;
+        }
+
+        const result = approveDecision(decisionId, operatorId);
+        if (!result.success) {
+          sendJson(res, 400, { error: result.error });
+          return;
+        }
+
+        sendJson(res, 200, { ok: true, approved: true });
+        return;
+      }
+
+      // POST /api/hal/automation/trigger — manually trigger a decision cycle
+      if (apiPath === '/automation/trigger' && method === 'POST') {
+        const { runDecisionCycle } = await import('../agent/decision-loop.js');
+
+        // Run the decision cycle with manual trigger
+        const result = await runDecisionCycle({
+          trigger: 'manual',
+          message: undefined,
+        });
+
+        sendJson(res, 200, {
+          ok: true,
+          decisionId: result.decision,
+          reasoning: result.reasoning,
+        });
+        return;
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
       // SAFETY RULES API — CRUD for per-device safety rules
       // ═══════════════════════════════════════════════════════════════════════
 

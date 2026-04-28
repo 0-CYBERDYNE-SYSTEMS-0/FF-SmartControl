@@ -21,11 +21,12 @@ import { renderTerminalView } from './views/Terminal.js';
 import { renderSetupWizard } from './views/SetupWizard.js';
 import { renderSafety } from './views/Safety.js';
 import { renderCalibration } from './views/Calibration.js';
+import { renderSettings } from './views/Settings.js';
 
 import { halApi } from './api.js';
 import type { HalState } from './api.js';
 import { provisioningApi } from './api-provisioning.js';
-import { getStore, setStore, applyTheme } from './store.js';
+import { getStore, setStore, applyTheme, type HalStore } from './store.js';
 import type { ThemeName, ViewId, DashboardLayout } from './store.js';
 
 type AsyncViewRenderer = (container: HTMLElement) => Promise<void>;
@@ -40,6 +41,7 @@ const views: Record<ViewId, AsyncViewRenderer> = {
   system: renderDashboard,
   terminal: renderTerminalView,
   calibration: renderCalibration,
+  settings: renderSettings,
 };
 
 // Uptime tracking
@@ -78,12 +80,12 @@ async function init(): Promise<void> {
   const initialView = getInitialView();
   const store = getStore();
   applyTheme(store.theme);
-  
+
   // Set initial hash if not present
   if (!location.hash) {
     history.replaceState(null, '', `#${initialView}`);
   }
-  
+
   app.innerHTML = `
     <div class="app-layout" id="app-layout">
       ${renderSidebar(initialView, store.sidebarCollapsed)}
@@ -103,6 +105,8 @@ async function init(): Promise<void> {
     undefined,
     handleLayoutChange,
     handleSettingsClick,
+    handleModeChange,
+    handleManualTrigger,
   );
 
   // Init sidebar
@@ -137,9 +141,27 @@ function handleLayoutChange(layout: DashboardLayout): void {
   render();
 }
 
+function handleModeChange(mode: string): void {
+  showToast(`Automation mode: ${mode}`, 'info', 2000);
+  // Refresh data to get updated pending decisions
+  refreshHALData();
+}
+
+function handleManualTrigger(): void {
+  showToast('Decision cycle triggered manually', 'info', 2000);
+  // Refresh data after a short delay to see the new decision
+  setTimeout(() => refreshHALData(), 1000);
+}
+
 function handleSettingsClick(): void {
-  // For now, show a toast. Later this will navigate to settings view.
-  showToast('Settings panel coming soon', 'info', 2000);
+  // Navigate to settings view
+  const newHash = '#settings';
+  if (location.hash !== newHash) {
+    history.replaceState(null, '', newHash);
+  }
+  updateHeaderViewLabel('settings');
+  setStore({ activeView: 'settings' });
+  render();
 }
 
 async function handleViewChange(viewId: ViewId): Promise<void> {
@@ -166,6 +188,7 @@ function updateHeaderViewLabel(viewId: ViewId): void {
     system: 'System',
     terminal: 'Terminal',
     calibration: 'Calibration',
+    settings: 'Settings',
   };
   const labelEl = document.getElementById('header-view-label');
   if (labelEl) {
@@ -176,17 +199,30 @@ function updateHeaderViewLabel(viewId: ViewId): void {
 // Handle hash changes (browser back/forward, direct URL access)
 function handleHashChange(): void {
   const hash = location.hash.slice(1) || 'dashboard';
-  const validViews: ViewId[] = ['dashboard', 'devices', 'sensors', 'decisions', 'cameras', 'safety', 'system', 'terminal', 'calibration'];
-  const viewId = validViews.includes(hash as ViewId) ? hash as ViewId : 'dashboard';
-  
+  const validViews: ViewId[] = [
+    'dashboard',
+    'devices',
+    'sensors',
+    'decisions',
+    'cameras',
+    'safety',
+    'system',
+    'terminal',
+    'calibration',
+    'settings',
+  ];
+  const viewId = validViews.includes(hash as ViewId)
+    ? (hash as ViewId)
+    : 'dashboard';
+
   // Update sidebar active state
   document.querySelectorAll('.sidebar-item').forEach((item) => {
     item.classList.toggle('active', item.getAttribute('data-view') === viewId);
   });
-  
+
   // Update header view label
   updateHeaderViewLabel(viewId);
-  
+
   // Update store and re-render
   setStore({ activeView: viewId });
   render();
@@ -195,8 +231,19 @@ function handleHashChange(): void {
 // Get initial view from URL hash or default to dashboard
 function getInitialView(): ViewId {
   const hash = location.hash.slice(1) || 'dashboard';
-  const validViews: ViewId[] = ['dashboard', 'devices', 'sensors', 'decisions', 'cameras', 'safety', 'system', 'terminal', 'calibration'];
-  return validViews.includes(hash as ViewId) ? hash as ViewId : 'dashboard';
+  const validViews: ViewId[] = [
+    'dashboard',
+    'devices',
+    'sensors',
+    'decisions',
+    'cameras',
+    'safety',
+    'system',
+    'terminal',
+    'calibration',
+    'settings',
+  ];
+  return validViews.includes(hash as ViewId) ? (hash as ViewId) : 'dashboard';
 }
 
 async function render(): Promise<void> {
@@ -212,13 +259,23 @@ async function render(): Promise<void> {
 
 export async function refreshHALData(): Promise<void> {
   try {
-    const state: HalState = await halApi.getState();
+    const [halState, modeData, pendingData] = await Promise.all([
+      halApi.getState(),
+      halApi.getAutomationMode().catch(() => ({
+        mode: 'AUTONOMOUS',
+        color: { bg: '#F85149', text: '#F0F6FC', label: 'AUTO' },
+      })),
+      halApi.getAutomationPending().catch(() => []),
+    ]);
     setStore({
-      devices: state.devices,
-      sensors: state.sensorSnapshots,
-      cameras: state.devices.filter((device) => device.type === 'camera'),
-      decisions: state.recentDecisions,
-      decisionsToday: countTodayDecisions(state.recentDecisions),
+      devices: halState.devices,
+      sensors: halState.sensorSnapshots,
+      cameras: halState.devices.filter((device) => device.type === 'camera'),
+      decisions: halState.recentDecisions,
+      decisionsToday: countTodayDecisions(halState.recentDecisions),
+      automationMode: modeData.mode as HalStore['automationMode'],
+      automationModeColor: modeData.color,
+      pendingDecisions: pendingData as HalStore['pendingDecisions'],
     });
   } catch (err: any) {
     console.error('HAL data refresh failed:', err);

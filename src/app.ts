@@ -766,6 +766,10 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
               const { runDecisionCycle } =
                 await import('./agent/decision-loop.js');
               await runDecisionCycle({ trigger: 'heartbeat' });
+              // Process any expired veto windows (for ASSISTED_CONTROL mode)
+              const { processExpiredVetoWindows } =
+                await import('./automation/modes.js');
+              await processExpiredVetoWindows();
             }
             return;
           }
@@ -775,6 +779,10 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
             const { runDecisionCycle } =
               await import('./agent/decision-loop.js');
             await runDecisionCycle({ trigger: 'heartbeat' });
+            // Process any expired veto windows (for ASSISTED_CONTROL mode)
+            const { processExpiredVetoWindows } =
+              await import('./automation/modes.js');
+            await processExpiredVetoWindows();
           }
         } catch (err) {
           deps.logger.error?.({ err }, '[HAL] Periodic poll error');

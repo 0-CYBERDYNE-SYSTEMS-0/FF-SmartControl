@@ -691,4 +691,79 @@ export const halApi = {
     const encodedId = oldName ? encodeURIComponent(oldName) : '_none';
     return halPut(`/zones/${encodedId}`, { name: newName });
   },
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // Automation Mode API (VAL-AUTO-001 to VAL-AUTO-003)
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // GET /api/hal/automation/mode — get current automation mode
+  async getAutomationMode(): Promise<{
+    mode: string;
+    color: { bg: string; text: string; label: string };
+  }> {
+    return halGet('/automation/mode');
+  },
+
+  // PUT /api/hal/automation/mode — set automation mode
+  async setAutomationMode(
+    mode: string,
+    operatorId?: string,
+  ): Promise<{ mode: string; ok: boolean }> {
+    return halPut('/automation/mode', { mode, operatorId });
+  },
+
+  // GET /api/hal/automation/pending — get all pending decisions
+  async getAutomationPending(): Promise<
+    Array<{
+      id: string;
+      decision_id: string;
+      mode: string;
+      veto_deadline: string | null;
+      vetoed: boolean;
+      approved: boolean;
+      executed: boolean;
+      created_at: string;
+      remainingSeconds: number | null;
+      decision: {
+        id: string;
+        device_id: string | null;
+        decision: string;
+        confidence: number | null;
+        reasoning: string | null;
+        sensor_snapshot: string | null;
+        outcome: string | null;
+        decided_at: string;
+        completed_at: string | null;
+        triggered_by: string | null;
+        pending_status: string | null;
+      } | null;
+    }>
+  > {
+    return halGet('/automation/pending');
+  },
+
+  // POST /api/hal/automation/veto — veto a pending decision
+  async vetoDecision(
+    decisionId: string,
+    operatorId?: string,
+  ): Promise<{ ok: boolean; vetoed: boolean }> {
+    return halPost('/automation/veto', { decisionId, operatorId });
+  },
+
+  // POST /api/hal/automation/approve — approve a pending decision
+  async approveDecision(
+    decisionId: string,
+    operatorId?: string,
+  ): Promise<{ ok: boolean; approved: boolean }> {
+    return halPost('/automation/approve', { decisionId, operatorId });
+  },
+
+  // POST /api/hal/automation/trigger — manually trigger a decision cycle
+  async triggerDecisionCycle(): Promise<{
+    ok: boolean;
+    decisionId: string;
+    reasoning: string;
+  }> {
+    return halPost('/automation/trigger');
+  },
 };

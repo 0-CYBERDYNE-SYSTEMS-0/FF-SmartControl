@@ -27,7 +27,8 @@ export type ViewId =
   | 'system'
   | 'terminal'
   | 'safety'
-  | 'calibration';
+  | 'calibration'
+  | 'settings';
 export type DashboardLayout = 'calm' | 'operator' | 'diagnostic';
 
 export interface HalStore {
@@ -53,6 +54,33 @@ export interface HalStore {
   mqttStatus: 'connected' | 'disconnected';
   dbStatus: 'healthy' | 'error';
   autoMode: boolean;
+
+  // Automation mode (VAL-AUTO-001 to VAL-AUTO-003)
+  automationMode:
+    | 'OBSERVE_ONLY'
+    | 'SUGGEST'
+    | 'ASSISTED_CONTROL'
+    | 'AUTONOMOUS';
+  automationModeColor: { bg: string; text: string; label: string };
+  pendingDecisions: Array<{
+    id: string;
+    decision_id: string;
+    mode: string;
+    veto_deadline: string | null;
+    vetoed: boolean;
+    approved: boolean;
+    executed: boolean;
+    remainingSeconds: number | null;
+    decision: {
+      id: string;
+      device_id: string | null;
+      decision: string;
+      confidence: number | null;
+      reasoning: string | null;
+      triggered_by: string | null;
+      pending_status: string | null;
+    } | null;
+  }>;
 
   // Safety state
   safetyState: 'NORMAL' | 'WARNING' | 'EMERGENCY_STOP_ACTIVE';
@@ -82,6 +110,9 @@ let state: HalStore = {
   mqttStatus: 'connected',
   dbStatus: 'healthy',
   autoMode: true,
+  automationMode: 'AUTONOMOUS',
+  automationModeColor: { bg: '#F85149', text: '#F0F6FC', label: 'AUTO' },
+  pendingDecisions: [],
   safetyState: 'NORMAL',
   safetyActiveRulesCount: 0,
   safetyWarningDevicesCount: 0,

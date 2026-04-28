@@ -1,6 +1,6 @@
 import { callLLM } from './llm.js';
 
-export type TriggerType = 'message' | 'heartbeat' | 'scheduled_task';
+export type TriggerType = 'message' | 'heartbeat' | 'scheduled_task' | 'manual';
 
 interface DecisionCycleContext {
   trigger: TriggerType;
@@ -166,6 +166,10 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     }
   }
 
+  // Determine triggered_by based on trigger type (VAL-AUTO-023)
+  const triggeredBy: 'agent' | 'manual_ui' | 'schedule' =
+    ctx.trigger === 'manual' ? 'manual_ui' : 'agent';
+
   const decision = halDecisions.log({
     device_id: parsed.device_id || undefined,
     decision: parsed.decision || 'noop',
@@ -173,10 +177,64 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     reasoning: parsed.reasoning,
     sensor_snapshot: flatSensorSnapshot,
     outcome: 'pending',
+    triggered_by: triggeredBy,
   });
 
+  // Import automation mode handler
+  const { handleDecisionBasedOnMode, isObserveOnlyMode, isAutoExecute } =
+    await import('../automation/modes.js');
+
+  // Check if this is a no-action decision (no hardware action needed)
+  const isNoAction =
+    parsed.decision === 'noop' ||
+    parsed.decision === 'alert' ||
+    !parsed.device_id;
+
+  // In OBSERVE_ONLY mode: zero hardware actions, just log the decision
+  if (isObserveOnlyMode()) {
+    halDecisions.complete(decision.id, 'pending');
+    return {
+      decision: parsed.decision,
+      reasoning: `OBSERVE_ONLY: ${parsed.reasoning} — no action taken (observe mode)`,
+      toolCalls: [],
+    };
+  }
+
+  // For non-action decisions, just complete and return
+  if (isNoAction) {
+    halDecisions.complete(decision.id, 'pending');
+    return {
+      decision: parsed.decision,
+      reasoning: parsed.reasoning,
+      toolCalls: [],
+    };
+  }
+
+  // Determine what to do based on current automation mode
+  const modeResult = handleDecisionBasedOnMode(
+    decision.id,
+    parsed.decision,
+    parsed.device_id,
+  );
+
+  // OBSERVE_ONLY returns executed=false, handled above
+  // SUGGEST and ASSISTED: executed=false, pending created
+  if (!modeResult.executed) {
+    return {
+      decision: parsed.decision,
+      reasoning: modeResult.reason,
+      toolCalls: [],
+    };
+  }
+
+  // AUTONOMOUS mode: execute immediately (proceeds below)
+
   // Execute tool calls with mid-action violation checking (VAL-SAFE-004)
-  for (let stepIndex = 0; stepIndex < (parsed.tool_calls || []).length; stepIndex++) {
+  for (
+    let stepIndex = 0;
+    stepIndex < (parsed.tool_calls || []).length;
+    stepIndex++
+  ) {
     const tc = parsed.tool_calls[stepIndex];
     try {
       const { executeToolCall } = await import('./tool-executor.js');
@@ -194,13 +252,19 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
       await executeToolCall(tc, halRegistry);
 
       // For device control actions, check for mid-action violations after execution
-      if ((tc.tool === 'control_plug' || tc.tool === 'control_device') && tc.args.device_id) {
+      if (
+        (tc.tool === 'control_plug' || tc.tool === 'control_device') &&
+        tc.args.device_id
+      ) {
         const deviceId = tc.args.device_id;
         const action = tc.args.action;
 
         // Re-verify the action against current sensor state
-        const { captureSensorSnapshot, verifyAction: verifyToolAction, recordInterruption } =
-          await import('../safety/verifier.js');
+        const {
+          captureSensorSnapshot,
+          verifyAction: verifyToolAction,
+          recordInterruption,
+        } = await import('../safety/verifier.js');
 
         const freshSensorSnapshot = captureSensorSnapshot();
         const verifyResult = await verifyToolAction({
@@ -210,7 +274,7 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
             reasoning: 'mid-action verification',
             confidence: 1.0,
           },
-          triggeredBy: 'agent',
+          triggeredBy: triggeredBy,
           sensorSnapshot: freshSensorSnapshot,
         });
 
@@ -226,7 +290,11 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
           }
 
           // Record interruption and stop executing remaining steps
-          await recordInterruption(verifyResult.auditEntry.id, stepIndex + 1, stepIndex + 1);
+          await recordInterruption(
+            verifyResult.auditEntry.id,
+            stepIndex + 1,
+            stepIndex + 1,
+          );
 
           halDecisions.complete(decision.id, 'failure');
           return {
@@ -255,7 +323,7 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
           reasoning: parsed.reasoning,
           confidence: parsed.confidence,
         },
-        triggeredBy: 'agent',
+        triggeredBy,
         decisionId: decision.id,
         sensorSnapshot,
       });
@@ -288,7 +356,8 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
         // Capture fresh sensor snapshot and re-check safety rules
         const { captureSensorSnapshot } = await import('../safety/verifier.js');
         const freshSensorSnapshot = captureSensorSnapshot();
-        const { verifyAction: reVerify } = await import('../safety/verifier.js');
+        const { verifyAction: reVerify } =
+          await import('../safety/verifier.js');
 
         const reVerifyResult = await reVerify({
           action: {
@@ -297,7 +366,7 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
             reasoning: parsed.reasoning,
             confidence: parsed.confidence,
           },
-          triggeredBy: 'agent',
+          triggeredBy,
           decisionId: decision.id,
           sensorSnapshot: freshSensorSnapshot,
         });
@@ -310,7 +379,10 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
 
           // Revert to pre-action state
           if (preActionState !== null) {
-            await halRegistry.control(parsed.device_id, preActionState as 'on' | 'off');
+            await halRegistry.control(
+              parsed.device_id,
+              preActionState as 'on' | 'off',
+            );
           }
 
           // Record interruption in audit log
@@ -335,8 +407,13 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
           device_id: parsed.device_id,
           state: parsed.decision === 'turn_on' ? 'on' : 'off',
           reason: 'agent_decision',
-          triggered_by: 'agent',
+          triggered_by: triggeredBy,
         });
+
+        // Mark the pending decision as executed
+        const { markDecisionExecuted } = await import('../automation/modes.js');
+        markDecisionExecuted(decision.id, 'success');
+
         halDecisions.complete(decision.id, 'success');
       } catch (err) {
         halDecisions.complete(decision.id, 'failure');

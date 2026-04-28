@@ -78,6 +78,42 @@ export function renderHeader(theme: ThemeName): string {
         <div class="theme-picker-popover" id="theme-picker-popover">
           <div class="theme-picker-grid">${dots}</div>
         </div>
+        <div class="auto-mode-selector" id="auto-mode-selector">
+          <button class="auto-mode-btn" id="auto-mode-btn" aria-label="Automation mode" title="Automation mode">
+            <span class="auto-mode-badge" id="auto-mode-badge" style="background:${store.automationModeColor.bg};color:${store.automationModeColor.text}">${store.automationModeColor.label}</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="auto-mode-popover" id="auto-mode-popover">
+            <div class="auto-mode-header">Automation Mode</div>
+            <div class="auto-mode-list">
+              <button class="auto-mode-option" data-mode="OBSERVE_ONLY">
+                <span class="auto-mode-dot" style="background:#238636"></span>
+                <span class="auto-mode-name">OBSERVE</span>
+                <span class="auto-mode-desc">No actions, LLM sees data</span>
+              </button>
+              <button class="auto-mode-option" data-mode="SUGGEST">
+                <span class="auto-mode-dot" style="background:#388BFD"></span>
+                <span class="auto-mode-name">SUGGEST</span>
+                <span class="auto-mode-desc">Recommendations, no execution</span>
+              </button>
+              <button class="auto-mode-option" data-mode="ASSISTED_CONTROL">
+                <span class="auto-mode-dot" style="background:#D29922"></span>
+                <span class="auto-mode-name">ASSISTED</span>
+                <span class="auto-mode-desc">30s veto window</span>
+              </button>
+              <button class="auto-mode-option" data-mode="AUTONOMOUS">
+                <span class="auto-mode-dot" style="background:#F85149"></span>
+                <span class="auto-mode-name">AUTO</span>
+                <span class="auto-mode-desc">Executes immediately</span>
+              </button>
+            </div>
+            <div class="auto-mode-divider"></div>
+            <button class="auto-mode-trigger" id="auto-mode-trigger-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run Decision Now
+            </button>
+          </div>
+        </div>
       </div>
       <div class="hal-header-right">
         <button class="settings-btn" id="settings-btn" aria-label="Settings" title="Settings">
@@ -110,6 +146,8 @@ function getViewLabel(): string {
     safety: 'Safety',
     system: 'System',
     terminal: 'Terminal',
+    calibration: 'Calibration',
+    settings: 'Settings',
   };
   return labels[location.hash.slice(1) || 'dashboard'] || 'Overview';
 }
@@ -120,13 +158,17 @@ export function initHeader(
   onEstopChange?: (active: boolean) => void,
   onLayoutChange?: (layout: DashboardLayout) => void,
   onSettingsClick?: () => void,
+  onModeChange?: (mode: string) => void,
+  onManualTrigger?: () => void,
 ): void {
   injectHeaderStyles();
+  injectAutoModeStyles();
   startClock();
   setupThemeButtons(onThemeChange);
   setupEstopButton(onEstopChange);
   setupLayoutButtons(onLayoutChange);
   setupSettingsButton(onSettingsClick);
+  setupAutoModeSelector(onModeChange, onManualTrigger);
   refreshEstopStatus();
 }
 
@@ -326,6 +368,80 @@ function setupSettingsButton(onSettingsClick?: () => void): void {
   const btn = document.getElementById('settings-btn');
   btn?.addEventListener('click', () => {
     onSettingsClick?.();
+  });
+}
+
+function setupAutoModeSelector(
+  onModeChange?: (mode: string) => void,
+  onManualTrigger?: () => void,
+): void {
+  const selector = document.getElementById('auto-mode-selector');
+  const btn = document.getElementById('auto-mode-btn');
+  const popover = document.getElementById('auto-mode-popover');
+  const triggerBtn = document.getElementById('auto-mode-trigger-btn');
+
+  if (!selector || !btn || !popover) return;
+
+  // Toggle popover on click
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    popover.classList.toggle('open');
+  });
+
+  // Close on outside click
+  document.addEventListener('click', (e) => {
+    if (!selector.contains(e.target as Node)) {
+      popover.classList.remove('open');
+    }
+  });
+
+  // Mode selection
+  popover
+    .querySelectorAll<HTMLButtonElement>('.auto-mode-option')
+    .forEach((option) => {
+      option.addEventListener('click', async () => {
+        const mode = option.dataset.mode;
+        if (!mode) return;
+        try {
+          await halApi.setAutomationMode(mode);
+          // Update the badge
+          const badge = document.getElementById('auto-mode-badge');
+          const modeColors: Record<
+            string,
+            { bg: string; text: string; label: string }
+          > = {
+            OBSERVE_ONLY: { bg: '#238636', text: '#F0F6FC', label: 'OBSERVE' },
+            SUGGEST: { bg: '#388BFD', text: '#F0F6FC', label: 'SUGGEST' },
+            ASSISTED_CONTROL: {
+              bg: '#D29922',
+              text: '#0D1117',
+              label: 'ASSISTED',
+            },
+            AUTONOMOUS: { bg: '#F85149', text: '#F0F6FC', label: 'AUTO' },
+          };
+          const colors = modeColors[mode] || modeColors['AUTONOMOUS'];
+          if (badge) {
+            badge.style.background = colors.bg;
+            badge.style.color = colors.text;
+            badge.textContent = colors.label;
+          }
+          popover.classList.remove('open');
+          onModeChange?.(mode);
+        } catch (err: any) {
+          alert(`Failed to set automation mode: ${err.message}`);
+        }
+      });
+    });
+
+  // Manual trigger button
+  triggerBtn?.addEventListener('click', async () => {
+    try {
+      await halApi.triggerDecisionCycle();
+      popover.classList.remove('open');
+      onManualTrigger?.();
+    } catch (err: any) {
+      alert(`Failed to trigger decision: ${err.message}`);
+    }
   });
 }
 
@@ -715,6 +831,141 @@ function injectHeaderStyles(): void {
   }
   .hal-header-right {
     gap: var(--space-2);
+  }
+}
+`;
+  document.head.appendChild(style);
+}
+
+function injectAutoModeStyles(): void {
+  if (document.getElementById('hal-auto-mode-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'hal-auto-mode-styles';
+  style.textContent = `
+/* Automation Mode Selector */
+.auto-mode-selector {
+  position: relative;
+}
+.auto-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--text-secondary);
+}
+.auto-mode-btn:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-tertiary));
+}
+.auto-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.auto-mode-popover {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+  box-shadow: var(--shadow-card-lg);
+  z-index: 120;
+  min-width: 220px;
+}
+.auto-mode-popover.open {
+  display: block;
+}
+.auto-mode-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 8px 8px;
+}
+.auto-mode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.auto-mode-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background var(--transition-fast);
+}
+.auto-mode-option:hover {
+  background: var(--bg-tertiary);
+}
+.auto-mode-option.selected {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.auto-mode-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.auto-mode-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 56px;
+}
+.auto-mode-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex: 1;
+}
+.auto-mode-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: var(--space-2) 0;
+}
+.auto-mode-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.auto-mode-trigger:hover {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-tertiary));
+  border-color: var(--accent);
+}
+@media (max-width: 1023px) {
+  .auto-mode-selector {
+    display: none;
   }
 }
 `;
