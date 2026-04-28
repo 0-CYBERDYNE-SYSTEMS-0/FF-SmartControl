@@ -1,0 +1,30 @@
+# Pi-gen export-image configuration
+# Controls the output format and metadata of the generated image
+
+---
+# Image filename
+filename: farmpal-bookworm-arm64.img.xz
+
+# Image label
+imagename: FarmPal
+
+# Image description
+description: >
+  FarmPal Smart Farm Controller
+  Raspberry Pi OS Bookworm with FarmPal pre-installed
+  Version: ${FARMPAL_VERSION:-latest}
+
+# Compression (xz for best size reduction)
+compression: xz
+
+# Partition configuration
+# Root partition will be set to minimum size + some padding
+# Auto-resize script expands it to fill SD card on first boot
+rootfs_minimum_size: 2G
+
+# Enable SHA256 checksum
+enable_checksum: true
+checksum_type: sha256
+
+# Image properties
+image_type: ext4

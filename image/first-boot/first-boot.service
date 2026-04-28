@@ -1,0 +1,20 @@
+# systemd service to run first-boot scripts on initial Raspberry Pi boot
+# This service runs once on first boot and then disables itself
+
+[Unit]
+Description=FarmPal First Boot Setup
+After=local-fs.target
+Before=basic.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/bin/bash /opt/farmpal/image/first-boot/01-resize-partition.sh
+ExecStart=/bin/bash /opt/farmpal/image/first-boot/02-randomize-ssh-password.sh
+ExecStart=/bin/bash /opt/farmpal/image/first-boot/03-provisioning-check.sh
+ExecStart=/bin/bash /opt/farmpal/image/first-boot/04-farmpal-service.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

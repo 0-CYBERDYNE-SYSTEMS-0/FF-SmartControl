@@ -1,0 +1,26 @@
+# System packages for FarmPal image
+# These are installed during the pi-gen build
+
+# Core dependencies
+sqlite3
+libsqlite3-dev
+libsqlite3-3
+avahi-daemon
+avahi-discover
+libavahi-client-dev
+network-manager
+software-properties-common
+apt-transport-https
+ca-certificates
+curl
+gnupg
+
+# Hardware support
+pigpio
+python3-gpiozero
+i2c-tools
+1wire
+
+# Build essentials for native modules
+build-essential
+python3-dev

@@ -1,0 +1,28 @@
+# Pi-gen system configuration for FarmPal image
+# Stage 0: Base system configuration
+
+---
+global:
+  release: "bookworm"
+  arch: "arm64"
+  preserve_etc: true
+  apt_proxy: ""
+
+# Keyboard and locale (headless default)
+keyboard:
+  layout: "us"
+  variant: ""
+
+locale:
+  - "en_US.UTF-8 UTF-8"
+
+timezone:
+  value: "UTC"
+  # Will be set during first-boot provisioning
+
+# Disable automatic login (we handle this in first-boot)
+autologin: false
+
+# Enable serial console but headless operation
+enable_ssh: true
+ssh_pwauth: true
