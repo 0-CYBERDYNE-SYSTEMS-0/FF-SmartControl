@@ -49,6 +49,8 @@ export interface HalDevice {
   protocol: DeviceProtocol;
   host: string | null;
   label: string | null;
+  zone: string | null;
+  calibration_offset: number | null;
   last_state: DeviceState;
   last_value: number | null;
   last_seen: string | null;

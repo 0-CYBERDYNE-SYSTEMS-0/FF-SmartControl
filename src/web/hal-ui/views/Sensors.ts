@@ -2,10 +2,24 @@
 // Toggle any metric on/off to add/remove layers from the hero chart
 // Cards: area, line, bar, gauge, heatmap
 
-import { getStore, setStore, formatSensorValue, formatTimeValue, formatDateTimeValue } from '../store.js';
+import {
+  getStore,
+  setStore,
+  formatSensorValue,
+  formatTimeValue,
+  formatDateTimeValue,
+} from '../store.js';
 import { halApi, HalSensorReading, HalDecision } from '../api.js';
 
-type MetricKey = 'temperature' | 'humidity' | 'soil_moisture' | 'light' | 'co2' | 'water_level' | 'ph' | 'weight';
+type MetricKey =
+  | 'temperature'
+  | 'humidity'
+  | 'soil_moisture'
+  | 'light'
+  | 'co2'
+  | 'water_level'
+  | 'ph'
+  | 'weight';
 
 interface MetricConfig {
   key: MetricKey;
@@ -27,14 +41,86 @@ interface SeriesLayer {
 }
 
 const metrics: MetricConfig[] = [
-  { key: 'temperature', label: 'Temperature', shortLabel: 'Temp', fallbackUnit: '°C', color: '#F59E0B', description: 'Air / probe temperature', minAxis: 10, maxAxis: 40 },
-  { key: 'humidity', label: 'Humidity', shortLabel: 'RH', fallbackUnit: '%', color: '#38BDF8', description: 'Relative humidity', minAxis: 0, maxAxis: 100 },
-  { key: 'soil_moisture', label: 'Soil Moisture', shortLabel: 'Soil', fallbackUnit: '%', color: '#EF4444', description: 'Volumetric water content', minAxis: 0, maxAxis: 100 },
-  { key: 'co2', label: 'CO₂', shortLabel: 'CO₂', fallbackUnit: 'ppm', color: '#22C55E', description: 'Carbon dioxide', minAxis: 0, maxAxis: 2000 },
-  { key: 'light', label: 'Light', shortLabel: 'Light', fallbackUnit: 'lux', color: '#FACC15', description: 'PAR / illuminance', minAxis: 0, maxAxis: 100000 },
-  { key: 'water_level', label: 'Water Level', shortLabel: 'Water', fallbackUnit: '%', color: '#2563EB', description: 'Reservoir level', minAxis: 0, maxAxis: 100 },
-  { key: 'ph', label: 'pH', shortLabel: 'pH', fallbackUnit: '', color: '#A855F7', description: 'Acidity / alkalinity', minAxis: 0, maxAxis: 14 },
-  { key: 'weight', label: 'Weight', shortLabel: 'Weight', fallbackUnit: 'kg', color: '#94A3B8', description: 'Load cell', minAxis: 0, maxAxis: 100 },
+  {
+    key: 'temperature',
+    label: 'Temperature',
+    shortLabel: 'Temp',
+    fallbackUnit: '°C',
+    color: '#F59E0B',
+    description: 'Air / probe temperature',
+    minAxis: 10,
+    maxAxis: 40,
+  },
+  {
+    key: 'humidity',
+    label: 'Humidity',
+    shortLabel: 'RH',
+    fallbackUnit: '%',
+    color: '#38BDF8',
+    description: 'Relative humidity',
+    minAxis: 0,
+    maxAxis: 100,
+  },
+  {
+    key: 'soil_moisture',
+    label: 'Soil Moisture',
+    shortLabel: 'Soil',
+    fallbackUnit: '%',
+    color: '#EF4444',
+    description: 'Volumetric water content',
+    minAxis: 0,
+    maxAxis: 100,
+  },
+  {
+    key: 'co2',
+    label: 'CO₂',
+    shortLabel: 'CO₂',
+    fallbackUnit: 'ppm',
+    color: '#22C55E',
+    description: 'Carbon dioxide',
+    minAxis: 0,
+    maxAxis: 2000,
+  },
+  {
+    key: 'light',
+    label: 'Light',
+    shortLabel: 'Light',
+    fallbackUnit: 'lux',
+    color: '#FACC15',
+    description: 'PAR / illuminance',
+    minAxis: 0,
+    maxAxis: 100000,
+  },
+  {
+    key: 'water_level',
+    label: 'Water Level',
+    shortLabel: 'Water',
+    fallbackUnit: '%',
+    color: '#2563EB',
+    description: 'Reservoir level',
+    minAxis: 0,
+    maxAxis: 100,
+  },
+  {
+    key: 'ph',
+    label: 'pH',
+    shortLabel: 'pH',
+    fallbackUnit: '',
+    color: '#A855F7',
+    description: 'Acidity / alkalinity',
+    minAxis: 0,
+    maxAxis: 14,
+  },
+  {
+    key: 'weight',
+    label: 'Weight',
+    shortLabel: 'Weight',
+    fallbackUnit: 'kg',
+    color: '#94A3B8',
+    description: 'Load cell',
+    minAxis: 0,
+    maxAxis: 100,
+  },
 ];
 
 const viewState = {
@@ -57,8 +143,8 @@ const DECISION_COLORS: Record<string, string> = {
 
 export async function renderSensors(container: HTMLElement): Promise<void> {
   const store = getStore();
-  const sensors = store.devices.filter(d => d.type === 'sensor');
-  const validDeviceIds = new Set(['all', ...sensors.map(s => s.id)]);
+  const sensors = store.devices.filter((d) => d.type === 'sensor');
+  const validDeviceIds = new Set(['all', ...sensors.map((s) => s.id)]);
   if (!validDeviceIds.has(viewState.deviceId)) viewState.deviceId = 'all';
 
   container.innerHTML = `
@@ -71,12 +157,15 @@ export async function renderSensors(container: HTMLElement): Promise<void> {
         <div class="sensors-hero-controls">
           <select class="hal-input" id="sensor-device-select">
             <option value="all" ${viewState.deviceId === 'all' ? 'selected' : ''}>All Devices</option>
-            ${sensors.map(s => `<option value="${s.id}" ${viewState.deviceId === s.id ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
+            ${sensors.map((s) => `<option value="${s.id}" ${viewState.deviceId === s.id ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
           </select>
           <div class="time-range-group" role="group">
-            ${(['1H','6H','24H','7D','30D'] as const).map(r =>
-              `<button class="hal-range-btn ${r === viewState.range ? 'active' : ''}" data-range="${r}">${r}</button>`
-            ).join('')}
+            ${(['1H', '6H', '24H', '7D', '30D'] as const)
+              .map(
+                (r) =>
+                  `<button class="hal-range-btn ${r === viewState.range ? 'active' : ''}" data-range="${r}">${r}</button>`,
+              )
+              .join('')}
           </div>
           <button class="hal-range-btn" id="unit-toggle">${store.unitSystem === 'metric' ? '°C' : '°F'}</button>
           <button class="hal-range-btn" id="time-format-toggle">${store.timeFormat === '24h' ? '24H' : '12H'}</button>
@@ -86,9 +175,10 @@ export async function renderSensors(container: HTMLElement): Promise<void> {
       <div class="zone-bar" id="zone-bar"></div>
 
       <div class="metric-bar" id="metric-bar">
-        ${metrics.map(m => {
-          const active = viewState.activeMetrics.has(m.key);
-          return `
+        ${metrics
+          .map((m) => {
+            const active = viewState.activeMetrics.has(m.key);
+            return `
             <button
               class="metric-pill ${active ? 'active' : ''}"
               data-metric="${m.key}"
@@ -100,7 +190,8 @@ export async function renderSensors(container: HTMLElement): Promise<void> {
               <span class="pill-value" id="pill-${m.key}">--</span>
             </button>
           `;
-        }).join('')}
+          })
+          .join('')}
       </div>
 
       <div class="hero-chart-wrap">
@@ -142,20 +233,27 @@ export async function renderSensors(container: HTMLElement): Promise<void> {
 }
 
 function attachHandlers(sensors: ReturnType<typeof getStore>['devices']): void {
-  const deviceSelect = document.getElementById('sensor-device-select') as HTMLSelectElement | null;
+  const deviceSelect = document.getElementById(
+    'sensor-device-select',
+  ) as HTMLSelectElement | null;
   deviceSelect?.addEventListener('change', () => {
     viewState.deviceId = deviceSelect.value || 'all';
     void loadData(sensors);
   });
 
-  document.querySelectorAll<HTMLButtonElement>('.hal-range-btn[data-range]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.hal-range-btn[data-range]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      viewState.range = (btn.dataset.range as typeof viewState.range) || '24H';
-      void loadData(sensors);
+  document
+    .querySelectorAll<HTMLButtonElement>('.hal-range-btn[data-range]')
+    .forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document
+          .querySelectorAll('.hal-range-btn[data-range]')
+          .forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        viewState.range =
+          (btn.dataset.range as typeof viewState.range) || '24H';
+        void loadData(sensors);
+      });
     });
-  });
 
   const unitToggle = document.getElementById('unit-toggle');
   unitToggle?.addEventListener('click', () => {
@@ -175,62 +273,81 @@ function attachHandlers(sensors: ReturnType<typeof getStore>['devices']): void {
     void loadData(sensors);
   });
 
-  document.querySelectorAll<HTMLButtonElement>('.metric-pill').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const metric = btn.dataset.metric as MetricKey;
-      if (!viewState.availableMetrics.has(metric)) return;
-      if (viewState.activeMetrics.has(metric)) {
-        const activeAvailable = Array.from(viewState.activeMetrics).filter(key => viewState.availableMetrics.has(key));
-        // Keep at least one active metric so the hero chart never blanks due to toggles.
-        if (activeAvailable.length <= 1) return;
-        viewState.activeMetrics.delete(metric);
-      } else {
-        viewState.activeMetrics.add(metric);
-      }
-      syncMetricPills();
-      void loadData(sensors);
+  document
+    .querySelectorAll<HTMLButtonElement>('.metric-pill')
+    .forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const metric = btn.dataset.metric as MetricKey;
+        if (!viewState.availableMetrics.has(metric)) return;
+        if (viewState.activeMetrics.has(metric)) {
+          const activeAvailable = Array.from(viewState.activeMetrics).filter(
+            (key) => viewState.availableMetrics.has(key),
+          );
+          // Keep at least one active metric so the hero chart never blanks due to toggles.
+          if (activeAvailable.length <= 1) return;
+          viewState.activeMetrics.delete(metric);
+        } else {
+          viewState.activeMetrics.add(metric);
+        }
+        syncMetricPills();
+        void loadData(sensors);
+      });
     });
-  });
 }
 
-async function loadData(sensors: ReturnType<typeof getStore>['devices']): Promise<void> {
+async function loadData(
+  sensors: ReturnType<typeof getStore>['devices'],
+): Promise<void> {
   const sequence = ++loadSequence;
-  const selectedDevices = viewState.deviceId === 'all'
-    ? sensors
-    : sensors.filter(s => s.id === viewState.deviceId);
+  const selectedDevices =
+    viewState.deviceId === 'all'
+      ? sensors
+      : sensors.filter((s) => s.id === viewState.deviceId);
   const { from, to } = getRangeBounds(viewState.range);
   viewState.availableMetrics = getAvailableMetrics(selectedDevices);
   reconcileActiveMetrics();
   syncMetricPills();
-  const activeMetricConfigs = metrics.filter(m => viewState.activeMetrics.has(m.key));
+  const activeMetricConfigs = metrics.filter((m) =>
+    viewState.activeMetrics.has(m.key),
+  );
 
   const heroChart = document.getElementById('hero-chart');
-  if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
+  if (heroChart)
+    heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
 
   try {
     const layers: SeriesLayer[] = [];
     const [decisions] = await Promise.all([
       halApi.getDecisions(50).catch(() => [] as HalDecision[]),
-      ...selectedDevices.flatMap(device =>
-        activeMetricConfigs.map(async metric => {
-          const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
+      ...selectedDevices.flatMap((device) =>
+        activeMetricConfigs.map(async (metric) => {
+          const data = await halApi.getSensorHistory(
+            device.id,
+            metric.key,
+            from,
+            to,
+          );
           if (data.length > 0) {
             layers.push({
               deviceId: device.id,
               deviceName: device.name,
-              zoneName: resolveZoneName(device.id, device.name),
+              zoneName: resolveZoneName(
+                device.id,
+                device.name,
+                (device as any).zone,
+              ),
               metric,
               data,
             });
           }
-        })
+        }),
       ),
     ]);
 
     if (sequence !== loadSequence) return;
 
     // Derive zones from loaded layers and render zone toggles
-    const zones = [...new Set(layers.map(l => l.zoneName).filter(Boolean))];
+    const zones = [...new Set(layers.map((l) => l.zoneName).filter(Boolean))];
     renderZoneToggles(zones);
 
     // Only expose connected metrics, and always keep at least one active metric.
@@ -240,7 +357,7 @@ async function loadData(sensors: ReturnType<typeof getStore>['devices']): Promis
 
     // Filter layers to only the selected zone
     const zoneLayers = viewState.activeZone
-      ? layers.filter(l => l.zoneName === viewState.activeZone)
+      ? layers.filter((l) => l.zoneName === viewState.activeZone)
       : layers;
 
     viewState.decisions = decisions;
@@ -251,7 +368,8 @@ async function loadData(sensors: ReturnType<typeof getStore>['devices']): Promis
     renderVizCards(zoneLayers, decisions);
   } catch (err: any) {
     console.error('Sensor load failed:', err);
-    if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
+    if (heroChart)
+      heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
   }
 }
 
@@ -262,14 +380,20 @@ function renderZoneToggles(zones: string[]): void {
   const sortedZones = zones.slice().sort((a, b) => {
     if (a === 'Unzoned') return 1;
     if (b === 'Unzoned') return -1;
-    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    return a.localeCompare(b, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
   });
 
   if (sortedZones.length > 0) {
     if (!viewState.zoneSelectionInitialized) {
       viewState.activeZone = sortedZones[0]!;
       viewState.zoneSelectionInitialized = true;
-    } else if (viewState.activeZone && !sortedZones.includes(viewState.activeZone)) {
+    } else if (
+      viewState.activeZone &&
+      !sortedZones.includes(viewState.activeZone)
+    ) {
       viewState.activeZone = sortedZones[0]!;
     }
   } else {
@@ -283,59 +407,84 @@ function renderZoneToggles(zones: string[]): void {
   }
   container.innerHTML = [
     `<button class="zone-pill ${viewState.activeZone ? '' : 'active'}" data-zone="__all__">All Zones</button>`,
-    ...sortedZones.map(z => {
+    ...sortedZones.map((z) => {
       const isActive = z === viewState.activeZone;
       return `<button class="zone-pill ${isActive ? 'active' : ''}" data-zone="${escapeAttr(z)}">${escapeHtml(z)}</button>`;
     }),
   ].join('');
 
-  container.querySelectorAll('.zone-pill').forEach(btn => {
+  container.querySelectorAll('.zone-pill').forEach((btn) => {
     btn.addEventListener('click', () => {
       const zone = (btn as HTMLElement).dataset.zone;
       if (zone) {
         viewState.activeZone = zone === '__all__' ? '' : zone;
         viewState.zoneSelectionInitialized = true;
         // Update active visual state without full re-fetch
-        container.querySelectorAll('.zone-pill').forEach(pill => {
+        container.querySelectorAll('.zone-pill').forEach((pill) => {
           const pillZone = (pill as HTMLElement).dataset.zone || '';
           const normalized = pillZone === '__all__' ? '' : pillZone;
           pill.classList.toggle('active', normalized === viewState.activeZone);
         });
         // Re-render chart with current layers filtered to new zone
         const store = getStore();
-        const sensors = store.devices.filter(d => d.type === 'sensor');
+        const sensors = store.devices.filter((d) => d.type === 'sensor');
         void loadData(sensors);
       }
     });
   });
 }
 
-function getRangeBounds(range: typeof viewState.range): { from: string; to: string } {
+function getRangeBounds(range: typeof viewState.range): {
+  from: string;
+  to: string;
+} {
   const to = new Date();
   const from = new Date();
   switch (range) {
-    case '1H': from.setHours(from.getHours() - 1); break;
-    case '6H': from.setHours(from.getHours() - 6); break;
-    case '7D': from.setDate(from.getDate() - 7); break;
-    case '30D': from.setDate(from.getDate() - 30); break;
-    default: from.setDate(from.getDate() - 1); break;
+    case '1H':
+      from.setHours(from.getHours() - 1);
+      break;
+    case '6H':
+      from.setHours(from.getHours() - 6);
+      break;
+    case '7D':
+      from.setDate(from.getDate() - 7);
+      break;
+    case '30D':
+      from.setDate(from.getDate() - 30);
+      break;
+    default:
+      from.setDate(from.getDate() - 1);
+      break;
   }
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-function getAvailableMetrics(selectedDevices: ReturnType<typeof getStore>['devices']): Set<MetricKey> {
+function getAvailableMetrics(
+  selectedDevices: ReturnType<typeof getStore>['devices'],
+): Set<MetricKey> {
   const store = getStore();
   const available = new Set<MetricKey>();
   const zoneDevices = viewState.activeZone
-    ? selectedDevices.filter(device => resolveZoneName(device.id, device.name) === viewState.activeZone)
+    ? selectedDevices.filter(
+        (device) =>
+          resolveZoneName(device.id, device.name, (device as any).zone) ===
+          viewState.activeZone,
+      )
     : selectedDevices;
 
   for (const device of zoneDevices) {
-    const snapshot = store.sensors[device.id] as Record<string, HalSensorReading | undefined> | undefined;
+    const snapshot = store.sensors[device.id] as
+      | Record<string, HalSensorReading | undefined>
+      | undefined;
     if (!snapshot) continue;
     for (const metric of metrics) {
       const reading = snapshot[metric.key];
-      if (reading && typeof reading.value === 'number' && Number.isFinite(reading.value)) {
+      if (
+        reading &&
+        typeof reading.value === 'number' &&
+        Number.isFinite(reading.value)
+      ) {
         available.add(metric.key);
       }
     }
@@ -344,7 +493,14 @@ function getAvailableMetrics(selectedDevices: ReturnType<typeof getStore>['devic
   return available;
 }
 
-function resolveZoneName(deviceId: string, deviceName: string): string {
+function resolveZoneName(
+  deviceId: string,
+  deviceName: string,
+  zone?: string | null,
+): string {
+  // Zone from device registry takes precedence (VAL-DISC-051)
+  if (zone && zone.trim()) return zone.trim();
+  // Fallback: infer from device ID or name
   if (deviceId.startsWith('tent_a_')) return 'Tent A';
   if (deviceId.startsWith('tent_b_')) return 'Tent B';
   if (/tent\s*a/i.test(deviceName)) return 'Tent A';
@@ -361,28 +517,43 @@ function reconcileActiveMetrics(): void {
 
   if (viewState.activeMetrics.size > 0) return;
   const fallback =
-    (['temperature', 'humidity', 'co2'] as MetricKey[]).find(key => viewState.availableMetrics.has(key)) ??
-    Array.from(viewState.availableMetrics)[0];
+    (['temperature', 'humidity', 'co2'] as MetricKey[]).find((key) =>
+      viewState.availableMetrics.has(key),
+    ) ?? Array.from(viewState.availableMetrics)[0];
   if (fallback) viewState.activeMetrics.add(fallback);
 }
 
 function syncMetricPills(): void {
-  document.querySelectorAll<HTMLElement>('.metric-pill').forEach(pill => {
+  document.querySelectorAll<HTMLElement>('.metric-pill').forEach((pill) => {
     const key = pill.dataset.metric as MetricKey;
     const available = viewState.availableMetrics.has(key);
     pill.style.display = available ? '' : 'none';
-    pill.classList.toggle('active', available && viewState.activeMetrics.has(key));
-    pill.setAttribute('aria-pressed', available && viewState.activeMetrics.has(key) ? 'true' : 'false');
+    pill.classList.toggle(
+      'active',
+      available && viewState.activeMetrics.has(key),
+    );
+    pill.setAttribute(
+      'aria-pressed',
+      available && viewState.activeMetrics.has(key) ? 'true' : 'false',
+    );
   });
 }
 
 /* ─────────────── Hero Chart (Stacked Area) ─────────────── */
 
 function escapeAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-function renderHeroChart(layers: SeriesLayer[], _decisions: HalDecision[] = [], expectedSequence?: number): void {
+function renderHeroChart(
+  layers: SeriesLayer[],
+  _decisions: HalDecision[] = [],
+  expectedSequence?: number,
+): void {
   const container = document.getElementById('hero-chart');
   const legend = document.getElementById('hero-legend');
   if (!container) return;
@@ -400,29 +571,34 @@ function renderHeroChart(layers: SeriesLayer[], _decisions: HalDecision[] = [], 
   const store = getStore();
 
   // Build stacked layers for ChartKit
-  const stackedLayers = layers.map(l => {
+  const stackedLayers = layers.map((l) => {
     const cfg = l.metric;
     let axisMin = cfg.minAxis;
     let axisMax = cfg.maxAxis;
     if (cfg.key === 'temperature' && store.unitSystem === 'imperial') {
-      axisMin = (axisMin * 9 / 5) + 32;
-      axisMax = (axisMax * 9 / 5) + 32;
+      axisMin = (axisMin * 9) / 5 + 32;
+      axisMax = (axisMax * 9) / 5 + 32;
     }
     // Normalize values to 0-100 scale for stacking
     const vSpan = Math.max(1, axisMax - axisMin);
     return {
       label: `${escapeHtml(l.deviceName)} — ${cfg.label}`,
       color: cfg.color,
-      data: l.data.map(d => ({
+      data: l.data.map((d) => ({
         t: new Date(d.timestamp).getTime(),
-        v: ((formatSensorValue(d.value, cfg.key, store.unitSystem).value - axisMin) / vSpan) * 100,
+        v:
+          ((formatSensorValue(d.value, cfg.key, store.unitSystem).value -
+            axisMin) /
+            vSpan) *
+          100,
       })),
     };
   });
 
   // Use ChartKit stacked area — shade variation happens inside renderStackedAreaChart
-  void import('../components/ChartKit.js').then(m => {
-    if (expectedSequence !== undefined && expectedSequence !== loadSequence) return;
+  void import('../components/ChartKit.js').then((m) => {
+    if (expectedSequence !== undefined && expectedSequence !== loadSequence)
+      return;
     m.renderStackedAreaChart(stackedLayers, 'hero-chart', { showLegend: true });
   });
 
@@ -435,25 +611,31 @@ function renderHeroChart(layers: SeriesLayer[], _decisions: HalDecision[] = [], 
       list.push(l);
       colorGroups.set(l.metric.color, list);
     }
-    void import('../components/ChartKit.js').then(m => {
-      if (expectedSequence !== undefined && expectedSequence !== loadSequence) return;
+    void import('../components/ChartKit.js').then((m) => {
+      if (expectedSequence !== undefined && expectedSequence !== loadSequence)
+        return;
       const shades = new Map<string, string[]>();
       for (const [color, group] of colorGroups) {
         if (group.length > 1) {
           shades.set(color, m.generateDeviceShades(color, group.length));
         }
       }
-      legend.innerHTML = layers.map(l => {
-        const group = colorGroups.get(l.metric.color)!;
-        const idx = group.indexOf(l);
-        const shade = group.length > 1 ? shades.get(l.metric.color)![idx] : l.metric.color;
-        return `
+      legend.innerHTML = layers
+        .map((l) => {
+          const group = colorGroups.get(l.metric.color)!;
+          const idx = group.indexOf(l);
+          const shade =
+            group.length > 1
+              ? shades.get(l.metric.color)![idx]
+              : l.metric.color;
+          return `
           <span class="legend-item" style="--metric-color:${shade}">
             <span class="legend-dot"></span>
             ${escapeHtml(l.deviceName)} — ${escapeHtml(l.metric.label)}
           </span>
         `;
-      }).join('');
+        })
+        .join('');
     });
   }
 }
@@ -466,51 +648,68 @@ function renderDetailTable(layers: SeriesLayer[]): void {
   if (!tbody) return;
 
   const store = getStore();
-  const rows = layers.flatMap(layer =>
-    layer.data.slice(-15).map(reading => {
-      const converted = formatSensorValue(reading.value, layer.metric.key, store.unitSystem);
-      return {
-        time: reading.timestamp,
-        device: layer.deviceName,
-        metric: layer.metric.label,
-        value: formatValue(converted.value, converted.unit || layer.metric.fallbackUnit),
-        color: layer.metric.color,
-      };
-    })
-  ).sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+  const rows = layers
+    .flatMap((layer) =>
+      layer.data.slice(-15).map((reading) => {
+        const converted = formatSensorValue(
+          reading.value,
+          layer.metric.key,
+          store.unitSystem,
+        );
+        return {
+          time: reading.timestamp,
+          device: layer.deviceName,
+          metric: layer.metric.label,
+          value: formatValue(
+            converted.value,
+            converted.unit || layer.metric.fallbackUnit,
+          ),
+          color: layer.metric.color,
+        };
+      }),
+    )
+    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
   if (count) count.textContent = `${rows.length} readings`;
 
   if (rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="empty-cell">No data</td></tr>';
+    tbody.innerHTML =
+      '<tr><td colspan="4" class="empty-cell">No data</td></tr>';
     return;
   }
 
-  tbody.innerHTML = rows.map(r => `
+  tbody.innerHTML = rows
+    .map(
+      (r) => `
     <tr style="--metric-color:${r.color}">
       <td class="text-mono text-xs">${formatDateTimeValue(new Date(r.time), store.timeFormat)}</td>
       <td>${escapeHtml(r.device)}</td>
       <td><span class="history-dot"></span>${escapeHtml(r.metric)}</td>
       <td class="text-mono metric-value">${r.value}</td>
     </tr>
-  `).join('');
+  `,
+    )
+    .join('');
 }
 
 /* ─────────────── Pill live values ─────────────── */
 
 function updatePillValues(layers: SeriesLayer[]): void {
   const store = getStore();
-  metrics.forEach(m => {
+  metrics.forEach((m) => {
     const el = document.getElementById(`pill-${m.key}`);
     if (!el) return;
-    const layer = layers.find(l => l.metric.key === m.key);
+    const layer = layers.find((l) => l.metric.key === m.key);
     if (!layer || layer.data.length === 0) {
       el.textContent = '--';
       return;
     }
     const latest = layer.data[layer.data.length - 1];
     const converted = formatSensorValue(latest.value, m.key, store.unitSystem);
-    el.textContent = formatValue(converted.value, converted.unit || m.fallbackUnit);
+    el.textContent = formatValue(
+      converted.value,
+      converted.unit || m.fallbackUnit,
+    );
   });
 }
 
@@ -530,24 +729,34 @@ function renderHorizonStrips(allLayers: SeriesLayer[]): void {
     if (!byMetric.has(layer.metric.key)) byMetric.set(layer.metric.key, layer);
   }
 
-  const strips = Array.from(byMetric.values()).map(layer => {
-    const { data, metric } = layer;
-    if (data.length < 2) return '';
-    const converted = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
-    const latestLabel = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
-    const values = data.map(d => formatSensorValue(d.value, metric.key, store.unitSystem).value);
-    const vMin = Math.min(...values);
-    const vMax = Math.max(...values);
-    const vSpan = Math.max(0.001, vMax - vMin);
-    const w = 420, h = 52;
-    const step = (w - 4) / Math.max(values.length - 1, 1);
-    const pts = values.map((v, i) => {
-      const x = 2 + i * step;
-      const y = 2 + ((vMax - v) / vSpan) * (h - 4);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(' ');
-    const color = metric.color;
-    return `<div class="horizon-strip">
+  const strips = Array.from(byMetric.values())
+    .map((layer) => {
+      const { data, metric } = layer;
+      if (data.length < 2) return '';
+      const converted = formatSensorValue(
+        data[data.length - 1].value,
+        metric.key,
+        store.unitSystem,
+      );
+      const latestLabel = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
+      const values = data.map(
+        (d) => formatSensorValue(d.value, metric.key, store.unitSystem).value,
+      );
+      const vMin = Math.min(...values);
+      const vMax = Math.max(...values);
+      const vSpan = Math.max(0.001, vMax - vMin);
+      const w = 420,
+        h = 52;
+      const step = (w - 4) / Math.max(values.length - 1, 1);
+      const pts = values
+        .map((v, i) => {
+          const x = 2 + i * step;
+          const y = 2 + ((vMax - v) / vSpan) * (h - 4);
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        })
+        .join(' ');
+      const color = metric.color;
+      return `<div class="horizon-strip">
       <div class="horizon-strip-header">
         <span class="horizon-strip-label">${escapeHtml(metric.shortLabel)}</span>
         <span class="horizon-strip-value text-mono" style="color:${color}">${latestLabel}</span>
@@ -558,14 +767,18 @@ function renderHorizonStrips(allLayers: SeriesLayer[]): void {
         <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
       </svg>
     </div>`;
-  }).filter(Boolean);
+    })
+    .filter(Boolean);
 
   container.innerHTML = strips.join('');
 }
 
 /* ─────────────── Viz Cards ─────────────── */
 
-function renderVizCards(allLayers: SeriesLayer[], decisions: HalDecision[] = []): void {
+function renderVizCards(
+  allLayers: SeriesLayer[],
+  decisions: HalDecision[] = [],
+): void {
   const grid = document.getElementById('viz-grid');
   if (!grid) return;
   if (allLayers.length === 0) {
@@ -585,7 +798,8 @@ function renderVizCards(allLayers: SeriesLayer[], decisions: HalDecision[] = [])
 
   // 1. Area card — temperature
   const tempLayers = byMetric.get('temperature');
-  if (tempLayers) cards.push(renderAreaCard(tempLayers[0], 'Temperature Trend'));
+  if (tempLayers)
+    cards.push(renderAreaCard(tempLayers[0], 'Temperature Trend'));
 
   // 2. Line card — humidity
   const humLayers = byMetric.get('humidity');
@@ -608,12 +822,16 @@ function renderVizCards(allLayers: SeriesLayer[], decisions: HalDecision[] = [])
 function renderAreaCard(layer: SeriesLayer, title: string): string {
   const { data, metric } = layer;
   const store = getStore();
-  const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+  const latest = formatSensorValue(
+    data[data.length - 1].value,
+    metric.key,
+    store.unitSystem,
+  );
   const unit = latest.unit || metric.fallbackUnit;
   const id = `area-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
   // Schedule ChartKit render after DOM insertion
   setTimeout(() => {
-    void import('../components/ChartKit.js').then(m => {
+    void import('../components/ChartKit.js').then((m) => {
       m.renderAreaCard(data, metric.key, id, title);
     });
   }, 0);
@@ -629,11 +847,15 @@ function renderAreaCard(layer: SeriesLayer, title: string): string {
 function renderLineCard(layer: SeriesLayer, title: string): string {
   const { data, metric } = layer;
   const store = getStore();
-  const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+  const latest = formatSensorValue(
+    data[data.length - 1].value,
+    metric.key,
+    store.unitSystem,
+  );
   const unit = latest.unit || metric.fallbackUnit;
   const id = `line-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
   setTimeout(() => {
-    void import('../components/ChartKit.js').then(m => {
+    void import('../components/ChartKit.js').then((m) => {
       m.renderLineCard(data, metric.key, id, title);
     });
   }, 0);
@@ -649,11 +871,15 @@ function renderLineCard(layer: SeriesLayer, title: string): string {
 function renderBarCard(layer: SeriesLayer, title: string): string {
   const { data, metric } = layer;
   const store = getStore();
-  const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+  const latest = formatSensorValue(
+    data[data.length - 1].value,
+    metric.key,
+    store.unitSystem,
+  );
   const unit = latest.unit || metric.fallbackUnit;
   const id = `bar-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
   setTimeout(() => {
-    void import('../components/ChartKit.js').then(m => {
+    void import('../components/ChartKit.js').then((m) => {
       m.renderBarCard(data, metric.key, id, title);
     });
   }, 0);
@@ -669,10 +895,22 @@ function renderBarCard(layer: SeriesLayer, title: string): string {
 function renderGaugeCard(layer: SeriesLayer, title: string): string {
   const { data, metric } = layer;
   const store = getStore();
-  const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+  const latest = formatSensorValue(
+    data[data.length - 1].value,
+    metric.key,
+    store.unitSystem,
+  );
   const unit = latest.unit || metric.fallbackUnit;
-  const pct = Math.max(0, Math.min(1, (latest.value - metric.minAxis) / (metric.maxAxis - metric.minAxis)));
-  const r = 42, cx = 80, cy = 56;
+  const pct = Math.max(
+    0,
+    Math.min(
+      1,
+      (latest.value - metric.minAxis) / (metric.maxAxis - metric.minAxis),
+    ),
+  );
+  const r = 42,
+    cx = 80,
+    cy = 56;
   const circ = 2 * Math.PI * r;
   const dash = pct * circ;
   return `
@@ -689,7 +927,10 @@ function renderGaugeCard(layer: SeriesLayer, title: string): string {
     </div>`;
 }
 
-function renderQualityMatrix(layers: SeriesLayer[], decisions: HalDecision[]): string {
+function renderQualityMatrix(
+  layers: SeriesLayer[],
+  decisions: HalDecision[],
+): string {
   // Rows = devices, cols = active metrics. Color = data freshness/quality.
   const now = Date.now();
   const staleMs = 10 * 60 * 1000; // 10 min = stale
@@ -712,7 +953,10 @@ function renderQualityMatrix(layers: SeriesLayer[], decisions: HalDecision[]): s
   for (const l of layers) {
     if (l.data.length === 0) continue;
     const last = l.data[l.data.length - 1];
-    latestMap.set(`${l.deviceId}:${l.metric.key}`, new Date(last.timestamp).getTime());
+    latestMap.set(
+      `${l.deviceId}:${l.metric.key}`,
+      new Date(last.timestamp).getTime(),
+    );
   }
 
   const qualityColor = (ageMs: number | undefined): string => {
@@ -728,24 +972,32 @@ function renderQualityMatrix(layers: SeriesLayer[], decisions: HalDecision[]): s
     return mins < 1 ? 'just now' : `${mins}m ago`;
   };
 
-  const headerCols = metricKeys.map(k => {
-    const cfg = metrics.find(m => m.key === k);
-    return `<th class="qm-th">${escapeHtml(cfg?.shortLabel || k)}</th>`;
-  }).join('');
+  const headerCols = metricKeys
+    .map((k) => {
+      const cfg = metrics.find((m) => m.key === k);
+      return `<th class="qm-th">${escapeHtml(cfg?.shortLabel || k)}</th>`;
+    })
+    .join('');
 
-  const rows = deviceIds.map(deviceId => {
-    const name = deviceMap.get(deviceId) || deviceId;
-    const cells = metricKeys.map(metricKey => {
-      const ts = latestMap.get(`${deviceId}:${metricKey}`);
-      const ageMs = ts !== undefined ? now - ts : undefined;
-      const color = qualityColor(ageMs);
-      const label = qualityLabel(ageMs);
-      return `<td class="qm-cell" title="${escapeHtml(name)} · ${metricKey} · ${label}"><span class="qm-dot" style="background:${color}"></span></td>`;
-    }).join('');
-    return `<tr><td class="qm-device">${escapeHtml(name.length > 20 ? name.slice(0, 18) + '…' : name)}</td>${cells}</tr>`;
-  }).join('');
+  const rows = deviceIds
+    .map((deviceId) => {
+      const name = deviceMap.get(deviceId) || deviceId;
+      const cells = metricKeys
+        .map((metricKey) => {
+          const ts = latestMap.get(`${deviceId}:${metricKey}`);
+          const ageMs = ts !== undefined ? now - ts : undefined;
+          const color = qualityColor(ageMs);
+          const label = qualityLabel(ageMs);
+          return `<td class="qm-cell" title="${escapeHtml(name)} · ${metricKey} · ${label}"><span class="qm-dot" style="background:${color}"></span></td>`;
+        })
+        .join('');
+      return `<tr><td class="qm-device">${escapeHtml(name.length > 20 ? name.slice(0, 18) + '…' : name)}</td>${cells}</tr>`;
+    })
+    .join('');
 
-  const recentDecisionCount = decisions.filter(d => now - new Date(d.timestamp).getTime() < 3600000).length;
+  const recentDecisionCount = decisions.filter(
+    (d) => now - new Date(d.timestamp).getTime() < 3600000,
+  ).length;
 
   return `
     <div class="viz-card wide">

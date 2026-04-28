@@ -128,7 +128,7 @@ async function render(): Promise<void> {
   }
 }
 
-async function refreshHALData(): Promise<void> {
+export async function refreshHALData(): Promise<void> {
   try {
     const state: HalState = await halApi.getState();
     setStore({

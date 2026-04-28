@@ -4,17 +4,46 @@ import { getStore, setStore, formatSensorValue } from '../store.js';
 import { halApi, HalDevice } from '../api.js';
 import { createToggle, setToggleState } from '../components/Toggle.js';
 import { showToast } from '../components/Toast.js';
-import { renderBulletChart, type BulletMetric, injectChartKitStyles, renderTinyAreaChart, renderTinyBarChart, generateDeviceShades } from '../components/ChartKit.js';
+import { openDiscoveryWizard } from './DiscoveryWizard.js';
+import {
+  renderBulletChart,
+  type BulletMetric,
+  injectChartKitStyles,
+  renderTinyAreaChart,
+  renderTinyBarChart,
+  generateDeviceShades,
+} from '../components/ChartKit.js';
 
 export async function renderDevices(container: HTMLElement): Promise<void> {
   const store = getStore();
   injectDevicesStyles();
   injectChartKitStyles();
 
+  // Load zones for filter dropdown
+  let zones: Array<{ id: string; name: string }> = [];
+  try {
+    const allZones = await halApi.getZones();
+    zones = allZones.filter((z) => z.id && z.id !== '_none');
+  } catch {
+    /* ignore */
+  }
+
+  const zoneOptions = zones
+    .map(
+      (z) =>
+        `<option value="${escapeHtml(z.name)}">${escapeHtml(z.name)}</option>`,
+    )
+    .join('');
+
   container.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">Devices</h1>
-      <p class="page-subtitle">Manage farm hardware</p>
+      <div class="page-header-left">
+        <h1 class="page-title">Devices</h1>
+        <p class="page-subtitle">Manage farm hardware</p>
+      </div>
+      <button class="hal-btn-primary" id="dw-add-device-btn">
+        <span>+ Add Device</span>
+      </button>
     </div>
 
     <div class="devices-toolbar mb-4">
@@ -24,6 +53,10 @@ export async function renderDevices(container: HTMLElement): Promise<void> {
         <option value="relay">Relays</option>
         <option value="sensor">Sensors</option>
         <option value="camera">Cameras</option>
+      </select>
+      <select class="hal-input" id="device-zone-filter">
+        <option value="">All zones</option>
+        ${zoneOptions}
       </select>
       <select class="hal-input" id="device-status-filter">
         <option value="">All status</option>
@@ -42,7 +75,7 @@ export async function renderDevices(container: HTMLElement): Promise<void> {
 }
 
 function renderDeviceCharts(devices: HalDevice[]): void {
-  const sensors = devices.filter(d => d.type === 'sensor');
+  const sensors = devices.filter((d) => d.type === 'sensor');
   if (sensors.length === 0) return;
 
   const store = getStore();
@@ -73,13 +106,17 @@ function renderDeviceCharts(devices: HalDevice[]): void {
     if (snap.humidity?.value != null) values.push(snap.humidity.value);
 
     if (values.length === 0) {
-      container.innerHTML = '<span class="text-xs text-secondary">No data</span>';
+      container.innerHTML =
+        '<span class="text-xs text-secondary">No data</span>';
       continue;
     }
 
     // Generate a mini trend from the current value
     const base = values[0];
-    const trend = Array.from({ length: 15 }, (_, i) => base + Math.sin(i * 0.8) * (base * 0.05));
+    const trend = Array.from(
+      { length: 15 },
+      (_, i) => base + Math.sin(i * 0.8) * (base * 0.05),
+    );
 
     let color: string;
     if (snap.temperature?.value != null) {
@@ -97,65 +134,99 @@ function renderDeviceCards(devices: HalDevice[]): string {
   if (devices.length === 0) {
     return `<div class="empty-state col-span-3"><p class="empty-state-title">No devices registered</p><p class="empty-state-desc">Devices will appear here once discovered.</p></div>`;
   }
-  return devices.map(d => {
-    const state = d.online ? 'online' : 'offline';
-    const chartId = `dev-chart-${d.id}`;
-    return `
+  return devices
+    .map((d) => {
+      const state = d.online ? 'online' : 'offline';
+      const chartId = `dev-chart-${d.id}`;
+      const zone = (d as any).zone as string | undefined;
+      return `
       <div class="device-card hal-card" data-device-id="${d.id}" style="border-left: 3px solid ${state === 'online' ? 'var(--accent)' : 'var(--danger)'}">
         <div class="device-card-header">
           <div class="device-card-icon">${deviceIcon(d.type)}</div>
-          <div class="device-card-title">${escapeHtml(d.name)}</div>
+          <div class="device-card-title" id="dev-name-${d.id}">${escapeHtml(d.name)}</div>
           <span class="hal-badge hal-badge-slate">${d.protocol}</span>
+          <button class="device-rename-btn" data-device-id="${d.id}" title="Rename device">✏️</button>
         </div>
         <div class="device-card-meta">
           <span class="text-xs text-secondary">${d.type} · ${state}</span>
+          ${zone ? `<span class="device-zone-tag">${escapeHtml(zone)}</span>` : ''}
           ${d.lastSeen ? `<span class="text-xs text-mono text-secondary">${formatRelativeTime(d.lastSeen)}</span>` : ''}
         </div>
         ${d.type === 'sensor' ? `<div class="device-chart-wrap" id="${chartId}"></div>` : ''}
-        ${d.type === 'relay' ? `
+        ${
+          d.type === 'relay'
+            ? `
           <div class="device-card-control">
             <span class="text-xs text-secondary">Power</span>
             <div id="toggle-${d.id}" class="device-toggle"></div>
           </div>
-        ` : ''}
+        `
+            : ''
+        }
       </div>
     `;
-  }).join('');
+    })
+    .join('');
 }
 
 function attachDevicesHandlers(): void {
-  const filterInput = document.getElementById('device-filter') as HTMLInputElement | null;
-  const typeSelect = document.getElementById('device-type-filter') as HTMLSelectElement | null;
-  const statusSelect = document.getElementById('device-status-filter') as HTMLSelectElement | null;
+  const filterInput = document.getElementById(
+    'device-filter',
+  ) as HTMLInputElement | null;
+  const typeSelect = document.getElementById(
+    'device-type-filter',
+  ) as HTMLSelectElement | null;
+  const zoneSelect = document.getElementById(
+    'device-zone-filter',
+  ) as HTMLSelectElement | null;
+  const statusSelect = document.getElementById(
+    'device-status-filter',
+  ) as HTMLSelectElement | null;
+
+  // Add Device button
+  document
+    .getElementById('dw-add-device-btn')
+    ?.addEventListener('click', () => {
+      openDiscoveryWizard();
+    });
 
   function applyFilter(): void {
     const q = filterInput?.value.toLowerCase() || '';
     const type = typeSelect?.value || '';
+    const zone = zoneSelect?.value || '';
     const status = statusSelect?.value || '';
     const store = getStore();
-    const filtered = store.devices.filter(d => {
-      const matchQ = !q || d.name.toLowerCase().includes(q) || d.protocol.toLowerCase().includes(q);
+    const filtered = store.devices.filter((d) => {
+      const matchQ =
+        !q ||
+        d.name.toLowerCase().includes(q) ||
+        d.protocol.toLowerCase().includes(q);
       const matchType = !type || d.type === type;
-      const matchStatus = !status || (status === 'online' ? d.online : !d.online);
-      return matchQ && matchType && matchStatus;
+      const matchZone = !zone || (d as any).zone === zone;
+      const matchStatus =
+        !status || (status === 'online' ? d.online : !d.online);
+      return matchQ && matchType && matchZone && matchStatus;
     });
     const grid = document.getElementById('devices-grid');
     if (grid) grid.innerHTML = renderDeviceCards(filtered);
     attachToggleHandlers();
+    attachRenameHandlers();
     renderDeviceCharts(filtered);
   }
 
   filterInput?.addEventListener('input', applyFilter);
   typeSelect?.addEventListener('change', applyFilter);
+  zoneSelect?.addEventListener('change', applyFilter);
   statusSelect?.addEventListener('change', applyFilter);
 
   attachToggleHandlers();
+  attachRenameHandlers();
 }
 
 function attachToggleHandlers(): void {
   const store = getStore();
-  const relays = store.devices.filter(d => d.type === 'relay');
-  relays.forEach(relay => {
+  const relays = store.devices.filter((d) => d.type === 'relay');
+  relays.forEach((relay) => {
     const el = document.getElementById(`toggle-${relay.id}`);
     if (!el) return;
     const isOn = relay.state === 'on';
@@ -172,6 +243,111 @@ function attachToggleHandlers(): void {
   });
 }
 
+function attachRenameHandlers(): void {
+  document.querySelectorAll('.device-rename-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const deviceId = (btn as HTMLElement).dataset.deviceId;
+      if (!deviceId) return;
+      startInlineRename(deviceId);
+    });
+  });
+}
+
+async function startInlineRename(deviceId: string): Promise<void> {
+  const store = getStore();
+  const device = store.devices.find((d) => d.id === deviceId);
+  if (!device) return;
+
+  const nameEl = document.getElementById(`dev-name-${deviceId}`);
+  if (!nameEl) return;
+
+  const currentName = device.name;
+
+  // Load zones for zone dropdown
+  let zones: Array<{ id: string; name: string }> = [];
+  try {
+    const allZones = await halApi.getZones();
+    zones = allZones.filter((z) => z.id && z.id !== '_none');
+  } catch {
+    /* ignore */
+  }
+
+  const zoneOptions = zones
+    .map((z) => {
+      const selected = (device as any).zone === z.name ? 'selected' : '';
+      return `<option value="${escapeHtml(z.name)}" ${selected}>${escapeHtml(z.name)}</option>`;
+    })
+    .join('');
+
+  const currentZone = (device as any).zone || '';
+
+  nameEl.innerHTML = `
+    <div class="inline-rename-form">
+      <input class="dw-input inline-rename-input" type="text" id="rename-input-${deviceId}"
+        value="${escapeHtml(currentName)}" maxlength="64" placeholder="Device name">
+      <select class="dw-select inline-rename-zone" id="rename-zone-${deviceId}">
+        <option value="">No Zone</option>
+        ${zoneOptions}
+      </select>
+      <button class="inline-rename-save" id="rename-save-${deviceId}">Save</button>
+      <button class="inline-rename-cancel" id="rename-cancel-${deviceId}">Cancel</button>
+    </div>
+  `;
+
+  const inputEl = document.getElementById(
+    `rename-input-${deviceId}`,
+  ) as HTMLInputElement | null;
+  inputEl?.focus();
+  inputEl?.select();
+
+  document
+    .getElementById(`rename-save-${deviceId}`)
+    ?.addEventListener('click', async () => {
+      const newName = inputEl?.value.trim() || currentName;
+      const newZone =
+        (
+          document.getElementById(
+            `rename-zone-${deviceId}`,
+          ) as HTMLSelectElement | null
+        )?.value || '';
+      try {
+        await halApi.updateDevice(deviceId, {
+          label: newName,
+          zone: newZone || undefined,
+        });
+        showToast(`Device renamed to "${newName}"`, 'success');
+        // Refresh data
+        const { refreshHALData } = await import('../main.js');
+        refreshHALData();
+        // Re-render to show updated data
+        const container = document.getElementById('view-container');
+        if (container) {
+          const { renderDevices } = await import('./Devices.js');
+          renderDevices(container);
+        }
+      } catch (err: any) {
+        showToast(`Rename failed: ${err.message}`, 'danger');
+      }
+    });
+
+  document
+    .getElementById(`rename-cancel-${deviceId}`)
+    ?.addEventListener('click', () => {
+      nameEl.textContent = currentName;
+    });
+
+  inputEl?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      document
+        .getElementById(`rename-save-${deviceId}`)
+        ?.dispatchEvent(new Event('click'));
+    } else if (e.key === 'Escape') {
+      nameEl.textContent = currentName;
+    }
+  });
+}
+
 function formatRelativeTime(iso: string): string {
   try {
     const diff = Date.now() - new Date(iso).getTime();
@@ -179,20 +355,27 @@ function formatRelativeTime(iso: string): string {
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
     return `${Math.floor(diff / 86400000)}d ago`;
-  } catch { return '--'; }
+  } catch {
+    return '--';
+  }
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function deviceIcon(type: string): string {
   switch (type) {
-    case 'sensor': return 'SNS';
-    case 'camera': return 'CAM';
-    case 'relay':  return 'RLY';
-    case 'smart_plug': return 'PLG';
-    default:       return 'DEV';
+    case 'sensor':
+      return 'SNS';
+    case 'camera':
+      return 'CAM';
+    case 'relay':
+      return 'RLY';
+    case 'smart_plug':
+      return 'PLG';
+    default:
+      return 'DEV';
   }
 }
 
@@ -201,10 +384,32 @@ function injectDevicesStyles(): void {
   const style = document.createElement('style');
   style.id = 'hal-devices-styles';
   style.textContent = `
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+.page-header-left { flex: 1; }
+.hal-btn-primary {
+  background: var(--accent);
+  color: var(--text-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 var(--space-4);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 150ms;
+}
+.hal-btn-primary:hover { opacity: 0.85; }
 .devices-toolbar {
   display: flex;
   gap: var(--space-2);
   align-items: center;
+  flex-wrap: wrap;
 }
 .hal-input {
   background: var(--bg-tertiary);
@@ -227,7 +432,7 @@ function injectDevicesStyles(): void {
   margin-bottom: var(--space-2);
 }
 .device-card-icon { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: var(--radius-sm); padding: 3px 6px; }
-.device-card-title { flex: 1; font-size: 14px; font-weight: 600; }
+.device-card-title { flex: 1; font-size: 14px; font-weight: 600; min-width: 0; }
 .hal-badge {
   font-size: 10px;
   font-weight: 600;
@@ -246,7 +451,28 @@ function injectDevicesStyles(): void {
   justify-content: space-between;
   align-items: center;
   margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+  gap: var(--space-1);
 }
+.device-zone-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-pill);
+}
+.device-rename-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  opacity: 0.5;
+  transition: opacity 150ms;
+  flex-shrink: 0;
+}
+.device-rename-btn:hover { opacity: 1; }
 .device-card-control {
   display: flex;
   align-items: center;
@@ -266,6 +492,37 @@ function injectDevicesStyles(): void {
   width: 100%;
   height: 40px;
 }
+.inline-rename-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+}
+.inline-rename-input,
+.inline-rename-zone {
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  height: 30px;
+  padding: 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.inline-rename-save,
+.inline-rename-cancel {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 26px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+.inline-rename-save:hover { border-color: var(--accent); color: var(--accent); }
+.inline-rename-cancel:hover { border-color: var(--danger); color: var(--danger); }
 `;
   document.head.appendChild(style);
 }

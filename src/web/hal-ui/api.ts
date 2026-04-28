@@ -49,6 +49,8 @@ export interface HalDevice {
   state?: 'on' | 'off' | 'unknown';
   online: boolean;
   lastSeen?: string;
+  zone?: string | null; // VAL-DISC-050
+  calibration_offset?: number;
 }
 
 export interface HalSensorReading {
@@ -91,6 +93,8 @@ type RawHalDevice = Partial<HalDevice> & {
   label?: string;
   last_state?: string | null;
   last_seen?: string | null;
+  zone?: string | null;
+  calibration_offset?: number;
 };
 
 type RawHalSensorReading = Partial<HalSensorReading> & {
@@ -119,6 +123,8 @@ function normalizeDevice(device: RawHalDevice): HalDevice {
     online:
       typeof device.online === 'boolean' ? device.online : state !== 'unknown',
     lastSeen: device.lastSeen || device.last_seen || undefined,
+    zone: device.zone ?? undefined,
+    calibration_offset: device.calibration_offset,
   };
 }
 
@@ -496,5 +502,151 @@ export const halApi = {
     rulesPerDevice: Array<{ deviceId: string; ruleCount: number }>;
   }> {
     return halGet('/safety/summary');
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // Discovery API (VAL-DISC-001 to VAL-DISC-052)
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // GET /api/hal/discovery/gpio/status — check pigpiod availability (VAL-DISC-010)
+  async getGpioStatus(): Promise<{ available: boolean; error: string }> {
+    return halGet('/discovery/gpio/status');
+  },
+
+  // GET /api/hal/discovery/gpio/pins — get BCM pin status (VAL-DISC-011)
+  async getGpioPins(): Promise<{
+    pins: Array<{ bcm: number; state: string }>;
+  }> {
+    return halGet('/discovery/gpio/pins');
+  },
+
+  // POST /api/hal/discovery/gpio/register — register a GPIO device (VAL-DISC-012)
+  async registerGpioDevice(data: {
+    bcmPin: number;
+    label?: string;
+    zone?: string;
+  }): Promise<HalDevice> {
+    return halPost('/discovery/gpio/register', data);
+  },
+
+  // GET /api/hal/discovery/mqtt/devices — MQTT auto-discovery (VAL-DISC-020, VAL-DISC-021)
+  async getMqttDevices(): Promise<{
+    devices: unknown[];
+    note: string;
+    topics: string[];
+  }> {
+    return halGet('/discovery/mqtt/devices');
+  },
+
+  // POST /api/hal/discovery/mqtt/register — register MQTT device (VAL-DISC-022)
+  async registerMqttDevice(data: {
+    topic: string;
+    label?: string;
+    type?: string;
+    zone?: string;
+  }): Promise<HalDevice> {
+    return halPost('/discovery/mqtt/register', data);
+  },
+
+  // GET /api/hal/discovery/http/scan — scan subnet for HTTP devices (VAL-DISC-003, VAL-DISC-005)
+  async scanHttpDevices(params: {
+    subnet?: string;
+    protocol?: string;
+  }): Promise<{
+    devices: Array<{
+      host: string;
+      protocol: string;
+      type: string;
+      label: string;
+      online: boolean;
+    }>;
+    scanned: number;
+    timeout: number;
+  }> {
+    return halGet('/discovery/http/scan', params);
+  },
+
+  // POST /api/hal/discovery/http/register — register HTTP device (VAL-DISC-007)
+  async registerHttpDevice(data: {
+    host: string;
+    protocol: string;
+    type?: string;
+    label?: string;
+    zone?: string;
+  }): Promise<HalDevice> {
+    return halPost('/discovery/http/register', data);
+  },
+
+  // GET /api/hal/discovery/serial/ports — enumerate serial ports (VAL-DISC-030)
+  async getSerialPorts(): Promise<{
+    ports: Array<{ path: string; description: string }>;
+  }> {
+    return halGet('/discovery/serial/ports');
+  },
+
+  // POST /api/hal/discovery/serial/probe — probe a serial port (VAL-DISC-031, VAL-DISC-032)
+  async probeSerialPort(port: string): Promise<{
+    port: string;
+    detected: boolean;
+    type: string;
+    protocol: string;
+    label: string;
+    channels?: string[];
+    note?: string;
+  }> {
+    return halPost('/discovery/serial/probe', { port });
+  },
+
+  // POST /api/hal/discovery/serial/register — register serial device (VAL-DISC-032)
+  async registerSerialDevice(data: {
+    port: string;
+    type?: string;
+    label?: string;
+    zone?: string;
+  }): Promise<HalDevice> {
+    return halPost('/discovery/serial/register', data);
+  },
+
+  // POST /api/hal/discovery/manual — manually add device (VAL-DISC-040)
+  async manualAddDevice(data: {
+    host: string;
+    port?: string;
+    protocol: string;
+    type?: string;
+    label?: string;
+    zone?: string;
+  }): Promise<HalDevice> {
+    return halPost('/discovery/manual', data);
+  },
+
+  // PUT /api/hal/devices/:id — update device label and/or zone (VAL-DISC-050, VAL-DISC-052)
+  async updateDevice(
+    id: string,
+    data: { label?: string; zone?: string },
+  ): Promise<HalDevice> {
+    return halPut(`/devices/${id}`, data);
+  },
+
+  // DELETE /api/hal/devices/:id — remove device
+  async removeDevice(id: string): Promise<{ ok: boolean }> {
+    const res = await fetch(BASE + `/devices/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`Failed to remove device: ${res.status}`);
+    return { ok: true };
+  },
+
+  // GET /api/hal/zones — list all zones (VAL-DISC-050, VAL-DISC-051)
+  async getZones(): Promise<
+    Array<{ id: string; name: string; deviceCount: number }>
+  > {
+    return halGet('/zones');
+  },
+
+  // PUT /api/hal/zones/:id — rename a zone
+  async renameZone(
+    oldName: string,
+    newName: string,
+  ): Promise<{ ok: boolean; updated: number }> {
+    const encodedId = oldName ? encodeURIComponent(oldName) : '_none';
+    return halPut(`/zones/${encodedId}`, { name: newName });
   },
 };

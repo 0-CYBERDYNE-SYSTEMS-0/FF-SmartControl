@@ -33,6 +33,24 @@
     mod
   ));
 
+  // src/web/hal-ui/tokens.css
+  var init_tokens = __esm({
+    "src/web/hal-ui/tokens.css"() {
+    }
+  });
+
+  // src/web/hal-ui/reset.css
+  var init_reset = __esm({
+    "src/web/hal-ui/reset.css"() {
+    }
+  });
+
+  // src/web/hal-ui/themes.css
+  var init_themes = __esm({
+    "src/web/hal-ui/themes.css"() {
+    }
+  });
+
   // src/web/hal-ui/store.ts
   var store_exports = {};
   __export(store_exports, {
@@ -111,9 +129,17 @@
   }
   function formatTimeValue(date, format) {
     if (format === "12h") {
-      return date.toLocaleTimeString("en-US", { hour12: true, hour: "2-digit", minute: "2-digit" });
+      return date.toLocaleTimeString("en-US", {
+        hour12: true,
+        hour: "2-digit",
+        minute: "2-digit"
+      });
     }
-    return date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+    return date.toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit"
+    });
   }
   function formatDateTimeValue(date, format) {
     if (format === "12h") {
@@ -176,7 +202,11 @@
         halStatus: "online",
         mqttStatus: "connected",
         dbStatus: "healthy",
-        autoMode: true
+        autoMode: true,
+        safetyState: "NORMAL",
+        safetyActiveRulesCount: 0,
+        safetyWarningDevicesCount: 0,
+        safetyDeniedLast24h: 0
       };
       themeDefinitions = {
         emerald: {
@@ -319,6 +349,1703 @@
     }
   });
 
+  // src/web/hal-ui/components/Sidebar.ts
+  function renderSidebar(activeView, collapsed) {
+    const items = navItems.map(
+      (item) => `
+    <button
+      class="sidebar-item ${item.id === activeView ? "active" : ""}"
+      data-view="${item.id}"
+      title="${item.label}"
+    >
+      <span class="sidebar-icon">${item.icon}</span>
+      <span class="sidebar-label">${item.label}</span>
+    </button>
+  `
+    ).join("");
+    return `
+    <aside class="sidebar ${collapsed ? "collapsed" : ""}" id="hal-sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <img class="sidebar-logo-img" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
+          <span class="sidebar-brand sidebar-brand-long">FarmFriend_Smart_Control</span>
+          <span class="sidebar-brand sidebar-brand-short">FF_Smart_Control</span>
+        </div>
+        <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+          ${chevronIcon()}
+        </button>
+      </div>
+      <nav class="sidebar-nav" aria-label="Main navigation">
+        ${items}
+      </nav>
+    </aside>
+  `;
+  }
+  function initSidebar(onViewChange) {
+    injectSidebarStyles();
+    document.querySelectorAll(".sidebar-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        const viewId = item.dataset.view;
+        document.querySelectorAll(".sidebar-item").forEach((i) => i.classList.remove("active"));
+        item.classList.add("active");
+        const sidebar = document.getElementById("hal-sidebar");
+        sidebar?.classList.remove("open");
+        onViewChange(viewId);
+      });
+    });
+    const toggle = document.getElementById("sidebar-toggle");
+    toggle?.addEventListener("click", () => {
+      const sidebar = document.getElementById("hal-sidebar");
+      const collapsed = sidebar?.classList.toggle("collapsed");
+      setStore({ sidebarCollapsed: !!collapsed });
+    });
+    document.addEventListener("click", (e) => {
+      const sidebar = document.getElementById("hal-sidebar");
+      const mobileBtn = document.getElementById("mobile-menu-btn");
+      if (!sidebar || !mobileBtn) return;
+      if (window.innerWidth > 1279) return;
+      if (!sidebar.contains(e.target) && !mobileBtn.contains(e.target)) {
+        sidebar.classList.remove("open");
+      }
+    });
+  }
+  function overviewIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>`;
+  }
+  function devicesIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 6v6l4 2"/></svg>`;
+  }
+  function sensorsIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`;
+  }
+  function decisionsIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
+  }
+  function camerasIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
+  }
+  function safetyIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>`;
+  }
+  function systemIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
+  }
+  function terminalIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
+  }
+  function chevronIcon() {
+    return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
+  }
+  function injectSidebarStyles() {
+    if (document.getElementById("hal-sidebar-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-sidebar-styles";
+    style.textContent = `
+.sidebar {
+  width: 200px;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width var(--transition-base);
+  overflow: hidden;
+}
+.sidebar.collapsed {
+  width: 64px;
+}
+.sidebar-header {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow: hidden;
+}
+.sidebar-logo-img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.sidebar-brand {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  transition: opacity var(--transition-fast);
+}
+.sidebar-brand-short {
+  display: none;
+}
+.sidebar.collapsed .sidebar-brand {
+  opacity: 0;
+  width: 0;
+}
+@media (max-width: 1560px) {
+  .sidebar:not(.collapsed) .sidebar-brand-long {
+    display: none;
+  }
+  .sidebar:not(.collapsed) .sidebar-brand-short {
+    display: inline;
+  }
+}
+.sidebar-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.sidebar-toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.sidebar.collapsed .sidebar-toggle svg {
+  transform: rotate(180deg);
+}
+.sidebar-nav {
+  flex: 1;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  text-align: left;
+  white-space: nowrap;
+}
+.sidebar-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.sidebar-item.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-tertiary));
+  color: var(--accent);
+  border-left: 3px solid var(--accent);
+  margin-left: -3px;
+}
+.sidebar-item svg {
+  flex-shrink: 0;
+}
+.sidebar-label {
+  transition: opacity var(--transition-fast);
+}
+.sidebar.collapsed .sidebar-label {
+  opacity: 0;
+  width: 0;
+  display: none;
+}
+.sidebar.collapsed .sidebar-item {
+  justify-content: center;
+  padding: 10px;
+}
+.sidebar-footer {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sidebar-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+.sidebar-mode-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sidebar.collapsed .sidebar-mode-label {
+  display: none;
+}
+.sidebar.collapsed .sidebar-mode {
+  justify-content: center;
+}
+@media (max-width: 1279px) {
+  .sidebar {
+    width: min(86vw, 280px);
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 220;
+    transform: translateX(-100%);
+    transition: transform var(--transition-base);
+    box-shadow: var(--shadow-card-lg);
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar.collapsed {
+    width: min(86vw, 280px);
+  }
+  .sidebar.collapsed .sidebar-brand,
+  .sidebar.collapsed .sidebar-label,
+  .sidebar.collapsed .sidebar-mode-label {
+    display: block;
+    opacity: 1;
+    width: auto;
+  }
+  .sidebar:not(.collapsed) .sidebar-brand-long {
+    display: inline;
+  }
+  .sidebar:not(.collapsed) .sidebar-brand-short {
+    display: none;
+  }
+  .sidebar.collapsed .sidebar-item {
+    justify-content: flex-start;
+    padding: 10px var(--space-3);
+  }
+  .sidebar.collapsed .sidebar-toggle svg {
+    transform: none;
+  }
+}
+`;
+    document.head.appendChild(style);
+  }
+  var navItems;
+  var init_Sidebar = __esm({
+    "src/web/hal-ui/components/Sidebar.ts"() {
+      "use strict";
+      init_store();
+      navItems = [
+        { id: "dashboard", label: "Overview", icon: overviewIcon() },
+        { id: "devices", label: "Devices", icon: devicesIcon() },
+        { id: "sensors", label: "Sensors", icon: sensorsIcon() },
+        { id: "decisions", label: "Decisions", icon: decisionsIcon() },
+        { id: "cameras", label: "Cameras", icon: camerasIcon() },
+        { id: "safety", label: "Safety", icon: safetyIcon() },
+        { id: "system", label: "System", icon: systemIcon() },
+        { id: "terminal", label: "Terminal", icon: terminalIcon() }
+      ];
+    }
+  });
+
+  // src/web/hal-ui/api.ts
+  async function halGet(path, params) {
+    let url = BASE + path;
+    if (params) {
+      const qs = new URLSearchParams(params).toString();
+      url += "?" + qs;
+    }
+    const res = await fetch(url);
+    if (!res.ok)
+      throw new Error(`HAL API ${url} failed: ${res.status} ${res.statusText}`);
+    return res.json();
+  }
+  async function halPost(path, body) {
+    const res = await fetch(BASE + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : void 0
+    });
+    if (!res.ok)
+      throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
+    return res.json();
+  }
+  async function halPut(path, body) {
+    const res = await fetch(BASE + path, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : void 0
+    });
+    if (!res.ok)
+      throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
+    return res.json();
+  }
+  function normalizeDevice(device) {
+    const rawState = device.state ?? device.last_state ?? "unknown";
+    const state2 = rawState === "on" || rawState === "off" ? rawState : "unknown";
+    return {
+      id: device.id || "unknown",
+      name: device.name || device.label || device.id || "Unknown device",
+      type: device.type || "relay",
+      protocol: device.protocol || "unknown",
+      host: device.host,
+      state: state2,
+      online: typeof device.online === "boolean" ? device.online : state2 !== "unknown",
+      lastSeen: device.lastSeen || device.last_seen || void 0,
+      zone: device.zone ?? void 0,
+      calibration_offset: device.calibration_offset
+    };
+  }
+  function normalizeSensorReading(reading) {
+    if (!reading || typeof reading.value !== "number") return void 0;
+    return {
+      timestamp: reading.timestamp || reading.read_at || reading.stored_at || (/* @__PURE__ */ new Date()).toISOString(),
+      value: reading.value,
+      unit: reading.unit
+    };
+  }
+  function normalizeSensorSnapshots(snapshots) {
+    const normalized = {};
+    for (const [deviceId, snapshot] of Object.entries(snapshots || {})) {
+      normalized[deviceId] = {};
+      for (const [metric, reading] of Object.entries(snapshot)) {
+        if (reading && typeof reading === "object") {
+          const normalizedReading = normalizeSensorReading(
+            reading
+          );
+          if (normalizedReading) {
+            normalized[deviceId][metric] = normalizedReading;
+          }
+        }
+      }
+    }
+    return normalized;
+  }
+  function normalizeDecision(decision) {
+    const outcome = decision.outcome;
+    const status = decision.status || (outcome === "success" || outcome === "failure" ? outcome : "pending");
+    return {
+      id: decision.id || "unknown",
+      timestamp: decision.timestamp || decision.decided_at || decision.completed_at || (/* @__PURE__ */ new Date()).toISOString(),
+      trigger: decision.trigger || decision.device_id || "HAL",
+      decision: decision.reasoning || decision.decision || "No decision text",
+      confidence: Math.max(0, Math.min(1, Number(decision.confidence ?? 0))),
+      status,
+      outcome
+    };
+  }
+  function normalizeState(state2) {
+    return {
+      devices: (state2.devices || []).map(normalizeDevice),
+      sensorSnapshots: normalizeSensorSnapshots(state2.sensorSnapshots),
+      recentDecisions: (state2.recentDecisions || []).map(normalizeDecision)
+    };
+  }
+  var BASE, halApi;
+  var init_api = __esm({
+    "src/web/hal-ui/api.ts"() {
+      "use strict";
+      BASE = "/api/hal";
+      halApi = {
+        // GET /api/hal/state
+        async getState() {
+          return normalizeState(await halGet("/state"));
+        },
+        // GET /api/hal/devices
+        async getDevices() {
+          const devices = await halGet("/devices");
+          return devices.map(normalizeDevice);
+        },
+        // POST /api/hal/devices/:id/control
+        controlDevice(id, action) {
+          return halPost(`/devices/${id}/control`, { action });
+        },
+        // GET /api/hal/sensors/latest
+        async getSensorsLatest() {
+          const readings = await halGet("/sensors/latest");
+          return readings.map((reading) => ({
+            device: normalizeDevice(reading.device),
+            temperature: normalizeSensorReading(reading.temperature),
+            humidity: normalizeSensorReading(reading.humidity)
+          }));
+        },
+        // GET /api/hal/sensors/history
+        async getSensorHistory(device, metric, from, to) {
+          const readings = await halGet("/sensors/history", {
+            device,
+            metric,
+            ...from ? { from } : {},
+            ...to ? { to } : {}
+          });
+          return readings.map(normalizeSensorReading).filter((reading) => Boolean(reading));
+        },
+        // GET /api/hal/decisions
+        async getDecisions(limit = 20) {
+          const decisions = await halGet("/decisions", {
+            limit: String(limit)
+          });
+          return decisions.map(normalizeDecision);
+        },
+        // GET /api/hal/cameras
+        async getCameras() {
+          const cameras = await halGet("/cameras");
+          return cameras.map(normalizeDevice);
+        },
+        // POST /api/hal/cameras/:id/capture
+        captureCamera(id) {
+          return halPost(`/cameras/${id}/capture`);
+        },
+        // ══════════════════════════════════════════════════════════════════════════════
+        // E-Stop API
+        // ══════════════════════════════════════════════════════════════════════════════
+        // GET /api/hal/estop/status
+        async getEstopStatus() {
+          return halGet("/estop/status");
+        },
+        // POST /api/hal/estop — activate emergency stop
+        async activateEstop(reason, reasonText) {
+          return halPost("/estop", { reason: reason || "operator", reasonText });
+        },
+        // POST /api/hal/estop/clear — clear emergency stop (requires auth)
+        async clearEstop(operatorId) {
+          return halPost("/estop/clear", { operatorId });
+        },
+        // GET /api/hal/estop/safe-states
+        async getEstopSafeStates() {
+          return halGet("/estop/safe-states");
+        },
+        // PUT /api/hal/estop/safe-states/:deviceId
+        async setEstopSafeState(deviceId, safeState, safeValue) {
+          return halPut(`/estop/safe-states/${deviceId}`, { safeState, safeValue });
+        },
+        // GET /api/hal/farm-loop/status
+        async getFarmLoopStatus() {
+          return halGet("/farm-loop/status");
+        },
+        // ══════════════════════════════════════════════════════════════════════════════
+        // Safety Rules API
+        // ══════════════════════════════════════════════════════════════════════════════
+        // GET /api/hal/safety/rules — list all safety rules
+        async getSafetyRules() {
+          return halGet("/safety/rules");
+        },
+        // GET /api/hal/safety/rules/:id — get a specific rule
+        async getSafetyRule(id) {
+          return halGet(`/safety/rules/${id}`);
+        },
+        // POST /api/hal/safety/rules — create a new rule
+        async createSafetyRule(rule) {
+          return halPost("/safety/rules", rule);
+        },
+        // PUT /api/hal/safety/rules/:id — update a rule
+        async updateSafetyRule(id, updates) {
+          return halPut(`/safety/rules/${id}`, updates);
+        },
+        // DELETE /api/hal/safety/rules/:id — delete a rule
+        async deleteSafetyRule(id) {
+          const res = await fetch(BASE + `/safety/rules/${id}`, {
+            method: "DELETE"
+          });
+          if (!res.ok) throw new Error(`Failed to delete rule: ${res.status}`);
+          return { ok: true };
+        },
+        // GET /api/hal/safety/audit — get recent audit log entries
+        async getSafetyAudit(params) {
+          return halGet("/safety/audit", params);
+        },
+        // GET /api/hal/safety/state — get current safety state
+        async getSafetyState() {
+          return halGet("/safety/state");
+        },
+        // GET /api/hal/safety/summary — get safety dashboard summary
+        async getSafetySummary() {
+          return halGet("/safety/summary");
+        },
+        // ══════════════════════════════════════════════════════════════════════════════
+        // Discovery API (VAL-DISC-001 to VAL-DISC-052)
+        // ══════════════════════════════════════════════════════════════════════════════
+        // GET /api/hal/discovery/gpio/status — check pigpiod availability (VAL-DISC-010)
+        async getGpioStatus() {
+          return halGet("/discovery/gpio/status");
+        },
+        // GET /api/hal/discovery/gpio/pins — get BCM pin status (VAL-DISC-011)
+        async getGpioPins() {
+          return halGet("/discovery/gpio/pins");
+        },
+        // POST /api/hal/discovery/gpio/register — register a GPIO device (VAL-DISC-012)
+        async registerGpioDevice(data) {
+          return halPost("/discovery/gpio/register", data);
+        },
+        // GET /api/hal/discovery/mqtt/devices — MQTT auto-discovery (VAL-DISC-020, VAL-DISC-021)
+        async getMqttDevices() {
+          return halGet("/discovery/mqtt/devices");
+        },
+        // POST /api/hal/discovery/mqtt/register — register MQTT device (VAL-DISC-022)
+        async registerMqttDevice(data) {
+          return halPost("/discovery/mqtt/register", data);
+        },
+        // GET /api/hal/discovery/http/scan — scan subnet for HTTP devices (VAL-DISC-003, VAL-DISC-005)
+        async scanHttpDevices(params) {
+          return halGet("/discovery/http/scan", params);
+        },
+        // POST /api/hal/discovery/http/register — register HTTP device (VAL-DISC-007)
+        async registerHttpDevice(data) {
+          return halPost("/discovery/http/register", data);
+        },
+        // GET /api/hal/discovery/serial/ports — enumerate serial ports (VAL-DISC-030)
+        async getSerialPorts() {
+          return halGet("/discovery/serial/ports");
+        },
+        // POST /api/hal/discovery/serial/probe — probe a serial port (VAL-DISC-031, VAL-DISC-032)
+        async probeSerialPort(port) {
+          return halPost("/discovery/serial/probe", { port });
+        },
+        // POST /api/hal/discovery/serial/register — register serial device (VAL-DISC-032)
+        async registerSerialDevice(data) {
+          return halPost("/discovery/serial/register", data);
+        },
+        // POST /api/hal/discovery/manual — manually add device (VAL-DISC-040)
+        async manualAddDevice(data) {
+          return halPost("/discovery/manual", data);
+        },
+        // PUT /api/hal/devices/:id — update device label and/or zone (VAL-DISC-050, VAL-DISC-052)
+        async updateDevice(id, data) {
+          return halPut(`/devices/${id}`, data);
+        },
+        // DELETE /api/hal/devices/:id — remove device
+        async removeDevice(id) {
+          const res = await fetch(BASE + `/devices/${id}`, { method: "DELETE" });
+          if (!res.ok) throw new Error(`Failed to remove device: ${res.status}`);
+          return { ok: true };
+        },
+        // GET /api/hal/zones — list all zones (VAL-DISC-050, VAL-DISC-051)
+        async getZones() {
+          return halGet("/zones");
+        },
+        // PUT /api/hal/zones/:id — rename a zone
+        async renameZone(oldName, newName) {
+          const encodedId = oldName ? encodeURIComponent(oldName) : "_none";
+          return halPut(`/zones/${encodedId}`, { name: newName });
+        }
+      };
+    }
+  });
+
+  // src/web/hal-ui/components/Header.ts
+  function renderHeader(theme) {
+    const themes = Object.entries(themeDefinitions);
+    const dots = themes.map(
+      ([key, def]) => `
+    <button
+      class="theme-dot ${key === theme ? "active" : ""}"
+      data-theme="${key}"
+      aria-label="${def.label}"
+      title="${def.label}"
+      style="--dot-color:${def.accent}"
+    ></button>
+  `
+    ).join("");
+    const currentDef = themeDefinitions[theme];
+    return `
+    <header class="hal-header">
+      <div class="hal-header-left">
+        <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <div class="hal-header-brand" title="FarmFriend_Smart_Control">
+          <img class="hal-header-brand-logo" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
+          <span class="hal-header-brand-text hal-header-brand-text-long">FarmFriend_Smart_Control</span>
+          <span class="hal-header-brand-text hal-header-brand-text-short">FF_Smart_Control</span>
+        </div>
+        <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
+      </div>
+      <div class="hal-header-center">
+        <div class="safety-state-indicator" id="safety-state-indicator" title="Safety State">
+          <span class="safety-state-dot"></span>
+          <span class="safety-state-label" id="safety-state-label">NORMAL</span>
+        </div>
+        <button class="theme-picker-trigger" id="theme-picker-trigger" aria-label="Theme" style="--dot-color:${currentDef.accent}">
+          <span class="theme-picker-trigger-dot"></span>
+        </button>
+        <div class="theme-picker-popover" id="theme-picker-popover">
+          <div class="theme-picker-grid">${dots}</div>
+        </div>
+      </div>
+      <div class="hal-header-right">
+        <button class="estop-btn" id="estop-btn" aria-label="Emergency Stop" title="Emergency Stop">
+          <span class="estop-btn-inner">ESTOP</span>
+        </button>
+        <span class="hal-clock text-mono" id="hal-clock">--:--:--</span>
+      </div>
+    </header>
+    <div class="estop-banner" id="estop-banner" style="display:none;">
+      <span class="estop-banner-icon">\u26A0</span>
+      <span class="estop-banner-text">EMERGENCY STOP ACTIVE</span>
+      <span class="estop-banner-time" id="estop-banner-time"></span>
+    </div>
+  `;
+  }
+  function getViewLabel() {
+    const labels = {
+      dashboard: "Overview",
+      devices: "Devices",
+      sensors: "Sensors",
+      decisions: "Decisions",
+      cameras: "Cameras",
+      safety: "Safety",
+      system: "System",
+      terminal: "Terminal"
+    };
+    return labels[location.hash.slice(1) || "dashboard"] || "Overview";
+  }
+  function initHeader(theme, onThemeChange, onEstopChange) {
+    injectHeaderStyles();
+    startClock();
+    setupThemeButtons(onThemeChange);
+    setupEstopButton(onEstopChange);
+    refreshEstopStatus();
+  }
+  function refreshEstopStatus() {
+    if (estopRefreshInterval) clearInterval(estopRefreshInterval);
+    estopRefreshInterval = setInterval(async () => {
+      try {
+        const status = await halApi.getEstopStatus();
+        updateEstopUI(status.estop.active, status.estop.activatedAt);
+      } catch {
+      }
+      try {
+        const safetyState = await halApi.getSafetyState();
+        updateSafetyStateIndicator(safetyState.safetyState);
+      } catch {
+      }
+    }, 5e3);
+    halApi.getEstopStatus().then((status) => {
+      updateEstopUI(status.estop.active, status.estop.activatedAt);
+    }).catch(() => {
+    });
+    halApi.getSafetyState().then((safetyState) => {
+      updateSafetyStateIndicator(safetyState.safetyState);
+    }).catch(() => {
+    });
+  }
+  function updateSafetyStateIndicator(state2) {
+    const indicator = document.getElementById("safety-state-indicator");
+    const label = document.getElementById("safety-state-label");
+    if (!indicator || !label) return;
+    indicator.classList.remove("normal", "warning", "emergency");
+    switch (state2) {
+      case "NORMAL":
+        indicator.classList.add("normal");
+        label.textContent = "NORMAL";
+        break;
+      case "WARNING":
+        indicator.classList.add("warning");
+        label.textContent = "WARNING";
+        break;
+      case "EMERGENCY_STOP_ACTIVE":
+        indicator.classList.add("emergency");
+        label.textContent = "E-STOP";
+        break;
+      default:
+        label.textContent = state2;
+    }
+  }
+  function updateEstopUI(active, activatedAt) {
+    const banner = document.getElementById("estop-banner");
+    const btn = document.getElementById("estop-btn");
+    const bannerTime = document.getElementById("estop-banner-time");
+    if (active) {
+      btn?.classList.add("active");
+      if (banner) {
+        banner.style.display = "flex";
+        if (activatedAt && bannerTime) {
+          const date = new Date(activatedAt);
+          bannerTime.textContent = ` since ${date.toLocaleTimeString("en-US", { hour12: false })}`;
+        }
+      }
+    } else {
+      btn?.classList.remove("active");
+      if (banner) banner.style.display = "none";
+    }
+  }
+  async function setupEstopButton(onEstopChange) {
+    const btn = document.getElementById("estop-btn");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      try {
+        const status = await halApi.getEstopStatus();
+        if (status.estop.active) {
+          const operatorId = prompt("Enter operator ID to clear E-Stop:");
+          if (!operatorId) return;
+          try {
+            await halApi.clearEstop(operatorId);
+            updateEstopUI(false, null);
+            onEstopChange?.(false);
+          } catch (err) {
+            alert(`Failed to clear E-Stop: ${err.message}`);
+          }
+        } else {
+          if (!confirm(
+            "Activate EMERGENCY STOP? This will suspend all autonomous control and set all devices to safe states."
+          ))
+            return;
+          try {
+            const result = await halApi.activateEstop("operator");
+            if (result.success) {
+              updateEstopUI(true, (/* @__PURE__ */ new Date()).toISOString());
+              onEstopChange?.(true);
+              if (result.failures.length > 0) {
+                alert(
+                  `E-Stop activated with warnings:
+${result.failures.join("\n")}`
+                );
+              }
+            }
+          } catch (err) {
+            alert(`Failed to activate E-Stop: ${err.message}`);
+          }
+        }
+      } catch (err) {
+        alert(`E-Stop error: ${err.message}`);
+      }
+    });
+  }
+  function setupThemeButtons(onThemeChange) {
+    function activateTheme(key) {
+      document.querySelectorAll(".theme-dot").forEach((dot) => {
+        dot.classList.toggle("active", dot.dataset.theme === key);
+      });
+      onThemeChange(key);
+    }
+    document.querySelectorAll(".theme-dot").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.theme;
+        activateTheme(key);
+        document.getElementById("theme-picker-popover")?.classList.remove("open");
+      });
+    });
+    const themeTrigger = document.getElementById("theme-picker-trigger");
+    const themePopover = document.getElementById("theme-picker-popover");
+    themeTrigger?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      themePopover?.classList.toggle("open");
+    });
+    document.addEventListener("click", (e) => {
+      if (!themePopover?.contains(e.target) && e.target !== themeTrigger) {
+        themePopover?.classList.remove("open");
+      }
+    });
+    const mobileMenuBtn = document.getElementById("mobile-menu-btn");
+    mobileMenuBtn?.addEventListener("click", () => {
+      const sidebar = document.getElementById("hal-sidebar");
+      sidebar?.classList.toggle("open");
+    });
+  }
+  function startClock() {
+    function tick() {
+      const el = document.getElementById("hal-clock");
+      if (el) {
+        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
+          hour12: false
+        });
+      }
+    }
+    tick();
+    setInterval(tick, 1e3);
+  }
+  function injectHeaderStyles() {
+    if (document.getElementById("hal-header-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-header-styles";
+    style.textContent = `
+.hal-header {
+  height: var(--header-height);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--page-padding);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  flex-shrink: 0;
+}
+.hal-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex-shrink: 1;
+}
+.hal-header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 8px 2px 2px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-tertiary) 82%, transparent);
+}
+.hal-header-brand-logo {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.hal-header-brand-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  white-space: nowrap;
+}
+.hal-header-brand-text-short {
+  display: none;
+}
+.hal-header-view-label {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hal-header-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  gap: var(--space-4);
+}
+
+/* Safety State Indicator */
+.safety-state-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--bg-tertiary) 82%, transparent);
+  border: 1px solid var(--border);
+  cursor: default;
+  transition: all var(--transition-fast);
+}
+.safety-state-indicator.normal {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+.safety-state-indicator.warning {
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+}
+.safety-state-indicator.emergency {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  animation: safety-pulse 2s ease-in-out infinite;
+}
+.safety-state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.safety-state-indicator.normal .safety-state-dot {
+  background: var(--success);
+}
+.safety-state-indicator.warning .safety-state-dot {
+  background: var(--warning);
+}
+.safety-state-indicator.emergency .safety-state-dot {
+  background: var(--danger);
+  animation: safety-dot-pulse 1s ease-in-out infinite;
+}
+.safety-state-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+.safety-state-indicator.normal .safety-state-label {
+  color: var(--success);
+}
+.safety-state-indicator.warning .safety-state-label {
+  color: var(--warning);
+}
+.safety-state-indicator.emergency .safety-state-label {
+  color: var(--danger);
+}
+@keyframes safety-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+@keyframes safety-dot-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+}
+
+/* Desktop theme dots */
+.theme-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--dot-color);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.theme-dot:hover {
+  transform: scale(1.15);
+}
+.theme-dot.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--dot-color);
+}
+
+/* Single trigger theme picker */
+.theme-picker-trigger {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+}
+.theme-picker-trigger-dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--dot-color);
+}
+.theme-picker-popover {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-card-lg);
+  z-index: 110;
+  min-width: 200px;
+}
+.theme-picker-popover.open {
+  display: block;
+}
+.theme-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+}
+.theme-picker-grid .theme-dot {
+  width: 32px;
+  height: 32px;
+  justify-self: center;
+}
+
+.hal-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+.hal-clock {
+  font-size: 13px;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* E-Stop Button */
+.estop-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+.estop-btn:hover {
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
+  transform: scale(1.05);
+}
+.estop-btn:active {
+  transform: scale(0.95);
+}
+.estop-btn.active {
+  background: var(--danger);
+  animation: estop-pulse 1s ease-in-out infinite;
+}
+.estop-btn-inner {
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--danger);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+.estop-btn.active .estop-btn-inner {
+  color: var(--on-primary);
+}
+@keyframes estop-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(248, 81, 73, 0); }
+}
+
+/* E-Stop Banner */
+.estop-banner {
+  background: var(--danger);
+  color: var(--on-primary);
+  padding: var(--space-2) var(--page-padding);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.estop-banner-icon {
+  font-size: 16px;
+}
+.estop-banner-text {
+  color: var(--on-primary);
+}
+.estop-banner-time {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.8;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+@media (max-width: 1560px) {
+  .hal-header-brand-text-long {
+    display: none;
+  }
+  .hal-header-brand-text-short {
+    display: inline;
+  }
+}
+@media (max-width: 1279px) {
+  .hal-header-brand {
+    padding-right: 2px;
+  }
+  .hal-header-brand-text {
+    display: none;
+  }
+}
+@media (max-width: 767px) {
+  .hal-header { padding: 0 var(--space-3); }
+  .hal-clock { font-size: 11px; }
+}
+@media (max-width: 480px) {
+  .hal-header-view-label {
+    max-width: 90px;
+  }
+  .hal-header-right {
+    gap: var(--space-2);
+  }
+}
+`;
+    document.head.appendChild(style);
+  }
+  var estopRefreshInterval;
+  var init_Header = __esm({
+    "src/web/hal-ui/components/Header.ts"() {
+      "use strict";
+      init_store();
+      init_api();
+      estopRefreshInterval = null;
+    }
+  });
+
+  // src/web/hal-ui/components/Card.ts
+  function injectCardStyles() {
+    if (document.getElementById("hal-card-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-card-styles";
+    style.textContent = `
+.hal-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.hal-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-card-hover);
+}
+.hal-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.hal-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.hal-card-body {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+`;
+    document.head.appendChild(style);
+  }
+  var init_Card = __esm({
+    "src/web/hal-ui/components/Card.ts"() {
+      "use strict";
+    }
+  });
+
+  // src/web/hal-ui/components/Toggle.ts
+  function injectToggleStyles() {
+    if (document.getElementById("hal-toggle-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-toggle-styles";
+    style.textContent = `
+.hal-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  transition: background var(--transition-base);
+  flex-shrink: 0;
+  border: none;
+  padding: 0;
+}
+.hal-toggle.active {
+  background: var(--accent);
+}
+.hal-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--transition-base);
+  pointer-events: none;
+}
+.hal-toggle.active .hal-toggle-thumb {
+  transform: translateX(18px);
+}
+.hal-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+`;
+    document.head.appendChild(style);
+  }
+  function createToggle(id, initialState, onChange) {
+    const btn = document.createElement("button");
+    btn.className = "hal-toggle" + (initialState ? " active" : "");
+    btn.id = id;
+    btn.setAttribute("role", "switch");
+    btn.setAttribute("aria-checked", String(initialState));
+    btn.setAttribute("aria-label", "Toggle power state");
+    const thumb = document.createElement("span");
+    thumb.className = "hal-toggle-thumb";
+    btn.appendChild(thumb);
+    btn.addEventListener("click", () => {
+      const newState = !btn.classList.contains("active");
+      btn.classList.toggle("active", newState);
+      btn.setAttribute("aria-checked", String(newState));
+      onChange(newState);
+    });
+    return btn;
+  }
+  function setToggleState(el, on) {
+    el.classList.toggle("active", on);
+    el.setAttribute("aria-checked", String(on));
+  }
+  var init_Toggle = __esm({
+    "src/web/hal-ui/components/Toggle.ts"() {
+      "use strict";
+    }
+  });
+
+  // src/web/hal-ui/components/Modal.ts
+  function openModal(title, bodyContent, actions = "") {
+    closeModal();
+    const overlay = document.createElement("div");
+    overlay.id = "hal-modal-overlay";
+    overlay.className = "hal-modal-overlay";
+    const panel = document.createElement("div");
+    panel.className = "hal-modal-panel";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.innerHTML = `
+    <div class="hal-modal-header">
+      <h2 class="hal-modal-title">${escapeHtml(title)}</h2>
+      <button class="hal-modal-close" aria-label="Close modal">\xD7</button>
+    </div>
+    <div class="hal-modal-body">${bodyContent}</div>
+    ${actions ? `<div class="hal-modal-actions">${actions}</div>` : ""}
+  `;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    activeModal = overlay;
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeModal();
+    });
+    panel.querySelector(".hal-modal-close")?.addEventListener("click", closeModal);
+    document.addEventListener("keydown", handleEscape);
+  }
+  function closeModal() {
+    if (!activeModal) return;
+    activeModal.remove();
+    activeModal = null;
+    document.removeEventListener("keydown", handleEscape);
+  }
+  function handleEscape(e) {
+    if (e.key === "Escape") closeModal();
+  }
+  function escapeHtml(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function injectModalStyles() {
+    if (document.getElementById("hal-modal-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-modal-styles";
+    style.textContent = `
+.hal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  animation: hal-fade-in 150ms ease;
+}
+.hal-modal-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: hal-slide-up 150ms ease;
+}
+.hal-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.hal-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.hal-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.hal-modal-close:hover { color: var(--text-primary); }
+.hal-modal-body {
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.hal-modal-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  padding: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+@keyframes hal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes hal-slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+`;
+    document.head.appendChild(style);
+  }
+  var activeModal;
+  var init_Modal = __esm({
+    "src/web/hal-ui/components/Modal.ts"() {
+      "use strict";
+      activeModal = null;
+    }
+  });
+
+  // src/web/hal-ui/components/Toast.ts
+  function showToast(message, type = "info", duration = 4e3) {
+    const container = getOrCreateContainer();
+    const toast = document.createElement("div");
+    toast.className = `hal-toast hal-toast-${type}`;
+    toast.style.borderLeftColor = borderColors[type];
+    toast.textContent = message;
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "hal-toast-close";
+    closeBtn.setAttribute("aria-label", "Dismiss");
+    closeBtn.textContent = "\xD7";
+    closeBtn.addEventListener("click", () => dismissToast(toast));
+    toast.appendChild(closeBtn);
+    container.appendChild(toast);
+    toasts.push(toast);
+    while (toasts.length > MAX_VISIBLE) {
+      dismissToast(toasts[0]);
+    }
+    if (duration > 0) {
+      setTimeout(() => dismissToast(toast), duration);
+    }
+  }
+  function dismissToast(toast) {
+    toast.classList.add("hal-toast-out");
+    setTimeout(() => {
+      toast.remove();
+      toasts = toasts.filter((t) => t !== toast);
+    }, 200);
+  }
+  function getOrCreateContainer() {
+    let container = document.getElementById("hal-toast-container");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "hal-toast-container";
+      injectToastStyles();
+      document.body.appendChild(container);
+    }
+    return container;
+  }
+  function injectToastStyles() {
+    const style = document.createElement("style");
+    style.textContent = `
+#hal-toast-container {
+  position: fixed;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+.hal-toast {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--success);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-primary);
+  font-size: 14px;
+  max-width: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  pointer-events: all;
+  animation: hal-toast-in 200ms ease forwards;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.hal-toast-out {
+  animation: hal-toast-out 200ms ease forwards;
+}
+.hal-toast-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.hal-toast-close:hover { color: var(--text-primary); }
+@keyframes hal-toast-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes hal-toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(20px); }
+}
+`;
+    document.head.appendChild(style);
+  }
+  var MAX_VISIBLE, toasts, borderColors;
+  var init_Toast = __esm({
+    "src/web/hal-ui/components/Toast.ts"() {
+      "use strict";
+      MAX_VISIBLE = 3;
+      toasts = [];
+      borderColors = {
+        success: "var(--success)",
+        warning: "var(--warning)",
+        danger: "var(--danger)",
+        info: "var(--info)"
+      };
+    }
+  });
+
+  // src/web/hal-ui/components/SystemStatus.ts
+  function renderSystemStatus() {
+    const store = getStore();
+    return `
+    <div class="sys-status-panel hal-card">
+      <div class="sys-status-header">
+        <span class="sys-status-title">System Status</span>
+        <span class="sys-uptime text-mono text-xs text-secondary" data-dashboard-uptime>${formatUptime(store.uptime)}</span>
+      </div>
+      <div class="sys-status-grid">
+        ${renderStatusRow("Agent", store.agentStatus, statusChipClass(store.agentStatus))}
+        ${renderStatusRow("HAL Layer", store.halStatus, statusChipClass(store.halStatus))}
+        ${renderStatusRow("MQTT Broker", store.mqttStatus, store.mqttStatus === "connected" ? "status-chip--online" : "status-chip--offline")}
+        ${renderStatusRow("Database", store.dbStatus, store.dbStatus === "healthy" ? "status-chip--online" : "status-chip--offline")}
+        ${renderStatusRow("Auto Mode", store.autoMode ? "ON" : "OFF", store.autoMode ? "status-chip--active" : "status-chip--idle")}
+      </div>
+    </div>
+  `;
+  }
+  function renderStatusRow(label, value, chipClass) {
+    return `
+    <div class="sys-status-row">
+      <span class="sys-status-label">${label}</span>
+      <span class="status-chip ${chipClass}">${value}</span>
+    </div>
+  `;
+  }
+  function statusChipClass(status) {
+    switch (status) {
+      case "active":
+      case "online":
+      case "healthy":
+      case "connected":
+        return "status-chip--online";
+      case "idle":
+      case "degraded":
+        return "status-chip--idle";
+      case "error":
+      case "offline":
+      case "disconnected":
+        return "status-chip--offline";
+      default:
+        return "status-chip--idle";
+    }
+  }
+  function formatUptime(seconds) {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor(seconds % 3600 / 60);
+    return `${h}h ${m}m`;
+  }
+  function injectSystemStatusStyles() {
+    if (document.getElementById("hal-sys-status-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-sys-status-styles";
+    style.textContent = `
+.sys-status-panel {
+  padding: var(--space-4);
+}
+.sys-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.sys-status-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sys-status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sys-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sys-status-row:last-child {
+  border-bottom: none;
+}
+.sys-status-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sys-status-row .status-chip {
+  font-size: 9px;
+  padding: 1px 6px;
+}
+`;
+    document.head.appendChild(style);
+  }
+  var init_SystemStatus = __esm({
+    "src/web/hal-ui/components/SystemStatus.ts"() {
+      "use strict";
+      init_store();
+    }
+  });
+
+  // src/web/hal-ui/components/LatestDecision.ts
+  function renderLatestDecision() {
+    const store = getStore();
+    const latest = store.decisions[0];
+    if (!latest) {
+      return `
+      <div class="latest-decision hal-card">
+        <div class="latest-decision-header">
+          <span class="latest-decision-title">Latest Decision</span>
+        </div>
+        <div class="latest-decision-empty text-secondary text-sm">No decisions yet</div>
+      </div>
+    `;
+    }
+    const statusColor = latest.status === "success" ? "var(--success)" : latest.status === "failure" ? "var(--danger)" : "var(--warning)";
+    return `
+    <div class="latest-decision hal-card">
+      <div class="latest-decision-header">
+        <span class="latest-decision-title">Latest Decision</span>
+        <span class="latest-decision-time text-mono text-xs text-secondary">${formatTime(latest.timestamp)}</span>
+      </div>
+      <div class="latest-decision-body">
+        <div class="latest-decision-trigger text-sm text-secondary">${escapeHtml2(latest.trigger)}</div>
+        <div class="latest-decision-action font-semibold text-sm">${escapeHtml2(latest.decision)}</div>
+        <div class="latest-decision-footer">
+          <span class="latest-decision-status" style="color: ${statusColor}; background: color-mix(in srgb, ${statusColor} 15%, transparent)"
+            >${latest.status || "pending"}</span
+          >
+          <span class="latest-decision-confidence text-mono text-xs" style="color: ${confidenceColor(latest.confidence)}"
+            >${(latest.confidence * 100).toFixed(0)}%</span
+          >
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  function formatTime(iso) {
+    try {
+      return new Date(iso).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      });
+    } catch {
+      return "--";
+    }
+  }
+  function confidenceColor(conf) {
+    if (conf >= 0.8) return "var(--success)";
+    if (conf >= 0.5) return "var(--warning)";
+    return "var(--danger)";
+  }
+  function escapeHtml2(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function injectLatestDecisionStyles() {
+    if (document.getElementById("hal-latest-decision-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-latest-decision-styles";
+    style.textContent = `
+.latest-decision {
+  padding: var(--space-4);
+}
+.latest-decision-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.latest-decision-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.latest-decision-empty {
+  padding: var(--space-6) 0;
+  text-align: center;
+}
+.latest-decision-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.latest-decision-trigger {
+  font-size: 12px;
+}
+.latest-decision-action {
+  color: var(--text-primary);
+}
+.latest-decision-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.latest-decision-status {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+`;
+    document.head.appendChild(style);
+  }
+  var init_LatestDecision = __esm({
+    "src/web/hal-ui/components/LatestDecision.ts"() {
+      "use strict";
+      init_store();
+    }
+  });
+
   // src/web/hal-ui/components/ChartKit.ts
   var ChartKit_exports = {};
   __export(ChartKit_exports, {
@@ -448,7 +2175,9 @@
       const y1 = pts[i].y + m[i] * dx[i] / 3;
       const x2 = pts[i + 1].x - dx[i] / 3;
       const y2 = pts[i + 1].y - m[i + 1] * dx[i] / 3;
-      parts.push(`C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`);
+      parts.push(
+        `C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`
+      );
     }
     return parts.join(" ");
   }
@@ -492,7 +2221,10 @@
     const timeLabels = Array.from({ length: timeSteps + 1 }, (_, i) => {
       const t = tMin + i / timeSteps * tSpan;
       const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const label = new Date(t).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
       return `<text x="${x.toFixed(1)}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`;
     }).join("");
     const primary = layerPaths[0];
@@ -513,12 +2245,14 @@
         return `<text x="${width - pad.right + 6}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.color}">${v.toFixed(1)}${unit}</text>`;
       }).join("");
     }
-    const defs = layerPaths.map((lp, i) => `
+    const defs = layerPaths.map(
+      (lp, i) => `
     <linearGradient id="ck-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.28"/>
       <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.02"/>
     </linearGradient>
-  `).join("");
+  `
+    ).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#ck-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -554,7 +2288,8 @@
     const kpiDelta = `${primaryMetric.delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(primaryMetric.delta).toFixed(1)}%`;
     let statsHtml = "";
     if (opts.showStats !== false) {
-      statsHtml = `<div class="ck-stats">` + latestValues.map((l) => `
+      statsHtml = `<div class="ck-stats">` + latestValues.map(
+        (l) => `
         <div class="ck-stat-metric">
           <span class="ck-stat-label" style="color:${l.color}">${escapeHtml3(l.label)}</span>
           <span class="ck-stat-current" style="color:${l.color}">${l.current.toFixed(1)}${l.unit}</span>
@@ -564,7 +2299,8 @@
           <div class="ck-stat-item"><label>Avg</label><strong>${l.avg.toFixed(1)}${l.unit}</strong></div>
           <div class="ck-stat-item"><label>Max</label><strong>${l.max.toFixed(1)}${l.unit}</strong></div>
         </div>
-      `).join("") + `</div>`;
+      `
+      ).join("") + `</div>`;
     }
     const titleHtml = opts.title ? `<div class="ck-head">
          <div>
@@ -581,10 +2317,14 @@
     container.innerHTML = `${titleHtml}<div class="ck-chart">${svg}</div>${statsHtml}${footHtml}`;
   }
   function renderOverviewZoneCard(zone, activeKeys) {
-    const metricsByKey = new Map(zone.metrics.map((metric) => [metric.key, metric]));
+    const metricsByKey = new Map(
+      zone.metrics.map((metric) => [metric.key, metric])
+    );
     const activeMetrics = overviewMetricOrder.filter((key) => activeKeys.has(key)).map((key) => metricsByKey.get(key)).filter((metric) => Boolean(metric));
     const chartMetrics = activeMetrics.filter((metric) => metric.data.length > 0);
-    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map((metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
+    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map(
+      (metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`
+    ).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
     if (chartMetrics.length === 0) {
       return `
       <article class="dhc-card">
@@ -607,7 +2347,11 @@
     const pad = { l: 48, r: 48, t: 24, b: 36 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const times = Array.from(new Set(chartMetrics.flatMap((metric) => metric.data.map((point) => point.t)))).sort((a, b) => a - b);
+    const times = Array.from(
+      new Set(
+        chartMetrics.flatMap((metric) => metric.data.map((point) => point.t))
+      )
+    ).sort((a, b) => a - b);
     const x = (i, len) => len <= 1 ? pad.l + cw / 2 : pad.l + i / (len - 1) * cw;
     const xForTs = new Map(times.map((t, i) => [t, x(i, times.length)]));
     const gradientPrefix = (zone.zoneName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "zone").slice(0, 40);
@@ -623,12 +2367,18 @@
       const max = Math.max(...values);
       const span = Math.max(1e-4, max - min);
       const y = (v) => pad.t + (max - v) / span * ch;
-      const path = values.map((value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`).join(" ");
+      const path = values.map(
+        (value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`
+      ).join(" ");
       const areaPath = path ? `${path} L${x(times.length - 1, times.length)},${pad.t + ch} L${x(0, times.length)},${pad.t + ch} Z` : "";
       return { metric, values, min, max, span, y, path, areaPath };
     });
     const primary = series[0];
-    const primaryGrid = [primary.max, primary.min + primary.span / 2, primary.min];
+    const primaryGrid = [
+      primary.max,
+      primary.min + primary.span / 2,
+      primary.min
+    ];
     const primaryUnit = activeMetrics[0]?.unit || "";
     const gridLines = primaryGrid.map((value, i) => {
       const y = primary.y(value);
@@ -637,14 +2387,20 @@
       <line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 15%, var(--border))"/>
     `;
     }).join("");
-    const defs = series.map((entry) => `
+    const defs = series.map(
+      (entry) => `
     <linearGradient id="${gradientPrefix}-${entry.metric.key}-grad" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${entry.metric.color}" stop-opacity="0.18"/>
       <stop offset="100%" stop-color="${entry.metric.color}" stop-opacity="0.01"/>
     </linearGradient>
-  `).join("");
-    const shade = series.map((entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : "").join("");
-    const lines = series.map((entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`).join("");
+  `
+    ).join("");
+    const shade = series.map(
+      (entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : ""
+    ).join("");
+    const lines = series.map(
+      (entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`
+    ).join("");
     const dots = series.map((entry) => {
       const lastTs = times[times.length - 1];
       const lastVal = entry.values[entry.values.length - 1];
@@ -720,7 +2476,9 @@
     );
     const activeFromState = opts.activeKeys ?? new Set(overviewMetricOrder);
     const activeKeys = new Set(
-      overviewMetricOrder.filter((key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0))
+      overviewMetricOrder.filter(
+        (key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0)
+      )
     );
     if (activeKeys.size === 0) {
       const fallback = overviewMetricOrder.find((key) => availableKeys.has(key)) ?? overviewMetricOrder[0];
@@ -764,13 +2522,19 @@
     }
     const activeKeys = opts.activeKeys ?? new Set(metrics2.map((m) => m.key));
     const normalizedActiveKeys = new Set(
-      Array.from(activeKeys).filter((key) => metricsWithData.some((metric) => metric.key === key))
+      Array.from(activeKeys).filter(
+        (key) => metricsWithData.some((metric) => metric.key === key)
+      )
     );
     if (normalizedActiveKeys.size === 0) {
-      const fallbackKey = ["temperature", "humidity", "co2"].find((key) => metricsWithData.some((metric) => metric.key === key)) ?? metricsWithData[0]?.key;
+      const fallbackKey = ["temperature", "humidity", "co2"].find(
+        (key) => metricsWithData.some((metric) => metric.key === key)
+      ) ?? metricsWithData[0]?.key;
       if (fallbackKey) normalizedActiveKeys.add(fallbackKey);
     }
-    const activeMetrics = metricsWithData.filter((m) => normalizedActiveKeys.has(m.key));
+    const activeMetrics = metricsWithData.filter(
+      (m) => normalizedActiveKeys.has(m.key)
+    );
     const chartMetrics = activeMetrics.filter((m) => m.data.length > 0);
     if (chartMetrics.length === 0) {
       container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
@@ -782,7 +2546,9 @@
     const pad = { l: 18, r: 16, t: 20, b: 24 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const times = Array.from(new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))).sort((a, b) => a - b);
+    const times = Array.from(
+      new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))
+    ).sort((a, b) => a - b);
     if (times.length === 0) {
       container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
       return;
@@ -798,7 +2564,12 @@
         axisMax = axisMax * 9 / 5 + 32;
       }
       const vSpan = Math.max(1, axisMax - axisMin);
-      const exact = new Map(metric.data.map((d) => [d.t, Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))]));
+      const exact = new Map(
+        metric.data.map((d) => [
+          d.t,
+          Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))
+        ])
+      );
       const firstNorm = exact.size > 0 ? exact.get(metric.data[0].t) ?? 0 : 0;
       let carry = firstNorm;
       const values = times.map((t) => {
@@ -830,8 +2601,12 @@
         botPts.push({ x: px, y: y(seg?.y1 ?? 0) });
       }
       const topPath = monotoneCubicPath(topPts);
-      const topLine = topPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-      const botLine = botPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const topLine = topPts.map(
+        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
+      ).join(" ");
+      const botLine = botPts.map(
+        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
+      ).join(" ");
       const area = topLine ? `${topLine} L${botPts[botPts.length - 1]?.x.toFixed(1)},${botPts[botPts.length - 1]?.y.toFixed(1)} ${botPts.slice().reverse().map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")} Z` : "";
       return { series, area, topPath, topPts };
     });
@@ -839,12 +2614,14 @@
       const gy = pad.t + step * ch;
       return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${gy}" y2="${gy}" class="dhc-grid"/>`;
     }).join("");
-    const defs = layerPaths.map((lp, i) => `
+    const defs = layerPaths.map(
+      (lp, i) => `
     <linearGradient id="dhc-lake-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.series.metric.color}" stop-opacity="0.56"/>
       <stop offset="100%" stop-color="${lp.series.metric.color}" stop-opacity="0.08"/>
     </linearGradient>
-  `).join("");
+  `
+    ).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#dhc-lake-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -895,7 +2672,9 @@
     const primaryCurrent = primaryMetric.data[primaryMetric.data.length - 1].v;
     const primaryPrev = primaryMetric.data[primaryMetric.data.length - 2]?.v ?? primaryCurrent;
     const delta = primaryPrev ? (primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100 : 0;
-    const titleColors = activeMetrics.map((m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`).join(' <span style="color:var(--text-secondary)">+</span> ');
+    const titleColors = activeMetrics.map(
+      (m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`
+    ).join(' <span style="color:var(--text-secondary)">+</span> ');
     const zoneToggleHtml = opts.zoneToggles ? `<div class="dhc-zone-toggles">
         <button class="dhc-zone-toggle ${opts.zoneToggles.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>
         ${opts.zoneToggles.zones.map((z) => {
@@ -982,8 +2761,14 @@
     }).join("");
     const lx = x(vals.length - 1).toFixed(1);
     const ly = y(vals[vals.length - 1]).toFixed(1);
-    const t0 = new Date(data[0].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const t0 = new Date(data[0].ts).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
     container.innerHTML = `
     <svg class="og-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
       ${grids}
@@ -999,7 +2784,8 @@
   function renderStackedAreaChart(layers, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || layers.length === 0) {
-      if (container) container.innerHTML = '<div class="chart-empty">No data</div>';
+      if (container)
+        container.innerHTML = '<div class="chart-empty">No data</div>';
       return;
     }
     const colorGroups = /* @__PURE__ */ new Map();
@@ -1065,15 +2851,20 @@
     const timeLabels = Array.from({ length: 7 }, (_, i) => {
       const t = tMin + i / 6 * tSpan;
       const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const label = new Date(t).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
       return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
     }).join("");
-    const defs = layerPaths.map((lp, i) => `
+    const defs = layerPaths.map(
+      (lp, i) => `
     <linearGradient id="stack-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.55"/>
       <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.08"/>
     </linearGradient>
-  `).join("");
+  `
+    ).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#stack-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -1086,18 +2877,30 @@
       ${gridLines}${areas}${lines}${timeLabels}
     </svg>
   `;
-    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map((l) => `
+    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map(
+      (l) => `
         <span class="legend-item" style="--metric-color:${l.color}">
           <span class="legend-dot"></span>${escapeHtml3(l.label)}
-        </span>`).join("")}</div>` : "";
+        </span>`
+    ).join("")}</div>` : "";
     container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
   }
   function renderAreaCard(data, metricKey, containerId, title) {
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const cfg = metricConfig[metricKey] || {
+      label: metricKey,
+      color: "#888",
+      unit: "",
+      minAxis: 0,
+      maxAxis: 100
+    };
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metricKey,
+      store.unitSystem
+    );
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -1113,7 +2916,10 @@
     const vSpan = Math.max(1, axisMax - axisMin);
     const points = data.map((d) => {
       const v = formatSensorValue(d.value, metricKey, store.unitSystem).value;
-      return { x: tx(new Date(d.timestamp).getTime()), y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b) };
+      return {
+        x: tx(new Date(d.timestamp).getTime()),
+        y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b)
+      };
     });
     const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
     const area = `${line} L${points[points.length - 1].x.toFixed(1)},${h - pad.b} L${points[0].x.toFixed(1)},${h - pad.b} Z`;
@@ -1136,8 +2942,18 @@
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const cfg = metricConfig[metricKey] || {
+      label: metricKey,
+      color: "#888",
+      unit: "",
+      minAxis: 0,
+      maxAxis: 100
+    };
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metricKey,
+      store.unitSystem
+    );
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -1165,8 +2981,18 @@
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const cfg = metricConfig[metricKey] || {
+      label: metricKey,
+      color: "#888",
+      unit: "",
+      minAxis: 0,
+      maxAxis: 100
+    };
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metricKey,
+      store.unitSystem
+    );
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -1193,7 +3019,8 @@
   function renderDecisionBarTrend(points, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || points.length === 0) {
-      if (container) container.innerHTML = '<div class="chart-empty">No decision data</div>';
+      if (container)
+        container.innerHTML = '<div class="chart-empty">No decision data</div>';
       return;
     }
     const W = opts.width ?? (container.clientWidth || 600);
@@ -1201,7 +3028,10 @@
     const pad = { t: 20, r: 16, b: 40, l: 40 };
     const chartW = W - pad.l - pad.r;
     const chartH = H - pad.t - pad.b;
-    const maxVal = Math.max(...points.flatMap((p) => [p.success, p.failure, p.pending]), 1);
+    const maxVal = Math.max(
+      ...points.flatMap((p) => [p.success, p.failure, p.pending]),
+      1
+    );
     const groupW = chartW / points.length;
     const barW = groupW * 0.22;
     const gap = groupW * 0.04;
@@ -1395,7 +3225,12 @@
     if (!container || cells.length === 0) return;
     const W = opts.width ?? (container.clientWidth || 600);
     const H = opts.height ?? 100;
-    const colorRange = opts.colorRange ?? ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B"];
+    const colorRange = opts.colorRange ?? [
+      "#0a1a12",
+      "#1a4030",
+      "#4aB070",
+      "#F59E0B"
+    ];
     const dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const hours = Array.from({ length: 24 }, (_, i) => i);
     const cellW = (W - 40) / 24;
@@ -1406,7 +3241,10 @@
     const vSpan = Math.max(1e-3, vMax - vMin);
     const colorFor = (v) => {
       const t = (v - vMin) / vSpan;
-      const idx = Math.min(colorRange.length - 1, Math.floor(t * colorRange.length));
+      const idx = Math.min(
+        colorRange.length - 1,
+        Math.floor(t * colorRange.length)
+      );
       return colorRange[idx];
     };
     const rects = cells.map((c) => {
@@ -1845,14 +3683,56 @@
       "use strict";
       init_store();
       metricConfig = {
-        temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
-        humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
-        soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
-        water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
+        temperature: {
+          label: "Temperature",
+          color: "#F59E0B",
+          unit: "\xB0C",
+          minAxis: 10,
+          maxAxis: 40
+        },
+        humidity: {
+          label: "Humidity",
+          color: "#38BDF8",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        soil_moisture: {
+          label: "Soil Moisture",
+          color: "#EF4444",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        water_level: {
+          label: "Water Level",
+          color: "#2563EB",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
         ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
-        co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
-        light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
-        weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
+        co2: {
+          label: "CO\u2082",
+          color: "#22C55E",
+          unit: "ppm",
+          minAxis: 0,
+          maxAxis: 2e3
+        },
+        light: {
+          label: "Light",
+          color: "#FACC15",
+          unit: "lux",
+          minAxis: 0,
+          maxAxis: 1e5
+        },
+        weight: {
+          label: "Weight",
+          color: "#94A3B8",
+          unit: "kg",
+          minAxis: 0,
+          maxAxis: 100
+        },
         vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
       };
       DECISION_COLORS = {
@@ -1864,1267 +3744,7 @@
     }
   });
 
-  // (disabled):crypto
-  var require_crypto = __commonJS({
-    "(disabled):crypto"() {
-    }
-  });
-
-  // src/web/hal-ui/components/Sidebar.ts
-  init_store();
-  var navItems = [
-    { id: "dashboard", label: "Overview", icon: overviewIcon() },
-    { id: "devices", label: "Devices", icon: devicesIcon() },
-    { id: "sensors", label: "Sensors", icon: sensorsIcon() },
-    { id: "decisions", label: "Decisions", icon: decisionsIcon() },
-    { id: "cameras", label: "Cameras", icon: camerasIcon() },
-    { id: "system", label: "System", icon: systemIcon() },
-    { id: "terminal", label: "Terminal", icon: terminalIcon() }
-  ];
-  function renderSidebar(activeView, collapsed) {
-    const items = navItems.map((item) => `
-    <button
-      class="sidebar-item ${item.id === activeView ? "active" : ""}"
-      data-view="${item.id}"
-      title="${item.label}"
-    >
-      <span class="sidebar-icon">${item.icon}</span>
-      <span class="sidebar-label">${item.label}</span>
-    </button>
-  `).join("");
-    return `
-    <aside class="sidebar ${collapsed ? "collapsed" : ""}" id="hal-sidebar">
-      <div class="sidebar-header">
-        <div class="sidebar-logo">
-          <img class="sidebar-logo-img" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
-          <span class="sidebar-brand sidebar-brand-long">FarmFriend_Smart_Control</span>
-          <span class="sidebar-brand sidebar-brand-short">FF_Smart_Control</span>
-        </div>
-        <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
-          ${chevronIcon()}
-        </button>
-      </div>
-      <nav class="sidebar-nav" aria-label="Main navigation">
-        ${items}
-      </nav>
-    </aside>
-  `;
-  }
-  function initSidebar(onViewChange) {
-    injectSidebarStyles();
-    document.querySelectorAll(".sidebar-item").forEach((item) => {
-      item.addEventListener("click", () => {
-        const viewId = item.dataset.view;
-        document.querySelectorAll(".sidebar-item").forEach((i) => i.classList.remove("active"));
-        item.classList.add("active");
-        const sidebar = document.getElementById("hal-sidebar");
-        sidebar?.classList.remove("open");
-        onViewChange(viewId);
-      });
-    });
-    const toggle = document.getElementById("sidebar-toggle");
-    toggle?.addEventListener("click", () => {
-      const sidebar = document.getElementById("hal-sidebar");
-      const collapsed = sidebar?.classList.toggle("collapsed");
-      setStore({ sidebarCollapsed: !!collapsed });
-    });
-    document.addEventListener("click", (e) => {
-      const sidebar = document.getElementById("hal-sidebar");
-      const mobileBtn = document.getElementById("mobile-menu-btn");
-      if (!sidebar || !mobileBtn) return;
-      if (window.innerWidth > 1279) return;
-      if (!sidebar.contains(e.target) && !mobileBtn.contains(e.target)) {
-        sidebar.classList.remove("open");
-      }
-    });
-  }
-  function overviewIcon() {
-    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>`;
-  }
-  function devicesIcon() {
-    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 6v6l4 2"/></svg>`;
-  }
-  function sensorsIcon() {
-    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`;
-  }
-  function decisionsIcon() {
-    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
-  }
-  function camerasIcon() {
-    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
-  }
-  function systemIcon() {
-    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
-  }
-  function terminalIcon() {
-    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
-  }
-  function chevronIcon() {
-    return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
-  }
-  function injectSidebarStyles() {
-    if (document.getElementById("hal-sidebar-styles")) return;
-    const style = document.createElement("style");
-    style.id = "hal-sidebar-styles";
-    style.textContent = `
-.sidebar {
-  width: 200px;
-  background: var(--bg-primary);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  transition: width var(--transition-base);
-  overflow: hidden;
-}
-.sidebar.collapsed {
-  width: 64px;
-}
-.sidebar-header {
-  height: var(--header-height);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--space-3);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.sidebar-logo {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  overflow: hidden;
-}
-.sidebar-logo-img {
-  width: 24px;
-  height: 24px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-.sidebar-brand {
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--text-primary);
-  white-space: nowrap;
-  transition: opacity var(--transition-fast);
-}
-.sidebar-brand-short {
-  display: none;
-}
-.sidebar.collapsed .sidebar-brand {
-  opacity: 0;
-  width: 0;
-}
-@media (max-width: 1560px) {
-  .sidebar:not(.collapsed) .sidebar-brand-long {
-    display: none;
-  }
-  .sidebar:not(.collapsed) .sidebar-brand-short {
-    display: inline;
-  }
-}
-.sidebar-toggle {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-.sidebar-toggle:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-.sidebar.collapsed .sidebar-toggle svg {
-  transform: rotate(180deg);
-}
-.sidebar-nav {
-  flex: 1;
-  padding: var(--space-2);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow-y: auto;
-}
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 10px var(--space-3);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all var(--transition-fast);
-  text-align: left;
-  white-space: nowrap;
-}
-.sidebar-item:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-.sidebar-item.active {
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg-tertiary));
-  color: var(--accent);
-  border-left: 3px solid var(--accent);
-  margin-left: -3px;
-}
-.sidebar-item svg {
-  flex-shrink: 0;
-}
-.sidebar-label {
-  transition: opacity var(--transition-fast);
-}
-.sidebar.collapsed .sidebar-label {
-  opacity: 0;
-  width: 0;
-  display: none;
-}
-.sidebar.collapsed .sidebar-item {
-  justify-content: center;
-  padding: 10px;
-}
-.sidebar-footer {
-  padding: var(--space-3);
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.sidebar-mode {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-}
-.sidebar-mode-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.sidebar.collapsed .sidebar-mode-label {
-  display: none;
-}
-.sidebar.collapsed .sidebar-mode {
-  justify-content: center;
-}
-@media (max-width: 1279px) {
-  .sidebar {
-    width: min(86vw, 280px);
-    position: fixed;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    z-index: 220;
-    transform: translateX(-100%);
-    transition: transform var(--transition-base);
-    box-shadow: var(--shadow-card-lg);
-  }
-  .sidebar.open {
-    transform: translateX(0);
-  }
-  .sidebar.collapsed {
-    width: min(86vw, 280px);
-  }
-  .sidebar.collapsed .sidebar-brand,
-  .sidebar.collapsed .sidebar-label,
-  .sidebar.collapsed .sidebar-mode-label {
-    display: block;
-    opacity: 1;
-    width: auto;
-  }
-  .sidebar:not(.collapsed) .sidebar-brand-long {
-    display: inline;
-  }
-  .sidebar:not(.collapsed) .sidebar-brand-short {
-    display: none;
-  }
-  .sidebar.collapsed .sidebar-item {
-    justify-content: flex-start;
-    padding: 10px var(--space-3);
-  }
-  .sidebar.collapsed .sidebar-toggle svg {
-    transform: none;
-  }
-}
-`;
-    document.head.appendChild(style);
-  }
-
-  // src/web/hal-ui/components/Header.ts
-  init_store();
-  function renderHeader(theme) {
-    const themes = Object.entries(themeDefinitions);
-    const dots = themes.map(([key, def]) => `
-    <button
-      class="theme-dot ${key === theme ? "active" : ""}"
-      data-theme="${key}"
-      aria-label="${def.label}"
-      title="${def.label}"
-      style="--dot-color:${def.accent}"
-    ></button>
-  `).join("");
-    const currentDef = themeDefinitions[theme];
-    return `
-    <header class="hal-header">
-      <div class="hal-header-left">
-        <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-        </button>
-        <div class="hal-header-brand" title="FarmFriend_Smart_Control">
-          <img class="hal-header-brand-logo" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
-          <span class="hal-header-brand-text hal-header-brand-text-long">FarmFriend_Smart_Control</span>
-          <span class="hal-header-brand-text hal-header-brand-text-short">FF_Smart_Control</span>
-        </div>
-        <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
-      </div>
-      <div class="hal-header-center">
-        <button class="theme-picker-trigger" id="theme-picker-trigger" aria-label="Theme" style="--dot-color:${currentDef.accent}">
-          <span class="theme-picker-trigger-dot"></span>
-        </button>
-        <div class="theme-picker-popover" id="theme-picker-popover">
-          <div class="theme-picker-grid">${dots}</div>
-        </div>
-      </div>
-      <div class="hal-header-right">
-        <span class="hal-clock text-mono" id="hal-clock">--:--:--</span>
-      </div>
-    </header>
-  `;
-  }
-  function getViewLabel() {
-    const labels = {
-      dashboard: "Overview",
-      devices: "Devices",
-      sensors: "Sensors",
-      decisions: "Decisions",
-      cameras: "Cameras"
-    };
-    return labels[location.hash.slice(1) || "dashboard"] || "Overview";
-  }
-  function initHeader(theme, onThemeChange) {
-    injectHeaderStyles();
-    startClock();
-    setupThemeButtons(onThemeChange);
-  }
-  function setupThemeButtons(onThemeChange) {
-    function activateTheme(key) {
-      document.querySelectorAll(".theme-dot").forEach((dot) => {
-        dot.classList.toggle("active", dot.dataset.theme === key);
-      });
-      onThemeChange(key);
-    }
-    document.querySelectorAll(".theme-dot").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const key = btn.dataset.theme;
-        activateTheme(key);
-        document.getElementById("theme-picker-popover")?.classList.remove("open");
-      });
-    });
-    const themeTrigger = document.getElementById("theme-picker-trigger");
-    const themePopover = document.getElementById("theme-picker-popover");
-    themeTrigger?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      themePopover?.classList.toggle("open");
-    });
-    document.addEventListener("click", (e) => {
-      if (!themePopover?.contains(e.target) && e.target !== themeTrigger) {
-        themePopover?.classList.remove("open");
-      }
-    });
-    const mobileMenuBtn = document.getElementById("mobile-menu-btn");
-    mobileMenuBtn?.addEventListener("click", () => {
-      const sidebar = document.getElementById("hal-sidebar");
-      sidebar?.classList.toggle("open");
-    });
-  }
-  function startClock() {
-    function tick() {
-      const el = document.getElementById("hal-clock");
-      if (el) {
-        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", { hour12: false });
-      }
-    }
-    tick();
-    setInterval(tick, 1e3);
-  }
-  function injectHeaderStyles() {
-    if (document.getElementById("hal-header-styles")) return;
-    const style = document.createElement("style");
-    style.id = "hal-header-styles";
-    style.textContent = `
-.hal-header {
-  height: var(--header-height);
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--page-padding);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  flex-shrink: 0;
-}
-.hal-header-left {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  flex-shrink: 1;
-}
-.hal-header-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 2px 8px 2px 2px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-tertiary) 82%, transparent);
-}
-.hal-header-brand-logo {
-  width: 20px;
-  height: 20px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-.hal-header-brand-text {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1;
-  white-space: nowrap;
-}
-.hal-header-brand-text-short {
-  display: none;
-}
-.hal-header-view-label {
-  font-weight: 600;
-  font-size: 15px;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.hal-header-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  min-width: 0;
-  position: relative;
-}
-
-/* Desktop theme dots */
-.theme-dot {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  background: var(--dot-color);
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
-}
-.theme-dot:hover {
-  transform: scale(1.15);
-}
-.theme-dot.active {
-  border-color: var(--text-primary);
-  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--dot-color);
-}
-
-/* Single trigger theme picker */
-.theme-picker-trigger {
-  display: inline-flex;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid var(--border);
-  background: var(--bg-tertiary);
-  cursor: pointer;
-  padding: 0;
-  align-items: center;
-  justify-content: center;
-}
-.theme-picker-trigger-dot {
-  display: block;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--dot-color);
-}
-.theme-picker-popover {
-  display: none;
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-3);
-  box-shadow: var(--shadow-card-lg);
-  z-index: 110;
-  min-width: 200px;
-}
-.theme-picker-popover.open {
-  display: block;
-}
-.theme-picker-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-3);
-}
-.theme-picker-grid .theme-dot {
-  width: 32px;
-  height: 32px;
-  justify-self: center;
-}
-
-.hal-header-right {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-shrink: 0;
-}
-.hal-clock {
-  font-size: 13px;
-  color: var(--text-secondary);
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-@media (max-width: 1560px) {
-  .hal-header-brand-text-long {
-    display: none;
-  }
-  .hal-header-brand-text-short {
-    display: inline;
-  }
-}
-@media (max-width: 1279px) {
-  .hal-header-brand {
-    padding-right: 2px;
-  }
-  .hal-header-brand-text {
-    display: none;
-  }
-}
-@media (max-width: 767px) {
-  .hal-header { padding: 0 var(--space-3); }
-  .hal-clock { font-size: 11px; }
-}
-@media (max-width: 480px) {
-  .hal-header-view-label {
-    max-width: 90px;
-  }
-  .hal-header-right {
-    gap: var(--space-2);
-  }
-}
-`;
-    document.head.appendChild(style);
-  }
-
-  // src/web/hal-ui/components/Card.ts
-  function injectCardStyles() {
-    if (document.getElementById("hal-card-styles")) return;
-    const style = document.createElement("style");
-    style.id = "hal-card-styles";
-    style.textContent = `
-.hal-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3);
-  box-shadow: var(--shadow-card);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-}
-.hal-card:hover {
-  border-color: var(--accent);
-  box-shadow: var(--shadow-card-hover);
-}
-.hal-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-3);
-}
-.hal-card-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.hal-card-body {
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-`;
-    document.head.appendChild(style);
-  }
-
-  // src/web/hal-ui/components/Toggle.ts
-  function injectToggleStyles() {
-    if (document.getElementById("hal-toggle-styles")) return;
-    const style = document.createElement("style");
-    style.id = "hal-toggle-styles";
-    style.textContent = `
-.hal-toggle {
-  position: relative;
-  width: 40px;
-  height: 22px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-tertiary);
-  cursor: pointer;
-  transition: background var(--transition-base);
-  flex-shrink: 0;
-  border: none;
-  padding: 0;
-}
-.hal-toggle.active {
-  background: var(--accent);
-}
-.hal-toggle-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform var(--transition-base);
-  pointer-events: none;
-}
-.hal-toggle.active .hal-toggle-thumb {
-  transform: translateX(18px);
-}
-.hal-toggle:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-`;
-    document.head.appendChild(style);
-  }
-  function createToggle(id, initialState, onChange) {
-    const btn = document.createElement("button");
-    btn.className = "hal-toggle" + (initialState ? " active" : "");
-    btn.id = id;
-    btn.setAttribute("role", "switch");
-    btn.setAttribute("aria-checked", String(initialState));
-    btn.setAttribute("aria-label", "Toggle power state");
-    const thumb = document.createElement("span");
-    thumb.className = "hal-toggle-thumb";
-    btn.appendChild(thumb);
-    btn.addEventListener("click", () => {
-      const newState = !btn.classList.contains("active");
-      btn.classList.toggle("active", newState);
-      btn.setAttribute("aria-checked", String(newState));
-      onChange(newState);
-    });
-    return btn;
-  }
-  function setToggleState(el, on) {
-    el.classList.toggle("active", on);
-    el.setAttribute("aria-checked", String(on));
-  }
-
-  // src/web/hal-ui/components/Modal.ts
-  var activeModal = null;
-  function openModal(title, bodyContent, actions = "") {
-    closeModal();
-    const overlay = document.createElement("div");
-    overlay.id = "hal-modal-overlay";
-    overlay.className = "hal-modal-overlay";
-    const panel = document.createElement("div");
-    panel.className = "hal-modal-panel";
-    panel.setAttribute("role", "dialog");
-    panel.setAttribute("aria-modal", "true");
-    panel.innerHTML = `
-    <div class="hal-modal-header">
-      <h2 class="hal-modal-title">${escapeHtml(title)}</h2>
-      <button class="hal-modal-close" aria-label="Close modal">\xD7</button>
-    </div>
-    <div class="hal-modal-body">${bodyContent}</div>
-    ${actions ? `<div class="hal-modal-actions">${actions}</div>` : ""}
-  `;
-    overlay.appendChild(panel);
-    document.body.appendChild(overlay);
-    activeModal = overlay;
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) closeModal();
-    });
-    panel.querySelector(".hal-modal-close")?.addEventListener("click", closeModal);
-    document.addEventListener("keydown", handleEscape);
-  }
-  function closeModal() {
-    if (!activeModal) return;
-    activeModal.remove();
-    activeModal = null;
-    document.removeEventListener("keydown", handleEscape);
-  }
-  function handleEscape(e) {
-    if (e.key === "Escape") closeModal();
-  }
-  function escapeHtml(text) {
-    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
-  function injectModalStyles() {
-    if (document.getElementById("hal-modal-styles")) return;
-    const style = document.createElement("style");
-    style.id = "hal-modal-styles";
-    style.textContent = `
-.hal-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.6);
-  z-index: 9000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  animation: hal-fade-in 150ms ease;
-}
-.hal-modal-panel {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  width: 100%;
-  max-width: 480px;
-  max-height: 80vh;
-  overflow-y: auto;
-  animation: hal-slide-up 150ms ease;
-}
-.hal-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--border);
-}
-.hal-modal-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.hal-modal-close {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 24px;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-}
-.hal-modal-close:hover { color: var(--text-primary); }
-.hal-modal-body {
-  padding: var(--space-4);
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-.hal-modal-actions {
-  display: flex;
-  gap: var(--space-2);
-  justify-content: flex-end;
-  padding: var(--space-4);
-  border-top: 1px solid var(--border);
-}
-@keyframes hal-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes hal-slide-up {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-`;
-    document.head.appendChild(style);
-  }
-
-  // src/web/hal-ui/components/Toast.ts
-  var MAX_VISIBLE = 3;
-  var toasts = [];
-  var borderColors = {
-    success: "var(--success)",
-    warning: "var(--warning)",
-    danger: "var(--danger)",
-    info: "var(--info)"
-  };
-  function showToast(message, type = "info", duration = 4e3) {
-    const container = getOrCreateContainer();
-    const toast = document.createElement("div");
-    toast.className = `hal-toast hal-toast-${type}`;
-    toast.style.borderLeftColor = borderColors[type];
-    toast.textContent = message;
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "hal-toast-close";
-    closeBtn.setAttribute("aria-label", "Dismiss");
-    closeBtn.textContent = "\xD7";
-    closeBtn.addEventListener("click", () => dismissToast(toast));
-    toast.appendChild(closeBtn);
-    container.appendChild(toast);
-    toasts.push(toast);
-    while (toasts.length > MAX_VISIBLE) {
-      dismissToast(toasts[0]);
-    }
-    if (duration > 0) {
-      setTimeout(() => dismissToast(toast), duration);
-    }
-  }
-  function dismissToast(toast) {
-    toast.classList.add("hal-toast-out");
-    setTimeout(() => {
-      toast.remove();
-      toasts = toasts.filter((t) => t !== toast);
-    }, 200);
-  }
-  function getOrCreateContainer() {
-    let container = document.getElementById("hal-toast-container");
-    if (!container) {
-      container = document.createElement("div");
-      container.id = "hal-toast-container";
-      injectToastStyles();
-      document.body.appendChild(container);
-    }
-    return container;
-  }
-  function injectToastStyles() {
-    const style = document.createElement("style");
-    style.textContent = `
-#hal-toast-container {
-  position: fixed;
-  bottom: var(--space-4);
-  right: var(--space-4);
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  pointer-events: none;
-}
-.hal-toast {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--success);
-  border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
-  color: var(--text-primary);
-  font-size: 14px;
-  max-width: 320px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  pointer-events: all;
-  animation: hal-toast-in 200ms ease forwards;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-}
-.hal-toast-out {
-  animation: hal-toast-out 200ms ease forwards;
-}
-.hal-toast-close {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 18px;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-  flex-shrink: 0;
-}
-.hal-toast-close:hover { color: var(--text-primary); }
-@keyframes hal-toast-in {
-  from { opacity: 0; transform: translateX(20px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-@keyframes hal-toast-out {
-  from { opacity: 1; transform: translateX(0); }
-  to   { opacity: 0; transform: translateX(20px); }
-}
-`;
-    document.head.appendChild(style);
-  }
-
-  // src/web/hal-ui/views/Dashboard.ts
-  init_store();
-
-  // src/web/hal-ui/components/SystemStatus.ts
-  init_store();
-  function renderSystemStatus() {
-    const store = getStore();
-    return `
-    <div class="sys-status-panel hal-card">
-      <div class="sys-status-header">
-        <span class="sys-status-title">System Status</span>
-        <span class="sys-uptime text-mono text-xs text-secondary" data-dashboard-uptime>${formatUptime(store.uptime)}</span>
-      </div>
-      <div class="sys-status-grid">
-        ${renderStatusRow("Agent", store.agentStatus, statusChipClass(store.agentStatus))}
-        ${renderStatusRow("HAL Layer", store.halStatus, statusChipClass(store.halStatus))}
-        ${renderStatusRow("MQTT Broker", store.mqttStatus, store.mqttStatus === "connected" ? "status-chip--online" : "status-chip--offline")}
-        ${renderStatusRow("Database", store.dbStatus, store.dbStatus === "healthy" ? "status-chip--online" : "status-chip--offline")}
-        ${renderStatusRow("Auto Mode", store.autoMode ? "ON" : "OFF", store.autoMode ? "status-chip--active" : "status-chip--idle")}
-      </div>
-    </div>
-  `;
-  }
-  function renderStatusRow(label, value, chipClass) {
-    return `
-    <div class="sys-status-row">
-      <span class="sys-status-label">${label}</span>
-      <span class="status-chip ${chipClass}">${value}</span>
-    </div>
-  `;
-  }
-  function statusChipClass(status) {
-    switch (status) {
-      case "active":
-      case "online":
-      case "healthy":
-      case "connected":
-        return "status-chip--online";
-      case "idle":
-      case "degraded":
-        return "status-chip--idle";
-      case "error":
-      case "offline":
-      case "disconnected":
-        return "status-chip--offline";
-      default:
-        return "status-chip--idle";
-    }
-  }
-  function formatUptime(seconds) {
-    if (seconds < 60) return `${seconds}s`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor(seconds % 3600 / 60);
-    return `${h}h ${m}m`;
-  }
-  function injectSystemStatusStyles() {
-    if (document.getElementById("hal-sys-status-styles")) return;
-    const style = document.createElement("style");
-    style.id = "hal-sys-status-styles";
-    style.textContent = `
-.sys-status-panel {
-  padding: var(--space-4);
-}
-.sys-status-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-3);
-}
-.sys-status-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.sys-status-grid {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.sys-status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.sys-status-row:last-child {
-  border-bottom: none;
-}
-.sys-status-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.sys-status-row .status-chip {
-  font-size: 9px;
-  padding: 1px 6px;
-}
-`;
-    document.head.appendChild(style);
-  }
-
-  // src/web/hal-ui/components/LatestDecision.ts
-  init_store();
-  function renderLatestDecision() {
-    const store = getStore();
-    const latest = store.decisions[0];
-    if (!latest) {
-      return `
-      <div class="latest-decision hal-card">
-        <div class="latest-decision-header">
-          <span class="latest-decision-title">Latest Decision</span>
-        </div>
-        <div class="latest-decision-empty text-secondary text-sm">No decisions yet</div>
-      </div>
-    `;
-    }
-    const statusColor = latest.status === "success" ? "var(--success)" : latest.status === "failure" ? "var(--danger)" : "var(--warning)";
-    return `
-    <div class="latest-decision hal-card">
-      <div class="latest-decision-header">
-        <span class="latest-decision-title">Latest Decision</span>
-        <span class="latest-decision-time text-mono text-xs text-secondary">${formatTime(latest.timestamp)}</span>
-      </div>
-      <div class="latest-decision-body">
-        <div class="latest-decision-trigger text-sm text-secondary">${escapeHtml2(latest.trigger)}</div>
-        <div class="latest-decision-action font-semibold text-sm">${escapeHtml2(latest.decision)}</div>
-        <div class="latest-decision-footer">
-          <span class="latest-decision-status" style="color: ${statusColor}; background: color-mix(in srgb, ${statusColor} 15%, transparent)"
-            >${latest.status || "pending"}</span
-          >
-          <span class="latest-decision-confidence text-mono text-xs" style="color: ${confidenceColor(latest.confidence)}"
-            >${(latest.confidence * 100).toFixed(0)}%</span
-          >
-        </div>
-      </div>
-    </div>
-  `;
-  }
-  function formatTime(iso) {
-    try {
-      return new Date(iso).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
-      });
-    } catch {
-      return "--";
-    }
-  }
-  function confidenceColor(conf) {
-    if (conf >= 0.8) return "var(--success)";
-    if (conf >= 0.5) return "var(--warning)";
-    return "var(--danger)";
-  }
-  function escapeHtml2(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
-  function injectLatestDecisionStyles() {
-    if (document.getElementById("hal-latest-decision-styles")) return;
-    const style = document.createElement("style");
-    style.id = "hal-latest-decision-styles";
-    style.textContent = `
-.latest-decision {
-  padding: var(--space-4);
-}
-.latest-decision-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-3);
-}
-.latest-decision-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.latest-decision-empty {
-  padding: var(--space-6) 0;
-  text-align: center;
-}
-.latest-decision-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.latest-decision-trigger {
-  font-size: 12px;
-}
-.latest-decision-action {
-  color: var(--text-primary);
-}
-.latest-decision-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: var(--space-2);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border-subtle);
-}
-.latest-decision-status {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-}
-`;
-    document.head.appendChild(style);
-  }
-
-  // src/web/hal-ui/components/KpiStrip.ts
-  init_store();
-
-  // src/web/hal-ui/api.ts
-  var BASE = "/api/hal";
-  async function halGet(path, params) {
-    let url = BASE + path;
-    if (params) {
-      const qs = new URLSearchParams(params).toString();
-      url += "?" + qs;
-    }
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HAL API ${url} failed: ${res.status} ${res.statusText}`);
-    return res.json();
-  }
-  async function halPost(path, body) {
-    const res = await fetch(BASE + path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: body ? JSON.stringify(body) : void 0
-    });
-    if (!res.ok) throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
-    return res.json();
-  }
-  function normalizeDevice(device) {
-    const rawState = device.state ?? device.last_state ?? "unknown";
-    const state2 = rawState === "on" || rawState === "off" ? rawState : "unknown";
-    return {
-      id: device.id || "unknown",
-      name: device.name || device.label || device.id || "Unknown device",
-      type: device.type || "relay",
-      protocol: device.protocol || "unknown",
-      host: device.host,
-      state: state2,
-      online: typeof device.online === "boolean" ? device.online : state2 !== "unknown",
-      lastSeen: device.lastSeen || device.last_seen || void 0
-    };
-  }
-  function normalizeSensorReading(reading) {
-    if (!reading || typeof reading.value !== "number") return void 0;
-    return {
-      timestamp: reading.timestamp || reading.read_at || reading.stored_at || (/* @__PURE__ */ new Date()).toISOString(),
-      value: reading.value,
-      unit: reading.unit
-    };
-  }
-  function normalizeSensorSnapshots(snapshots) {
-    const normalized = {};
-    for (const [deviceId, snapshot] of Object.entries(snapshots || {})) {
-      normalized[deviceId] = {};
-      for (const [metric, reading] of Object.entries(snapshot)) {
-        if (reading && typeof reading === "object") {
-          const normalizedReading = normalizeSensorReading(reading);
-          if (normalizedReading) {
-            normalized[deviceId][metric] = normalizedReading;
-          }
-        }
-      }
-    }
-    return normalized;
-  }
-  function normalizeDecision(decision) {
-    const outcome = decision.outcome;
-    const status = decision.status || (outcome === "success" || outcome === "failure" ? outcome : "pending");
-    return {
-      id: decision.id || "unknown",
-      timestamp: decision.timestamp || decision.decided_at || decision.completed_at || (/* @__PURE__ */ new Date()).toISOString(),
-      trigger: decision.trigger || decision.device_id || "HAL",
-      decision: decision.reasoning || decision.decision || "No decision text",
-      confidence: Math.max(0, Math.min(1, Number(decision.confidence ?? 0))),
-      status,
-      outcome
-    };
-  }
-  function normalizeState(state2) {
-    return {
-      devices: (state2.devices || []).map(normalizeDevice),
-      sensorSnapshots: normalizeSensorSnapshots(state2.sensorSnapshots),
-      recentDecisions: (state2.recentDecisions || []).map(normalizeDecision)
-    };
-  }
-  var halApi = {
-    // GET /api/hal/state
-    async getState() {
-      return normalizeState(await halGet("/state"));
-    },
-    // GET /api/hal/devices
-    async getDevices() {
-      const devices = await halGet("/devices");
-      return devices.map(normalizeDevice);
-    },
-    // POST /api/hal/devices/:id/control
-    controlDevice(id, action) {
-      return halPost(`/devices/${id}/control`, { action });
-    },
-    // GET /api/hal/sensors/latest
-    async getSensorsLatest() {
-      const readings = await halGet("/sensors/latest");
-      return readings.map((reading) => ({
-        device: normalizeDevice(reading.device),
-        temperature: normalizeSensorReading(reading.temperature),
-        humidity: normalizeSensorReading(reading.humidity)
-      }));
-    },
-    // GET /api/hal/sensors/history
-    async getSensorHistory(device, metric, from, to) {
-      const readings = await halGet("/sensors/history", {
-        device,
-        metric,
-        ...from ? { from } : {},
-        ...to ? { to } : {}
-      });
-      return readings.map(normalizeSensorReading).filter((reading) => Boolean(reading));
-    },
-    // GET /api/hal/decisions
-    async getDecisions(limit = 20) {
-      const decisions = await halGet("/decisions", { limit: String(limit) });
-      return decisions.map(normalizeDecision);
-    },
-    // GET /api/hal/cameras
-    async getCameras() {
-      const cameras = await halGet("/cameras");
-      return cameras.map(normalizeDevice);
-    },
-    // POST /api/hal/cameras/:id/capture
-    captureCamera(id) {
-      return halPost(`/cameras/${id}/capture`);
-    }
-  };
-
   // src/web/hal-ui/components/HeroChart.ts
-  init_ChartKit();
-  var HERO_METRIC_KEYS = [
-    "temperature",
-    "humidity",
-    "co2",
-    "light",
-    "soil_moisture",
-    "water_level",
-    "ph",
-    "weight"
-  ];
-  var metricConfig2 = {
-    temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
-    humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
-    soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
-    water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
-    ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
-    co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
-    light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
-    weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
-    vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
-  };
   function resolveZoneName(deviceId, deviceName) {
     if (deviceId.startsWith("tent_a_")) return "Tent A";
     if (deviceId.startsWith("tent_b_")) return "Tent B";
@@ -3190,6 +3810,77 @@
 `;
     document.head.appendChild(style);
   }
+  var HERO_METRIC_KEYS, metricConfig2;
+  var init_HeroChart = __esm({
+    "src/web/hal-ui/components/HeroChart.ts"() {
+      "use strict";
+      init_api();
+      init_ChartKit();
+      HERO_METRIC_KEYS = [
+        "temperature",
+        "humidity",
+        "co2",
+        "light",
+        "soil_moisture",
+        "water_level",
+        "ph",
+        "weight"
+      ];
+      metricConfig2 = {
+        temperature: {
+          label: "Temperature",
+          color: "#F59E0B",
+          unit: "\xB0C",
+          minAxis: 10,
+          maxAxis: 40
+        },
+        humidity: {
+          label: "Humidity",
+          color: "#38BDF8",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        soil_moisture: {
+          label: "Soil Moisture",
+          color: "#EF4444",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        water_level: {
+          label: "Water Level",
+          color: "#2563EB",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
+        co2: {
+          label: "CO\u2082",
+          color: "#22C55E",
+          unit: "ppm",
+          minAxis: 0,
+          maxAxis: 2e3
+        },
+        light: {
+          label: "Light",
+          color: "#FACC15",
+          unit: "lux",
+          minAxis: 0,
+          maxAxis: 1e5
+        },
+        weight: {
+          label: "Weight",
+          color: "#94A3B8",
+          unit: "kg",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
+      };
+    }
+  });
 
   // src/web/hal-ui/components/KpiStrip.ts
   function renderKpiStrip(kpis) {
@@ -3226,7 +3917,9 @@
   async function buildKpiData() {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
+    const relays = store.devices.filter(
+      (d) => d.type === "relay" || d.type === "smart_plug"
+    );
     const activeRelays = relays.filter((d) => d.state === "on");
     const onlineDevices = store.devices.filter((d) => d.online).length;
     const [tempHistory, humHistory, co2History] = await Promise.all([
@@ -3253,7 +3946,11 @@
     for (const s of sensors) {
       const snap = store.sensors[s.id];
       if (snap?.temperature?.value != null) {
-        const converted = formatSensorValue(snap.temperature.value, "temperature", store.unitSystem);
+        const converted = formatSensorValue(
+          snap.temperature.value,
+          "temperature",
+          store.unitSystem
+        );
         tempSum += converted.value;
         tempCount++;
       }
@@ -3339,7 +4036,10 @@
         const data = await halApi.getSensorHistory(s.id, metric, from, to);
         if (data.length > 1) {
           const step = Math.max(1, Math.floor(data.length / buckets));
-          return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
+          return Array.from(
+            { length: Math.min(buckets, data.length) },
+            (_, i) => data[Math.min(i * step, data.length - 1)].value
+          );
         }
       }
     } catch {
@@ -3355,7 +4055,10 @@
         const data = await halApi.getSensorHistory(s.id, metric, from, to);
         if (data.length > 1) {
           const step = Math.max(1, Math.floor(data.length / buckets));
-          return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
+          return Array.from(
+            { length: Math.min(buckets, data.length) },
+            (_, i) => data[Math.min(i * step, data.length - 1)].value
+          );
         }
       }
     } catch {
@@ -3462,16 +4165,23 @@
 `;
     document.head.appendChild(style);
   }
-
-  // src/web/hal-ui/views/Dashboard.ts
-  init_ChartKit();
+  var init_KpiStrip = __esm({
+    "src/web/hal-ui/components/KpiStrip.ts"() {
+      "use strict";
+      init_store();
+      init_api();
+      init_HeroChart();
+      init_HeroChart();
+    }
+  });
 
   // src/web/hal-ui/components/OperatorPanels.ts
-  init_store();
   async function renderOperatorPanels() {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
+    const relays = store.devices.filter(
+      (d) => d.type === "relay" || d.type === "smart_plug"
+    );
     const cameras = store.devices.filter((d) => d.type === "camera");
     const powerHistory = await fetchPowerHistory(relays);
     return `
@@ -3498,7 +4208,8 @@
       </div>
     `;
     }
-    const grid = relays.map((r) => `
+    const grid = relays.map(
+      (r) => `
     <div class="op-device-cell ${r.online ? "online" : "offline"}" data-device-id="${r.id}">
       <div class="op-device-icon">${r.type === "relay" ? "RLY" : "PLG"}</div>
       <div class="op-device-info">
@@ -3509,7 +4220,8 @@
         <div class="op-toggle-thumb"></div>
       </div>
     </div>
-  `).join("");
+  `
+    ).join("");
     const onCount = relays.filter((r) => r.state === "on").length;
     return `
     <div class="op-panel hal-card">
@@ -3526,17 +4238,21 @@
   function renderAutomationStatsPanel(decisions) {
     const now = Date.now();
     const oneHour = 60 * 60 * 1e3;
-    const recent = decisions.filter((d) => now - new Date(d.timestamp).getTime() < oneHour);
+    const recent = decisions.filter(
+      (d) => now - new Date(d.timestamp).getTime() < oneHour
+    );
     const successCount = recent.filter((d) => d.status === "success").length;
     const successRate = recent.length > 0 ? successCount / recent.length * 100 : 0;
     const buckets = [];
     for (let h = 5; h >= 0; h--) {
       const start = now - (h + 1) * oneHour;
       const end = now - h * oneHour;
-      buckets.push(decisions.filter((d) => {
-        const t = new Date(d.timestamp).getTime();
-        return t >= start && t < end;
-      }).length);
+      buckets.push(
+        decisions.filter((d) => {
+          const t = new Date(d.timestamp).getTime();
+          return t >= start && t < end;
+        }).length
+      );
     }
     return `
     <div class="op-panel hal-card">
@@ -3568,12 +4284,22 @@
     const alerts = [];
     for (const s of sensors) {
       if (!s.online) {
-        alerts.push({ level: "critical", text: `${s.name} offline`, time: "now" });
+        alerts.push({
+          level: "critical",
+          text: `${s.name} offline`,
+          time: "now"
+        });
       }
     }
-    const failed = decisions.filter((d) => d.status === "failure" && now - new Date(d.timestamp).getTime() < 36e5);
+    const failed = decisions.filter(
+      (d) => d.status === "failure" && now - new Date(d.timestamp).getTime() < 36e5
+    );
     for (const d of failed.slice(0, 3)) {
-      alerts.push({ level: "warning", text: d.decision.slice(0, 40), time: formatRelTime(d.timestamp) });
+      alerts.push({
+        level: "warning",
+        text: d.decision.slice(0, 40),
+        time: formatRelTime(d.timestamp)
+      });
     }
     if (alerts.length === 0) {
       return `
@@ -3596,13 +4322,15 @@
         ${criticalCount > 0 ? `<span class="status-chip status-chip--offline">${criticalCount} critical</span>` : `<span class="status-chip status-chip--online">Clear</span>`}
       </div>
       <div class="op-panel-body">
-        ${alerts.slice(0, 5).map((a) => `
+        ${alerts.slice(0, 5).map(
+      (a) => `
           <div class="op-alert ${a.level}">
             <span class="op-alert-dot"></span>
             <span class="op-alert-text">${escapeHtml4(a.text)}</span>
             <span class="op-alert-time text-xs text-secondary">${a.time}</span>
           </div>
-        `).join("")}
+        `
+    ).join("")}
       </div>
     </div>
   `;
@@ -3931,9 +4659,15 @@
 `;
     document.head.appendChild(style);
   }
+  var init_OperatorPanels = __esm({
+    "src/web/hal-ui/components/OperatorPanels.ts"() {
+      "use strict";
+      init_store();
+      init_HeroChart();
+    }
+  });
 
   // src/web/hal-ui/components/Terminal.ts
-  init_store();
   function renderTerminal(entries) {
     if (entries.length === 0) {
       return `
@@ -3948,13 +4682,15 @@
       </div>
     `;
     }
-    const lines = entries.map((e) => `
+    const lines = entries.map(
+      (e) => `
     <div class="terminal-line ${e.level}">
       <span class="terminal-time text-mono">${formatTime2(e.timestamp)}</span>
       <span class="terminal-source">${escapeHtml5(e.source)}</span>
       <span class="terminal-msg">${escapeHtml5(e.message)}</span>
     </div>
-  `).join("");
+  `
+    ).join("");
     return `
     <div class="terminal-wrap hal-card">
       <div class="terminal-header">
@@ -3996,12 +4732,19 @@
         message: `${d.decision} [${(d.confidence * 100).toFixed(0)}%]`
       });
     }
-    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    entries.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
     return entries;
   }
   function formatTime2(iso) {
     try {
-      return new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      return new Date(iso).toLocaleTimeString("en-US", {
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
     } catch {
       return "--:--:--";
     }
@@ -4080,6 +4823,12 @@
 `;
     document.head.appendChild(style);
   }
+  var init_Terminal = __esm({
+    "src/web/hal-ui/components/Terminal.ts"() {
+      "use strict";
+      init_store();
+    }
+  });
 
   // src/web/hal-ui/views/Dashboard.ts
   async function renderDashboard(container) {
@@ -4143,61 +4892,62 @@
   `;
   }
   function renderCalmDeviceList(devices) {
-    if (devices.length === 0) return '<p class="text-secondary text-sm">No active devices</p>';
-    return devices.slice(0, 6).map((d) => `
+    if (devices.length === 0)
+      return '<p class="text-secondary text-sm">No active devices</p>';
+    return devices.slice(0, 6).map(
+      (d) => `
     <div class="calm-device-item ${d.online ? "online" : "offline"}">
       <span class="calm-device-dot"></span>
       <span class="calm-device-name">${escapeHtml6(d.name)}</span>
       <span class="calm-device-type text-xs text-secondary">${d.type}</span>
     </div>
-  `).join("");
+  `
+    ).join("");
   }
-  var dashActiveMetrics = /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]);
-  var dashLoadSequence = 0;
-  var OVERVIEW_METRIC_KEYS = ["temperature", "humidity", "co2"];
-  var DASH_METRIC_META = {
-    temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C" },
-    humidity: { label: "Humidity", color: "#38BDF8", unit: "%" },
-    co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm" },
-    light: { label: "Light", color: "#FACC15", unit: "lux" },
-    soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%" },
-    water_level: { label: "Water Level", color: "#2563EB", unit: "%" },
-    ph: { label: "pH", color: "#A855F7", unit: "" },
-    weight: { label: "Weight", color: "#94A3B8", unit: "kg" }
-  };
-  function sortZonesDeterministically(zones) {
-    return zones.slice().sort((a, b) => {
+  function sortZonesDeterministically(zones2) {
+    return zones2.slice().sort((a, b) => {
       if (a === "Unzoned") return 1;
       if (b === "Unzoned") return -1;
-      return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
+      return a.localeCompare(b, void 0, {
+        numeric: true,
+        sensitivity: "base"
+      });
     });
   }
-  function aggregateZoneOverviewCards(layers, zones, unitSystem) {
+  function aggregateZoneOverviewCards(layers, zones2, unitSystem) {
     const zoneMetricBuckets = /* @__PURE__ */ new Map();
-    for (const zone of zones) {
-      zoneMetricBuckets.set(zone, /* @__PURE__ */ new Map([
-        ["temperature", /* @__PURE__ */ new Map()],
-        ["humidity", /* @__PURE__ */ new Map()],
-        ["co2", /* @__PURE__ */ new Map()]
-      ]));
+    for (const zone of zones2) {
+      zoneMetricBuckets.set(
+        zone,
+        /* @__PURE__ */ new Map([
+          ["temperature", /* @__PURE__ */ new Map()],
+          ["humidity", /* @__PURE__ */ new Map()],
+          ["co2", /* @__PURE__ */ new Map()]
+        ])
+      );
     }
     for (const layer of layers) {
       if (!zoneMetricBuckets.has(layer.zoneName)) continue;
-      if (!OVERVIEW_METRIC_KEYS.includes(layer.metric)) continue;
+      if (!OVERVIEW_METRIC_KEYS.includes(layer.metric))
+        continue;
       const metricKey = layer.metric;
       const metricBuckets = zoneMetricBuckets.get(layer.zoneName).get(metricKey);
       for (const reading of layer.data) {
         const timestampMs = new Date(reading.timestamp).getTime();
         if (!Number.isFinite(timestampMs)) continue;
         const bucketTs = Math.floor(timestampMs / 6e4) * 6e4;
-        const converted = formatSensorValue(reading.value, metricKey, unitSystem).value;
+        const converted = formatSensorValue(
+          reading.value,
+          metricKey,
+          unitSystem
+        ).value;
         const current = metricBuckets.get(bucketTs) ?? { sum: 0, count: 0 };
         current.sum += converted;
         current.count += 1;
         metricBuckets.set(bucketTs, current);
       }
     }
-    return zones.map((zoneName) => {
+    return zones2.map((zoneName) => {
       const zoneBuckets = zoneMetricBuckets.get(zoneName);
       const metrics2 = OVERVIEW_METRIC_KEYS.map((key) => {
         const cfg = DASH_METRIC_META[key];
@@ -4252,20 +5002,28 @@
       const { layers } = await loadHeroChartData();
       if (sequence !== dashLoadSequence) return;
       const store = getStore();
-      const zones = sortZonesDeterministically([...new Set(layers.map((l) => l.zoneName).filter(Boolean))]);
-      if (zones.length === 0) {
+      const zones2 = sortZonesDeterministically([
+        ...new Set(layers.map((l) => l.zoneName).filter(Boolean))
+      ]);
+      if (zones2.length === 0) {
         const inferredZones = /* @__PURE__ */ new Set();
         for (const device of store.devices.filter((d) => d.type === "sensor")) {
           if (device.id.startsWith("tent_a_")) inferredZones.add("Tent A");
           if (device.id.startsWith("tent_b_")) inferredZones.add("Tent B");
         }
         if (inferredZones.size > 0) {
-          zones.push(...sortZonesDeterministically(Array.from(inferredZones)));
+          zones2.push(...sortZonesDeterministically(Array.from(inferredZones)));
         }
       }
-      const zoneCards = aggregateZoneOverviewCards(layers, zones, store.unitSystem);
+      const zoneCards = aggregateZoneOverviewCards(
+        layers,
+        zones2,
+        store.unitSystem
+      );
       const availableMetricKeys = new Set(
-        zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter((key) => OVERVIEW_METRIC_KEYS.includes(key))
+        zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter(
+          (key) => OVERVIEW_METRIC_KEYS.includes(key)
+        )
       );
       const fallbackMetric = OVERVIEW_METRIC_KEYS.find((key) => availableMetricKeys.has(key)) ?? Array.from(availableMetricKeys)[0];
       for (const key of Array.from(dashActiveMetrics)) {
@@ -4281,7 +5039,9 @@
         activeKeys: new Set(dashActiveMetrics),
         onToggle: (key) => {
           if (!availableMetricKeys.has(key)) return;
-          const currentlyActive = Array.from(dashActiveMetrics).filter((metricKey) => availableMetricKeys.has(metricKey));
+          const currentlyActive = Array.from(dashActiveMetrics).filter(
+            (metricKey) => availableMetricKeys.has(metricKey)
+          );
           if (dashActiveMetrics.has(key)) {
             if (currentlyActive.length <= 1) return;
             dashActiveMetrics.delete(key);
@@ -4405,7 +5165,10 @@
         if (snap?.[m]?.value != null) values.push(snap[m].value);
       }
       const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-      const trend = Array.from({ length: 20 }, (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1));
+      const trend = Array.from(
+        { length: 20 },
+        (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1)
+      );
       const spark = renderSparkline(trend, metricColors[m] || "#888", 120, 28);
       const label = m.charAt(0).toUpperCase() + m.slice(1);
       return `
@@ -4422,7 +5185,9 @@
   }
   function renderDiagnosticExtras(store) {
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
+    const relays = store.devices.filter(
+      (d) => d.type === "relay" || d.type === "smart_plug"
+    );
     const cameras = store.devices.filter((d) => d.type === "camera");
     return `
     <div class="diag-extras hal-card">
@@ -4486,7 +5251,8 @@
     if (devices.length === 0) {
       return '<div class="empty-state"><p>No devices registered</p></div>';
     }
-    return devices.map((d) => `
+    return devices.map(
+      (d) => `
     <div class="device-mini-card ${d.online ? "online" : "offline"}" data-device-id="${d.id}">
       <div class="device-mini-icon">${deviceIcon(d.type)}</div>
       <div class="device-mini-info">
@@ -4499,13 +5265,15 @@
         </div>
       ` : ""}
     </div>
-  `).join("");
+  `
+    ).join("");
   }
   function renderRecentDecisions(decisions) {
     if (decisions.length === 0) {
       return '<div class="empty-state"><p>No decisions yet</p></div>';
     }
-    return decisions.map((d) => `
+    return decisions.map(
+      (d) => `
     <div class="decision-row ${d.status || "pending"}">
       <div class="decision-time text-mono text-xs text-secondary">${formatTime3(d.timestamp)}</div>
       <div class="decision-trigger text-sm">${escapeHtml6(d.trigger)}</div>
@@ -4515,7 +5283,8 @@
         <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor2(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
       </div>
     </div>
-  `).join("");
+  `
+    ).join("");
   }
   function attachDashboardHandlers() {
     document.querySelectorAll(".device-mini-card").forEach((card) => {
@@ -4939,18 +5708,1140 @@
 `;
     document.head.appendChild(style);
   }
+  var dashActiveMetrics, dashLoadSequence, OVERVIEW_METRIC_KEYS, DASH_METRIC_META;
+  var init_Dashboard = __esm({
+    "src/web/hal-ui/views/Dashboard.ts"() {
+      "use strict";
+      init_store();
+      init_SystemStatus();
+      init_LatestDecision();
+      init_KpiStrip();
+      init_HeroChart();
+      init_ChartKit();
+      init_OperatorPanels();
+      init_Terminal();
+      dashActiveMetrics = /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]);
+      dashLoadSequence = 0;
+      OVERVIEW_METRIC_KEYS = ["temperature", "humidity", "co2"];
+      DASH_METRIC_META = {
+        temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C" },
+        humidity: { label: "Humidity", color: "#38BDF8", unit: "%" },
+        co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm" },
+        light: { label: "Light", color: "#FACC15", unit: "lux" },
+        soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%" },
+        water_level: { label: "Water Level", color: "#2563EB", unit: "%" },
+        ph: { label: "pH", color: "#A855F7", unit: "" },
+        weight: { label: "Weight", color: "#94A3B8", unit: "kg" }
+      };
+    }
+  });
+
+  // src/web/hal-ui/views/DiscoveryWizard.ts
+  async function openDiscoveryWizard() {
+    currentStep = 1;
+    selectedProtocol = null;
+    discoveredDevices = [];
+    selectedDevices = [];
+    isScanning = false;
+    scanAbortController = null;
+    scanTimeout = null;
+    try {
+      zones = await halApi.getZones();
+    } catch {
+      zones = [];
+    }
+    for (const p of PROTOCOLS) {
+      if (p.id === "gpio") {
+        try {
+          const status = await halApi.getGpioStatus();
+          p.available = status.available;
+          if (!status.available) {
+            p.unavailableReason = "pigpiod not running";
+          }
+        } catch {
+          p.available = false;
+          p.unavailableReason = "Unable to check GPIO";
+        }
+      }
+    }
+    renderWizard();
+  }
+  function closeWizard() {
+    if (scanAbortController) {
+      scanAbortController.abort();
+      scanAbortController = null;
+    }
+    if (scanTimeout) {
+      clearTimeout(scanTimeout);
+      scanTimeout = null;
+    }
+    if (wizardOverlay) {
+      wizardOverlay.remove();
+      wizardOverlay = null;
+    }
+    isScanning = false;
+  }
+  function renderWizard() {
+    injectWizardStyles();
+    closeWizard();
+    wizardOverlay = document.createElement("div");
+    wizardOverlay.id = "discovery-wizard-overlay";
+    wizardOverlay.className = "dw-overlay";
+    document.body.appendChild(wizardOverlay);
+    const title = getStepTitle();
+    const content = getStepContent();
+    const actions = getStepActions();
+    wizardOverlay.innerHTML = `
+    <div class="dw-panel">
+      <div class="dw-header">
+        <div class="dw-header-title">
+          <span class="dw-icon">${getStepIcon()}</span>
+          <span>${title}</span>
+        </div>
+        <button class="dw-close" id="dw-close-btn" aria-label="Close">\xD7</button>
+      </div>
+      <div class="dw-progress">
+        ${renderProgress()}
+      </div>
+      <div class="dw-body" id="dw-body">
+        ${content}
+      </div>
+      <div class="dw-actions" id="dw-actions">
+        ${actions}
+      </div>
+    </div>
+  `;
+    attachWizardHandlers();
+  }
+  function renderProgress() {
+    const steps = [1, 2, 3, 4, 5];
+    return steps.map((s) => {
+      const active = s === currentStep;
+      const done = s < currentStep;
+      const cls = done ? "done" : active ? "active" : "";
+      return `<div class="dw-step-dot ${cls}" data-step="${s}">
+        <div class="dw-step-num">${done ? "\u2713" : s}</div>
+      </div>`;
+    }).join('<div class="dw-step-line"></div>');
+  }
+  function getStepTitle() {
+    switch (currentStep) {
+      case 1:
+        return "Add Device";
+      case 2:
+        return selectedProtocol?.id === "serial" ? "Scanning Serial Ports\u2026" : "Scanning Network\u2026";
+      case 3:
+        return "Select Devices";
+      case 4:
+        return "Configure Devices";
+      case 5:
+        return "Confirm Setup";
+    }
+  }
+  function getStepIcon() {
+    switch (currentStep) {
+      case 1:
+        return "\u{1F50D}";
+      case 2:
+        return "\u23F3";
+      case 3:
+        return "\u2611\uFE0F";
+      case 4:
+        return "\u2699\uFE0F";
+      case 5:
+        return "\u2705";
+    }
+  }
+  function getStepContent() {
+    switch (currentStep) {
+      case 1:
+        return renderStep1_ProtocolSelect();
+      case 2:
+        return renderStep2_Scan();
+      case 3:
+        return renderStep3_DeviceList();
+      case 4:
+        return renderStep4_Assign();
+      case 5:
+        return renderStep5_Confirm();
+    }
+  }
+  function getStepActions() {
+    switch (currentStep) {
+      case 1:
+        return `<button class="dw-btn-secondary" id="dw-manual-btn">Add Manually</button>
+              <button class="dw-btn-primary" id="dw-next-btn" disabled>Next</button>`;
+      case 2:
+        return `<button class="dw-btn-secondary" id="dw-cancel-scan-btn">Cancel</button>`;
+      case 3:
+        return `<button class="dw-btn-secondary" id="dw-back-btn">Back</button>
+              <button class="dw-btn-primary" id="dw-next-btn" disabled>Next</button>`;
+      case 4:
+        return `<button class="dw-btn-secondary" id="dw-back-btn">Back</button>
+              <button class="dw-btn-primary" id="dw-next-btn" disabled>Review</button>`;
+      case 5:
+        return `<button class="dw-btn-secondary" id="dw-back-btn">Back</button>
+              <button class="dw-btn-primary dw-btn-success" id="dw-confirm-btn">Add Devices</button>`;
+    }
+  }
+  function renderStep1_ProtocolSelect() {
+    const protocolCards = PROTOCOLS.map((p) => {
+      const disabled = p.available === false;
+      return `
+      <div class="dw-protocol-card ${selectedProtocol?.id === p.id ? "selected" : ""} ${disabled ? "disabled" : ""}"
+           data-protocol="${p.id}" ${disabled ? 'aria-disabled="true"' : ""}>
+        <div class="dw-protocol-icon">${p.icon}</div>
+        <div class="dw-protocol-info">
+          <div class="dw-protocol-label">${p.label}</div>
+          <div class="dw-protocol-desc">${p.description}</div>
+          ${disabled ? `<div class="dw-protocol-unavailable">${p.unavailableReason || "Unavailable"}</div>` : ""}
+        </div>
+      </div>
+    `;
+    }).join("");
+    return `
+    <div class="dw-step-content">
+      <p class="dw-step-desc">Choose how you want to discover your devices.</p>
+      <div class="dw-protocol-grid" id="dw-protocol-grid">
+        ${protocolCards}
+      </div>
+    </div>
+  `;
+  }
+  function renderStep2_Scan() {
+    if (isScanning) {
+      return `
+      <div class="dw-step-content dw-scan-active">
+        <div class="dw-scan-spinner">
+          <div class="dw-spinner-ring"></div>
+        </div>
+        <p class="dw-scan-status" id="dw-scan-status">
+          Scanning for ${selectedProtocol?.label} devices\u2026
+        </p>
+        <p class="dw-scan-substatus" id="dw-scan-substatus">
+          This may take up to 30 seconds
+        </p>
+      </div>
+    `;
+    }
+    if (discoveredDevices.length === 0) {
+      return `
+      <div class="dw-step-content dw-empty-state">
+        <div class="dw-empty-icon">\u{1F4E1}</div>
+        <p class="dw-empty-title">No devices found</p>
+        <p class="dw-empty-desc">
+          Check that your devices are powered on and connected, then try again.
+        </p>
+      </div>
+    `;
+    }
+    return "";
+  }
+  function startScan() {
+    isScanning = true;
+    currentStep = 2;
+    renderWizard();
+    scanAbortController = new AbortController();
+    scanTimeout = setTimeout(() => {
+      scanAbortController?.abort();
+    }, 3e4);
+    performScan().finally(() => {
+      isScanning = false;
+      if (scanTimeout) {
+        clearTimeout(scanTimeout);
+        scanTimeout = null;
+      }
+    });
+  }
+  async function performScan() {
+    if (!selectedProtocol) return;
+    const protocol = selectedProtocol.id;
+    const statusEl = document.getElementById("dw-scan-status");
+    const substatusEl = document.getElementById("dw-scan-substatus");
+    try {
+      if (protocol === "gpio") {
+        updateScanStatus("Checking GPIO pins\u2026", "");
+        const { pins } = await halApi.getGpioPins();
+        const available = pins.filter((p) => p.state === "available");
+        discoveredDevices = available.map((p) => ({
+          host: String(p.bcm),
+          protocol: "gpio",
+          type: "relay",
+          label: `GPIO ${p.bcm}`,
+          online: true
+        }));
+      } else if (protocol === "mqtt") {
+        updateScanStatus(
+          "Subscribing to MQTT topics\u2026",
+          "Listening for homeassistant/+/+ and tele/+/SENSOR"
+        );
+        const result = await halApi.getMqttDevices();
+        discoveredDevices = result.devices;
+      } else if (protocol === "http_tasmota") {
+        updateScanStatus(
+          "Scanning network for Tasmota devices\u2026",
+          "Pinging subnet\u2026"
+        );
+        const result = await halApi.scanHttpDevices({ protocol: "tasmota" });
+        discoveredDevices = result.devices;
+      } else if (protocol === "http_shelly") {
+        updateScanStatus(
+          "Scanning network for Shelly devices\u2026",
+          "Pinging subnet\u2026"
+        );
+        const result = await halApi.scanHttpDevices({ protocol: "shelly" });
+        discoveredDevices = result.devices;
+      } else if (protocol === "serial") {
+        updateScanStatus("Enumerating serial ports\u2026", "");
+        const { ports } = await halApi.getSerialPorts();
+        const probed = [];
+        for (const port of ports) {
+          try {
+            const probe = await halApi.probeSerialPort(port.path);
+            if (probe.detected) {
+              probed.push({
+                host: port.path,
+                port: port.path,
+                protocol: "serial",
+                type: "sensor",
+                label: probe.label || port.path,
+                online: true
+              });
+            }
+          } catch {
+          }
+        }
+        discoveredDevices = probed;
+      }
+    } catch (err) {
+      console.error("Scan error:", err);
+      discoveredDevices = [];
+    }
+    if (discoveredDevices.length === 0) {
+      renderWizard();
+    } else {
+      currentStep = 3;
+      renderWizard();
+    }
+  }
+  function updateScanStatus(status, substatus) {
+    const statusEl = document.getElementById("dw-scan-status");
+    const substatusEl = document.getElementById("dw-scan-substatus");
+    if (statusEl) statusEl.textContent = status;
+    if (substatusEl) substatusEl.textContent = substatus;
+  }
+  function renderStep3_DeviceList() {
+    const deviceRows = discoveredDevices.map(
+      (d, i) => `
+    <div class="dw-device-row ${d.selected ? "selected" : ""}" data-index="${i}">
+      <label class="dw-device-checkbox">
+        <input type="checkbox" ${d.selected ? "checked" : ""} data-device-index="${i}">
+        <span class="dw-device-checkmark"></span>
+      </label>
+      <div class="dw-device-info">
+        <div class="dw-device-name">${escapeHtml7(d.label)}</div>
+        <div class="dw-device-meta">
+          ${d.host} \xB7 ${d.protocol} \xB7 ${d.type}
+        </div>
+      </div>
+      <div class="dw-device-status ${d.online ? "online" : "offline"}">
+        ${d.online ? "Online" : "Offline"}
+      </div>
+    </div>
+  `
+    ).join("");
+    return `
+    <div class="dw-step-content">
+      <p class="dw-step-desc">
+        ${discoveredDevices.length} device${discoveredDevices.length !== 1 ? "s" : ""} found.
+        Select the devices you want to add.
+      </p>
+      <div class="dw-device-list">
+        ${deviceRows}
+      </div>
+      ${discoveredDevices.length === 0 ? `
+        <div class="dw-empty-state">
+          <div class="dw-empty-icon">\u{1F4E1}</div>
+          <p class="dw-empty-title">No devices found</p>
+          <p class="dw-empty-desc">Check that your devices are powered on and connected.</p>
+        </div>
+      ` : ""}
+    </div>
+  `;
+  }
+  function renderStep4_Assign() {
+    const zoneOptions = zones.map(
+      (z) => `<option value="${escapeHtml7(z.name)}">${escapeHtml7(z.name)} (${z.deviceCount})</option>`
+    ).join("");
+    const roleOptions = `
+    <option value="sensor">Sensor</option>
+    <option value="relay">Relay</option>
+    <option value="camera">Camera</option>
+    <option value="smart_plug">Smart Plug</option>
+  `;
+    const deviceRows = selectedDevices.map(
+      (d, i) => `
+    <div class="dw-assign-row">
+      <div class="dw-assign-device-info">
+        <div class="dw-assign-device-name">${escapeHtml7(d.label)}</div>
+        <div class="dw-assign-device-meta">${d.protocol} \xB7 ${d.type}</div>
+      </div>
+      <div class="dw-assign-form">
+        <input class="dw-input" type="text"
+          id="dw-name-${i}"
+          value="${escapeHtml7(d.label || "")}"
+          placeholder="Device name (1-64 chars)"
+          maxlength="64" data-index="${i}" data-field="name">
+        <select class="dw-select" id="dw-zone-${i}" data-index="${i}" data-field="zone">
+          <option value="">No Zone</option>
+          ${zoneOptions}
+        </select>
+        <select class="dw-select" id="dw-role-${i}" data-index="${i}" data-field="role">
+          ${roleOptions}
+        </select>
+      </div>
+    </div>
+  `
+    ).join("");
+    return `
+    <div class="dw-step-content">
+      <p class="dw-step-desc">
+        Configure ${selectedDevices.length} device${selectedDevices.length !== 1 ? "s" : ""}.
+        Set a name, assign a zone, and choose the device role.
+      </p>
+      <div class="dw-assign-list">
+        ${deviceRows}
+      </div>
+    </div>
+  `;
+  }
+  function renderStep5_Confirm() {
+    const rows = selectedDevices.map(
+      (d) => `
+    <div class="dw-confirm-row">
+      <div class="dw-confirm-name">${escapeHtml7(d.label || d.name || d.host)}</div>
+      <div class="dw-confirm-meta">
+        ${d.zone ? `<span class="dw-zone-tag">${escapeHtml7(d.zone)}</span>` : ""}
+        <span class="dw-protocol-badge">${d.protocol}</span>
+        <span class="dw-role-badge">${d.role || d.type}</span>
+      </div>
+    </div>
+  `
+    ).join("");
+    return `
+    <div class="dw-step-content">
+      <p class="dw-step-desc">
+        Ready to add ${selectedDevices.length} device${selectedDevices.length !== 1 ? "s" : ""} to your farm.
+        Review the details below and click "Add Devices" to complete setup.
+      </p>
+      <div class="dw-confirm-list">
+        ${rows}
+      </div>
+    </div>
+  `;
+  }
+  function attachWizardHandlers() {
+    const overlay = document.getElementById("discovery-wizard-overlay");
+    if (!overlay) return;
+    overlay.querySelector("#dw-close-btn")?.addEventListener("click", closeWizard);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeWizard();
+    });
+    if (currentStep === 1) {
+      attachStep1Handlers();
+    } else if (currentStep === 2) {
+      attachStep2Handlers();
+    } else if (currentStep === 3) {
+      attachStep3Handlers();
+    } else if (currentStep === 4) {
+      attachStep4Handlers();
+    } else if (currentStep === 5) {
+      attachStep5Handlers();
+    }
+  }
+  function attachStep1Handlers() {
+    const overlay = document.getElementById("discovery-wizard-overlay");
+    if (!overlay) return;
+    overlay.querySelectorAll(".dw-protocol-card:not(.disabled)").forEach((card) => {
+      card.addEventListener("click", () => {
+        const id = card.dataset.protocol;
+        selectedProtocol = PROTOCOLS.find((p) => p.id === id) || null;
+        const nextBtn = document.getElementById(
+          "dw-next-btn"
+        );
+        if (nextBtn) nextBtn.disabled = !selectedProtocol;
+        overlay.querySelectorAll(".dw-protocol-card").forEach((c) => c.classList.remove("selected"));
+        card.classList.add("selected");
+      });
+    });
+    overlay.querySelector("#dw-next-btn")?.addEventListener("click", () => {
+      if (!selectedProtocol) return;
+      startScan();
+    });
+    overlay.querySelector("#dw-manual-btn")?.addEventListener("click", () => {
+      openManualAdd();
+    });
+  }
+  function attachStep2Handlers() {
+    const overlay = document.getElementById("discovery-wizard-overlay");
+    if (!overlay) return;
+    overlay.querySelector("#dw-cancel-scan-btn")?.addEventListener("click", () => {
+      scanAbortController?.abort();
+      isScanning = false;
+      currentStep = 1;
+      renderWizard();
+    });
+  }
+  function attachStep3Handlers() {
+    const overlay = document.getElementById("discovery-wizard-overlay");
+    if (!overlay) return;
+    overlay.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const idx = parseInt(cb.dataset.deviceIndex || "0");
+        discoveredDevices[idx].selected = cb.checked;
+        updateSelectedDevices();
+        updateNextButtonState();
+        const row = overlay.querySelector(`[data-index="${idx}"]`);
+        if (row)
+          row.classList.toggle("selected", cb.checked);
+      });
+    });
+    overlay.querySelector("#dw-back-btn")?.addEventListener("click", () => {
+      currentStep = 1;
+      renderWizard();
+    });
+    overlay.querySelector("#dw-next-btn")?.addEventListener("click", () => {
+      if (selectedDevices.length === 0) return;
+      currentStep = 4;
+      renderWizard();
+    });
+    updateNextButtonState();
+  }
+  function attachStep4Handlers() {
+    const overlay = document.getElementById("discovery-wizard-overlay");
+    if (!overlay) return;
+    overlay.querySelectorAll(".dw-input, .dw-select").forEach((el) => {
+      el.addEventListener("input", () => {
+        const idx = parseInt(el.dataset.index || "0");
+        const field = el.dataset.field;
+        const val = el.value;
+        if (selectedDevices[idx]) {
+          selectedDevices[idx][field] = val;
+        }
+        updateNextButtonState();
+      });
+    });
+    overlay.querySelector("#dw-back-btn")?.addEventListener("click", () => {
+      currentStep = 3;
+      renderWizard();
+    });
+    overlay.querySelector("#dw-next-btn")?.addEventListener("click", () => {
+      currentStep = 5;
+      renderWizard();
+    });
+    updateNextButtonState();
+  }
+  function attachStep5Handlers() {
+    const overlay = document.getElementById("discovery-wizard-overlay");
+    if (!overlay) return;
+    overlay.querySelector("#dw-back-btn")?.addEventListener("click", () => {
+      currentStep = 4;
+      renderWizard();
+    });
+    overlay.querySelector("#dw-confirm-btn")?.addEventListener("click", async () => {
+      await confirmRegistration();
+    });
+  }
+  function updateSelectedDevices() {
+    selectedDevices = discoveredDevices.filter((d) => d.selected);
+  }
+  function updateNextButtonState() {
+    const overlay = document.getElementById("discovery-wizard-overlay");
+    if (!overlay) return;
+    const nextBtn = overlay.querySelector(
+      "#dw-next-btn"
+    );
+    if (!nextBtn) return;
+    if (currentStep === 3) {
+      nextBtn.disabled = selectedDevices.length === 0;
+    } else if (currentStep === 4) {
+      const namesValid = selectedDevices.every((d) => {
+        const name = d.label || d.name || "";
+        return name.length >= 1 && name.length <= 64;
+      });
+      nextBtn.disabled = !namesValid;
+    }
+  }
+  async function confirmRegistration() {
+    const overlay = document.getElementById("discovery-wizard-overlay");
+    const confirmBtn = overlay?.querySelector(
+      "#dw-confirm-btn"
+    );
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "Adding\u2026";
+    }
+    const added = [];
+    const errors = [];
+    for (const device of selectedDevices) {
+      try {
+        const name = device.label || device.name || device.host;
+        const protocol = device.protocol;
+        const type = device.role || device.type;
+        const zone = device.zone;
+        let dev;
+        if (protocol === "gpio") {
+          dev = await halApi.registerGpioDevice({
+            bcmPin: parseInt(device.host),
+            label: name,
+            zone: zone || void 0
+          });
+        } else if (protocol === "mqtt") {
+          dev = await halApi.registerMqttDevice({
+            topic: device.host,
+            label: name,
+            type,
+            zone: zone || void 0
+          });
+        } else if (protocol === "http_tasmota" || protocol === "http_shelly") {
+          dev = await halApi.registerHttpDevice({
+            host: device.host,
+            protocol: protocol === "http_tasmota" ? "tasmota" : "shelly",
+            type,
+            label: name,
+            zone: zone || void 0
+          });
+        } else if (protocol === "serial") {
+          dev = await halApi.registerSerialDevice({
+            port: device.host,
+            type,
+            label: name,
+            zone: zone || void 0
+          });
+        } else {
+          dev = await halApi.manualAddDevice({
+            host: device.host,
+            protocol,
+            type,
+            label: name,
+            zone: zone || void 0
+          });
+        }
+        added.push(dev);
+      } catch (err) {
+        errors.push(`${device.label}: ${err.message}`);
+      }
+    }
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Add Devices";
+    }
+    if (added.length > 0) {
+      showToast(
+        `${added.length} device${added.length !== 1 ? "s" : ""} added successfully`,
+        "success"
+      );
+      const { refreshHALData: refreshHALData2 } = await Promise.resolve().then(() => (init_main(), main_exports));
+      refreshHALData2();
+      closeWizard();
+    } else if (errors.length > 0) {
+      showToast(`Failed to add devices: ${errors.join("; ")}`, "danger");
+    }
+  }
+  function openManualAdd() {
+    const overlay = document.getElementById("discovery-wizard-overlay");
+    if (!overlay) return;
+    const panel = overlay.querySelector(".dw-panel");
+    if (!panel) return;
+    const bodyEl = document.getElementById("dw-body");
+    const actionsEl = document.getElementById("dw-actions");
+    if (bodyEl) {
+      bodyEl.innerHTML = renderManualAddForm();
+    }
+    if (actionsEl) {
+      actionsEl.innerHTML = `
+      <button class="dw-btn-secondary" id="dw-cancel-manual-btn">Cancel</button>
+      <button class="dw-btn-primary" id="dw-save-manual-btn" disabled>Add Device</button>
+    `;
+    }
+    attachManualAddHandlers();
+  }
+  function renderManualAddForm() {
+    const zoneOptions = zones.map(
+      (z) => `<option value="${escapeHtml7(z.name)}">${escapeHtml7(z.name)}</option>`
+    ).join("");
+    return `
+    <div class="dw-step-content">
+      <p class="dw-step-desc">
+        Enter your device details manually. FarmPal will verify connectivity before saving.
+      </p>
+      <div class="dw-manual-form">
+        <div class="dw-form-group">
+          <label class="dw-label">Host / IP Address *</label>
+          <input class="dw-input" type="text" id="ma-host" placeholder="192.168.1.100" required>
+        </div>
+        <div class="dw-form-group">
+          <label class="dw-label">Protocol *</label>
+          <select class="dw-select" id="ma-protocol">
+            <option value="tasmota">HTTP / Tasmota</option>
+            <option value="shelly">HTTP / Shelly</option>
+            <option value="mqtt">MQTT</option>
+            <option value="gpio">GPIO</option>
+            <option value="serial">Serial</option>
+          </select>
+        </div>
+        <div class="dw-form-group">
+          <label class="dw-label">Device Type</label>
+          <select class="dw-select" id="ma-type">
+            <option value="sensor">Sensor</option>
+            <option value="relay">Relay</option>
+            <option value="camera">Camera</option>
+            <option value="smart_plug">Smart Plug</option>
+          </select>
+        </div>
+        <div class="dw-form-group">
+          <label class="dw-label">Device Name</label>
+          <input class="dw-input" type="text" id="ma-name" placeholder="My Sensor" maxlength="64">
+        </div>
+        <div class="dw-form-group">
+          <label class="dw-label">Zone</label>
+          <select class="dw-select" id="ma-zone">
+            <option value="">No Zone</option>
+            ${zoneOptions}
+          </select>
+        </div>
+        <div class="dw-form-validation" id="ma-validation"></div>
+      </div>
+    </div>
+  `;
+  }
+  function attachManualAddHandlers() {
+    const overlay = document.getElementById("discovery-wizard-overlay");
+    if (!overlay) return;
+    overlay.querySelector("#dw-cancel-manual-btn")?.addEventListener("click", () => {
+      currentStep = 1;
+      selectedProtocol = null;
+      renderWizard();
+    });
+    const hostInput = overlay.querySelector(
+      "#ma-host"
+    );
+    const protocolSelect = overlay.querySelector(
+      "#ma-protocol"
+    );
+    const saveBtn = overlay.querySelector(
+      "#dw-save-manual-btn"
+    );
+    function validateManualForm() {
+      if (saveBtn) saveBtn.disabled = !hostInput?.value.trim();
+    }
+    hostInput?.addEventListener("input", validateManualForm);
+    protocolSelect?.addEventListener("change", validateManualForm);
+    saveBtn?.addEventListener("click", async () => {
+      if (!hostInput?.value.trim()) return;
+      const validationEl = document.getElementById("ma-validation");
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = "Checking\u2026";
+      }
+      if (validationEl) validationEl.textContent = "Checking connectivity\u2026";
+      try {
+        const dev = await halApi.manualAddDevice({
+          host: hostInput.value.trim(),
+          protocol: protocolSelect?.value || "tasmota",
+          type: overlay.querySelector("#ma-type")?.value || "sensor",
+          label: overlay.querySelector("#ma-name")?.value || void 0,
+          zone: overlay.querySelector("#ma-zone")?.value || void 0
+        });
+        showToast(`Device "${dev.name}" added successfully`, "success");
+        const { refreshHALData: refreshHALData2 } = await Promise.resolve().then(() => (init_main(), main_exports));
+        refreshHALData2();
+        closeWizard();
+      } catch (err) {
+        if (validationEl)
+          validationEl.innerHTML = `<span class="dw-validation-error">${escapeHtml7(err.message)}</span>`;
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "Add Device";
+        }
+      }
+    });
+  }
+  function injectWizardStyles() {
+    if (document.getElementById("dw-styles")) return;
+    const style = document.createElement("style");
+    style.id = "dw-styles";
+    style.textContent = `
+.dw-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  animation: dw-fade-in 150ms ease;
+}
+.dw-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 600px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: dw-slide-up 150ms ease;
+}
+.dw-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.dw-header-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.dw-icon { font-size: 20px; }
+.dw-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.dw-close:hover { color: var(--text-primary); }
+.dw-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3) var(--space-4);
+  gap: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.dw-step-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  transition: all 200ms ease;
+}
+.dw-step-dot.active {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.dw-step-dot.done {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-primary);
+}
+.dw-step-line {
+  flex: 1;
+  height: 2px;
+  background: var(--border);
+  min-width: 20px;
+}
+.dw-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+.dw-step-content { }
+.dw-step-desc {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: var(--space-4);
+}
+.dw-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  padding: var(--space-4);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.dw-btn-primary {
+  background: var(--accent);
+  color: var(--text-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 var(--space-4);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 150ms;
+}
+.dw-btn-primary:hover:not(:disabled) { opacity: 0.85; }
+.dw-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.dw-btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 var(--space-4);
+  font-size: 14px;
+  cursor: pointer;
+}
+.dw-btn-secondary:hover { border-color: var(--accent); color: var(--text-primary); }
+.dw-btn-success {
+  background: var(--success);
+}
+.dw-protocol-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.dw-protocol-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 150ms, background 150ms;
+}
+.dw-protocol-card:hover:not(.disabled) { border-color: var(--accent); }
+.dw-protocol-card.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.dw-protocol-card.disabled { opacity: 0.5; cursor: not-allowed; }
+.dw-protocol-icon { font-size: 24px; flex-shrink: 0; }
+.dw-protocol-label { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.dw-protocol-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.dw-protocol-unavailable { font-size: 11px; color: var(--warning); margin-top: 4px; }
+.dw-scan-active { text-align: center; padding: var(--space-6) 0; }
+.dw-scan-spinner { margin-bottom: var(--space-4); }
+.dw-spinner-ring {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: dw-spin 0.8s linear infinite;
+  margin: 0 auto;
+}
+@keyframes dw-spin { to { transform: rotate(360deg); } }
+.dw-scan-status { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.dw-scan-substatus { font-size: 12px; color: var(--text-secondary); margin-top: var(--space-1); }
+.dw-empty-state { text-align: center; padding: var(--space-6) 0; }
+.dw-empty-icon { font-size: 48px; margin-bottom: var(--space-3); }
+.dw-empty-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: var(--space-2); }
+.dw-empty-desc { font-size: 14px; color: var(--text-secondary); }
+.dw-device-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.dw-device-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 150ms;
+}
+.dw-device-row:hover { border-color: var(--accent); }
+.dw-device-row.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.dw-device-checkbox { display: flex; align-items: center; }
+.dw-device-checkbox input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.dw-device-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.dw-device-meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.dw-device-status { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); }
+.dw-device-status.online { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+.dw-device-status.offline { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
+.dw-assign-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.dw-assign-row {
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.dw-assign-device-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.dw-assign-device-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: var(--space-2); }
+.dw-assign-form { display: flex; flex-direction: column; gap: var(--space-2); }
+.dw-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 var(--space-3);
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.dw-input:focus { border-color: var(--accent); }
+.dw-select {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 var(--space-3);
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.dw-select:focus { border-color: var(--accent); }
+.dw-confirm-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.dw-confirm-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.dw-confirm-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.dw-confirm-meta { display: flex; align-items: center; gap: var(--space-2); margin-top: 4px; }
+.dw-zone-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent);
+}
+.dw-protocol-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dw-role-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+}
+.dw-manual-form { display: flex; flex-direction: column; gap: var(--space-3); }
+.dw-form-group { display: flex; flex-direction: column; gap: var(--space-1); }
+.dw-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.dw-form-validation { font-size: 13px; min-height: 20px; }
+.dw-validation-error { color: var(--danger); }
+@keyframes dw-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes dw-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+`;
+    document.head.appendChild(style);
+  }
+  function escapeHtml7(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  var PROTOCOLS, currentStep, selectedProtocol, discoveredDevices, selectedDevices, zones, isScanning, scanAbortController, scanTimeout, wizardOverlay;
+  var init_DiscoveryWizard = __esm({
+    "src/web/hal-ui/views/DiscoveryWizard.ts"() {
+      "use strict";
+      init_api();
+      init_Toast();
+      PROTOCOLS = [
+        {
+          id: "gpio",
+          label: "GPIO",
+          description: "Raspberry Pi GPIO pins via pigpiod",
+          icon: "\u{1F7E2}"
+        },
+        {
+          id: "mqtt",
+          label: "MQTT",
+          description: "HomeAssistant or Tasmota MQTT discovery",
+          icon: "\u{1F4E1}"
+        },
+        {
+          id: "http_tasmota",
+          label: "HTTP / Tasmota",
+          description: "Tasmota HTTP devices on your network",
+          icon: "\u{1F310}"
+        },
+        {
+          id: "http_shelly",
+          label: "HTTP / Shelly",
+          description: "Shelly smart plugs on your network",
+          icon: "\u{1F50C}"
+        },
+        {
+          id: "serial",
+          label: "Serial",
+          description: "USB serial sensors (BME280, DS18B20, Atlas EZO)",
+          icon: "\u{1F517}"
+        }
+      ];
+      currentStep = 1;
+      selectedProtocol = null;
+      discoveredDevices = [];
+      selectedDevices = [];
+      zones = [];
+      isScanning = false;
+      scanAbortController = null;
+      scanTimeout = null;
+      wizardOverlay = null;
+    }
+  });
 
   // src/web/hal-ui/views/Devices.ts
-  init_store();
-  init_ChartKit();
+  var Devices_exports = {};
+  __export(Devices_exports, {
+    renderDevices: () => renderDevices
+  });
   async function renderDevices(container) {
     const store = getStore();
     injectDevicesStyles();
     injectChartKitStyles();
+    let zones2 = [];
+    try {
+      const allZones = await halApi.getZones();
+      zones2 = allZones.filter((z) => z.id && z.id !== "_none");
+    } catch {
+    }
+    const zoneOptions = zones2.map(
+      (z) => `<option value="${escapeHtml8(z.name)}">${escapeHtml8(z.name)}</option>`
+    ).join("");
     container.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">Devices</h1>
-      <p class="page-subtitle">Manage farm hardware</p>
+      <div class="page-header-left">
+        <h1 class="page-title">Devices</h1>
+        <p class="page-subtitle">Manage farm hardware</p>
+      </div>
+      <button class="hal-btn-primary" id="dw-add-device-btn">
+        <span>+ Add Device</span>
+      </button>
     </div>
 
     <div class="devices-toolbar mb-4">
@@ -4960,6 +6851,10 @@
         <option value="relay">Relays</option>
         <option value="sensor">Sensors</option>
         <option value="camera">Cameras</option>
+      </select>
+      <select class="hal-input" id="device-zone-filter">
+        <option value="">All zones</option>
+        ${zoneOptions}
       </select>
       <select class="hal-input" id="device-status-filter">
         <option value="">All status</option>
@@ -5002,7 +6897,10 @@
         continue;
       }
       const base = values[0];
-      const trend = Array.from({ length: 15 }, (_, i) => base + Math.sin(i * 0.8) * (base * 0.05));
+      const trend = Array.from(
+        { length: 15 },
+        (_, i) => base + Math.sin(i * 0.8) * (base * 0.05)
+      );
       let color;
       if (snap.temperature?.value != null) {
         const idx = tempSensors.indexOf(s);
@@ -5021,15 +6919,18 @@
     return devices.map((d) => {
       const state2 = d.online ? "online" : "offline";
       const chartId = `dev-chart-${d.id}`;
+      const zone = d.zone;
       return `
       <div class="device-card hal-card" data-device-id="${d.id}" style="border-left: 3px solid ${state2 === "online" ? "var(--accent)" : "var(--danger)"}">
         <div class="device-card-header">
           <div class="device-card-icon">${deviceIcon2(d.type)}</div>
-          <div class="device-card-title">${escapeHtml7(d.name)}</div>
+          <div class="device-card-title" id="dev-name-${d.id}">${escapeHtml8(d.name)}</div>
           <span class="hal-badge hal-badge-slate">${d.protocol}</span>
+          <button class="device-rename-btn" data-device-id="${d.id}" title="Rename device">\u270F\uFE0F</button>
         </div>
         <div class="device-card-meta">
           <span class="text-xs text-secondary">${d.type} \xB7 ${state2}</span>
+          ${zone ? `<span class="device-zone-tag">${escapeHtml8(zone)}</span>` : ""}
           ${d.lastSeen ? `<span class="text-xs text-mono text-secondary">${formatRelativeTime(d.lastSeen)}</span>` : ""}
         </div>
         ${d.type === "sensor" ? `<div class="device-chart-wrap" id="${chartId}"></div>` : ""}
@@ -5044,29 +6945,46 @@
     }).join("");
   }
   function attachDevicesHandlers() {
-    const filterInput = document.getElementById("device-filter");
-    const typeSelect = document.getElementById("device-type-filter");
-    const statusSelect = document.getElementById("device-status-filter");
+    const filterInput = document.getElementById(
+      "device-filter"
+    );
+    const typeSelect = document.getElementById(
+      "device-type-filter"
+    );
+    const zoneSelect = document.getElementById(
+      "device-zone-filter"
+    );
+    const statusSelect = document.getElementById(
+      "device-status-filter"
+    );
+    document.getElementById("dw-add-device-btn")?.addEventListener("click", () => {
+      openDiscoveryWizard();
+    });
     function applyFilter() {
       const q = filterInput?.value.toLowerCase() || "";
       const type = typeSelect?.value || "";
+      const zone = zoneSelect?.value || "";
       const status = statusSelect?.value || "";
       const store = getStore();
       const filtered = store.devices.filter((d) => {
         const matchQ = !q || d.name.toLowerCase().includes(q) || d.protocol.toLowerCase().includes(q);
         const matchType = !type || d.type === type;
+        const matchZone = !zone || d.zone === zone;
         const matchStatus = !status || (status === "online" ? d.online : !d.online);
-        return matchQ && matchType && matchStatus;
+        return matchQ && matchType && matchZone && matchStatus;
       });
       const grid = document.getElementById("devices-grid");
       if (grid) grid.innerHTML = renderDeviceCards(filtered);
       attachToggleHandlers();
+      attachRenameHandlers();
       renderDeviceCharts(filtered);
     }
     filterInput?.addEventListener("input", applyFilter);
     typeSelect?.addEventListener("change", applyFilter);
+    zoneSelect?.addEventListener("change", applyFilter);
     statusSelect?.addEventListener("change", applyFilter);
     attachToggleHandlers();
+    attachRenameHandlers();
   }
   function attachToggleHandlers() {
     const store = getStore();
@@ -5087,6 +7005,84 @@
       el.replaceWith(toggle);
     });
   }
+  function attachRenameHandlers() {
+    document.querySelectorAll(".device-rename-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const deviceId = btn.dataset.deviceId;
+        if (!deviceId) return;
+        startInlineRename(deviceId);
+      });
+    });
+  }
+  async function startInlineRename(deviceId) {
+    const store = getStore();
+    const device = store.devices.find((d) => d.id === deviceId);
+    if (!device) return;
+    const nameEl = document.getElementById(`dev-name-${deviceId}`);
+    if (!nameEl) return;
+    const currentName = device.name;
+    let zones2 = [];
+    try {
+      const allZones = await halApi.getZones();
+      zones2 = allZones.filter((z) => z.id && z.id !== "_none");
+    } catch {
+    }
+    const zoneOptions = zones2.map((z) => {
+      const selected = device.zone === z.name ? "selected" : "";
+      return `<option value="${escapeHtml8(z.name)}" ${selected}>${escapeHtml8(z.name)}</option>`;
+    }).join("");
+    const currentZone = device.zone || "";
+    nameEl.innerHTML = `
+    <div class="inline-rename-form">
+      <input class="dw-input inline-rename-input" type="text" id="rename-input-${deviceId}"
+        value="${escapeHtml8(currentName)}" maxlength="64" placeholder="Device name">
+      <select class="dw-select inline-rename-zone" id="rename-zone-${deviceId}">
+        <option value="">No Zone</option>
+        ${zoneOptions}
+      </select>
+      <button class="inline-rename-save" id="rename-save-${deviceId}">Save</button>
+      <button class="inline-rename-cancel" id="rename-cancel-${deviceId}">Cancel</button>
+    </div>
+  `;
+    const inputEl = document.getElementById(
+      `rename-input-${deviceId}`
+    );
+    inputEl?.focus();
+    inputEl?.select();
+    document.getElementById(`rename-save-${deviceId}`)?.addEventListener("click", async () => {
+      const newName = inputEl?.value.trim() || currentName;
+      const newZone = document.getElementById(
+        `rename-zone-${deviceId}`
+      )?.value || "";
+      try {
+        await halApi.updateDevice(deviceId, {
+          label: newName,
+          zone: newZone || void 0
+        });
+        showToast(`Device renamed to "${newName}"`, "success");
+        const { refreshHALData: refreshHALData2 } = await Promise.resolve().then(() => (init_main(), main_exports));
+        refreshHALData2();
+        const container = document.getElementById("view-container");
+        if (container) {
+          const { renderDevices: renderDevices2 } = await Promise.resolve().then(() => (init_Devices(), Devices_exports));
+          renderDevices2(container);
+        }
+      } catch (err) {
+        showToast(`Rename failed: ${err.message}`, "danger");
+      }
+    });
+    document.getElementById(`rename-cancel-${deviceId}`)?.addEventListener("click", () => {
+      nameEl.textContent = currentName;
+    });
+    inputEl?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        document.getElementById(`rename-save-${deviceId}`)?.dispatchEvent(new Event("click"));
+      } else if (e.key === "Escape") {
+        nameEl.textContent = currentName;
+      }
+    });
+  }
   function formatRelativeTime(iso) {
     try {
       const diff = Date.now() - new Date(iso).getTime();
@@ -5098,7 +7094,7 @@
       return "--";
     }
   }
-  function escapeHtml7(s) {
+  function escapeHtml8(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function deviceIcon2(type) {
@@ -5120,10 +7116,32 @@
     const style = document.createElement("style");
     style.id = "hal-devices-styles";
     style.textContent = `
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+.page-header-left { flex: 1; }
+.hal-btn-primary {
+  background: var(--accent);
+  color: var(--text-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 var(--space-4);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 150ms;
+}
+.hal-btn-primary:hover { opacity: 0.85; }
 .devices-toolbar {
   display: flex;
   gap: var(--space-2);
   align-items: center;
+  flex-wrap: wrap;
 }
 .hal-input {
   background: var(--bg-tertiary);
@@ -5146,7 +7164,7 @@
   margin-bottom: var(--space-2);
 }
 .device-card-icon { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: var(--radius-sm); padding: 3px 6px; }
-.device-card-title { flex: 1; font-size: 14px; font-weight: 600; }
+.device-card-title { flex: 1; font-size: 14px; font-weight: 600; min-width: 0; }
 .hal-badge {
   font-size: 10px;
   font-weight: 600;
@@ -5165,7 +7183,28 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+  gap: var(--space-1);
 }
+.device-zone-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-pill);
+}
+.device-rename-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  opacity: 0.5;
+  transition: opacity 150ms;
+  flex-shrink: 0;
+}
+.device-rename-btn:hover { opacity: 1; }
 .device-card-control {
   display: flex;
   align-items: center;
@@ -5185,32 +7224,53 @@
   width: 100%;
   height: 40px;
 }
+.inline-rename-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+}
+.inline-rename-input,
+.inline-rename-zone {
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  height: 30px;
+  padding: 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.inline-rename-save,
+.inline-rename-cancel {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 26px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+.inline-rename-save:hover { border-color: var(--accent); color: var(--accent); }
+.inline-rename-cancel:hover { border-color: var(--danger); color: var(--danger); }
 `;
     document.head.appendChild(style);
   }
+  var init_Devices = __esm({
+    "src/web/hal-ui/views/Devices.ts"() {
+      "use strict";
+      init_store();
+      init_api();
+      init_Toggle();
+      init_Toast();
+      init_DiscoveryWizard();
+      init_ChartKit();
+    }
+  });
 
   // src/web/hal-ui/views/Sensors.ts
-  init_store();
-  var metrics = [
-    { key: "temperature", label: "Temperature", shortLabel: "Temp", fallbackUnit: "\xB0C", color: "#F59E0B", description: "Air / probe temperature", minAxis: 10, maxAxis: 40 },
-    { key: "humidity", label: "Humidity", shortLabel: "RH", fallbackUnit: "%", color: "#38BDF8", description: "Relative humidity", minAxis: 0, maxAxis: 100 },
-    { key: "soil_moisture", label: "Soil Moisture", shortLabel: "Soil", fallbackUnit: "%", color: "#EF4444", description: "Volumetric water content", minAxis: 0, maxAxis: 100 },
-    { key: "co2", label: "CO\u2082", shortLabel: "CO\u2082", fallbackUnit: "ppm", color: "#22C55E", description: "Carbon dioxide", minAxis: 0, maxAxis: 2e3 },
-    { key: "light", label: "Light", shortLabel: "Light", fallbackUnit: "lux", color: "#FACC15", description: "PAR / illuminance", minAxis: 0, maxAxis: 1e5 },
-    { key: "water_level", label: "Water Level", shortLabel: "Water", fallbackUnit: "%", color: "#2563EB", description: "Reservoir level", minAxis: 0, maxAxis: 100 },
-    { key: "ph", label: "pH", shortLabel: "pH", fallbackUnit: "", color: "#A855F7", description: "Acidity / alkalinity", minAxis: 0, maxAxis: 14 },
-    { key: "weight", label: "Weight", shortLabel: "Weight", fallbackUnit: "kg", color: "#94A3B8", description: "Load cell", minAxis: 0, maxAxis: 100 }
-  ];
-  var viewState = {
-    deviceId: "all",
-    range: "24H",
-    activeMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
-    availableMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
-    activeZone: "",
-    zoneSelectionInitialized: false,
-    decisions: []
-  };
-  var loadSequence = 0;
   async function renderSensors(container) {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
@@ -5226,7 +7286,7 @@
         <div class="sensors-hero-controls">
           <select class="hal-input" id="sensor-device-select">
             <option value="all" ${viewState.deviceId === "all" ? "selected" : ""}>All Devices</option>
-            ${sensors.map((s) => `<option value="${s.id}" ${viewState.deviceId === s.id ? "selected" : ""}>${escapeHtml8(s.name)}</option>`).join("")}
+            ${sensors.map((s) => `<option value="${s.id}" ${viewState.deviceId === s.id ? "selected" : ""}>${escapeHtml9(s.name)}</option>`).join("")}
           </select>
           <div class="time-range-group" role="group">
             ${["1H", "6H", "24H", "7D", "30D"].map(
@@ -5251,7 +7311,7 @@
               aria-pressed="${active ? "true" : "false"}"
             >
               <span class="pill-dot"></span>
-              <span class="pill-label">${escapeHtml8(m.shortLabel)}</span>
+              <span class="pill-label">${escapeHtml9(m.shortLabel)}</span>
               <span class="pill-value" id="pill-${m.key}">--</span>
             </button>
           `;
@@ -5295,7 +7355,9 @@
     await loadData(sensors);
   }
   function attachHandlers(sensors) {
-    const deviceSelect = document.getElementById("sensor-device-select");
+    const deviceSelect = document.getElementById(
+      "sensor-device-select"
+    );
     deviceSelect?.addEventListener("change", () => {
       viewState.deviceId = deviceSelect.value || "all";
       void loadData(sensors);
@@ -5329,7 +7391,9 @@
         const metric = btn.dataset.metric;
         if (!viewState.availableMetrics.has(metric)) return;
         if (viewState.activeMetrics.has(metric)) {
-          const activeAvailable = Array.from(viewState.activeMetrics).filter((key) => viewState.availableMetrics.has(key));
+          const activeAvailable = Array.from(viewState.activeMetrics).filter(
+            (key) => viewState.availableMetrics.has(key)
+          );
           if (activeAvailable.length <= 1) return;
           viewState.activeMetrics.delete(metric);
         } else {
@@ -5342,26 +7406,38 @@
   }
   async function loadData(sensors) {
     const sequence = ++loadSequence;
-    const selectedDevices = viewState.deviceId === "all" ? sensors : sensors.filter((s) => s.id === viewState.deviceId);
+    const selectedDevices2 = viewState.deviceId === "all" ? sensors : sensors.filter((s) => s.id === viewState.deviceId);
     const { from, to } = getRangeBounds(viewState.range);
-    viewState.availableMetrics = getAvailableMetrics(selectedDevices);
+    viewState.availableMetrics = getAvailableMetrics(selectedDevices2);
     reconcileActiveMetrics();
     syncMetricPills();
-    const activeMetricConfigs = metrics.filter((m) => viewState.activeMetrics.has(m.key));
+    const activeMetricConfigs = metrics.filter(
+      (m) => viewState.activeMetrics.has(m.key)
+    );
     const heroChart = document.getElementById("hero-chart");
-    if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
+    if (heroChart)
+      heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
     try {
       const layers = [];
       const [decisions] = await Promise.all([
         halApi.getDecisions(50).catch(() => []),
-        ...selectedDevices.flatMap(
+        ...selectedDevices2.flatMap(
           (device) => activeMetricConfigs.map(async (metric) => {
-            const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
+            const data = await halApi.getSensorHistory(
+              device.id,
+              metric.key,
+              from,
+              to
+            );
             if (data.length > 0) {
               layers.push({
                 deviceId: device.id,
                 deviceName: device.name,
-                zoneName: resolveZoneName2(device.id, device.name),
+                zoneName: resolveZoneName2(
+                  device.id,
+                  device.name,
+                  device.zone
+                ),
                 metric,
                 data
               });
@@ -5370,9 +7446,9 @@
         )
       ]);
       if (sequence !== loadSequence) return;
-      const zones = [...new Set(layers.map((l) => l.zoneName).filter(Boolean))];
-      renderZoneToggles(zones);
-      viewState.availableMetrics = getAvailableMetrics(selectedDevices);
+      const zones2 = [...new Set(layers.map((l) => l.zoneName).filter(Boolean))];
+      renderZoneToggles(zones2);
+      viewState.availableMetrics = getAvailableMetrics(selectedDevices2);
       reconcileActiveMetrics();
       syncMetricPills();
       const zoneLayers = viewState.activeZone ? layers.filter((l) => l.zoneName === viewState.activeZone) : layers;
@@ -5384,16 +7460,20 @@
       renderVizCards(zoneLayers, decisions);
     } catch (err) {
       console.error("Sensor load failed:", err);
-      if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
+      if (heroChart)
+        heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
     }
   }
-  function renderZoneToggles(zones) {
+  function renderZoneToggles(zones2) {
     const container = document.getElementById("zone-bar");
     if (!container) return;
-    const sortedZones = zones.slice().sort((a, b) => {
+    const sortedZones = zones2.slice().sort((a, b) => {
       if (a === "Unzoned") return 1;
       if (b === "Unzoned") return -1;
-      return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
+      return a.localeCompare(b, void 0, {
+        numeric: true,
+        sensitivity: "base"
+      });
     });
     if (sortedZones.length > 0) {
       if (!viewState.zoneSelectionInitialized) {
@@ -5406,7 +7486,7 @@
       viewState.activeZone = "";
       viewState.zoneSelectionInitialized = false;
     }
-    if (zones.length <= 1) {
+    if (zones2.length <= 1) {
       container.innerHTML = "";
       return;
     }
@@ -5414,7 +7494,7 @@
       `<button class="zone-pill ${viewState.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>`,
       ...sortedZones.map((z) => {
         const isActive = z === viewState.activeZone;
-        return `<button class="zone-pill ${isActive ? "active" : ""}" data-zone="${escapeAttr2(z)}">${escapeHtml8(z)}</button>`;
+        return `<button class="zone-pill ${isActive ? "active" : ""}" data-zone="${escapeAttr2(z)}">${escapeHtml9(z)}</button>`;
       })
     ].join("");
     container.querySelectorAll(".zone-pill").forEach((btn) => {
@@ -5457,10 +7537,12 @@
     }
     return { from: from.toISOString(), to: to.toISOString() };
   }
-  function getAvailableMetrics(selectedDevices) {
+  function getAvailableMetrics(selectedDevices2) {
     const store = getStore();
     const available = /* @__PURE__ */ new Set();
-    const zoneDevices = viewState.activeZone ? selectedDevices.filter((device) => resolveZoneName2(device.id, device.name) === viewState.activeZone) : selectedDevices;
+    const zoneDevices = viewState.activeZone ? selectedDevices2.filter(
+      (device) => resolveZoneName2(device.id, device.name, device.zone) === viewState.activeZone
+    ) : selectedDevices2;
     for (const device of zoneDevices) {
       const snapshot = store.sensors[device.id];
       if (!snapshot) continue;
@@ -5473,7 +7555,8 @@
     }
     return available;
   }
-  function resolveZoneName2(deviceId, deviceName) {
+  function resolveZoneName2(deviceId, deviceName, zone) {
+    if (zone && zone.trim()) return zone.trim();
     if (deviceId.startsWith("tent_a_")) return "Tent A";
     if (deviceId.startsWith("tent_b_")) return "Tent B";
     if (/tent\s*a/i.test(deviceName)) return "Tent A";
@@ -5487,7 +7570,9 @@
       }
     }
     if (viewState.activeMetrics.size > 0) return;
-    const fallback = ["temperature", "humidity", "co2"].find((key) => viewState.availableMetrics.has(key)) ?? Array.from(viewState.availableMetrics)[0];
+    const fallback = ["temperature", "humidity", "co2"].find(
+      (key) => viewState.availableMetrics.has(key)
+    ) ?? Array.from(viewState.availableMetrics)[0];
     if (fallback) viewState.activeMetrics.add(fallback);
   }
   function syncMetricPills() {
@@ -5495,8 +7580,14 @@
       const key = pill.dataset.metric;
       const available = viewState.availableMetrics.has(key);
       pill.style.display = available ? "" : "none";
-      pill.classList.toggle("active", available && viewState.activeMetrics.has(key));
-      pill.setAttribute("aria-pressed", available && viewState.activeMetrics.has(key) ? "true" : "false");
+      pill.classList.toggle(
+        "active",
+        available && viewState.activeMetrics.has(key)
+      );
+      pill.setAttribute(
+        "aria-pressed",
+        available && viewState.activeMetrics.has(key) ? "true" : "false"
+      );
     });
   }
   function escapeAttr2(s) {
@@ -5526,7 +7617,7 @@
       }
       const vSpan = Math.max(1, axisMax - axisMin);
       return {
-        label: `${escapeHtml8(l.deviceName)} \u2014 ${cfg.label}`,
+        label: `${escapeHtml9(l.deviceName)} \u2014 ${cfg.label}`,
         color: cfg.color,
         data: l.data.map((d) => ({
           t: new Date(d.timestamp).getTime(),
@@ -5535,7 +7626,8 @@
       };
     });
     void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
-      if (expectedSequence !== void 0 && expectedSequence !== loadSequence) return;
+      if (expectedSequence !== void 0 && expectedSequence !== loadSequence)
+        return;
       m.renderStackedAreaChart(stackedLayers, "hero-chart", { showLegend: true });
     });
     if (legend) {
@@ -5546,7 +7638,8 @@
         colorGroups.set(l.metric.color, list);
       }
       void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
-        if (expectedSequence !== void 0 && expectedSequence !== loadSequence) return;
+        if (expectedSequence !== void 0 && expectedSequence !== loadSequence)
+          return;
         const shades = /* @__PURE__ */ new Map();
         for (const [color, group] of colorGroups) {
           if (group.length > 1) {
@@ -5560,7 +7653,7 @@
           return `
           <span class="legend-item" style="--metric-color:${shade}">
             <span class="legend-dot"></span>
-            ${escapeHtml8(l.deviceName)} \u2014 ${escapeHtml8(l.metric.label)}
+            ${escapeHtml9(l.deviceName)} \u2014 ${escapeHtml9(l.metric.label)}
           </span>
         `;
         }).join("");
@@ -5574,12 +7667,19 @@
     const store = getStore();
     const rows = layers.flatMap(
       (layer) => layer.data.slice(-15).map((reading) => {
-        const converted = formatSensorValue(reading.value, layer.metric.key, store.unitSystem);
+        const converted = formatSensorValue(
+          reading.value,
+          layer.metric.key,
+          store.unitSystem
+        );
         return {
           time: reading.timestamp,
           device: layer.deviceName,
           metric: layer.metric.label,
-          value: formatValue(converted.value, converted.unit || layer.metric.fallbackUnit),
+          value: formatValue(
+            converted.value,
+            converted.unit || layer.metric.fallbackUnit
+          ),
           color: layer.metric.color
         };
       })
@@ -5589,14 +7689,16 @@
       tbody.innerHTML = '<tr><td colspan="4" class="empty-cell">No data</td></tr>';
       return;
     }
-    tbody.innerHTML = rows.map((r) => `
+    tbody.innerHTML = rows.map(
+      (r) => `
     <tr style="--metric-color:${r.color}">
       <td class="text-mono text-xs">${formatDateTimeValue(new Date(r.time), store.timeFormat)}</td>
-      <td>${escapeHtml8(r.device)}</td>
-      <td><span class="history-dot"></span>${escapeHtml8(r.metric)}</td>
+      <td>${escapeHtml9(r.device)}</td>
+      <td><span class="history-dot"></span>${escapeHtml9(r.metric)}</td>
       <td class="text-mono metric-value">${r.value}</td>
     </tr>
-  `).join("");
+  `
+    ).join("");
   }
   function updatePillValues(layers) {
     const store = getStore();
@@ -5610,7 +7712,10 @@
       }
       const latest = layer.data[layer.data.length - 1];
       const converted = formatSensorValue(latest.value, m.key, store.unitSystem);
-      el.textContent = formatValue(converted.value, converted.unit || m.fallbackUnit);
+      el.textContent = formatValue(
+        converted.value,
+        converted.unit || m.fallbackUnit
+      );
     });
   }
   function renderHorizonStrips(allLayers) {
@@ -5628,9 +7733,15 @@
     const strips = Array.from(byMetric.values()).map((layer) => {
       const { data, metric } = layer;
       if (data.length < 2) return "";
-      const converted = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+      const converted = formatSensorValue(
+        data[data.length - 1].value,
+        metric.key,
+        store.unitSystem
+      );
       const latestLabel = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
-      const values = data.map((d) => formatSensorValue(d.value, metric.key, store.unitSystem).value);
+      const values = data.map(
+        (d) => formatSensorValue(d.value, metric.key, store.unitSystem).value
+      );
       const vMin = Math.min(...values);
       const vMax = Math.max(...values);
       const vSpan = Math.max(1e-3, vMax - vMin);
@@ -5644,7 +7755,7 @@
       const color = metric.color;
       return `<div class="horizon-strip">
       <div class="horizon-strip-header">
-        <span class="horizon-strip-label">${escapeHtml8(metric.shortLabel)}</span>
+        <span class="horizon-strip-label">${escapeHtml9(metric.shortLabel)}</span>
         <span class="horizon-strip-value text-mono" style="color:${color}">${latestLabel}</span>
       </div>
       <svg viewBox="0 0 ${w} ${h}" class="horizon-strip-svg" preserveAspectRatio="none">
@@ -5672,7 +7783,8 @@
     }
     const cards = [];
     const tempLayers = byMetric.get("temperature");
-    if (tempLayers) cards.push(renderAreaCard2(tempLayers[0], "Temperature Trend"));
+    if (tempLayers)
+      cards.push(renderAreaCard2(tempLayers[0], "Temperature Trend"));
     const humLayers = byMetric.get("humidity");
     if (humLayers) cards.push(renderLineCard2(humLayers[0], "Humidity Trend"));
     const co2Layers = byMetric.get("co2");
@@ -5685,7 +7797,11 @@
   function renderAreaCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metric.key,
+      store.unitSystem
+    );
     const unit = latest.unit || metric.fallbackUnit;
     const id = `area-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
@@ -5695,7 +7811,7 @@
     }, 0);
     return `<div class="viz-card" id="${id}">
     <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml8(title)}</span>
+      <span class="viz-card-title">${escapeHtml9(title)}</span>
       <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(1)}${unit}</span>
     </div>
     <div class="viz-chart-placeholder" style="height:100px;"></div>
@@ -5704,7 +7820,11 @@
   function renderLineCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metric.key,
+      store.unitSystem
+    );
     const unit = latest.unit || metric.fallbackUnit;
     const id = `line-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
@@ -5714,7 +7834,7 @@
     }, 0);
     return `<div class="viz-card" id="${id}">
     <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml8(title)}</span>
+      <span class="viz-card-title">${escapeHtml9(title)}</span>
       <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(0)}${unit}</span>
     </div>
     <div class="viz-chart-placeholder" style="height:100px;"></div>
@@ -5723,7 +7843,11 @@
   function renderBarCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metric.key,
+      store.unitSystem
+    );
     const unit = latest.unit || metric.fallbackUnit;
     const id = `bar-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
@@ -5733,7 +7857,7 @@
     }, 0);
     return `<div class="viz-card" id="${id}">
     <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml8(title)}</span>
+      <span class="viz-card-title">${escapeHtml9(title)}</span>
       <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(0)}${unit}</span>
     </div>
     <div class="viz-chart-placeholder" style="height:100px;"></div>
@@ -5742,16 +7866,26 @@
   function renderGaugeCard(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metric.key,
+      store.unitSystem
+    );
     const unit = latest.unit || metric.fallbackUnit;
-    const pct = Math.max(0, Math.min(1, (latest.value - metric.minAxis) / (metric.maxAxis - metric.minAxis)));
+    const pct = Math.max(
+      0,
+      Math.min(
+        1,
+        (latest.value - metric.minAxis) / (metric.maxAxis - metric.minAxis)
+      )
+    );
     const r = 42, cx = 80, cy = 56;
     const circ = 2 * Math.PI * r;
     const dash = pct * circ;
     return `
     <div class="viz-card">
       <div class="viz-card-header">
-        <span class="viz-card-title">${escapeHtml8(title)}</span>
+        <span class="viz-card-title">${escapeHtml9(title)}</span>
         <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(1)}${unit}</span>
       </div>
       <svg viewBox="0 0 160 100" class="viz-svg gauge-svg">
@@ -5777,7 +7911,10 @@
     for (const l of layers) {
       if (l.data.length === 0) continue;
       const last = l.data[l.data.length - 1];
-      latestMap.set(`${l.deviceId}:${l.metric.key}`, new Date(last.timestamp).getTime());
+      latestMap.set(
+        `${l.deviceId}:${l.metric.key}`,
+        new Date(last.timestamp).getTime()
+      );
     }
     const qualityColor = (ageMs) => {
       if (ageMs === void 0) return "#1A2822";
@@ -5792,7 +7929,7 @@
     };
     const headerCols = metricKeys.map((k) => {
       const cfg = metrics.find((m) => m.key === k);
-      return `<th class="qm-th">${escapeHtml8(cfg?.shortLabel || k)}</th>`;
+      return `<th class="qm-th">${escapeHtml9(cfg?.shortLabel || k)}</th>`;
     }).join("");
     const rows = deviceIds.map((deviceId) => {
       const name = deviceMap.get(deviceId) || deviceId;
@@ -5801,11 +7938,13 @@
         const ageMs = ts !== void 0 ? now - ts : void 0;
         const color = qualityColor(ageMs);
         const label = qualityLabel(ageMs);
-        return `<td class="qm-cell" title="${escapeHtml8(name)} \xB7 ${metricKey} \xB7 ${label}"><span class="qm-dot" style="background:${color}"></span></td>`;
+        return `<td class="qm-cell" title="${escapeHtml9(name)} \xB7 ${metricKey} \xB7 ${label}"><span class="qm-dot" style="background:${color}"></span></td>`;
       }).join("");
-      return `<tr><td class="qm-device">${escapeHtml8(name.length > 20 ? name.slice(0, 18) + "\u2026" : name)}</td>${cells}</tr>`;
+      return `<tr><td class="qm-device">${escapeHtml9(name.length > 20 ? name.slice(0, 18) + "\u2026" : name)}</td>${cells}</tr>`;
     }).join("");
-    const recentDecisionCount = decisions.filter((d) => now - new Date(d.timestamp).getTime() < 36e5).length;
+    const recentDecisionCount = decisions.filter(
+      (d) => now - new Date(d.timestamp).getTime() < 36e5
+    ).length;
     return `
     <div class="viz-card wide">
       <div class="viz-card-header">
@@ -5830,7 +7969,7 @@
     const precision = Math.abs(value) >= 100 ? 0 : value % 1 === 0 ? 0 : 1;
     return `${value.toFixed(precision)}${unit}`;
   }
-  function escapeHtml8(s) {
+  function escapeHtml9(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectSensorStyles() {
@@ -6287,12 +8426,108 @@
 `;
     document.head.appendChild(style);
   }
+  var metrics, viewState, loadSequence;
+  var init_Sensors = __esm({
+    "src/web/hal-ui/views/Sensors.ts"() {
+      "use strict";
+      init_store();
+      init_api();
+      metrics = [
+        {
+          key: "temperature",
+          label: "Temperature",
+          shortLabel: "Temp",
+          fallbackUnit: "\xB0C",
+          color: "#F59E0B",
+          description: "Air / probe temperature",
+          minAxis: 10,
+          maxAxis: 40
+        },
+        {
+          key: "humidity",
+          label: "Humidity",
+          shortLabel: "RH",
+          fallbackUnit: "%",
+          color: "#38BDF8",
+          description: "Relative humidity",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        {
+          key: "soil_moisture",
+          label: "Soil Moisture",
+          shortLabel: "Soil",
+          fallbackUnit: "%",
+          color: "#EF4444",
+          description: "Volumetric water content",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        {
+          key: "co2",
+          label: "CO\u2082",
+          shortLabel: "CO\u2082",
+          fallbackUnit: "ppm",
+          color: "#22C55E",
+          description: "Carbon dioxide",
+          minAxis: 0,
+          maxAxis: 2e3
+        },
+        {
+          key: "light",
+          label: "Light",
+          shortLabel: "Light",
+          fallbackUnit: "lux",
+          color: "#FACC15",
+          description: "PAR / illuminance",
+          minAxis: 0,
+          maxAxis: 1e5
+        },
+        {
+          key: "water_level",
+          label: "Water Level",
+          shortLabel: "Water",
+          fallbackUnit: "%",
+          color: "#2563EB",
+          description: "Reservoir level",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        {
+          key: "ph",
+          label: "pH",
+          shortLabel: "pH",
+          fallbackUnit: "",
+          color: "#A855F7",
+          description: "Acidity / alkalinity",
+          minAxis: 0,
+          maxAxis: 14
+        },
+        {
+          key: "weight",
+          label: "Weight",
+          shortLabel: "Weight",
+          fallbackUnit: "kg",
+          color: "#94A3B8",
+          description: "Load cell",
+          minAxis: 0,
+          maxAxis: 100
+        }
+      ];
+      viewState = {
+        deviceId: "all",
+        range: "24H",
+        activeMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
+        availableMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
+        activeZone: "",
+        zoneSelectionInitialized: false,
+        decisions: []
+      };
+      loadSequence = 0;
+    }
+  });
 
   // src/web/hal-ui/views/Decisions.ts
-  init_store();
-  init_ChartKit();
-  var expandedDecisionIds = /* @__PURE__ */ new Set();
-  var statusFilter = "all";
   async function renderDecisions(container) {
     const store = getStore();
     const filtered = statusFilter === "all" ? store.decisions : store.decisions.filter((d) => (d.status || "pending") === statusFilter);
@@ -6318,11 +8553,13 @@
 
     <div class="decisions-toolbar mb-4">
       <div class="filter-group" role="group" aria-label="Filter by status">
-        ${["all", "success", "failure", "pending"].map((s) => `
+        ${["all", "success", "failure", "pending"].map(
+      (s) => `
           <button class="filter-btn ${s === statusFilter ? "active" : ""}" data-filter="${s}">
             ${s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
-        `).join("")}
+        `
+    ).join("")}
       </div>
       <span class="text-xs text-secondary">${filtered.length} decisions</span>
     </div>
@@ -6358,9 +8595,12 @@
         cells.push({ dow, hour: h, value: val });
       }
     }
-    setTimeout(() => renderHeatmap(cells, "decisions-heatmap", {
-      colorRange: ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B", "#FF5C6C"]
-    }), 0);
+    setTimeout(
+      () => renderHeatmap(cells, "decisions-heatmap", {
+        colorRange: ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B", "#FF5C6C"]
+      }),
+      0
+    );
   }
   function renderDecisionsBarTrend(decisions) {
     if (decisions.length < 2) return;
@@ -6395,7 +8635,10 @@
         pending: bucket?.pending ?? 0
       });
     }
-    setTimeout(() => renderDecisionBarTrend(points, "decisions-bar-trend", { height: 180 }), 0);
+    setTimeout(
+      () => renderDecisionBarTrend(points, "decisions-bar-trend", { height: 180 }),
+      0
+    );
   }
   function attachFilterHandlers() {
     document.querySelectorAll(".filter-btn").forEach((btn) => {
@@ -6411,7 +8654,8 @@
     if (decisions.length === 0) {
       return `<div class="empty-state" style="padding: var(--space-8)"><p class="empty-state-title">No decisions</p><p class="empty-state-desc">${statusFilter === "all" ? "Decisions will appear here as the HAL makes them." : `No ${statusFilter} decisions found.`}</p></div>`;
     }
-    return decisions.map((d) => `
+    return decisions.map(
+      (d) => `
     <div class="decision-item" data-id="${d.id}">
       <div class="decision-summary">
         <div class="decision-left">
@@ -6419,7 +8663,7 @@
           <span class="decision-time text-mono text-xs text-secondary">${formatTime4(d.timestamp)}</span>
         </div>
         <div class="decision-middle">
-          <span class="decision-trigger-text text-sm">${escapeHtml9(d.trigger)}</span>
+          <span class="decision-trigger-text text-sm">${escapeHtml10(d.trigger)}</span>
         </div>
         <div class="decision-right">
           <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor3(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
@@ -6429,12 +8673,12 @@
       <div class="decision-detail" ${expandedDecisionIds.has(d.id) ? "" : "hidden"}>
         <div class="decision-detail-row">
           <span class="decision-detail-label">Decision</span>
-          <span class="decision-detail-value font-semibold">${escapeHtml9(d.decision)}</span>
+          <span class="decision-detail-value font-semibold">${escapeHtml10(d.decision)}</span>
         </div>
         ${d.outcome ? `
         <div class="decision-detail-row">
           <span class="decision-detail-label">Outcome</span>
-          <span class="decision-detail-value">${escapeHtml9(d.outcome)}</span>
+          <span class="decision-detail-value">${escapeHtml10(d.outcome)}</span>
         </div>` : ""}
         <div class="decision-detail-row">
           <span class="decision-detail-label">Confidence</span>
@@ -6446,13 +8690,16 @@
         </div>
       </div>
     </div>
-  `).join("");
+  `
+    ).join("");
   }
   function attachDecisionHandlers() {
     document.querySelectorAll(".decision-item").forEach((item) => {
       const summary = item.querySelector(".decision-summary");
       const detail = item.querySelector(".decision-detail");
-      const expandBtn = item.querySelector(".decision-expand-btn");
+      const expandBtn = item.querySelector(
+        ".decision-expand-btn"
+      );
       detail?.addEventListener("click", (event) => event.stopPropagation());
       summary?.addEventListener("click", () => {
         const isOpen = !detail?.hidden;
@@ -6488,7 +8735,7 @@
       return "--";
     }
   }
-  function escapeHtml9(s) {
+  function escapeHtml10(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectDecisionsStyles() {
@@ -6625,14 +8872,18 @@
 `;
     document.head.appendChild(style);
   }
+  var expandedDecisionIds, statusFilter;
+  var init_Decisions = __esm({
+    "src/web/hal-ui/views/Decisions.ts"() {
+      "use strict";
+      init_store();
+      init_ChartKit();
+      expandedDecisionIds = /* @__PURE__ */ new Set();
+      statusFilter = "all";
+    }
+  });
 
   // src/web/hal-ui/views/Cameras.ts
-  init_store();
-  var DEMO_IMAGES = {
-    tent_cam_a: "/hal-ui/assets/cam1.jpg",
-    tent_cam_b: "/hal-ui/assets/cam2.jpg"
-  };
-  var refreshInterval = null;
   async function renderCameras(container) {
     const store = getStore();
     const cameras = store.devices.filter((d) => d.type === "camera");
@@ -6654,7 +8905,11 @@
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(() => {
       document.querySelectorAll(".camera-time").forEach((el) => {
-        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
+          hour12: false,
+          hour: "2-digit",
+          minute: "2-digit"
+        });
       });
     }, 3e4);
   }
@@ -6667,7 +8922,7 @@
       return `
     <div class="camera-card hal-card" data-camera-id="${c.id}">
       <div class="camera-thumbnail" id="thumb-${c.id}">
-        ${demoImg ? `<img src="${demoImg}" alt="${escapeHtml10(c.name)}" class="camera-img" />` : `
+        ${demoImg ? `<img src="${demoImg}" alt="${escapeHtml11(c.name)}" class="camera-img" />` : `
         <div class="camera-placeholder">
           <span class="camera-icon">CAM</span>
           <span class="text-secondary text-sm">No preview</span>
@@ -6678,7 +8933,7 @@
         </div>
       </div>
       <div class="camera-info">
-        <div class="camera-name">${escapeHtml10(c.name)}</div>
+        <div class="camera-name">${escapeHtml11(c.name)}</div>
         <div class="camera-meta text-xs text-secondary">${c.protocol} \xB7 ${c.online ? "online" : "offline"}</div>
       </div>
       <button class="hal-btn hal-btn-secondary camera-capture-btn" data-camera-id="${c.id}">
@@ -6707,7 +8962,7 @@
               <div class="capture-meta">
                 <div class="capture-meta-row">
                   <span class="text-secondary text-xs">Path</span>
-                  <span class="text-mono text-xs">${escapeHtml10(result.path)}</span>
+                  <span class="text-mono text-xs">${escapeHtml11(result.path)}</span>
                 </div>
                 <div class="capture-meta-row">
                   <span class="text-secondary text-xs">Size</span>
@@ -6727,7 +8982,7 @@
       });
     });
   }
-  function escapeHtml10(s) {
+  function escapeHtml11(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectCamerasStyles() {
@@ -6824,9 +9079,23 @@
 `;
     document.head.appendChild(style);
   }
+  var DEMO_IMAGES, refreshInterval;
+  var init_Cameras = __esm({
+    "src/web/hal-ui/views/Cameras.ts"() {
+      "use strict";
+      init_store();
+      init_api();
+      init_Modal();
+      init_Toast();
+      DEMO_IMAGES = {
+        tent_cam_a: "/hal-ui/assets/cam1.jpg",
+        tent_cam_b: "/hal-ui/assets/cam2.jpg"
+      };
+      refreshInterval = null;
+    }
+  });
 
   // src/web/hal-ui/views/Terminal.ts
-  init_store();
   async function renderTerminalView(container) {
     injectTerminalStyles();
     const store = getStore();
@@ -6839,9 +9108,15 @@
     ${renderTerminal(entries)}
   `;
   }
+  var init_Terminal2 = __esm({
+    "src/web/hal-ui/views/Terminal.ts"() {
+      "use strict";
+      init_store();
+      init_Terminal();
+    }
+  });
 
   // src/web/hal-ui/api-provisioning.ts
-  var BASE2 = "/api/provisioning";
   async function provGet(path) {
     const url = BASE2 + path;
     const res = await fetch(url);
@@ -6875,47 +9150,58 @@
       );
     return res.json();
   }
-  var provisioningApi = {
-    // GET /api/provisioning/status
-    async getStatus() {
-      return provGet("/status");
-    },
-    // POST /api/provisioning/begin
-    async begin() {
-      return provPost("/begin");
-    },
-    // PUT /api/provisioning/wizard-step — updates wizardStep in ProvisioningManager state
-    async updateWizardStep(step, data) {
-      return provPut("/wizard-step", {
-        step,
-        ...data
-      });
-    },
-    // GET /api/provisioning/wizard-session
-    async getWizardSession() {
-      try {
-        return await provGet("/wizard-session");
-      } catch {
-        return null;
-      }
-    },
-    // POST /api/provisioning/complete
-    async complete(data) {
-      return provPost("/complete", data);
-    },
-    // POST /api/provisioning/reset
-    async reset() {
-      return provPost("/reset");
-    },
-    // GET /api/provisioning/network
-    async getNetworkInfo() {
-      return provGet("/network");
+  var BASE2, provisioningApi;
+  var init_api_provisioning = __esm({
+    "src/web/hal-ui/api-provisioning.ts"() {
+      "use strict";
+      BASE2 = "/api/provisioning";
+      provisioningApi = {
+        // GET /api/provisioning/status
+        async getStatus() {
+          return provGet("/status");
+        },
+        // POST /api/provisioning/begin
+        async begin() {
+          return provPost("/begin");
+        },
+        // PUT /api/provisioning/wizard-step — updates wizardStep in ProvisioningManager state
+        async updateWizardStep(step, data) {
+          return provPut("/wizard-step", {
+            step,
+            ...data
+          });
+        },
+        // GET /api/provisioning/wizard-session
+        async getWizardSession() {
+          try {
+            return await provGet("/wizard-session");
+          } catch {
+            return null;
+          }
+        },
+        // POST /api/provisioning/complete
+        async complete(data) {
+          return provPost("/complete", data);
+        },
+        // POST /api/provisioning/reset
+        async reset() {
+          return provPost("/reset");
+        },
+        // GET /api/provisioning/network
+        async getNetworkInfo() {
+          return provGet("/network");
+        }
+      };
     }
-  };
+  });
+
+  // (disabled):crypto
+  var require_crypto = __commonJS({
+    "(disabled):crypto"() {
+    }
+  });
 
   // node_modules/bcryptjs/index.js
-  var import_crypto = __toESM(require_crypto(), 1);
-  var randomFallback = null;
   function randomBytes(len) {
     try {
       return crypto.getRandomValues(new Uint8Array(len));
@@ -7095,7 +9381,6 @@
       throw Error("Illegal arguments: " + typeof password);
     return utf8Length(password) > 72;
   }
-  var nextTick = typeof setImmediate === "function" ? setImmediate : typeof scheduler === "object" && typeof scheduler.postTask === "function" ? scheduler.postTask.bind(scheduler) : setTimeout;
   function utf8Length(string) {
     var len = 0, c = 0;
     for (var i = 0; i < string.length; ++i) {
@@ -7134,137 +9419,6 @@
     }
     return buffer;
   }
-  var BASE64_CODE = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".split("");
-  var BASE64_INDEX = [
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    0,
-    1,
-    54,
-    55,
-    56,
-    57,
-    58,
-    59,
-    60,
-    61,
-    62,
-    63,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17,
-    18,
-    19,
-    20,
-    21,
-    22,
-    23,
-    24,
-    25,
-    26,
-    27,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1,
-    28,
-    29,
-    30,
-    31,
-    32,
-    33,
-    34,
-    35,
-    36,
-    37,
-    38,
-    39,
-    40,
-    41,
-    42,
-    43,
-    44,
-    45,
-    46,
-    47,
-    48,
-    49,
-    50,
-    51,
-    52,
-    53,
-    -1,
-    -1,
-    -1,
-    -1,
-    -1
-  ];
   function base64_encode(b, len) {
     var off = 0, rs = [], c1, c2;
     if (len <= 0 || len > b.length) throw Error("Illegal len: " + len);
@@ -7322,1064 +9476,6 @@
     for (off = 0; off < olen; off++) res.push(rs[off].charCodeAt(0));
     return res;
   }
-  var BCRYPT_SALT_LEN = 16;
-  var GENSALT_DEFAULT_LOG2_ROUNDS = 10;
-  var BLOWFISH_NUM_ROUNDS = 16;
-  var MAX_EXECUTION_TIME = 100;
-  var P_ORIG = [
-    608135816,
-    2242054355,
-    320440878,
-    57701188,
-    2752067618,
-    698298832,
-    137296536,
-    3964562569,
-    1160258022,
-    953160567,
-    3193202383,
-    887688300,
-    3232508343,
-    3380367581,
-    1065670069,
-    3041331479,
-    2450970073,
-    2306472731
-  ];
-  var S_ORIG = [
-    3509652390,
-    2564797868,
-    805139163,
-    3491422135,
-    3101798381,
-    1780907670,
-    3128725573,
-    4046225305,
-    614570311,
-    3012652279,
-    134345442,
-    2240740374,
-    1667834072,
-    1901547113,
-    2757295779,
-    4103290238,
-    227898511,
-    1921955416,
-    1904987480,
-    2182433518,
-    2069144605,
-    3260701109,
-    2620446009,
-    720527379,
-    3318853667,
-    677414384,
-    3393288472,
-    3101374703,
-    2390351024,
-    1614419982,
-    1822297739,
-    2954791486,
-    3608508353,
-    3174124327,
-    2024746970,
-    1432378464,
-    3864339955,
-    2857741204,
-    1464375394,
-    1676153920,
-    1439316330,
-    715854006,
-    3033291828,
-    289532110,
-    2706671279,
-    2087905683,
-    3018724369,
-    1668267050,
-    732546397,
-    1947742710,
-    3462151702,
-    2609353502,
-    2950085171,
-    1814351708,
-    2050118529,
-    680887927,
-    999245976,
-    1800124847,
-    3300911131,
-    1713906067,
-    1641548236,
-    4213287313,
-    1216130144,
-    1575780402,
-    4018429277,
-    3917837745,
-    3693486850,
-    3949271944,
-    596196993,
-    3549867205,
-    258830323,
-    2213823033,
-    772490370,
-    2760122372,
-    1774776394,
-    2652871518,
-    566650946,
-    4142492826,
-    1728879713,
-    2882767088,
-    1783734482,
-    3629395816,
-    2517608232,
-    2874225571,
-    1861159788,
-    326777828,
-    3124490320,
-    2130389656,
-    2716951837,
-    967770486,
-    1724537150,
-    2185432712,
-    2364442137,
-    1164943284,
-    2105845187,
-    998989502,
-    3765401048,
-    2244026483,
-    1075463327,
-    1455516326,
-    1322494562,
-    910128902,
-    469688178,
-    1117454909,
-    936433444,
-    3490320968,
-    3675253459,
-    1240580251,
-    122909385,
-    2157517691,
-    634681816,
-    4142456567,
-    3825094682,
-    3061402683,
-    2540495037,
-    79693498,
-    3249098678,
-    1084186820,
-    1583128258,
-    426386531,
-    1761308591,
-    1047286709,
-    322548459,
-    995290223,
-    1845252383,
-    2603652396,
-    3431023940,
-    2942221577,
-    3202600964,
-    3727903485,
-    1712269319,
-    422464435,
-    3234572375,
-    1170764815,
-    3523960633,
-    3117677531,
-    1434042557,
-    442511882,
-    3600875718,
-    1076654713,
-    1738483198,
-    4213154764,
-    2393238008,
-    3677496056,
-    1014306527,
-    4251020053,
-    793779912,
-    2902807211,
-    842905082,
-    4246964064,
-    1395751752,
-    1040244610,
-    2656851899,
-    3396308128,
-    445077038,
-    3742853595,
-    3577915638,
-    679411651,
-    2892444358,
-    2354009459,
-    1767581616,
-    3150600392,
-    3791627101,
-    3102740896,
-    284835224,
-    4246832056,
-    1258075500,
-    768725851,
-    2589189241,
-    3069724005,
-    3532540348,
-    1274779536,
-    3789419226,
-    2764799539,
-    1660621633,
-    3471099624,
-    4011903706,
-    913787905,
-    3497959166,
-    737222580,
-    2514213453,
-    2928710040,
-    3937242737,
-    1804850592,
-    3499020752,
-    2949064160,
-    2386320175,
-    2390070455,
-    2415321851,
-    4061277028,
-    2290661394,
-    2416832540,
-    1336762016,
-    1754252060,
-    3520065937,
-    3014181293,
-    791618072,
-    3188594551,
-    3933548030,
-    2332172193,
-    3852520463,
-    3043980520,
-    413987798,
-    3465142937,
-    3030929376,
-    4245938359,
-    2093235073,
-    3534596313,
-    375366246,
-    2157278981,
-    2479649556,
-    555357303,
-    3870105701,
-    2008414854,
-    3344188149,
-    4221384143,
-    3956125452,
-    2067696032,
-    3594591187,
-    2921233993,
-    2428461,
-    544322398,
-    577241275,
-    1471733935,
-    610547355,
-    4027169054,
-    1432588573,
-    1507829418,
-    2025931657,
-    3646575487,
-    545086370,
-    48609733,
-    2200306550,
-    1653985193,
-    298326376,
-    1316178497,
-    3007786442,
-    2064951626,
-    458293330,
-    2589141269,
-    3591329599,
-    3164325604,
-    727753846,
-    2179363840,
-    146436021,
-    1461446943,
-    4069977195,
-    705550613,
-    3059967265,
-    3887724982,
-    4281599278,
-    3313849956,
-    1404054877,
-    2845806497,
-    146425753,
-    1854211946,
-    1266315497,
-    3048417604,
-    3681880366,
-    3289982499,
-    290971e4,
-    1235738493,
-    2632868024,
-    2414719590,
-    3970600049,
-    1771706367,
-    1449415276,
-    3266420449,
-    422970021,
-    1963543593,
-    2690192192,
-    3826793022,
-    1062508698,
-    1531092325,
-    1804592342,
-    2583117782,
-    2714934279,
-    4024971509,
-    1294809318,
-    4028980673,
-    1289560198,
-    2221992742,
-    1669523910,
-    35572830,
-    157838143,
-    1052438473,
-    1016535060,
-    1802137761,
-    1753167236,
-    1386275462,
-    3080475397,
-    2857371447,
-    1040679964,
-    2145300060,
-    2390574316,
-    1461121720,
-    2956646967,
-    4031777805,
-    4028374788,
-    33600511,
-    2920084762,
-    1018524850,
-    629373528,
-    3691585981,
-    3515945977,
-    2091462646,
-    2486323059,
-    586499841,
-    988145025,
-    935516892,
-    3367335476,
-    2599673255,
-    2839830854,
-    265290510,
-    3972581182,
-    2759138881,
-    3795373465,
-    1005194799,
-    847297441,
-    406762289,
-    1314163512,
-    1332590856,
-    1866599683,
-    4127851711,
-    750260880,
-    613907577,
-    1450815602,
-    3165620655,
-    3734664991,
-    3650291728,
-    3012275730,
-    3704569646,
-    1427272223,
-    778793252,
-    1343938022,
-    2676280711,
-    2052605720,
-    1946737175,
-    3164576444,
-    3914038668,
-    3967478842,
-    3682934266,
-    1661551462,
-    3294938066,
-    4011595847,
-    840292616,
-    3712170807,
-    616741398,
-    312560963,
-    711312465,
-    1351876610,
-    322626781,
-    1910503582,
-    271666773,
-    2175563734,
-    1594956187,
-    70604529,
-    3617834859,
-    1007753275,
-    1495573769,
-    4069517037,
-    2549218298,
-    2663038764,
-    504708206,
-    2263041392,
-    3941167025,
-    2249088522,
-    1514023603,
-    1998579484,
-    1312622330,
-    694541497,
-    2582060303,
-    2151582166,
-    1382467621,
-    776784248,
-    2618340202,
-    3323268794,
-    2497899128,
-    2784771155,
-    503983604,
-    4076293799,
-    907881277,
-    423175695,
-    432175456,
-    1378068232,
-    4145222326,
-    3954048622,
-    3938656102,
-    3820766613,
-    2793130115,
-    2977904593,
-    26017576,
-    3274890735,
-    3194772133,
-    1700274565,
-    1756076034,
-    4006520079,
-    3677328699,
-    720338349,
-    1533947780,
-    354530856,
-    688349552,
-    3973924725,
-    1637815568,
-    332179504,
-    3949051286,
-    53804574,
-    2852348879,
-    3044236432,
-    1282449977,
-    3583942155,
-    3416972820,
-    4006381244,
-    1617046695,
-    2628476075,
-    3002303598,
-    1686838959,
-    431878346,
-    2686675385,
-    1700445008,
-    1080580658,
-    1009431731,
-    832498133,
-    3223435511,
-    2605976345,
-    2271191193,
-    2516031870,
-    1648197032,
-    4164389018,
-    2548247927,
-    300782431,
-    375919233,
-    238389289,
-    3353747414,
-    2531188641,
-    2019080857,
-    1475708069,
-    455242339,
-    2609103871,
-    448939670,
-    3451063019,
-    1395535956,
-    2413381860,
-    1841049896,
-    1491858159,
-    885456874,
-    4264095073,
-    4001119347,
-    1565136089,
-    3898914787,
-    1108368660,
-    540939232,
-    1173283510,
-    2745871338,
-    3681308437,
-    4207628240,
-    3343053890,
-    4016749493,
-    1699691293,
-    1103962373,
-    3625875870,
-    2256883143,
-    3830138730,
-    1031889488,
-    3479347698,
-    1535977030,
-    4236805024,
-    3251091107,
-    2132092099,
-    1774941330,
-    1199868427,
-    1452454533,
-    157007616,
-    2904115357,
-    342012276,
-    595725824,
-    1480756522,
-    206960106,
-    497939518,
-    591360097,
-    863170706,
-    2375253569,
-    3596610801,
-    1814182875,
-    2094937945,
-    3421402208,
-    1082520231,
-    3463918190,
-    2785509508,
-    435703966,
-    3908032597,
-    1641649973,
-    2842273706,
-    3305899714,
-    1510255612,
-    2148256476,
-    2655287854,
-    3276092548,
-    4258621189,
-    236887753,
-    3681803219,
-    274041037,
-    1734335097,
-    3815195456,
-    3317970021,
-    1899903192,
-    1026095262,
-    4050517792,
-    356393447,
-    2410691914,
-    3873677099,
-    3682840055,
-    3913112168,
-    2491498743,
-    4132185628,
-    2489919796,
-    1091903735,
-    1979897079,
-    3170134830,
-    3567386728,
-    3557303409,
-    857797738,
-    1136121015,
-    1342202287,
-    507115054,
-    2535736646,
-    337727348,
-    3213592640,
-    1301675037,
-    2528481711,
-    1895095763,
-    1721773893,
-    3216771564,
-    62756741,
-    2142006736,
-    835421444,
-    2531993523,
-    1442658625,
-    3659876326,
-    2882144922,
-    676362277,
-    1392781812,
-    170690266,
-    3921047035,
-    1759253602,
-    3611846912,
-    1745797284,
-    664899054,
-    1329594018,
-    3901205900,
-    3045908486,
-    2062866102,
-    2865634940,
-    3543621612,
-    3464012697,
-    1080764994,
-    553557557,
-    3656615353,
-    3996768171,
-    991055499,
-    499776247,
-    1265440854,
-    648242737,
-    3940784050,
-    980351604,
-    3713745714,
-    1749149687,
-    3396870395,
-    4211799374,
-    3640570775,
-    1161844396,
-    3125318951,
-    1431517754,
-    545492359,
-    4268468663,
-    3499529547,
-    1437099964,
-    2702547544,
-    3433638243,
-    2581715763,
-    2787789398,
-    1060185593,
-    1593081372,
-    2418618748,
-    4260947970,
-    69676912,
-    2159744348,
-    86519011,
-    2512459080,
-    3838209314,
-    1220612927,
-    3339683548,
-    133810670,
-    1090789135,
-    1078426020,
-    1569222167,
-    845107691,
-    3583754449,
-    4072456591,
-    1091646820,
-    628848692,
-    1613405280,
-    3757631651,
-    526609435,
-    236106946,
-    48312990,
-    2942717905,
-    3402727701,
-    1797494240,
-    859738849,
-    992217954,
-    4005476642,
-    2243076622,
-    3870952857,
-    3732016268,
-    765654824,
-    3490871365,
-    2511836413,
-    1685915746,
-    3888969200,
-    1414112111,
-    2273134842,
-    3281911079,
-    4080962846,
-    172450625,
-    2569994100,
-    980381355,
-    4109958455,
-    2819808352,
-    2716589560,
-    2568741196,
-    3681446669,
-    3329971472,
-    1835478071,
-    660984891,
-    3704678404,
-    4045999559,
-    3422617507,
-    3040415634,
-    1762651403,
-    1719377915,
-    3470491036,
-    2693910283,
-    3642056355,
-    3138596744,
-    1364962596,
-    2073328063,
-    1983633131,
-    926494387,
-    3423689081,
-    2150032023,
-    4096667949,
-    1749200295,
-    3328846651,
-    309677260,
-    2016342300,
-    1779581495,
-    3079819751,
-    111262694,
-    1274766160,
-    443224088,
-    298511866,
-    1025883608,
-    3806446537,
-    1145181785,
-    168956806,
-    3641502830,
-    3584813610,
-    1689216846,
-    3666258015,
-    3200248200,
-    1692713982,
-    2646376535,
-    4042768518,
-    1618508792,
-    1610833997,
-    3523052358,
-    4130873264,
-    2001055236,
-    3610705100,
-    2202168115,
-    4028541809,
-    2961195399,
-    1006657119,
-    2006996926,
-    3186142756,
-    1430667929,
-    3210227297,
-    1314452623,
-    4074634658,
-    4101304120,
-    2273951170,
-    1399257539,
-    3367210612,
-    3027628629,
-    1190975929,
-    2062231137,
-    2333990788,
-    2221543033,
-    2438960610,
-    1181637006,
-    548689776,
-    2362791313,
-    3372408396,
-    3104550113,
-    3145860560,
-    296247880,
-    1970579870,
-    3078560182,
-    3769228297,
-    1714227617,
-    3291629107,
-    3898220290,
-    166772364,
-    1251581989,
-    493813264,
-    448347421,
-    195405023,
-    2709975567,
-    677966185,
-    3703036547,
-    1463355134,
-    2715995803,
-    1338867538,
-    1343315457,
-    2802222074,
-    2684532164,
-    233230375,
-    2599980071,
-    2000651841,
-    3277868038,
-    1638401717,
-    4028070440,
-    3237316320,
-    6314154,
-    819756386,
-    300326615,
-    590932579,
-    1405279636,
-    3267499572,
-    3150704214,
-    2428286686,
-    3959192993,
-    3461946742,
-    1862657033,
-    1266418056,
-    963775037,
-    2089974820,
-    2263052895,
-    1917689273,
-    448879540,
-    3550394620,
-    3981727096,
-    150775221,
-    3627908307,
-    1303187396,
-    508620638,
-    2975983352,
-    2726630617,
-    1817252668,
-    1876281319,
-    1457606340,
-    908771278,
-    3720792119,
-    3617206836,
-    2455994898,
-    1729034894,
-    1080033504,
-    976866871,
-    3556439503,
-    2881648439,
-    1522871579,
-    1555064734,
-    1336096578,
-    3548522304,
-    2579274686,
-    3574697629,
-    3205460757,
-    3593280638,
-    3338716283,
-    3079412587,
-    564236357,
-    2993598910,
-    1781952180,
-    1464380207,
-    3163844217,
-    3332601554,
-    1699332808,
-    1393555694,
-    1183702653,
-    3581086237,
-    1288719814,
-    691649499,
-    2847557200,
-    2895455976,
-    3193889540,
-    2717570544,
-    1781354906,
-    1676643554,
-    2592534050,
-    3230253752,
-    1126444790,
-    2770207658,
-    2633158820,
-    2210423226,
-    2615765581,
-    2414155088,
-    3127139286,
-    673620729,
-    2805611233,
-    1269405062,
-    4015350505,
-    3341807571,
-    4149409754,
-    1057255273,
-    2012875353,
-    2162469141,
-    2276492801,
-    2601117357,
-    993977747,
-    3918593370,
-    2654263191,
-    753973209,
-    36408145,
-    2530585658,
-    25011837,
-    3520020182,
-    2088578344,
-    530523599,
-    2918365339,
-    1524020338,
-    1518925132,
-    3760827505,
-    3759777254,
-    1202760957,
-    3985898139,
-    3906192525,
-    674977740,
-    4174734889,
-    2031300136,
-    2019492241,
-    3983892565,
-    4153806404,
-    3822280332,
-    352677332,
-    2297720250,
-    60907813,
-    90501309,
-    3286998549,
-    1016092578,
-    2535922412,
-    2839152426,
-    457141659,
-    509813237,
-    4120667899,
-    652014361,
-    1966332200,
-    2975202805,
-    55981186,
-    2327461051,
-    676427537,
-    3255491064,
-    2882294119,
-    3433927263,
-    1307055953,
-    942726286,
-    933058658,
-    2468411793,
-    3933900994,
-    4215176142,
-    1361170020,
-    2001714738,
-    2830558078,
-    3274259782,
-    1222529897,
-    1679025792,
-    2729314320,
-    3714953764,
-    1770335741,
-    151462246,
-    3013232138,
-    1682292957,
-    1483529935,
-    471910574,
-    1539241949,
-    458788160,
-    3436315007,
-    1807016891,
-    3718408830,
-    978976581,
-    1043663428,
-    3165965781,
-    1927990952,
-    4200891579,
-    2372276910,
-    3208408903,
-    3533431907,
-    1412390302,
-    2931980059,
-    4132332400,
-    1947078029,
-    3881505623,
-    4168226417,
-    2941484381,
-    1077988104,
-    1320477388,
-    886195818,
-    18198404,
-    3786409e3,
-    2509781533,
-    112762804,
-    3463356488,
-    1866414978,
-    891333506,
-    18488651,
-    661792760,
-    1628790961,
-    3885187036,
-    3141171499,
-    876946877,
-    2693282273,
-    1372485963,
-    791857591,
-    2686433993,
-    3759982718,
-    3167212022,
-    3472953795,
-    2716379847,
-    445679433,
-    3561995674,
-    3504004811,
-    3574258232,
-    54117162,
-    3331405415,
-    2381918588,
-    3769707343,
-    4154350007,
-    1140177722,
-    4074052095,
-    668550556,
-    3214352940,
-    367459370,
-    261225585,
-    2610173221,
-    4209349473,
-    3468074219,
-    3265815641,
-    314222801,
-    3066103646,
-    3808782860,
-    282218597,
-    3406013506,
-    3773591054,
-    379116347,
-    1285071038,
-    846784868,
-    2669647154,
-    3771962079,
-    3550491691,
-    2305946142,
-    453669953,
-    1268987020,
-    3317592352,
-    3279303384,
-    3744833421,
-    2610507566,
-    3859509063,
-    266596637,
-    3847019092,
-    517658769,
-    3462560207,
-    3443424879,
-    370717030,
-    4247526661,
-    2224018117,
-    4143653529,
-    4112773975,
-    2788324899,
-    2477274417,
-    1456262402,
-    2901442914,
-    1517677493,
-    1846949527,
-    2295493580,
-    3734397586,
-    2176403920,
-    1280348187,
-    1908823572,
-    3871786941,
-    846861322,
-    1172426758,
-    3287448474,
-    3383383037,
-    1655181056,
-    3139813346,
-    901632758,
-    1897031941,
-    2986607138,
-    3066810236,
-    3447102507,
-    1393639104,
-    373351379,
-    950779232,
-    625454576,
-    3124240540,
-    4148612726,
-    2007998917,
-    544563296,
-    2244738638,
-    2330496472,
-    2058025392,
-    1291430526,
-    424198748,
-    50039436,
-    29584100,
-    3605783033,
-    2429876329,
-    2791104160,
-    1057563949,
-    3255363231,
-    3075367218,
-    3463963227,
-    1469046755,
-    985887462
-  ];
-  var C_ORIG = [
-    1332899944,
-    1700884034,
-    1701343084,
-    1684370003,
-    1668446532,
-    1869963892
-  ];
   function _encipher(lr, off, P, S) {
     var n, l = lr[off], r = lr[off + 1];
     l ^= P[0];
@@ -8621,57 +9717,1228 @@
   function decodeBase64(string, length) {
     return base64_decode(string, length);
   }
-  var bcryptjs_default = {
-    setRandomFallback,
-    genSaltSync,
-    genSalt,
-    hashSync,
-    hash,
-    compareSync,
-    compare,
-    getRounds,
-    getSalt,
-    truncates,
-    encodeBase64,
-    decodeBase64
-  };
+  var import_crypto, randomFallback, nextTick, BASE64_CODE, BASE64_INDEX, BCRYPT_SALT_LEN, GENSALT_DEFAULT_LOG2_ROUNDS, BLOWFISH_NUM_ROUNDS, MAX_EXECUTION_TIME, P_ORIG, S_ORIG, C_ORIG, bcryptjs_default;
+  var init_bcryptjs = __esm({
+    "node_modules/bcryptjs/index.js"() {
+      import_crypto = __toESM(require_crypto(), 1);
+      randomFallback = null;
+      nextTick = typeof setImmediate === "function" ? setImmediate : typeof scheduler === "object" && typeof scheduler.postTask === "function" ? scheduler.postTask.bind(scheduler) : setTimeout;
+      BASE64_CODE = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".split("");
+      BASE64_INDEX = [
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        0,
+        1,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1
+      ];
+      BCRYPT_SALT_LEN = 16;
+      GENSALT_DEFAULT_LOG2_ROUNDS = 10;
+      BLOWFISH_NUM_ROUNDS = 16;
+      MAX_EXECUTION_TIME = 100;
+      P_ORIG = [
+        608135816,
+        2242054355,
+        320440878,
+        57701188,
+        2752067618,
+        698298832,
+        137296536,
+        3964562569,
+        1160258022,
+        953160567,
+        3193202383,
+        887688300,
+        3232508343,
+        3380367581,
+        1065670069,
+        3041331479,
+        2450970073,
+        2306472731
+      ];
+      S_ORIG = [
+        3509652390,
+        2564797868,
+        805139163,
+        3491422135,
+        3101798381,
+        1780907670,
+        3128725573,
+        4046225305,
+        614570311,
+        3012652279,
+        134345442,
+        2240740374,
+        1667834072,
+        1901547113,
+        2757295779,
+        4103290238,
+        227898511,
+        1921955416,
+        1904987480,
+        2182433518,
+        2069144605,
+        3260701109,
+        2620446009,
+        720527379,
+        3318853667,
+        677414384,
+        3393288472,
+        3101374703,
+        2390351024,
+        1614419982,
+        1822297739,
+        2954791486,
+        3608508353,
+        3174124327,
+        2024746970,
+        1432378464,
+        3864339955,
+        2857741204,
+        1464375394,
+        1676153920,
+        1439316330,
+        715854006,
+        3033291828,
+        289532110,
+        2706671279,
+        2087905683,
+        3018724369,
+        1668267050,
+        732546397,
+        1947742710,
+        3462151702,
+        2609353502,
+        2950085171,
+        1814351708,
+        2050118529,
+        680887927,
+        999245976,
+        1800124847,
+        3300911131,
+        1713906067,
+        1641548236,
+        4213287313,
+        1216130144,
+        1575780402,
+        4018429277,
+        3917837745,
+        3693486850,
+        3949271944,
+        596196993,
+        3549867205,
+        258830323,
+        2213823033,
+        772490370,
+        2760122372,
+        1774776394,
+        2652871518,
+        566650946,
+        4142492826,
+        1728879713,
+        2882767088,
+        1783734482,
+        3629395816,
+        2517608232,
+        2874225571,
+        1861159788,
+        326777828,
+        3124490320,
+        2130389656,
+        2716951837,
+        967770486,
+        1724537150,
+        2185432712,
+        2364442137,
+        1164943284,
+        2105845187,
+        998989502,
+        3765401048,
+        2244026483,
+        1075463327,
+        1455516326,
+        1322494562,
+        910128902,
+        469688178,
+        1117454909,
+        936433444,
+        3490320968,
+        3675253459,
+        1240580251,
+        122909385,
+        2157517691,
+        634681816,
+        4142456567,
+        3825094682,
+        3061402683,
+        2540495037,
+        79693498,
+        3249098678,
+        1084186820,
+        1583128258,
+        426386531,
+        1761308591,
+        1047286709,
+        322548459,
+        995290223,
+        1845252383,
+        2603652396,
+        3431023940,
+        2942221577,
+        3202600964,
+        3727903485,
+        1712269319,
+        422464435,
+        3234572375,
+        1170764815,
+        3523960633,
+        3117677531,
+        1434042557,
+        442511882,
+        3600875718,
+        1076654713,
+        1738483198,
+        4213154764,
+        2393238008,
+        3677496056,
+        1014306527,
+        4251020053,
+        793779912,
+        2902807211,
+        842905082,
+        4246964064,
+        1395751752,
+        1040244610,
+        2656851899,
+        3396308128,
+        445077038,
+        3742853595,
+        3577915638,
+        679411651,
+        2892444358,
+        2354009459,
+        1767581616,
+        3150600392,
+        3791627101,
+        3102740896,
+        284835224,
+        4246832056,
+        1258075500,
+        768725851,
+        2589189241,
+        3069724005,
+        3532540348,
+        1274779536,
+        3789419226,
+        2764799539,
+        1660621633,
+        3471099624,
+        4011903706,
+        913787905,
+        3497959166,
+        737222580,
+        2514213453,
+        2928710040,
+        3937242737,
+        1804850592,
+        3499020752,
+        2949064160,
+        2386320175,
+        2390070455,
+        2415321851,
+        4061277028,
+        2290661394,
+        2416832540,
+        1336762016,
+        1754252060,
+        3520065937,
+        3014181293,
+        791618072,
+        3188594551,
+        3933548030,
+        2332172193,
+        3852520463,
+        3043980520,
+        413987798,
+        3465142937,
+        3030929376,
+        4245938359,
+        2093235073,
+        3534596313,
+        375366246,
+        2157278981,
+        2479649556,
+        555357303,
+        3870105701,
+        2008414854,
+        3344188149,
+        4221384143,
+        3956125452,
+        2067696032,
+        3594591187,
+        2921233993,
+        2428461,
+        544322398,
+        577241275,
+        1471733935,
+        610547355,
+        4027169054,
+        1432588573,
+        1507829418,
+        2025931657,
+        3646575487,
+        545086370,
+        48609733,
+        2200306550,
+        1653985193,
+        298326376,
+        1316178497,
+        3007786442,
+        2064951626,
+        458293330,
+        2589141269,
+        3591329599,
+        3164325604,
+        727753846,
+        2179363840,
+        146436021,
+        1461446943,
+        4069977195,
+        705550613,
+        3059967265,
+        3887724982,
+        4281599278,
+        3313849956,
+        1404054877,
+        2845806497,
+        146425753,
+        1854211946,
+        1266315497,
+        3048417604,
+        3681880366,
+        3289982499,
+        290971e4,
+        1235738493,
+        2632868024,
+        2414719590,
+        3970600049,
+        1771706367,
+        1449415276,
+        3266420449,
+        422970021,
+        1963543593,
+        2690192192,
+        3826793022,
+        1062508698,
+        1531092325,
+        1804592342,
+        2583117782,
+        2714934279,
+        4024971509,
+        1294809318,
+        4028980673,
+        1289560198,
+        2221992742,
+        1669523910,
+        35572830,
+        157838143,
+        1052438473,
+        1016535060,
+        1802137761,
+        1753167236,
+        1386275462,
+        3080475397,
+        2857371447,
+        1040679964,
+        2145300060,
+        2390574316,
+        1461121720,
+        2956646967,
+        4031777805,
+        4028374788,
+        33600511,
+        2920084762,
+        1018524850,
+        629373528,
+        3691585981,
+        3515945977,
+        2091462646,
+        2486323059,
+        586499841,
+        988145025,
+        935516892,
+        3367335476,
+        2599673255,
+        2839830854,
+        265290510,
+        3972581182,
+        2759138881,
+        3795373465,
+        1005194799,
+        847297441,
+        406762289,
+        1314163512,
+        1332590856,
+        1866599683,
+        4127851711,
+        750260880,
+        613907577,
+        1450815602,
+        3165620655,
+        3734664991,
+        3650291728,
+        3012275730,
+        3704569646,
+        1427272223,
+        778793252,
+        1343938022,
+        2676280711,
+        2052605720,
+        1946737175,
+        3164576444,
+        3914038668,
+        3967478842,
+        3682934266,
+        1661551462,
+        3294938066,
+        4011595847,
+        840292616,
+        3712170807,
+        616741398,
+        312560963,
+        711312465,
+        1351876610,
+        322626781,
+        1910503582,
+        271666773,
+        2175563734,
+        1594956187,
+        70604529,
+        3617834859,
+        1007753275,
+        1495573769,
+        4069517037,
+        2549218298,
+        2663038764,
+        504708206,
+        2263041392,
+        3941167025,
+        2249088522,
+        1514023603,
+        1998579484,
+        1312622330,
+        694541497,
+        2582060303,
+        2151582166,
+        1382467621,
+        776784248,
+        2618340202,
+        3323268794,
+        2497899128,
+        2784771155,
+        503983604,
+        4076293799,
+        907881277,
+        423175695,
+        432175456,
+        1378068232,
+        4145222326,
+        3954048622,
+        3938656102,
+        3820766613,
+        2793130115,
+        2977904593,
+        26017576,
+        3274890735,
+        3194772133,
+        1700274565,
+        1756076034,
+        4006520079,
+        3677328699,
+        720338349,
+        1533947780,
+        354530856,
+        688349552,
+        3973924725,
+        1637815568,
+        332179504,
+        3949051286,
+        53804574,
+        2852348879,
+        3044236432,
+        1282449977,
+        3583942155,
+        3416972820,
+        4006381244,
+        1617046695,
+        2628476075,
+        3002303598,
+        1686838959,
+        431878346,
+        2686675385,
+        1700445008,
+        1080580658,
+        1009431731,
+        832498133,
+        3223435511,
+        2605976345,
+        2271191193,
+        2516031870,
+        1648197032,
+        4164389018,
+        2548247927,
+        300782431,
+        375919233,
+        238389289,
+        3353747414,
+        2531188641,
+        2019080857,
+        1475708069,
+        455242339,
+        2609103871,
+        448939670,
+        3451063019,
+        1395535956,
+        2413381860,
+        1841049896,
+        1491858159,
+        885456874,
+        4264095073,
+        4001119347,
+        1565136089,
+        3898914787,
+        1108368660,
+        540939232,
+        1173283510,
+        2745871338,
+        3681308437,
+        4207628240,
+        3343053890,
+        4016749493,
+        1699691293,
+        1103962373,
+        3625875870,
+        2256883143,
+        3830138730,
+        1031889488,
+        3479347698,
+        1535977030,
+        4236805024,
+        3251091107,
+        2132092099,
+        1774941330,
+        1199868427,
+        1452454533,
+        157007616,
+        2904115357,
+        342012276,
+        595725824,
+        1480756522,
+        206960106,
+        497939518,
+        591360097,
+        863170706,
+        2375253569,
+        3596610801,
+        1814182875,
+        2094937945,
+        3421402208,
+        1082520231,
+        3463918190,
+        2785509508,
+        435703966,
+        3908032597,
+        1641649973,
+        2842273706,
+        3305899714,
+        1510255612,
+        2148256476,
+        2655287854,
+        3276092548,
+        4258621189,
+        236887753,
+        3681803219,
+        274041037,
+        1734335097,
+        3815195456,
+        3317970021,
+        1899903192,
+        1026095262,
+        4050517792,
+        356393447,
+        2410691914,
+        3873677099,
+        3682840055,
+        3913112168,
+        2491498743,
+        4132185628,
+        2489919796,
+        1091903735,
+        1979897079,
+        3170134830,
+        3567386728,
+        3557303409,
+        857797738,
+        1136121015,
+        1342202287,
+        507115054,
+        2535736646,
+        337727348,
+        3213592640,
+        1301675037,
+        2528481711,
+        1895095763,
+        1721773893,
+        3216771564,
+        62756741,
+        2142006736,
+        835421444,
+        2531993523,
+        1442658625,
+        3659876326,
+        2882144922,
+        676362277,
+        1392781812,
+        170690266,
+        3921047035,
+        1759253602,
+        3611846912,
+        1745797284,
+        664899054,
+        1329594018,
+        3901205900,
+        3045908486,
+        2062866102,
+        2865634940,
+        3543621612,
+        3464012697,
+        1080764994,
+        553557557,
+        3656615353,
+        3996768171,
+        991055499,
+        499776247,
+        1265440854,
+        648242737,
+        3940784050,
+        980351604,
+        3713745714,
+        1749149687,
+        3396870395,
+        4211799374,
+        3640570775,
+        1161844396,
+        3125318951,
+        1431517754,
+        545492359,
+        4268468663,
+        3499529547,
+        1437099964,
+        2702547544,
+        3433638243,
+        2581715763,
+        2787789398,
+        1060185593,
+        1593081372,
+        2418618748,
+        4260947970,
+        69676912,
+        2159744348,
+        86519011,
+        2512459080,
+        3838209314,
+        1220612927,
+        3339683548,
+        133810670,
+        1090789135,
+        1078426020,
+        1569222167,
+        845107691,
+        3583754449,
+        4072456591,
+        1091646820,
+        628848692,
+        1613405280,
+        3757631651,
+        526609435,
+        236106946,
+        48312990,
+        2942717905,
+        3402727701,
+        1797494240,
+        859738849,
+        992217954,
+        4005476642,
+        2243076622,
+        3870952857,
+        3732016268,
+        765654824,
+        3490871365,
+        2511836413,
+        1685915746,
+        3888969200,
+        1414112111,
+        2273134842,
+        3281911079,
+        4080962846,
+        172450625,
+        2569994100,
+        980381355,
+        4109958455,
+        2819808352,
+        2716589560,
+        2568741196,
+        3681446669,
+        3329971472,
+        1835478071,
+        660984891,
+        3704678404,
+        4045999559,
+        3422617507,
+        3040415634,
+        1762651403,
+        1719377915,
+        3470491036,
+        2693910283,
+        3642056355,
+        3138596744,
+        1364962596,
+        2073328063,
+        1983633131,
+        926494387,
+        3423689081,
+        2150032023,
+        4096667949,
+        1749200295,
+        3328846651,
+        309677260,
+        2016342300,
+        1779581495,
+        3079819751,
+        111262694,
+        1274766160,
+        443224088,
+        298511866,
+        1025883608,
+        3806446537,
+        1145181785,
+        168956806,
+        3641502830,
+        3584813610,
+        1689216846,
+        3666258015,
+        3200248200,
+        1692713982,
+        2646376535,
+        4042768518,
+        1618508792,
+        1610833997,
+        3523052358,
+        4130873264,
+        2001055236,
+        3610705100,
+        2202168115,
+        4028541809,
+        2961195399,
+        1006657119,
+        2006996926,
+        3186142756,
+        1430667929,
+        3210227297,
+        1314452623,
+        4074634658,
+        4101304120,
+        2273951170,
+        1399257539,
+        3367210612,
+        3027628629,
+        1190975929,
+        2062231137,
+        2333990788,
+        2221543033,
+        2438960610,
+        1181637006,
+        548689776,
+        2362791313,
+        3372408396,
+        3104550113,
+        3145860560,
+        296247880,
+        1970579870,
+        3078560182,
+        3769228297,
+        1714227617,
+        3291629107,
+        3898220290,
+        166772364,
+        1251581989,
+        493813264,
+        448347421,
+        195405023,
+        2709975567,
+        677966185,
+        3703036547,
+        1463355134,
+        2715995803,
+        1338867538,
+        1343315457,
+        2802222074,
+        2684532164,
+        233230375,
+        2599980071,
+        2000651841,
+        3277868038,
+        1638401717,
+        4028070440,
+        3237316320,
+        6314154,
+        819756386,
+        300326615,
+        590932579,
+        1405279636,
+        3267499572,
+        3150704214,
+        2428286686,
+        3959192993,
+        3461946742,
+        1862657033,
+        1266418056,
+        963775037,
+        2089974820,
+        2263052895,
+        1917689273,
+        448879540,
+        3550394620,
+        3981727096,
+        150775221,
+        3627908307,
+        1303187396,
+        508620638,
+        2975983352,
+        2726630617,
+        1817252668,
+        1876281319,
+        1457606340,
+        908771278,
+        3720792119,
+        3617206836,
+        2455994898,
+        1729034894,
+        1080033504,
+        976866871,
+        3556439503,
+        2881648439,
+        1522871579,
+        1555064734,
+        1336096578,
+        3548522304,
+        2579274686,
+        3574697629,
+        3205460757,
+        3593280638,
+        3338716283,
+        3079412587,
+        564236357,
+        2993598910,
+        1781952180,
+        1464380207,
+        3163844217,
+        3332601554,
+        1699332808,
+        1393555694,
+        1183702653,
+        3581086237,
+        1288719814,
+        691649499,
+        2847557200,
+        2895455976,
+        3193889540,
+        2717570544,
+        1781354906,
+        1676643554,
+        2592534050,
+        3230253752,
+        1126444790,
+        2770207658,
+        2633158820,
+        2210423226,
+        2615765581,
+        2414155088,
+        3127139286,
+        673620729,
+        2805611233,
+        1269405062,
+        4015350505,
+        3341807571,
+        4149409754,
+        1057255273,
+        2012875353,
+        2162469141,
+        2276492801,
+        2601117357,
+        993977747,
+        3918593370,
+        2654263191,
+        753973209,
+        36408145,
+        2530585658,
+        25011837,
+        3520020182,
+        2088578344,
+        530523599,
+        2918365339,
+        1524020338,
+        1518925132,
+        3760827505,
+        3759777254,
+        1202760957,
+        3985898139,
+        3906192525,
+        674977740,
+        4174734889,
+        2031300136,
+        2019492241,
+        3983892565,
+        4153806404,
+        3822280332,
+        352677332,
+        2297720250,
+        60907813,
+        90501309,
+        3286998549,
+        1016092578,
+        2535922412,
+        2839152426,
+        457141659,
+        509813237,
+        4120667899,
+        652014361,
+        1966332200,
+        2975202805,
+        55981186,
+        2327461051,
+        676427537,
+        3255491064,
+        2882294119,
+        3433927263,
+        1307055953,
+        942726286,
+        933058658,
+        2468411793,
+        3933900994,
+        4215176142,
+        1361170020,
+        2001714738,
+        2830558078,
+        3274259782,
+        1222529897,
+        1679025792,
+        2729314320,
+        3714953764,
+        1770335741,
+        151462246,
+        3013232138,
+        1682292957,
+        1483529935,
+        471910574,
+        1539241949,
+        458788160,
+        3436315007,
+        1807016891,
+        3718408830,
+        978976581,
+        1043663428,
+        3165965781,
+        1927990952,
+        4200891579,
+        2372276910,
+        3208408903,
+        3533431907,
+        1412390302,
+        2931980059,
+        4132332400,
+        1947078029,
+        3881505623,
+        4168226417,
+        2941484381,
+        1077988104,
+        1320477388,
+        886195818,
+        18198404,
+        3786409e3,
+        2509781533,
+        112762804,
+        3463356488,
+        1866414978,
+        891333506,
+        18488651,
+        661792760,
+        1628790961,
+        3885187036,
+        3141171499,
+        876946877,
+        2693282273,
+        1372485963,
+        791857591,
+        2686433993,
+        3759982718,
+        3167212022,
+        3472953795,
+        2716379847,
+        445679433,
+        3561995674,
+        3504004811,
+        3574258232,
+        54117162,
+        3331405415,
+        2381918588,
+        3769707343,
+        4154350007,
+        1140177722,
+        4074052095,
+        668550556,
+        3214352940,
+        367459370,
+        261225585,
+        2610173221,
+        4209349473,
+        3468074219,
+        3265815641,
+        314222801,
+        3066103646,
+        3808782860,
+        282218597,
+        3406013506,
+        3773591054,
+        379116347,
+        1285071038,
+        846784868,
+        2669647154,
+        3771962079,
+        3550491691,
+        2305946142,
+        453669953,
+        1268987020,
+        3317592352,
+        3279303384,
+        3744833421,
+        2610507566,
+        3859509063,
+        266596637,
+        3847019092,
+        517658769,
+        3462560207,
+        3443424879,
+        370717030,
+        4247526661,
+        2224018117,
+        4143653529,
+        4112773975,
+        2788324899,
+        2477274417,
+        1456262402,
+        2901442914,
+        1517677493,
+        1846949527,
+        2295493580,
+        3734397586,
+        2176403920,
+        1280348187,
+        1908823572,
+        3871786941,
+        846861322,
+        1172426758,
+        3287448474,
+        3383383037,
+        1655181056,
+        3139813346,
+        901632758,
+        1897031941,
+        2986607138,
+        3066810236,
+        3447102507,
+        1393639104,
+        373351379,
+        950779232,
+        625454576,
+        3124240540,
+        4148612726,
+        2007998917,
+        544563296,
+        2244738638,
+        2330496472,
+        2058025392,
+        1291430526,
+        424198748,
+        50039436,
+        29584100,
+        3605783033,
+        2429876329,
+        2791104160,
+        1057563949,
+        3255363231,
+        3075367218,
+        3463963227,
+        1469046755,
+        985887462
+      ];
+      C_ORIG = [
+        1332899944,
+        1700884034,
+        1701343084,
+        1684370003,
+        1668446532,
+        1869963892
+      ];
+      bcryptjs_default = {
+        setRandomFallback,
+        genSaltSync,
+        genSalt,
+        hashSync,
+        hash,
+        compareSync,
+        compare,
+        getRounds,
+        getSalt,
+        truncates,
+        encodeBase64,
+        decodeBase64
+      };
+    }
+  });
 
   // src/web/hal-ui/views/SetupWizard.ts
-  var DEFAULT_DATA = {
-    adminPassword: "",
-    adminPasswordHash: "",
-    farmName: "My Farm",
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    wifiSsid: "",
-    wifiPassword: "",
-    wifiConfigured: false,
-    llmProvider: "ollama",
-    llmEndpoint: "http://localhost:11434",
-    llmApiKey: "",
-    llmModel: "",
-    telegramEnabled: false,
-    telegramBotToken: ""
-  };
-  var STEP_LABELS = {
-    1: "Admin Password",
-    2: "Farm Name",
-    3: "Timezone",
-    4: "WiFi",
-    5: "LLM Provider",
-    6: "Telegram"
-  };
-  var TOTAL_STEPS = [1, 2, 3, 4, 5, 6];
-  var currentStep = 1;
-  var wizardData = { ...DEFAULT_DATA };
-  var hasEthernet = false;
-  var isSubmitting = false;
   async function renderSetupWizard(container) {
-    injectWizardStyles();
+    injectWizardStyles2();
     let status;
     try {
       status = await provisioningApi.getStatus();
     } catch {
-      container.innerHTML = renderError("Could not connect to FarmPal. Please refresh.");
+      container.innerHTML = renderError(
+        "Could not connect to FarmPal. Please refresh."
+      );
       return;
     }
     if (!status.isUnprovisioned && status.state === "completed") {
@@ -8703,13 +10970,13 @@
       }
     }
     if (status.wizardStep && status.wizardStep >= 1 && status.wizardStep <= 6) {
-      currentStep = status.wizardStep;
+      currentStep2 = status.wizardStep;
     }
     render(container);
   }
   function render(container) {
     const effectiveSteps = hasEthernet ? [1, 2, 3, 5, 6] : TOTAL_STEPS;
-    const currentIndex = effectiveSteps.indexOf(currentStep);
+    const currentIndex = effectiveSteps.indexOf(currentStep2);
     container.innerHTML = `
     <div class="wizard-page">
       <div class="wizard-card">
@@ -8731,7 +10998,7 @@
         </div>
 
         <div class="wizard-body" id="wizard-body">
-          ${renderStepBody(currentStep)}
+          ${renderStepBody(currentStep2)}
         </div>
 
         <div class="wizard-footer">
@@ -8741,7 +11008,7 @@
           </button>
         </div>
 
-        ${currentStep !== 1 ? '<button class="wizard-skip-label" id="wizard-back-to-start">\u2190 Start over</button>' : ""}
+        ${currentStep2 !== 1 ? '<button class="wizard-skip-label" id="wizard-back-to-start">\u2190 Start over</button>' : ""}
       </div>
     </div>
   `;
@@ -8790,7 +11057,7 @@
             id="password"
             class="form-input"
             placeholder="Minimum 8 characters"
-            value="${escapeHtml11(wizardData.adminPassword)}"
+            value="${escapeHtml12(wizardData.adminPassword)}"
             minlength="8"
             autocomplete="new-password"
           />
@@ -8846,7 +11113,7 @@
           id="farm-name"
           class="form-input"
           placeholder="My Farm"
-          value="${escapeHtml11(wizardData.farmName)}"
+          value="${escapeHtml12(wizardData.farmName)}"
           maxlength="64"
           autocomplete="off"
         />
@@ -8855,30 +11122,6 @@
     </div>
   `;
   }
-  var COMMON_TIMEZONES = [
-    { value: "America/New_York", label: "US Eastern (New York)" },
-    { value: "America/Chicago", label: "US Central (Chicago)" },
-    { value: "America/Denver", label: "US Mountain (Denver)" },
-    { value: "America/Los_Angeles", label: "US Pacific (Los Angeles)" },
-    { value: "America/Phoenix", label: "US Arizona (Phoenix)" },
-    { value: "America/Anchorage", label: "US Alaska (Anchorage)" },
-    { value: "Pacific/Honolulu", label: "US Hawaii (Honolulu)" },
-    { value: "Europe/London", label: "UK (London)" },
-    { value: "Europe/Paris", label: "France (Paris)" },
-    { value: "Europe/Berlin", label: "Germany (Berlin)" },
-    { value: "Europe/Amsterdam", label: "Netherlands (Amsterdam)" },
-    { value: "Europe/Stockholm", label: "Sweden (Stockholm)" },
-    { value: "Europe/Madrid", label: "Spain (Madrid)" },
-    { value: "Europe/Rome", label: "Italy (Rome)" },
-    { value: "Asia/Dubai", label: "UAE (Dubai)" },
-    { value: "Asia/Kolkata", label: "India (Kolkata)" },
-    { value: "Asia/Singapore", label: "Singapore" },
-    { value: "Asia/Shanghai", label: "China (Shanghai)" },
-    { value: "Asia/Tokyo", label: "Japan (Tokyo)" },
-    { value: "Australia/Sydney", label: "Australia (Sydney)" },
-    { value: "Australia/Perth", label: "Australia (Perth)" },
-    { value: "Pacific/Auckland", label: "New Zealand (Auckland)" }
-  ];
   function renderTimezoneStep() {
     const currentTz = wizardData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     const currentRegion = currentTz.split("/")[0] || "";
@@ -8911,12 +11154,11 @@
         <select id="timezone" class="form-select">
           ${regionOptions}
         </select>
-        <div class="form-hint">Detected: <strong id="detected-timezone">${escapeHtml11(currentTz)}</strong></div>
+        <div class="form-hint">Detected: <strong id="detected-timezone">${escapeHtml12(currentTz)}</strong></div>
       </div>
     </div>
   `;
   }
-  var wifiNetworks = [];
   function renderWifiStep() {
     return `
     <div class="wizard-step-content">
@@ -8930,13 +11172,13 @@
           id="wifi-ssid"
           class="form-input"
           placeholder="Enter network name or select below"
-          value="${escapeHtml11(wizardData.wifiSsid)}"
+          value="${escapeHtml12(wizardData.wifiSsid)}"
           maxlength="32"
           autocomplete="off"
           list="wifi-networks-list"
         />
         <datalist id="wifi-networks-list">
-          ${wifiNetworks.map((n) => `<option value="${escapeHtml11(n.ssid)}">`).join("")}
+          ${wifiNetworks.map((n) => `<option value="${escapeHtml12(n.ssid)}">`).join("")}
         </datalist>
       </div>
 
@@ -8960,14 +11202,6 @@
     </div>
   `;
   }
-  var LLM_PROVIDERS = [
-    { id: "ollama", name: "Ollama (Local)", defaultEndpoint: "http://localhost:11434", supportsModel: true },
-    { id: "openai", name: "OpenAI", supportsApiKey: true },
-    { id: "anthropic", name: "Anthropic", supportsApiKey: true },
-    { id: "zai", name: "ZAI", supportsApiKey: true },
-    { id: "minimax", name: "MiniMax", supportsApiKey: true },
-    { id: "lmstudio", name: "LM Studio (Local)", defaultEndpoint: "http://localhost:1234", supportsModel: true }
-  ];
   function renderLlmStep() {
     const selectedProvider = LLM_PROVIDERS.find((p) => p.id === wizardData.llmProvider) || LLM_PROVIDERS[0];
     const showApiKey = selectedProvider && "supportsApiKey" in selectedProvider && selectedProvider.supportsApiKey;
@@ -8999,7 +11233,7 @@
           id="llm-endpoint"
           class="form-input"
           placeholder="http://localhost:11434"
-          value="${escapeHtml11(wizardData.llmEndpoint)}"
+          value="${escapeHtml12(wizardData.llmEndpoint)}"
         />
         <div class="form-hint">${wizardData.llmProvider === "ollama" ? "Ollama must be running on your device." : "LM Studio server address."}</div>
       </div>
@@ -9014,7 +11248,7 @@
             id="llm-api-key"
             class="form-input"
             placeholder="sk-..."
-            value="${escapeHtml11(wizardData.llmApiKey)}"
+            value="${escapeHtml12(wizardData.llmApiKey)}"
             autocomplete="off"
           />
           <button type="button" class="input-toggle" id="toggle-api-key" aria-label="Show API key">
@@ -9033,7 +11267,7 @@
           id="llm-model"
           class="form-input"
           placeholder="${wizardData.llmProvider === "ollama" ? "llama3.2, mistral, etc." : "e.g., llama3.2"}"
-          value="${escapeHtml11(wizardData.llmModel)}"
+          value="${escapeHtml12(wizardData.llmModel)}"
           autocomplete="off"
         />
         <div class="form-hint">Must match an installed model in your Ollama/LM Studio.</div>
@@ -9069,7 +11303,7 @@
             id="telegram-token"
             class="form-input"
             placeholder="123456789:ABCdefGHI..."
-            value="${escapeHtml11(wizardData.telegramBotToken)}"
+            value="${escapeHtml12(wizardData.telegramBotToken)}"
             autocomplete="off"
           />
           <button type="button" class="input-toggle" id="toggle-telegram-token" aria-label="Show token">
@@ -9092,7 +11326,7 @@
       <div class="wizard-card wizard-error">
         <div class="error-icon">\u26A0</div>
         <h2>Setup Error</h2>
-        <p>${escapeHtml11(message)}</p>
+        <p>${escapeHtml12(message)}</p>
         <button class="wizard-btn wizard-btn-next" onclick="location.reload()">Refresh</button>
       </div>
     </div>
@@ -9105,9 +11339,14 @@
     setupPasswordToggle("toggle-api-key", "llm-api-key");
     setupPasswordToggle("toggle-telegram-token", "telegram-token");
     const passwordInput = document.getElementById("password");
-    const passwordConfirm = document.getElementById("password-confirm");
+    const passwordConfirm = document.getElementById(
+      "password-confirm"
+    );
     if (passwordInput) {
-      passwordInput.addEventListener("input", () => updatePasswordStrength(passwordInput.value));
+      passwordInput.addEventListener(
+        "input",
+        () => updatePasswordStrength(passwordInput.value)
+      );
       passwordInput.addEventListener("blur", () => validatePasswordStep());
     }
     if (passwordConfirm) {
@@ -9126,7 +11365,9 @@
         attachWizardEvents(container, effectiveSteps, currentIndex);
       });
     });
-    const telegramToggle = document.getElementById("telegram-enabled");
+    const telegramToggle = document.getElementById(
+      "telegram-enabled"
+    );
     const telegramFields = document.querySelector(".telegram-fields");
     if (telegramToggle && telegramFields) {
       telegramToggle.addEventListener("change", () => {
@@ -9137,35 +11378,35 @@
     const backBtn = document.getElementById("wizard-back");
     backBtn?.addEventListener("click", async () => {
       if (currentIndex > 0) {
-        await saveCurrentStep(currentStep, effectiveSteps[currentIndex]);
-        currentStep = effectiveSteps[currentIndex - 1];
-        wizardData = loadStepData(currentStep);
+        await saveCurrentStep(currentStep2, effectiveSteps[currentIndex]);
+        currentStep2 = effectiveSteps[currentIndex - 1];
+        wizardData = loadStepData(currentStep2);
         render(container);
       }
     });
     const backToStart = document.getElementById("wizard-back-to-start");
     backToStart?.addEventListener("click", async () => {
-      currentStep = effectiveSteps[0];
+      currentStep2 = effectiveSteps[0];
       wizardData = { ...DEFAULT_DATA };
       await provisioningApi.updateWizardStep(1, {});
       render(container);
     });
     const nextBtn = document.getElementById("wizard-next");
     nextBtn?.addEventListener("click", async () => {
-      if (!validateCurrentStep(currentStep)) return;
+      if (!validateCurrentStep(currentStep2)) return;
       isSubmitting = true;
       render(container);
       try {
-        await saveCurrentStep(currentIndex, currentStep);
+        await saveCurrentStep(currentIndex, currentStep2);
         if (currentIndex < effectiveSteps.length - 1) {
-          currentStep = effectiveSteps[currentIndex + 1];
-          wizardData = loadStepData(currentStep);
+          currentStep2 = effectiveSteps[currentIndex + 1];
+          wizardData = loadStepData(currentStep2);
           render(container);
         } else {
           await completeWizard(container);
         }
       } catch (err) {
-        showStepError(currentStep, err.message || "An error occurred");
+        showStepError(currentStep2, err.message || "An error occurred");
         render(container);
       } finally {
         isSubmitting = false;
@@ -9287,7 +11528,7 @@
     if (body) {
       body.innerHTML = `
       <div class="wizard-step-content">
-        <div class="step-error">${escapeHtml11(message)}</div>
+        <div class="step-error">${escapeHtml12(message)}</div>
       </div>
     `;
     }
@@ -9324,7 +11565,10 @@
       window.location.hash = "#dashboard";
       window.location.reload();
     } catch (err) {
-      showStepError(6, err.message || "Setup could not be saved \u2014 please try again.");
+      showStepError(
+        6,
+        err.message || "Setup could not be saved \u2014 please try again."
+      );
     }
   }
   function updatePasswordStrength(pwd) {
@@ -9351,13 +11595,16 @@
     btn.addEventListener("click", () => {
       const isPassword = input.type === "password";
       input.type = isPassword ? "text" : "password";
-      btn.setAttribute("aria-label", isPassword ? "Hide password" : "Show password");
+      btn.setAttribute(
+        "aria-label",
+        isPassword ? "Hide password" : "Show password"
+      );
     });
   }
-  function escapeHtml11(str) {
+  function escapeHtml12(str) {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
-  function injectWizardStyles() {
+  function injectWizardStyles2() {
     if (document.getElementById("wizard-styles")) return;
     const style = document.createElement("style");
     style.id = "wizard-styles";
@@ -9907,19 +12154,1174 @@
 `;
     document.head.appendChild(style);
   }
+  var DEFAULT_DATA, STEP_LABELS, TOTAL_STEPS, currentStep2, wizardData, hasEthernet, isSubmitting, COMMON_TIMEZONES, wifiNetworks, LLM_PROVIDERS;
+  var init_SetupWizard = __esm({
+    "src/web/hal-ui/views/SetupWizard.ts"() {
+      "use strict";
+      init_api_provisioning();
+      init_bcryptjs();
+      DEFAULT_DATA = {
+        adminPassword: "",
+        adminPasswordHash: "",
+        farmName: "My Farm",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        wifiSsid: "",
+        wifiPassword: "",
+        wifiConfigured: false,
+        llmProvider: "ollama",
+        llmEndpoint: "http://localhost:11434",
+        llmApiKey: "",
+        llmModel: "",
+        telegramEnabled: false,
+        telegramBotToken: ""
+      };
+      STEP_LABELS = {
+        1: "Admin Password",
+        2: "Farm Name",
+        3: "Timezone",
+        4: "WiFi",
+        5: "LLM Provider",
+        6: "Telegram"
+      };
+      TOTAL_STEPS = [1, 2, 3, 4, 5, 6];
+      currentStep2 = 1;
+      wizardData = { ...DEFAULT_DATA };
+      hasEthernet = false;
+      isSubmitting = false;
+      COMMON_TIMEZONES = [
+        { value: "America/New_York", label: "US Eastern (New York)" },
+        { value: "America/Chicago", label: "US Central (Chicago)" },
+        { value: "America/Denver", label: "US Mountain (Denver)" },
+        { value: "America/Los_Angeles", label: "US Pacific (Los Angeles)" },
+        { value: "America/Phoenix", label: "US Arizona (Phoenix)" },
+        { value: "America/Anchorage", label: "US Alaska (Anchorage)" },
+        { value: "Pacific/Honolulu", label: "US Hawaii (Honolulu)" },
+        { value: "Europe/London", label: "UK (London)" },
+        { value: "Europe/Paris", label: "France (Paris)" },
+        { value: "Europe/Berlin", label: "Germany (Berlin)" },
+        { value: "Europe/Amsterdam", label: "Netherlands (Amsterdam)" },
+        { value: "Europe/Stockholm", label: "Sweden (Stockholm)" },
+        { value: "Europe/Madrid", label: "Spain (Madrid)" },
+        { value: "Europe/Rome", label: "Italy (Rome)" },
+        { value: "Asia/Dubai", label: "UAE (Dubai)" },
+        { value: "Asia/Kolkata", label: "India (Kolkata)" },
+        { value: "Asia/Singapore", label: "Singapore" },
+        { value: "Asia/Shanghai", label: "China (Shanghai)" },
+        { value: "Asia/Tokyo", label: "Japan (Tokyo)" },
+        { value: "Australia/Sydney", label: "Australia (Sydney)" },
+        { value: "Australia/Perth", label: "Australia (Perth)" },
+        { value: "Pacific/Auckland", label: "New Zealand (Auckland)" }
+      ];
+      wifiNetworks = [];
+      LLM_PROVIDERS = [
+        {
+          id: "ollama",
+          name: "Ollama (Local)",
+          defaultEndpoint: "http://localhost:11434",
+          supportsModel: true
+        },
+        { id: "openai", name: "OpenAI", supportsApiKey: true },
+        { id: "anthropic", name: "Anthropic", supportsApiKey: true },
+        { id: "zai", name: "ZAI", supportsApiKey: true },
+        { id: "minimax", name: "MiniMax", supportsApiKey: true },
+        {
+          id: "lmstudio",
+          name: "LM Studio (Local)",
+          defaultEndpoint: "http://localhost:1234",
+          supportsModel: true
+        }
+      ];
+    }
+  });
+
+  // src/web/hal-ui/views/Safety.ts
+  async function renderSafety(container) {
+    injectModalStyles();
+    injectSafetyStyles();
+    container.innerHTML = `
+    <div class="safety-view">
+      <div class="safety-header">
+        <h1 class="view-title">Safety</h1>
+        <div class="safety-actions">
+          <button class="btn btn-primary" id="add-rule-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Rule
+          </button>
+        </div>
+      </div>
+
+      <div class="safety-summary-cards" id="safety-summary">
+        <div class="safety-summary-card loading">Loading...</div>
+      </div>
+
+      <div class="safety-rules-section">
+        <div class="safety-section-header">
+          <h2>Safety Rules</h2>
+          <div class="safety-filter">
+            <select id="rule-device-filter" class="form-select">
+              <option value="">All Devices</option>
+            </select>
+          </div>
+        </div>
+        <div class="safety-rules-list" id="safety-rules-list">
+          <div class="safety-rules-loading">Loading rules...</div>
+        </div>
+      </div>
+
+      <div class="safety-recent-denials">
+        <div class="safety-section-header">
+          <h2>Recent Denials (24h)</h2>
+        </div>
+        <div class="safety-denials-list" id="safety-denials-list">
+          <div class="safety-denials-loading">Loading...</div>
+        </div>
+      </div>
+    </div>
+  `;
+    setupSafetyEventListeners();
+    await loadSafetySummary();
+    await loadSafetyRules();
+    await loadRecentDenials();
+    await loadDevicesForFilter();
+  }
+  async function loadSafetySummary() {
+    try {
+      const summary = await halApi.getSafetySummary();
+      const summaryEl = document.getElementById("safety-summary");
+      if (!summaryEl) return;
+      summaryEl.innerHTML = `
+      <div class="safety-summary-card ${summary.estopActive ? "danger" : summary.farmLoopSafetyMode ? "warning" : "normal"}">
+        <div class="summary-card-icon">
+          ${summary.estopActive ? "\u{1F6A8}" : summary.farmLoopSafetyMode ? "\u26A0\uFE0F" : "\u2705"}
+        </div>
+        <div class="summary-card-content">
+          <div class="summary-card-label">Safety State</div>
+          <div class="summary-card-value">${summary.estopActive ? "EMERGENCY STOP" : summary.farmLoopSafetyMode ? "WARNING" : "NORMAL"}</div>
+          ${summary.estopActive && summary.estopActivatedAt ? `<div class="summary-card-meta">since ${new Date(summary.estopActivatedAt).toLocaleTimeString()}</div>` : ""}
+        </div>
+      </div>
+
+      <div class="safety-summary-card">
+        <div class="summary-card-icon">\u{1F4CB}</div>
+        <div class="summary-card-content">
+          <div class="summary-card-label">Active Rules</div>
+          <div class="summary-card-value">${summary.activeRulesCount}</div>
+        </div>
+      </div>
+
+      <div class="safety-summary-card ${summary.deniedLast24h > 0 ? "warning" : ""}">
+        <div class="summary-card-icon">\u{1F6AB}</div>
+        <div class="summary-card-content">
+          <div class="summary-card-label">Denied (24h)</div>
+          <div class="summary-card-value">${summary.deniedLast24h}</div>
+        </div>
+      </div>
+
+      <div class="safety-summary-card">
+        <div class="summary-card-icon">\u{1F517}</div>
+        <div class="summary-card-content">
+          <div class="summary-card-label">Monitored Devices</div>
+          <div class="summary-card-value">${summary.rulesPerDevice.length}</div>
+        </div>
+      </div>
+    `;
+    } catch (err) {
+      console.error("Failed to load safety summary:", err);
+    }
+  }
+  async function loadSafetyRules() {
+    try {
+      const rules = await halApi.getSafetyRules();
+      const listEl = document.getElementById("safety-rules-list");
+      if (!listEl) return;
+      if (rules.length === 0) {
+        listEl.innerHTML = `
+        <div class="safety-empty">
+          <p>No safety rules configured.</p>
+          <p>Click "Add Rule" to create your first safety rule.</p>
+        </div>
+      `;
+        return;
+      }
+      listEl.innerHTML = rules.map((rule) => renderRuleCard(rule)).join("");
+      listEl.querySelectorAll(".rule-edit-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const ruleId = btn.dataset.ruleId;
+          editRule(ruleId);
+        });
+      });
+      listEl.querySelectorAll(".rule-delete-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const ruleId = btn.dataset.ruleId;
+          const ruleDeviceId = btn.dataset.deviceId;
+          confirmDeleteRule(ruleId, ruleDeviceId);
+        });
+      });
+      listEl.querySelectorAll(".rule-toggle-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const ruleId = btn.dataset.ruleId;
+          const rule = rules.find((r) => r.id === ruleId);
+          if (rule) {
+            await toggleRule(rule);
+          }
+        });
+      });
+    } catch (err) {
+      console.error("Failed to load safety rules:", err);
+    }
+  }
+  async function loadRecentDenials() {
+    try {
+      const audit = await halApi.getSafetyAudit({ limit: 10, result: "DENIED" });
+      const listEl = document.getElementById("safety-denials-list");
+      if (!listEl) return;
+      if (audit.length === 0) {
+        listEl.innerHTML = `
+        <div class="safety-empty">
+          <p>No denied actions in the last 24 hours.</p>
+        </div>
+      `;
+        return;
+      }
+      listEl.innerHTML = audit.map(
+        (entry) => `
+      <div class="denial-item">
+        <div class="denial-header">
+          <span class="denial-device">${entry.deviceId || "Unknown Device"}</span>
+          <span class="denial-action">${entry.proposedAction}</span>
+          <span class="denial-time">${formatRelativeTime2(entry.createdAt)}</span>
+        </div>
+        <div class="denial-reason">${entry.deniedReason || "No reason provided"}</div>
+        <div class="denial-meta">
+          Triggered by: ${entry.triggeredBy}
+        </div>
+      </div>
+    `
+      ).join("");
+    } catch (err) {
+      console.error("Failed to load recent denials:", err);
+    }
+  }
+  async function loadDevicesForFilter() {
+    const store = getStore();
+    const selectEl = document.getElementById(
+      "rule-device-filter"
+    );
+    if (!selectEl) return;
+    const devices = store.devices.filter(
+      (d) => d.type === "relay" || d.type === "smart_plug"
+    );
+    const options = devices.map((d) => `<option value="${d.id}">${escapeHtml13(d.name)}</option>`).join("");
+    selectEl.innerHTML = `<option value="">All Devices</option>${options}`;
+    selectEl.addEventListener("change", () => {
+    });
+  }
+  function renderRuleCard(rule) {
+    const store = getStore();
+    const device = store.devices.find((d) => d.id === rule.deviceId);
+    const deviceName = device?.name || rule.deviceId;
+    const ruleLabel = RULE_TYPE_LABELS[rule.ruleType] || rule.ruleType;
+    const ruleDesc = RULE_TYPE_DESCRIPTIONS[rule.ruleType] || "";
+    let configDisplay = "";
+    switch (rule.ruleType) {
+      case "max_on_duration":
+        configDisplay = `${rule.ruleConfig.maxSeconds}s max on`;
+        break;
+      case "min_off_duration":
+        configDisplay = `${rule.ruleConfig.minSeconds}s min off`;
+        break;
+      case "max_activations_per_hour":
+        configDisplay = `${rule.ruleConfig.maxPerHour} max/hour`;
+        break;
+      case "allowed_schedule_windows":
+        const windows = rule.ruleConfig.windows;
+        configDisplay = windows.map((w) => `${w.startHour}:00-${w.endHour}:00`).join(", ");
+        break;
+      case "dependency":
+        const dep = rule.ruleConfig;
+        configDisplay = `When ${dep.triggerDeviceId} ${dep.operator} ${dep.value}`;
+        break;
+      default:
+        configDisplay = JSON.stringify(rule.ruleConfig);
+    }
+    return `
+    <div class="rule-card ${rule.enabled ? "" : "disabled"}" data-device-id="${rule.deviceId}">
+      <div class="rule-header">
+        <div class="rule-device">${escapeHtml13(deviceName)}</div>
+        <div class="rule-type-badge">${ruleLabel}</div>
+      </div>
+      <div class="rule-config">${escapeHtml13(configDisplay)}</div>
+      <div class="rule-meta">
+        Priority: ${rule.priority} \xB7 Updated ${formatRelativeTime2(rule.updatedAt)}
+      </div>
+      <div class="rule-actions">
+        <button class="btn btn-sm rule-toggle-btn ${rule.enabled ? "btn-warning" : "btn-success"}" data-rule-id="${rule.id}">
+          ${rule.enabled ? "Disable" : "Enable"}
+        </button>
+        <button class="btn btn-sm btn-secondary rule-edit-btn" data-rule-id="${rule.id}">Edit</button>
+        <button class="btn btn-sm btn-danger rule-delete-btn" data-rule-id="${rule.id}" data-device-id="${rule.deviceId}">Delete</button>
+      </div>
+    </div>
+  `;
+  }
+  function setupSafetyEventListeners() {
+    const addBtn = document.getElementById("add-rule-btn");
+    addBtn?.addEventListener("click", () => {
+      showAddRuleModal();
+    });
+    const filterSelect = document.getElementById(
+      "rule-device-filter"
+    );
+    if (filterSelect) {
+      filterSelect.addEventListener("change", () => {
+        filterRules(filterSelect.value);
+      });
+    }
+  }
+  function filterRules(deviceId) {
+    const cards = document.querySelectorAll(".rule-card");
+    cards.forEach((card) => {
+      const cardDeviceId = card.dataset.deviceId;
+      if (!deviceId || cardDeviceId === deviceId) {
+        card.style.display = "";
+      } else {
+        card.style.display = "none";
+      }
+    });
+  }
+  async function toggleRule(ruleId) {
+    try {
+      const rules = await halApi.getSafetyRules();
+      const rule = rules.find((r) => r.id === ruleId);
+      if (!rule) return;
+      await halApi.updateSafetyRule(ruleId, { enabled: !rule.enabled });
+      showToast(`Rule ${rule.enabled ? "disabled" : "enabled"}`, "success");
+      await loadSafetyRules();
+      await loadSafetySummary();
+    } catch (err) {
+      showToast(`Failed to toggle rule: ${err.message}`, "error");
+    }
+  }
+  function confirmDeleteRule(ruleId, deviceId) {
+    const store = getStore();
+    const device = store.devices.find((d) => d.id === deviceId);
+    const deviceName = device?.name || deviceId;
+    openModal(
+      "Delete Safety Rule",
+      `<p>Are you sure you want to delete this safety rule for <strong>${escapeHtml13(deviceName)}</strong>?</p>
+     <p class="text-danger">This action cannot be undone. The device will no longer be protected by this rule.</p>`,
+      `<button class="btn btn-secondary" onclick="window.__closeModal && window.__closeModal()">Cancel</button>
+     <button class="btn btn-danger" id="confirm-delete-rule-btn">Delete Rule</button>`
+    );
+    const confirmBtn = document.getElementById("confirm-delete-rule-btn");
+    confirmBtn?.addEventListener("click", async () => {
+      closeModal();
+      try {
+        await halApi.deleteSafetyRule(ruleId);
+        showToast("Rule deleted", "success");
+        await loadSafetyRules();
+        await loadSafetySummary();
+      } catch (err) {
+        showToast(`Failed to delete rule: ${err.message}`, "error");
+      }
+    });
+    window.__closeModal = closeModal;
+  }
+  function showAddRuleModal() {
+    const store = getStore();
+    const devices = store.devices.filter(
+      (d) => d.type === "relay" || d.type === "smart_plug"
+    );
+    const deviceOptions = devices.map((d) => `<option value="${d.id}">${escapeHtml13(d.name)}</option>`).join("");
+    const ruleTypeOptions = Object.entries(RULE_TYPE_LABELS).map(([key, label]) => `<option value="${key}">${label}</option>`).join("");
+    openModal(
+      "Add Safety Rule",
+      `
+    <form id="add-rule-form" class="add-rule-form">
+      <div class="form-group">
+        <label for="rule-device">Device</label>
+        <select id="rule-device" class="form-select" required>
+          <option value="">Select a device...</option>
+          ${deviceOptions}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="rule-type">Rule Type</label>
+        <select id="rule-type" class="form-select" required>
+          <option value="">Select rule type...</option>
+          ${ruleTypeOptions}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="rule-priority">Priority (higher = more restrictive)</label>
+        <input type="number" id="rule-priority" class="form-input" value="0" min="0" max="100">
+      </div>
+
+      <div id="rule-config-fields">
+        <p class="text-secondary text-sm">Select a rule type to configure.</p>
+      </div>
+    </form>
+    `,
+      `<button class="btn btn-secondary" onclick="window.__closeModal && window.__closeModal()">Cancel</button>
+     <button class="btn btn-primary" id="save-rule-btn">Save Rule</button>`
+    );
+    window.__closeModal = closeModal;
+    const ruleTypeSelect = document.getElementById(
+      "rule-type"
+    );
+    ruleTypeSelect?.addEventListener("change", () => {
+      showConfigFieldsForRuleType(ruleTypeSelect.value);
+    });
+    const saveBtn = document.getElementById("save-rule-btn");
+    saveBtn?.addEventListener("click", () => saveNewRule());
+  }
+  function showConfigFieldsForRuleType(ruleType) {
+    const container = document.getElementById("rule-config-fields");
+    if (!container) return;
+    let fieldsHtml = "";
+    switch (ruleType) {
+      case "max_on_duration":
+        fieldsHtml = `
+        <div class="form-group">
+          <label for="config-max-seconds">Maximum On Duration (seconds)</label>
+          <input type="number" id="config-max-seconds" class="form-input" value="300" min="1" required>
+        </div>
+      `;
+        break;
+      case "min_off_duration":
+        fieldsHtml = `
+        <div class="form-group">
+          <label for="config-min-seconds">Minimum Off Duration (seconds)</label>
+          <input type="number" id="config-min-seconds" class="form-input" value="60" min="1" required>
+        </div>
+      `;
+        break;
+      case "max_activations_per_hour":
+        fieldsHtml = `
+        <div class="form-group">
+          <label for="config-max-per-hour">Maximum Activations Per Hour</label>
+          <input type="number" id="config-max-per-hour" class="form-input" value="10" min="1" required>
+        </div>
+      `;
+        break;
+      case "allowed_schedule_windows":
+        fieldsHtml = `
+        <div class="form-group">
+          <label>Schedule Windows</label>
+          <div id="schedule-windows-list">
+            <div class="schedule-window-row">
+              <input type="number" class="form-input schedule-start" placeholder="Start hour (0-23)" min="0" max="23" value="6">
+              <span>to</span>
+              <input type="number" class="form-input schedule-end" placeholder="End hour (0-23)" min="0" max="23" value="22">
+              <button type="button" class="btn btn-sm btn-danger remove-window-btn">\xD7</button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-sm btn-secondary" id="add-window-btn">+ Add Window</button>
+        </div>
+      `;
+        break;
+      case "dependency":
+        const store = getStore();
+        const sensorDevices = store.devices.filter((d) => d.type === "sensor");
+        const sensorOptions = sensorDevices.map((d) => `<option value="${d.id}">${escapeHtml13(d.name)}</option>`).join("");
+        fieldsHtml = `
+        <div class="form-group">
+          <label for="config-trigger-device">When this sensor...</label>
+          <select id="config-trigger-device" class="form-select" required>
+            <option value="">Select sensor...</option>
+            ${sensorOptions}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="config-operator">Condition</label>
+          <select id="config-operator" class="form-select" required>
+            <option value="gt">is greater than</option>
+            <option value="gte">is greater than or equal to</option>
+            <option value="lt">is less than</option>
+            <option value="lte">is less than or equal to</option>
+            <option value="eq">equals</option>
+            <option value="neq">does not equal</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="config-threshold">Threshold Value</label>
+          <input type="number" id="config-threshold" class="form-input" value="30" required>
+        </div>
+        <div class="form-group">
+          <label for="config-action-required">Required Device State</label>
+          <select id="config-action-required" class="form-select" required>
+            <option value="on">Must stay ON</option>
+            <option value="off">Must stay OFF</option>
+            <option value="any">Any state allowed</option>
+          </select>
+        </div>
+      `;
+        break;
+      default:
+        fieldsHtml = `<p class="text-secondary text-sm">Select a rule type to configure.</p>`;
+    }
+    container.innerHTML = fieldsHtml;
+    if (ruleType === "allowed_schedule_windows") {
+      const addWindowBtn = document.getElementById("add-window-btn");
+      addWindowBtn?.addEventListener("click", () => {
+        const list = document.getElementById("schedule-windows-list");
+        if (list) {
+          const newRow = document.createElement("div");
+          newRow.className = "schedule-window-row";
+          newRow.innerHTML = `
+          <input type="number" class="form-input schedule-start" placeholder="Start hour (0-23)" min="0" max="23" value="0">
+          <span>to</span>
+          <input type="number" class="form-input schedule-end" placeholder="End hour (0-23)" min="0" max="23" value="0">
+          <button type="button" class="btn btn-sm btn-danger remove-window-btn">\xD7</button>
+        `;
+          list.appendChild(newRow);
+          newRow.querySelector(".remove-window-btn")?.addEventListener("click", () => newRow.remove());
+        }
+      });
+      container.querySelectorAll(".remove-window-btn").forEach((btn) => {
+        btn.addEventListener(
+          "click",
+          () => btn.parentElement?.remove()
+        );
+      });
+    }
+  }
+  async function saveNewRule() {
+    const deviceSelect = document.getElementById(
+      "rule-device"
+    );
+    const ruleTypeSelect = document.getElementById(
+      "rule-type"
+    );
+    const priorityInput = document.getElementById(
+      "rule-priority"
+    );
+    const deviceId = deviceSelect?.value;
+    const ruleType = ruleTypeSelect?.value;
+    const priority = parseInt(priorityInput?.value || "0", 10);
+    if (!deviceId || !ruleType) {
+      showToast("Please select a device and rule type", "error");
+      return;
+    }
+    let ruleConfig = {};
+    switch (ruleType) {
+      case "max_on_duration": {
+        const maxSecondsInput = document.getElementById(
+          "config-max-seconds"
+        );
+        ruleConfig = {
+          maxSeconds: parseInt(maxSecondsInput?.value || "300", 10)
+        };
+        break;
+      }
+      case "min_off_duration": {
+        const minSecondsInput = document.getElementById(
+          "config-min-seconds"
+        );
+        ruleConfig = { minSeconds: parseInt(minSecondsInput?.value || "60", 10) };
+        break;
+      }
+      case "max_activations_per_hour": {
+        const maxPerHourInput = document.getElementById(
+          "config-max-per-hour"
+        );
+        ruleConfig = { maxPerHour: parseInt(maxPerHourInput?.value || "10", 10) };
+        break;
+      }
+      case "allowed_schedule_windows": {
+        const windows = [];
+        document.querySelectorAll(".schedule-window-row").forEach((row) => {
+          const startInput = row.querySelector(
+            ".schedule-start"
+          );
+          const endInput = row.querySelector(".schedule-end");
+          if (startInput?.value && endInput?.value) {
+            windows.push({
+              startHour: parseInt(startInput.value, 10),
+              endHour: parseInt(endInput.value, 10)
+            });
+          }
+        });
+        ruleConfig = { windows };
+        break;
+      }
+      case "dependency": {
+        const triggerDeviceSelect = document.getElementById(
+          "config-trigger-device"
+        );
+        const operatorSelect = document.getElementById(
+          "config-operator"
+        );
+        const thresholdInput = document.getElementById(
+          "config-threshold"
+        );
+        const actionRequiredSelect = document.getElementById(
+          "config-action-required"
+        );
+        ruleConfig = {
+          triggerDeviceId: triggerDeviceSelect?.value,
+          operator: operatorSelect?.value,
+          value: parseFloat(thresholdInput?.value || "30"),
+          actionRequired: actionRequiredSelect?.value
+        };
+        break;
+      }
+      default:
+        showToast("Unknown rule type", "error");
+        return;
+    }
+    try {
+      await halApi.createSafetyRule({ deviceId, ruleType, ruleConfig, priority });
+      closeModal();
+      showToast("Rule created successfully", "success");
+      await loadSafetyRules();
+      await loadSafetySummary();
+    } catch (err) {
+      showToast(`Failed to create rule: ${err.message}`, "error");
+    }
+  }
+  async function editRule(ruleId) {
+    try {
+      const rule = await halApi.getSafetyRule(ruleId);
+      showEditRuleModal(rule);
+    } catch (err) {
+      showToast(`Failed to load rule: ${err.message}`, "error");
+    }
+  }
+  function showEditRuleModal(rule) {
+    const store = getStore();
+    const devices = store.devices.filter(
+      (d) => d.type === "relay" || d.type === "smart_plug"
+    );
+    const device = devices.find((d) => d.id === rule.deviceId);
+    const deviceName = device?.name || rule.deviceId;
+    const ruleLabel = RULE_TYPE_LABELS[rule.ruleType] || rule.ruleType;
+    openModal(
+      `Edit Safety Rule: ${escapeHtml13(deviceName)}`,
+      `
+    <form id="edit-rule-form" class="add-rule-form">
+      <div class="form-group">
+        <label>Device</label>
+        <div class="form-static">${escapeHtml13(deviceName)}</div>
+      </div>
+
+      <div class="form-group">
+        <label>Rule Type</label>
+        <div class="form-static">${ruleLabel}</div>
+      </div>
+
+      <div class="form-group">
+        <label for="edit-rule-priority">Priority (higher = more restrictive)</label>
+        <input type="number" id="edit-rule-priority" class="form-input" value="${rule.priority}" min="0" max="100">
+      </div>
+
+      <div class="form-group">
+        <label for="edit-rule-enabled">Enabled</label>
+        <select id="edit-rule-enabled" class="form-select">
+          <option value="true" ${rule.enabled ? "selected" : ""}>Yes</option>
+          <option value="false" ${!rule.enabled ? "selected" : ""}>No</option>
+        </select>
+      </div>
+
+      <div id="edit-rule-config-fields">
+        ${buildConfigFieldsForRuleType(rule.ruleType, rule.ruleConfig)}
+      </div>
+    </form>
+    `,
+      `<button class="btn btn-secondary" onclick="window.__closeModal && window.__closeModal()">Cancel</button>
+     <button class="btn btn-primary" id="update-rule-btn">Save Changes</button>`
+    );
+    window.__closeModal = closeModal;
+    const ruleTypeSelect = document.getElementById(
+      "edit-rule-type"
+    );
+    ruleTypeSelect?.addEventListener("change", () => {
+      showConfigFieldsForRuleType(ruleTypeSelect.value);
+    });
+    const updateBtn = document.getElementById("update-rule-btn");
+    updateBtn?.addEventListener("click", () => saveEditedRule(rule.id));
+  }
+  function buildConfigFieldsForRuleType(ruleType, ruleConfig) {
+    switch (ruleType) {
+      case "max_on_duration":
+        return `
+        <div class="form-group">
+          <label for="config-max-seconds">Maximum On Duration (seconds)</label>
+          <input type="number" id="config-max-seconds" class="form-input" value="${ruleConfig.maxSeconds || 300}" min="1" required>
+        </div>
+      `;
+      case "min_off_duration":
+        return `
+        <div class="form-group">
+          <label for="config-min-seconds">Minimum Off Duration (seconds)</label>
+          <input type="number" id="config-min-seconds" class="form-input" value="${ruleConfig.minSeconds || 60}" min="1" required>
+        </div>
+      `;
+      case "max_activations_per_hour":
+        return `
+        <div class="form-group">
+          <label for="config-max-per-hour">Maximum Activations Per Hour</label>
+          <input type="number" id="config-max-per-hour" class="form-input" value="${ruleConfig.maxPerHour || 10}" min="1" required>
+        </div>
+      `;
+      case "allowed_schedule_windows": {
+        const windows = ruleConfig.windows || [];
+        const windowRows = windows.map(
+          (w, i) => `
+        <div class="schedule-window-row">
+          <input type="number" class="form-input schedule-start" placeholder="Start hour (0-23)" min="0" max="23" value="${w.startHour}">
+          <span>to</span>
+          <input type="number" class="form-input schedule-end" placeholder="End hour (0-23)" min="0" max="23" value="${w.endHour}">
+          <button type="button" class="btn btn-sm btn-danger remove-window-btn">\xD7</button>
+        </div>
+      `
+        ).join("");
+        return `
+        <div class="form-group">
+          <label>Schedule Windows</label>
+          <div id="schedule-windows-list">
+            ${windowRows}
+            ${windows.length === 0 ? `
+            <div class="schedule-window-row">
+              <input type="number" class="form-input schedule-start" placeholder="Start hour (0-23)" min="0" max="23" value="6">
+              <span>to</span>
+              <input type="number" class="form-input schedule-end" placeholder="End hour (0-23)" min="0" max="23" value="22">
+              <button type="button" class="btn btn-sm btn-danger remove-window-btn">\xD7</button>
+            </div>
+            ` : ""}
+          </div>
+          <button type="button" class="btn btn-sm btn-secondary" id="add-window-btn">+ Add Window</button>
+        </div>
+      `;
+      }
+      case "dependency": {
+        const store = getStore();
+        const sensorDevices = store.devices.filter((d) => d.type === "sensor");
+        const sensorOptions = sensorDevices.map(
+          (d) => `<option value="${d.id}" ${d.id === ruleConfig.triggerDeviceId ? "selected" : ""}>${escapeHtml13(d.name)}</option>`
+        ).join("");
+        return `
+        <div class="form-group">
+          <label for="config-trigger-device">When this sensor...</label>
+          <select id="config-trigger-device" class="form-select" required>
+            <option value="">Select sensor...</option>
+            ${sensorOptions}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="config-operator">Condition</label>
+          <select id="config-operator" class="form-select" required>
+            <option value="gt" ${ruleConfig.operator === "gt" ? "selected" : ""}>is greater than</option>
+            <option value="gte" ${ruleConfig.operator === "gte" ? "selected" : ""}>is greater than or equal to</option>
+            <option value="lt" ${ruleConfig.operator === "lt" ? "selected" : ""}>is less than</option>
+            <option value="lte" ${ruleConfig.operator === "lte" ? "selected" : ""}>is less than or equal to</option>
+            <option value="eq" ${ruleConfig.operator === "eq" ? "selected" : ""}>equals</option>
+            <option value="neq" ${ruleConfig.operator === "neq" ? "selected" : ""}>does not equal</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="config-threshold">Threshold Value</label>
+          <input type="number" id="config-threshold" class="form-input" value="${ruleConfig.value ?? 30}" required>
+        </div>
+        <div class="form-group">
+          <label for="config-action-required">Required Device State</label>
+          <select id="config-action-required" class="form-select" required>
+            <option value="on" ${ruleConfig.actionRequired === "on" ? "selected" : ""}>Must stay ON</option>
+            <option value="off" ${ruleConfig.actionRequired === "off" ? "selected" : ""}>Must stay OFF</option>
+            <option value="any" ${ruleConfig.actionRequired === "any" ? "selected" : ""}>Any state allowed</option>
+          </select>
+        </div>
+      `;
+      }
+      default:
+        return `<p class="text-secondary text-sm">Unknown rule type: ${escapeHtml13(ruleType)}</p>`;
+    }
+  }
+  async function saveEditedRule(ruleId) {
+    const priorityInput = document.getElementById(
+      "edit-rule-priority"
+    );
+    const enabledSelect = document.getElementById(
+      "edit-rule-enabled"
+    );
+    const priority = parseInt(priorityInput?.value || "0", 10);
+    const enabled = enabledSelect?.value === "true";
+    let ruleType = "";
+    let ruleConfig = {};
+    try {
+      const existingRule = await halApi.getSafetyRule(ruleId);
+      ruleType = existingRule.ruleType;
+      ruleConfig = { ...existingRule.ruleConfig };
+    } catch (err) {
+      showToast(`Failed to load rule: ${err.message}`, "error");
+      return;
+    }
+    switch (ruleType) {
+      case "max_on_duration": {
+        const maxSecondsInput = document.getElementById(
+          "config-max-seconds"
+        );
+        ruleConfig = {
+          maxSeconds: parseInt(maxSecondsInput?.value || "300", 10)
+        };
+        break;
+      }
+      case "min_off_duration": {
+        const minSecondsInput = document.getElementById(
+          "config-min-seconds"
+        );
+        ruleConfig = { minSeconds: parseInt(minSecondsInput?.value || "60", 10) };
+        break;
+      }
+      case "max_activations_per_hour": {
+        const maxPerHourInput = document.getElementById(
+          "config-max-per-hour"
+        );
+        ruleConfig = { maxPerHour: parseInt(maxPerHourInput?.value || "10", 10) };
+        break;
+      }
+      case "allowed_schedule_windows": {
+        const windows = [];
+        document.querySelectorAll(".schedule-window-row").forEach((row) => {
+          const startInput = row.querySelector(
+            ".schedule-start"
+          );
+          const endInput = row.querySelector(".schedule-end");
+          if (startInput?.value && endInput?.value) {
+            windows.push({
+              startHour: parseInt(startInput.value, 10),
+              endHour: parseInt(endInput.value, 10)
+            });
+          }
+        });
+        ruleConfig = { windows };
+        break;
+      }
+      case "dependency": {
+        const triggerDeviceSelect = document.getElementById(
+          "config-trigger-device"
+        );
+        const operatorSelect = document.getElementById(
+          "config-operator"
+        );
+        const thresholdInput = document.getElementById(
+          "config-threshold"
+        );
+        const actionRequiredSelect = document.getElementById(
+          "config-action-required"
+        );
+        ruleConfig = {
+          triggerDeviceId: triggerDeviceSelect?.value,
+          operator: operatorSelect?.value,
+          value: parseFloat(thresholdInput?.value || "30"),
+          actionRequired: actionRequiredSelect?.value
+        };
+        break;
+      }
+      default:
+        showToast("Unknown rule type", "error");
+        return;
+    }
+    try {
+      await halApi.updateSafetyRule(ruleId, { ruleConfig, enabled, priority });
+      closeModal();
+      showToast("Rule updated successfully", "success");
+      await loadSafetyRules();
+      await loadSafetySummary();
+    } catch (err) {
+      showToast(`Failed to update rule: ${err.message}`, "error");
+    }
+  }
+  function formatRelativeTime2(isoString) {
+    try {
+      const date = new Date(isoString);
+      const now = /* @__PURE__ */ new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 6e4);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffMins < 1) return "just now";
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return date.toLocaleDateString();
+    } catch {
+      return isoString;
+    }
+  }
+  function escapeHtml13(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function injectSafetyStyles() {
+    if (document.getElementById("hal-safety-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-safety-styles";
+    style.textContent = `
+.safety-view {
+  padding: var(--page-padding);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.safety-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+}
+.safety-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+.safety-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.safety-summary-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border-left: 3px solid var(--accent);
+}
+.safety-summary-card.normal {
+  border-left-color: var(--success);
+}
+.safety-summary-card.warning {
+  border-left-color: var(--warning);
+}
+.safety-summary-card.danger {
+  border-left-color: var(--danger);
+}
+.safety-summary-card.loading {
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.summary-card-icon {
+  font-size: 24px;
+}
+.summary-card-content {
+  flex: 1;
+}
+.summary-card-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.summary-card-value {
+  font-size: 20px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+.summary-card-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.safety-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+.safety-section-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.safety-rules-section {
+  margin-bottom: var(--space-6);
+}
+.safety-rules-list {
+  display: grid;
+  gap: var(--space-3);
+}
+.safety-rules-loading,
+.safety-denials-loading {
+  text-align: center;
+  padding: var(--space-6);
+  color: var(--text-secondary);
+}
+.safety-empty {
+  text-align: center;
+  padding: var(--space-6);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.rule-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  border-left: 3px solid var(--accent);
+}
+.rule-card.disabled {
+  opacity: 0.5;
+  border-left-color: var(--text-tertiary);
+}
+.rule-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.rule-device {
+  font-weight: 600;
+  font-size: 14px;
+}
+.rule-type-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.rule-config {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+.rule-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-3);
+}
+.rule-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.denial-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+  border-left: 3px solid var(--danger);
+}
+.denial-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.denial-device {
+  font-weight: 600;
+  font-size: 13px;
+}
+.denial-action {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+.denial-time {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+.denial-reason {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+.denial-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+/* Form styles */
+.add-rule-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.form-group label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.form-select,
+.form-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-primary);
+  font-size: 14px;
+  min-height: 36px;
+}
+.form-select:focus,
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.schedule-window-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.schedule-window-row .form-input {
+  width: 100px;
+}
+.text-danger {
+  color: var(--danger);
+}
+.text-secondary {
+  color: var(--text-secondary);
+}
+.text-sm {
+  font-size: 12px;
+}
+`;
+    document.head.appendChild(style);
+  }
+  var RULE_TYPE_LABELS, RULE_TYPE_DESCRIPTIONS;
+  var init_Safety = __esm({
+    "src/web/hal-ui/views/Safety.ts"() {
+      "use strict";
+      init_store();
+      init_api();
+      init_Modal();
+      init_Toast();
+      RULE_TYPE_LABELS = {
+        max_on_duration: "Max On Duration",
+        min_off_duration: "Min Off Duration",
+        max_activations_per_hour: "Max Activations/Hour",
+        allowed_schedule_windows: "Schedule Windows",
+        dependency: "Dependency Rule"
+      };
+      RULE_TYPE_DESCRIPTIONS = {
+        max_on_duration: "Device cannot be on longer than N seconds",
+        min_off_duration: "Device must be off for at least N seconds before turning on",
+        max_activations_per_hour: "Device cannot be turned on more than N times per hour",
+        allowed_schedule_windows: "Device can only be turned on during specific time windows",
+        dependency: "Device state depends on another device/sensor condition"
+      };
+    }
+  });
 
   // src/web/hal-ui/main.ts
-  init_store();
-  var views = {
-    dashboard: renderDashboard,
-    devices: renderDevices,
-    sensors: renderSensors,
-    decisions: renderDecisions,
-    cameras: renderCameras,
-    system: renderDashboard,
-    terminal: renderTerminalView
-  };
-  var pageLoadTime = Date.now();
+  var main_exports = {};
+  __export(main_exports, {
+    refreshHALData: () => refreshHALData
+  });
   async function init() {
     const app = document.getElementById("app");
     if (!app) throw new Error("#app element not found");
@@ -10003,7 +13405,6 @@
       }
     }).length;
   }
-  var pollInterval = null;
   function startPolling() {
     pollInterval = setInterval(refreshHALData, 1e4);
   }
@@ -10024,6 +13425,44 @@
     const m = Math.floor(seconds % 3600 / 60);
     return `${h}h ${m}m`;
   }
-  document.addEventListener("DOMContentLoaded", init);
+  var views, pageLoadTime, pollInterval;
+  var init_main = __esm({
+    "src/web/hal-ui/main.ts"() {
+      init_tokens();
+      init_reset();
+      init_themes();
+      init_Sidebar();
+      init_Header();
+      init_Card();
+      init_Toggle();
+      init_Modal();
+      init_Toast();
+      init_Dashboard();
+      init_Devices();
+      init_Sensors();
+      init_Decisions();
+      init_Cameras();
+      init_Terminal2();
+      init_SetupWizard();
+      init_Safety();
+      init_api();
+      init_api_provisioning();
+      init_store();
+      views = {
+        dashboard: renderDashboard,
+        devices: renderDevices,
+        sensors: renderSensors,
+        decisions: renderDecisions,
+        cameras: renderCameras,
+        safety: renderSafety,
+        system: renderDashboard,
+        terminal: renderTerminalView
+      };
+      pageLoadTime = Date.now();
+      pollInterval = null;
+      document.addEventListener("DOMContentLoaded", init);
+    }
+  });
+  init_main();
 })();
 //# sourceMappingURL=main.js.map

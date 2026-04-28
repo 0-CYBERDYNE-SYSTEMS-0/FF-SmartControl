@@ -430,8 +430,13 @@ export async function startHalUiServer(
         for await (const chunk of req) body += chunk;
         const parsed = body ? JSON.parse(body) : {};
 
-        const { deviceId, ruleType, ruleConfig, enabled = true, priority = 0 } =
-          parsed;
+        const {
+          deviceId,
+          ruleType,
+          ruleConfig,
+          enabled = true,
+          priority = 0,
+        } = parsed;
 
         if (!deviceId || !ruleType || !ruleConfig) {
           sendJson(res, 400, {
@@ -464,7 +469,16 @@ export async function startHalUiServer(
             INSERT INTO hal_safety_rules (id, device_id, rule_type, rule_config, enabled, priority, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           `,
-          ).run(id, deviceId, ruleType, JSON.stringify(ruleConfig), enabled ? 1 : 0, priority, now, now);
+          ).run(
+            id,
+            deviceId,
+            ruleType,
+            JSON.stringify(ruleConfig),
+            enabled ? 1 : 0,
+            priority,
+            now,
+            now,
+          );
 
           sendJson(res, 201, {
             id,
@@ -491,9 +505,14 @@ export async function startHalUiServer(
 
         const { ruleConfig, enabled, priority } = parsed;
 
-        if (ruleConfig === undefined && enabled === undefined && priority === undefined) {
+        if (
+          ruleConfig === undefined &&
+          enabled === undefined &&
+          priority === undefined
+        ) {
           sendJson(res, 400, {
-            error: 'At least one of ruleConfig, enabled, or priority must be provided',
+            error:
+              'At least one of ruleConfig, enabled, or priority must be provided',
           });
           return;
         }
@@ -509,9 +528,14 @@ export async function startHalUiServer(
         }
 
         const now = new Date().toISOString();
-        const newConfig = ruleConfig !== undefined ? JSON.stringify(ruleConfig) : existing.rule_config;
-        const newEnabled = enabled !== undefined ? (enabled ? 1 : 0) : existing.enabled;
-        const newPriority = priority !== undefined ? priority : existing.priority;
+        const newConfig =
+          ruleConfig !== undefined
+            ? JSON.stringify(ruleConfig)
+            : existing.rule_config;
+        const newEnabled =
+          enabled !== undefined ? (enabled ? 1 : 0) : existing.enabled;
+        const newPriority =
+          priority !== undefined ? priority : existing.priority;
 
         try {
           db.prepare(
@@ -587,7 +611,9 @@ export async function startHalUiServer(
         params.push(limit);
 
         const db = getDb();
-        const rows = db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
+        const rows = db.prepare(sql).all(...params) as Array<
+          Record<string, unknown>
+        >;
         const entries = rows.map((row) => ({
           id: row.id,
           deviceId: row.device_id,
@@ -623,7 +649,9 @@ export async function startHalUiServer(
         // Count active rules
         const activeRulesCount = (
           db
-            .prepare('SELECT COUNT(*) as count FROM hal_safety_rules WHERE enabled = 1')
+            .prepare(
+              'SELECT COUNT(*) as count FROM hal_safety_rules WHERE enabled = 1',
+            )
             .get() as { count: number }
         ).count;
 
@@ -686,7 +714,9 @@ export async function startHalUiServer(
         // Active rules count
         const activeRulesCount = (
           db
-            .prepare('SELECT COUNT(*) as count FROM hal_safety_rules WHERE enabled = 1')
+            .prepare(
+              'SELECT COUNT(*) as count FROM hal_safety_rules WHERE enabled = 1',
+            )
             .get() as { count: number }
         ).count;
 
@@ -760,6 +790,471 @@ export async function startHalUiServer(
             ruleCount: r.rule_count,
           })),
         });
+        return;
+      }
+
+      // ══════════════════════════════════════════════════════════════════════════════
+      // DISCOVERY API — Device discovery and registration (VAL-DISC-001 to VAL-DISC-052)
+      // ══════════════════════════════════════════════════════════════════════════════
+
+      // GET /api/hal/discovery/gpio/status — check pigpiod availability (VAL-DISC-010)
+      if (apiPath === '/discovery/gpio/status' && method === 'GET') {
+        const { execSync } = await import('child_process');
+        let pigpiodAvailable = false;
+        let errorMessage = '';
+        try {
+          const out = execSync('pgrep pigpiod || true', { timeout: 3000 })
+            .toString()
+            .trim();
+          pigpiodAvailable = out.length > 0 && /^\d+$/.test(out);
+        } catch (err: any) {
+          errorMessage = err.message;
+        }
+        sendJson(res, 200, {
+          available: pigpiodAvailable,
+          error: errorMessage,
+        });
+        return;
+      }
+
+      // GET /api/hal/discovery/gpio/pins — get BCM pin status (VAL-DISC-011)
+      if (apiPath === '/discovery/gpio/pins' && method === 'GET') {
+        // Returns list of BCM pins with state
+        const db = getDb();
+        const devices = halRegistry
+          .list()
+          .filter((d: any) => d.protocol === 'gpio');
+        const usedPins = new Set<string>();
+        const reservedPins = new Set<string>(['2', '3', '4', '14', '15']); // I2C, reserved
+        for (const dev of devices) {
+          if (dev.host) usedPins.add(dev.host); // host stores BCM pin number
+        }
+        // BCM 0-27 common GPIO pins
+        const pins = [];
+        for (let bcm = 0; bcm <= 27; bcm++) {
+          const pin = bcm;
+          const state = usedPins.has(String(pin))
+            ? 'in_use'
+            : reservedPins.has(String(pin))
+              ? 'reserved'
+              : 'available';
+          pins.push({ bcm: pin, state });
+        }
+        sendJson(res, 200, { pins });
+        return;
+      }
+
+      // POST /api/hal/discovery/gpio/register — register a GPIO device (VAL-DISC-012)
+      if (apiPath === '/discovery/gpio/register' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const { bcmPin, label, zone } = parsed;
+        if (
+          !bcmPin ||
+          typeof bcmPin !== 'number' ||
+          bcmPin < 0 ||
+          bcmPin > 27
+        ) {
+          sendJson(res, 400, { error: 'Valid BCM pin (0-27) is required' });
+          return;
+        }
+        try {
+          const dev = halRegistry.register({
+            type: 'relay',
+            protocol: 'gpio',
+            host: String(bcmPin),
+            label: label || `GPIO ${bcmPin}`,
+            zone: zone || null,
+          });
+          sendJson(res, 201, dev);
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/hal/discovery/mqtt/devices — subscribe and collect MQTT discovery topics (VAL-DISC-020, VAL-DISC-021)
+      if (apiPath === '/discovery/mqtt/devices' && method === 'GET') {
+        // In a real implementation, this would subscribe to MQTT topics and collect results.
+        // For now, return a placeholder indicating MQTT discovery needs broker configuration.
+        // The actual implementation would use the MQTT client from hal/mqtt.ts
+        sendJson(res, 200, {
+          devices: [],
+          note: 'MQTT discovery requires the MQTT broker to be configured and reachable. Configure MQTT in settings to enable auto-discovery.',
+          topics: ['homeassistant/+/+', 'tele/+/SENSOR'],
+        });
+        return;
+      }
+
+      // POST /api/hal/discovery/mqtt/register — register MQTT device (VAL-DISC-022)
+      if (apiPath === '/discovery/mqtt/register' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const { topic, label, type, zone } = parsed;
+        if (!topic) {
+          sendJson(res, 400, { error: 'MQTT topic is required' });
+          return;
+        }
+        try {
+          const dev = halRegistry.register({
+            type: type || 'sensor',
+            protocol: 'mqtt',
+            host: topic,
+            label: label || topic.split('/').pop() || topic,
+            zone: zone || null,
+          });
+          sendJson(res, 201, dev);
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/hal/discovery/http/scan — scan subnet for HTTP devices (VAL-DISC-003, VAL-DISC-005)
+      // Query params: subnet (e.g. "192.168.1"), protocol ("tasmota" | "shelly" | "both")
+      if (apiPath === '/discovery/http/scan' && method === 'GET') {
+        const subnet = url.searchParams.get('subnet') || '192.168.1';
+        const protocol = url.searchParams.get('protocol') || 'both';
+        const { execSync } = await import('child_process');
+
+        const discovered: Array<{
+          host: string;
+          protocol: string;
+          type: string;
+          label: string;
+          online: boolean;
+        }> = [];
+
+        // Ping scan first to find active hosts
+        let hosts: string[] = [];
+        try {
+          const pingOut = execSync(
+            `for i in $(seq 1 254); do ping -c1 -W1 ${subnet}.$i 2>/dev/null & done; wait`,
+            { timeout: 15000 },
+          ).toString();
+          const ipRe = /(\d+\.\d+\.\d+\.\d+)/g;
+          const found = new Set<string>();
+          let m;
+          while ((m = ipRe.exec(pingOut)) !== null) found.add(m[1]);
+          hosts = [...found];
+        } catch {
+          // No hosts found
+        }
+
+        // Probe each host for Tasmota or Shelly
+        for (const host of hosts.slice(0, 50)) {
+          if (protocol === 'shelly' || protocol === 'both') {
+            try {
+              const out = execSync(
+                `curl -s --max-time 2 http://${host}/shelly`,
+                { timeout: 3000 },
+              ).toString();
+              if (out.includes('Shelly') || out.includes('shelly')) {
+                discovered.push({
+                  host,
+                  protocol: 'shelly',
+                  type: 'smart_plug',
+                  label: `Shelly (${host})`,
+                  online: true,
+                });
+                continue;
+              }
+            } catch {
+              /* not shelly */
+            }
+          }
+          if (protocol === 'tasmota' || protocol === 'both') {
+            try {
+              const out = execSync(
+                `curl -s --max-time 2 http://${host}/cm?cmnd=Status`,
+                { timeout: 3000 },
+              ).toString();
+              if (out.includes('Status') || out.includes('Tasmota')) {
+                discovered.push({
+                  host,
+                  protocol: 'tasmota',
+                  type: 'smart_plug',
+                  label: `Tasmota (${host})`,
+                  online: true,
+                });
+                continue;
+              }
+            } catch {
+              /* not tasmota */
+            }
+          }
+        }
+
+        sendJson(res, 200, {
+          devices: discovered,
+          scanned: hosts.length,
+          timeout: 30000,
+        });
+        return;
+      }
+
+      // POST /api/hal/discovery/http/register — register HTTP device (VAL-DISC-005, VAL-DISC-007)
+      if (apiPath === '/discovery/http/register' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const { host, protocol, type, label, zone } = parsed;
+        if (!host || !protocol) {
+          sendJson(res, 400, { error: 'host and protocol are required' });
+          return;
+        }
+        try {
+          const dev = halRegistry.register({
+            type: type || 'smart_plug',
+            protocol: protocol as any,
+            host,
+            label: label || `${protocol} (${host})`,
+            zone: zone || null,
+          });
+          sendJson(res, 201, dev);
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/hal/discovery/serial/ports — enumerate serial ports (VAL-DISC-030)
+      if (apiPath === '/discovery/serial/ports' && method === 'GET') {
+        const { execSync } = await import('child_process');
+        const ports: Array<{ path: string; description: string }> = [];
+        const isMac = process.platform === 'darwin';
+        try {
+          if (isMac) {
+            // macOS: list /dev/cu.* ports
+            const out = execSync('ls -1 /dev/cu.* 2>/dev/null || true', {
+              timeout: 3000,
+            }).toString();
+            for (const line of out.split('\n').filter(Boolean)) {
+              const path = line.trim();
+              if (path.startsWith('/dev/cu.')) {
+                ports.push({
+                  path,
+                  description: path.replace('/dev/cu.', 'USB Serial '),
+                });
+              }
+            }
+          } else {
+            // Linux: list common serial port paths
+            const commonPaths = [
+              '/dev/ttyUSB0',
+              '/dev/ttyUSB1',
+              '/dev/ttyACM0',
+              '/dev/ttyACM1',
+              '/dev/serial0',
+            ];
+            for (const p of commonPaths) {
+              try {
+                execSync(`test -e ${p} && echo exists`, { timeout: 1000 });
+                ports.push({ path: p, description: p });
+              } catch {
+                /* not found */
+              }
+            }
+          }
+        } catch (err: any) {
+          // Probing failed, return empty list
+        }
+        sendJson(res, 200, { ports });
+        return;
+      }
+
+      // POST /api/hal/discovery/serial/probe — probe a serial port for device type (VAL-DISC-031, VAL-DISC-032)
+      if (apiPath === '/discovery/serial/probe' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const { port } = parsed;
+        if (!port) {
+          sendJson(res, 400, { error: 'port is required' });
+          return;
+        }
+        // Probe for BME280, DS18B20, Atlas EZO
+        // In simulator mode, return mock data
+        const sim = getSimulator();
+        if (sim) {
+          sendJson(res, 200, {
+            port,
+            detected: true,
+            type: 'sensor',
+            protocol: 'serial',
+            label: `Serial Sensor (${port})`,
+            channels: ['temperature', 'humidity'],
+          });
+          return;
+        }
+        // Real probing would use serialport library
+        // For now, return a placeholder
+        sendJson(res, 200, {
+          port,
+          detected: false,
+          type: 'unknown',
+          protocol: 'serial',
+          note: 'Serial device probing requires the serialport library. Configure serial devices manually.',
+        });
+        return;
+      }
+
+      // POST /api/hal/discovery/serial/register — register serial device (VAL-DISC-032)
+      if (apiPath === '/discovery/serial/register' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const { port, type, label, zone } = parsed;
+        if (!port) {
+          sendJson(res, 400, { error: 'port is required' });
+          return;
+        }
+        try {
+          const dev = halRegistry.register({
+            type: type || 'sensor',
+            protocol: 'serial',
+            host: port,
+            label: label || `Serial (${port})`,
+            zone: zone || null,
+          });
+          sendJson(res, 201, dev);
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // POST /api/hal/discovery/manual — manually add device with connectivity check (VAL-DISC-040)
+      if (apiPath === '/discovery/manual' && method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const { host, port: devPort, protocol, type, label, zone } = parsed;
+        if (!host || !protocol) {
+          sendJson(res, 400, { error: 'host and protocol are required' });
+          return;
+        }
+        // Validate connectivity by attempting HTTP request for HTTP protocols
+        let reachable = false;
+        if (protocol === 'tasmota' || protocol === 'shelly') {
+          const { execSync } = await import('child_process');
+          try {
+            execSync(`curl -s --max-time 3 http://${host}/cm?cmnd=Status`, {
+              timeout: 4000,
+            });
+            reachable = true;
+          } catch {
+            try {
+              execSync(`curl -s --max-time 3 http://${host}/shelly`, {
+                timeout: 4000,
+              });
+              reachable = true;
+            } catch {
+              /* not reachable */
+            }
+          }
+        } else {
+          // For non-HTTP protocols, skip connectivity check
+          reachable = true;
+        }
+        if (!reachable && protocol !== 'gpio' && protocol !== 'serial') {
+          sendJson(res, 400, {
+            error: `Device at ${host} is not reachable. Check the IP address and ensure the device is powered on.`,
+          });
+          return;
+        }
+        try {
+          const dev = halRegistry.register({
+            type: type || 'sensor',
+            protocol: protocol as any,
+            host,
+            label: label || `${protocol} (${host})`,
+            zone: zone || null,
+          });
+          sendJson(res, 201, dev);
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // PUT /api/hal/devices/:id — update device label and/or zone (VAL-DISC-050, VAL-DISC-052)
+      if (apiPath.match(/^\/devices\/([^/]+)$/) && method === 'PUT') {
+        const deviceId = apiPath.split('/')[2];
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const { label, zone } = parsed;
+        try {
+          const dev = halRegistry.updateDevice(deviceId, { label, zone });
+          sendJson(res, 200, dev);
+        } catch (err: any) {
+          sendJson(res, 404, { error: err.message });
+        }
+        return;
+      }
+
+      // DELETE /api/hal/devices/:id — remove device
+      if (apiPath.match(/^\/devices\/([^/]+)$/) && method === 'DELETE') {
+        const deviceId = apiPath.split('/')[2];
+        try {
+          halRegistry.remove(deviceId);
+          sendJson(res, 200, { ok: true });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/hal/zones — list all zones (VAL-DISC-050, VAL-DISC-051)
+      if (apiPath === '/zones' && method === 'GET') {
+        const db = getDb();
+        const devices = halRegistry.list();
+        const zoneMap = new Map<
+          string,
+          { name: string; deviceCount: number }
+        >();
+        // Always include "No Zone" option
+        zoneMap.set('', { name: 'No Zone', deviceCount: 0 });
+        for (const dev of devices) {
+          const z = (dev as any).zone || '';
+          if (!zoneMap.has(z)) {
+            zoneMap.set(z, { name: z || 'No Zone', deviceCount: 0 });
+          }
+          zoneMap.get(z)!.deviceCount++;
+        }
+        const zones = [...zoneMap.entries()].map(([id, data]) => ({
+          id: id || '_none',
+          name: data.name,
+          deviceCount: data.deviceCount,
+        }));
+        sendJson(res, 200, zones);
+        return;
+      }
+
+      // PUT /api/hal/zones/:id — rename a zone
+      if (apiPath.match(/^\/zones\/([^/]+)$/) && method === 'PUT') {
+        const oldZoneId = decodeURIComponent(apiPath.split('/')[2]);
+        const actualOldZone = oldZoneId === '_none' ? '' : oldZoneId;
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const { name: newZoneName } = parsed;
+        if (!newZoneName) {
+          sendJson(res, 400, { error: 'New zone name is required' });
+          return;
+        }
+        const db = getDb();
+        // Update all devices with this zone
+        const devices = halRegistry
+          .list()
+          .filter((d: any) => d.zone === actualOldZone);
+        for (const dev of devices) {
+          halRegistry.updateDevice(dev.id, { zone: newZoneName });
+        }
+        sendJson(res, 200, { ok: true, updated: devices.length });
         return;
       }
 

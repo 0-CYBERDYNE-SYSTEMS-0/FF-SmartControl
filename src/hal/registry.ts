@@ -17,35 +17,78 @@ export class HalRegistry {
     protocol: DeviceProtocol;
     host?: string | null;
     label?: string | null;
+    zone?: string | null;
   }): HalDevice {
     const id = data.id ?? genId(data.type);
     const now = new Date().toISOString();
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO hal_devices (id, type, protocol, host, label, last_state, last_seen, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'unknown', NULL, ?, ?)
+      INSERT OR REPLACE INTO hal_devices (id, type, protocol, host, label, zone, last_state, last_seen, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'unknown', NULL, ?, ?)
     `);
-    stmt.run(id, data.type, data.protocol, data.host ?? null, data.label ?? null, now, now);
+    stmt.run(
+      id,
+      data.type,
+      data.protocol,
+      data.host ?? null,
+      data.label ?? null,
+      data.zone ?? null,
+      now,
+      now,
+    );
+    return this.get(id)!;
+  }
+
+  // Update device label and/or zone (VAL-DISC-050, VAL-DISC-052)
+  updateDevice(
+    id: string,
+    data: { label?: string | null; zone?: string | null },
+  ): HalDevice {
+    const existing = this.get(id);
+    if (!existing) throw new Error(`Device ${id} not found`);
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `
+      UPDATE hal_devices
+      SET label = ?, zone = ?, updated_at = ?
+      WHERE id = ?
+    `,
+      )
+      .run(
+        data.label !== undefined ? data.label : existing.label,
+        data.zone !== undefined ? data.zone : existing.zone,
+        now,
+        id,
+      );
     return this.get(id)!;
   }
 
   // Get device by id
   get(id: string): HalDevice | undefined {
-    const row = this.db.prepare('SELECT * FROM hal_devices WHERE id = ?').get(id) as any;
+    const row = this.db
+      .prepare('SELECT * FROM hal_devices WHERE id = ?')
+      .get(id) as any;
     return row;
   }
 
   // List all devices
   list(): HalDevice[] {
-    return this.db.prepare('SELECT * FROM hal_devices ORDER BY created_at DESC').all() as any[];
+    return this.db
+      .prepare('SELECT * FROM hal_devices ORDER BY created_at DESC')
+      .all() as any[];
   }
 
   // Update device state
   updateState(id: string, state: DeviceState, value?: number): void {
     const now = new Date().toISOString();
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE hal_devices SET last_state = ?, last_value = ?, last_seen = ?, updated_at = ?
       WHERE id = ?
-    `).run(state, value ?? null, now, now, id);
+    `,
+      )
+      .run(state, value ?? null, now, now, id);
   }
 
   // Remove device

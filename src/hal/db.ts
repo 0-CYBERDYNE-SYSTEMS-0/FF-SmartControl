@@ -23,4 +23,20 @@ export function runMigrations(): void {
   const migrationPath = join(__dirname, 'migration.sql');
   const sql = readFileSync(migrationPath, 'utf-8');
   db.exec(sql);
+
+  // Migration: add zone column to hal_devices (VAL-DISC-050)
+  try {
+    db.exec(`ALTER TABLE hal_devices ADD COLUMN zone TEXT`);
+  } catch {
+    /* column already exists */
+  }
+
+  // Migration: add calibration_offset column to hal_devices for per-device calibration
+  try {
+    db.exec(
+      `ALTER TABLE hal_devices ADD COLUMN calibration_offset REAL DEFAULT 0`,
+    );
+  } catch {
+    /* column already exists */
+  }
 }
