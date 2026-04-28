@@ -1,15 +1,43 @@
 // Device types
 export type DeviceType = 'smart_plug' | 'sensor' | 'camera' | 'relay';
-export type DeviceProtocol = 'tasmota' | 'shelly' | 'kasa' | 'mqtt' | 'gpio' | 'serial';
+export type DeviceProtocol =
+  | 'tasmota'
+  | 'shelly'
+  | 'kasa'
+  | 'mqtt'
+  | 'gpio'
+  | 'serial';
 export type DeviceState = 'on' | 'off' | 'unknown';
 
 // Sensor types
-export type MetricType = 'temperature' | 'humidity' | 'soil_moisture' | 'light' | 'co2' | 'water_level' | 'ph' | 'weight';
-export type SensorUnit = 'c' | 'f' | '%' | 'lux' | 'ppm' | 'mm' | 'ph' | 'kg' | '';
+export type MetricType =
+  | 'temperature'
+  | 'humidity'
+  | 'soil_moisture'
+  | 'light'
+  | 'co2'
+  | 'water_level'
+  | 'ph'
+  | 'weight';
+export type SensorUnit =
+  | 'c'
+  | 'f'
+  | '%'
+  | 'lux'
+  | 'ppm'
+  | 'mm'
+  | 'ph'
+  | 'kg'
+  | '';
 export type SensorQuality = 'good' | 'stale' | 'error';
 
 // Relay types
-export type RelayReason = 'schedule' | 'manual' | 'auto_rule' | 'agent_decision';
+export type RelayReason =
+  | 'schedule'
+  | 'manual'
+  | 'auto_rule'
+  | 'agent_decision'
+  | 'emergency_stop';
 
 // Decision types
 export type DecisionType = 'turn_on' | 'turn_off' | 'adjust' | 'alert' | 'noop';
@@ -55,7 +83,7 @@ export interface HalDecision {
   decision: DecisionType;
   confidence: number | null;
   reasoning: string | null;
-  sensor_snapshot: string | null;  // JSON string
+  sensor_snapshot: string | null; // JSON string
   outcome: DecisionOutcome | null;
   decided_at: string;
   completed_at: string | null;

@@ -2,14 +2,18 @@
 
 const BASE = '/api/hal';
 
-async function halGet<T>(path: string, params?: Record<string, string>): Promise<T> {
+async function halGet<T>(
+  path: string,
+  params?: Record<string, string>,
+): Promise<T> {
   let url = BASE + path;
   if (params) {
     const qs = new URLSearchParams(params).toString();
     url += '?' + qs;
   }
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`HAL API ${url} failed: ${res.status} ${res.statusText}`);
+  if (!res.ok)
+    throw new Error(`HAL API ${url} failed: ${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
 
@@ -19,7 +23,19 @@ async function halPost<T>(path: string, body?: object): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
+  if (!res.ok)
+    throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
+  return res.json() as Promise<T>;
+}
+
+async function halPut<T>(path: string, body?: object): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok)
+    throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
 
@@ -51,10 +67,19 @@ export interface HalDecision {
   outcome?: string;
 }
 
-export type SensorMetricSnapshot = Partial<Record<
-  'temperature' | 'humidity' | 'co2' | 'light' | 'soil_moisture' | 'water_level' | 'ph' | 'weight',
-  HalSensorReading
->>;
+export type SensorMetricSnapshot = Partial<
+  Record<
+    | 'temperature'
+    | 'humidity'
+    | 'co2'
+    | 'light'
+    | 'soil_moisture'
+    | 'water_level'
+    | 'ph'
+    | 'weight',
+    HalSensorReading
+  >
+>;
 
 export interface HalState {
   devices: HalDevice[];
@@ -91,31 +116,44 @@ function normalizeDevice(device: RawHalDevice): HalDevice {
     protocol: device.protocol || 'unknown',
     host: device.host,
     state,
-    online: typeof device.online === 'boolean' ? device.online : state !== 'unknown',
+    online:
+      typeof device.online === 'boolean' ? device.online : state !== 'unknown',
     lastSeen: device.lastSeen || device.last_seen || undefined,
   };
 }
 
-function normalizeSensorReading(reading?: RawHalSensorReading): HalSensorReading | undefined {
+function normalizeSensorReading(
+  reading?: RawHalSensorReading,
+): HalSensorReading | undefined {
   if (!reading || typeof reading.value !== 'number') return undefined;
   return {
-    timestamp: reading.timestamp || reading.read_at || reading.stored_at || new Date().toISOString(),
+    timestamp:
+      reading.timestamp ||
+      reading.read_at ||
+      reading.stored_at ||
+      new Date().toISOString(),
     value: reading.value,
     unit: reading.unit,
   };
 }
 
 function normalizeSensorSnapshots(
-  snapshots: HalState['sensorSnapshots'] | Record<string, Record<string, RawHalSensorReading>> | undefined,
+  snapshots:
+    | HalState['sensorSnapshots']
+    | Record<string, Record<string, RawHalSensorReading>>
+    | undefined,
 ): HalState['sensorSnapshots'] {
   const normalized: HalState['sensorSnapshots'] = {};
   for (const [deviceId, snapshot] of Object.entries(snapshots || {})) {
     normalized[deviceId] = {};
     for (const [metric, reading] of Object.entries(snapshot)) {
       if (reading && typeof reading === 'object') {
-        const normalizedReading = normalizeSensorReading(reading as RawHalSensorReading);
+        const normalizedReading = normalizeSensorReading(
+          reading as RawHalSensorReading,
+        );
         if (normalizedReading) {
-          (normalized[deviceId] as Record<string, HalSensorReading>)[metric] = normalizedReading;
+          (normalized[deviceId] as Record<string, HalSensorReading>)[metric] =
+            normalizedReading;
         }
       }
     }
@@ -130,7 +168,11 @@ function normalizeDecision(decision: RawHalDecision): HalDecision {
     (outcome === 'success' || outcome === 'failure' ? outcome : 'pending');
   return {
     id: decision.id || 'unknown',
-    timestamp: decision.timestamp || decision.decided_at || decision.completed_at || new Date().toISOString(),
+    timestamp:
+      decision.timestamp ||
+      decision.decided_at ||
+      decision.completed_at ||
+      new Date().toISOString(),
     trigger: decision.trigger || decision.device_id || 'HAL',
     decision: decision.reasoning || decision.decision || 'No decision text',
     confidence: Math.max(0, Math.min(1, Number(decision.confidence ?? 0))),
@@ -166,17 +208,21 @@ export const halApi = {
   },
 
   // GET /api/hal/sensors/latest
-  async getSensorsLatest(): Promise<Array<{
-    device: HalDevice;
-    temperature?: HalSensorReading;
-    humidity?: HalSensorReading;
-  }>> {
-    const readings = await halGet<Array<{
-      device: RawHalDevice;
-      temperature?: RawHalSensorReading;
-      humidity?: RawHalSensorReading;
-    }>>('/sensors/latest');
-    return readings.map(reading => ({
+  async getSensorsLatest(): Promise<
+    Array<{
+      device: HalDevice;
+      temperature?: HalSensorReading;
+      humidity?: HalSensorReading;
+    }>
+  > {
+    const readings = await halGet<
+      Array<{
+        device: RawHalDevice;
+        temperature?: RawHalSensorReading;
+        humidity?: RawHalSensorReading;
+      }>
+    >('/sensors/latest');
+    return readings.map((reading) => ({
       device: normalizeDevice(reading.device),
       temperature: normalizeSensorReading(reading.temperature),
       humidity: normalizeSensorReading(reading.humidity),
@@ -184,12 +230,17 @@ export const halApi = {
   },
 
   // GET /api/hal/sensors/history
-  async getSensorHistory(device: string, metric: string, from?: string, to?: string): Promise<HalSensorReading[]> {
+  async getSensorHistory(
+    device: string,
+    metric: string,
+    from?: string,
+    to?: string,
+  ): Promise<HalSensorReading[]> {
     const readings = await halGet<RawHalSensorReading[]>('/sensors/history', {
       device,
       metric,
       ...(from ? { from } : {}),
-      ...(to   ? { to }   : {}),
+      ...(to ? { to } : {}),
     });
     return readings
       .map(normalizeSensorReading)
@@ -198,7 +249,9 @@ export const halApi = {
 
   // GET /api/hal/decisions
   async getDecisions(limit = 20): Promise<HalDecision[]> {
-    const decisions = await halGet<RawHalDecision[]>('/decisions', { limit: String(limit) });
+    const decisions = await halGet<RawHalDecision[]>('/decisions', {
+      limit: String(limit),
+    });
     return decisions.map(normalizeDecision);
   },
 
@@ -209,7 +262,90 @@ export const halApi = {
   },
 
   // POST /api/hal/cameras/:id/capture
-  captureCamera(id: string): Promise<{ ok: boolean; path: string; size_bytes: number }> {
+  captureCamera(
+    id: string,
+  ): Promise<{ ok: boolean; path: string; size_bytes: number }> {
     return halPost(`/cameras/${id}/capture`);
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // E-Stop API
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // GET /api/hal/estop/status
+  async getEstopStatus(): Promise<{
+    estop: {
+      active: boolean;
+      activatedAt: string | null;
+      activatedBy: string | null;
+      clearedAt: string | null;
+      clearedBy: string | null;
+      reason: string | null;
+    };
+    farmLoop: {
+      lastDecisionAt: string | null;
+      lastHeartbeatAt: string | null;
+      hangWarnings: number;
+      safetyMode: boolean;
+    };
+    watchdog: {
+      running: boolean;
+      uptimeSeconds: number;
+    };
+  }> {
+    return halGet('/estop/status');
+  },
+
+  // POST /api/hal/estop — activate emergency stop
+  async activateEstop(
+    reason?: string,
+    reasonText?: string,
+  ): Promise<{
+    success: boolean;
+    appliedSafeStates: Array<{ deviceId: string; safeState: string }>;
+    failures: string[];
+  }> {
+    return halPost('/estop', { reason: reason || 'operator', reasonText });
+  },
+
+  // POST /api/hal/estop/clear — clear emergency stop (requires auth)
+  async clearEstop(operatorId: string): Promise<{ ok: boolean }> {
+    return halPost('/estop/clear', { operatorId });
+  },
+
+  // GET /api/hal/estop/safe-states
+  async getEstopSafeStates(): Promise<
+    Array<{
+      deviceId: string;
+      safeState: 'on' | 'off' | 'unknown' | 'no_change';
+      safeValue?: number;
+    }>
+  > {
+    return halGet('/estop/safe-states');
+  },
+
+  // PUT /api/hal/estop/safe-states/:deviceId
+  async setEstopSafeState(
+    deviceId: string,
+    safeState: 'on' | 'off' | 'unknown' | 'no_change',
+    safeValue?: number,
+  ): Promise<{ ok: boolean }> {
+    return halPut(`/estop/safe-states/${deviceId}`, { safeState, safeValue });
+  },
+
+  // GET /api/hal/farm-loop/status
+  async getFarmLoopStatus(): Promise<{
+    farmLoop: {
+      lastDecisionAt: string | null;
+      lastHeartbeatAt: string | null;
+      hangWarnings: number;
+      safetyMode: boolean;
+    };
+    watchdog: {
+      running: boolean;
+      uptimeSeconds: number;
+    };
+  }> {
+    return halGet('/farm-loop/status');
   },
 };

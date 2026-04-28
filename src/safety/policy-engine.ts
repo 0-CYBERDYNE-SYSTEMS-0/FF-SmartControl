@@ -40,17 +40,17 @@ export interface MaxActivationsConfig {
 export interface ScheduleWindowConfig {
   windows: Array<{
     startHour: number; // 0-23
-    endHour: number;   // 0-23
+    endHour: number; // 0-23
     daysOfWeek?: number[]; // 0=Sunday, 1=Monday, etc.
   }>;
 }
 
 export interface DependencyConfig {
-  triggerDeviceId: string;  // device whose state/value we depend on
-  triggerMetric?: MetricType;  // sensor metric to check (for sensor devices)
+  triggerDeviceId: string; // device whose state/value we depend on
+  triggerMetric?: MetricType; // sensor metric to check (for sensor devices)
   operator: Operator;
   value: number;
-  actionRequired: 'on' | 'off' | 'any';  // what the dependent device must be in
+  actionRequired: 'on' | 'off' | 'any'; // what the dependent device must be in
 }
 
 export type RuleConfig =
@@ -66,7 +66,7 @@ export interface SafetyRule {
   ruleType: RuleType;
   ruleConfig: RuleConfig;
   enabled: boolean;
-  priority: number;  // higher = more restrictive, evaluated later
+  priority: number; // higher = more restrictive, evaluated later
   createdAt: string;
   updatedAt: string;
 }
@@ -112,10 +112,18 @@ export interface RelayToggle {
 
 // Dependencies for testing
 export interface PolicyEngineDeps {
-  getDb?: () => { prepare: (sql: string) => { all: (...args: unknown[]) => unknown[]; get: (...args: unknown[]) => unknown } };
+  getDb?: () => {
+    prepare: (sql: string) => {
+      all: (...args: unknown[]) => unknown[];
+      get: (...args: unknown[]) => unknown;
+    };
+  };
   now?: number;
   getRelayToggles?: (deviceId: string, since: string) => RelayToggle[];
-  getSensorReading?: (deviceId: string, metric: MetricType) => { value: number } | undefined;
+  getSensorReading?: (
+    deviceId: string,
+    metric: MetricType,
+  ) => { value: number } | undefined;
   getDevices?: () => HalDevice[];
 }
 
@@ -127,17 +135,21 @@ export function loadSafetyRules(deps: PolicyEngineDeps = {}): SafetyRule[] {
   const now = Date.now();
 
   // Return cached rules if still fresh
-  if (ruleCache.length > 0 && (now - ruleCacheLoadedAt) < RULE_CACHE_TTL_MS) {
+  if (ruleCache.length > 0 && now - ruleCacheLoadedAt < RULE_CACHE_TTL_MS) {
     return ruleCache;
   }
 
   try {
-    const rows = db.prepare(`
+    const rows = db
+      .prepare(
+        `
       SELECT id, device_id, rule_type, rule_config, enabled, priority, created_at, updated_at
       FROM hal_safety_rules
       WHERE enabled = 1
       ORDER BY priority ASC
-    `).all() as Array<{
+    `,
+      )
+      .all() as Array<{
       id: string;
       device_id: string;
       rule_type: string;
@@ -178,7 +190,10 @@ export function clearRuleCache(): void {
 /**
  * Get rules for a specific device
  */
-export function getRulesForDevice(deviceId: string, rules?: SafetyRule[]): SafetyRule[] {
+export function getRulesForDevice(
+  deviceId: string,
+  rules?: SafetyRule[],
+): SafetyRule[] {
   const allRules = rules ?? loadSafetyRules();
   return allRules.filter((r) => r.deviceId === deviceId);
 }
@@ -211,13 +226,31 @@ export function evaluateAction(
 
     switch (rule.ruleType) {
       case 'max_on_duration':
-        violations.push(...checkMaxOnDuration(rule, action, deviceState, recentToggles, nowMs));
+        violations.push(
+          ...checkMaxOnDuration(
+            rule,
+            action,
+            deviceState,
+            recentToggles,
+            nowMs,
+          ),
+        );
         break;
       case 'min_off_duration':
-        violations.push(...checkMinOffDuration(rule, action, deviceState, recentToggles, nowMs));
+        violations.push(
+          ...checkMinOffDuration(
+            rule,
+            action,
+            deviceState,
+            recentToggles,
+            nowMs,
+          ),
+        );
         break;
       case 'max_activations_per_hour':
-        violations.push(...checkMaxActivations(rule, action, recentToggles, nowMs));
+        violations.push(
+          ...checkMaxActivations(rule, action, recentToggles, nowMs),
+        );
         break;
       case 'allowed_schedule_windows':
         violations.push(...checkScheduleWindows(rule, action, nowMs));
@@ -234,14 +267,24 @@ export function evaluateAction(
 /**
  * Apply operator comparison
  */
-function compareOperator(value: number, operator: Operator, threshold: number): boolean {
+function compareOperator(
+  value: number,
+  operator: Operator,
+  threshold: number,
+): boolean {
   switch (operator) {
-    case 'gt': return value > threshold;
-    case 'lt': return value < threshold;
-    case 'eq': return value === threshold;
-    case 'gte': return value >= threshold;
-    case 'lte': return value <= threshold;
-    case 'neq': return value !== threshold;
+    case 'gt':
+      return value > threshold;
+    case 'lt':
+      return value < threshold;
+    case 'eq':
+      return value === threshold;
+    case 'gte':
+      return value >= threshold;
+    case 'lte':
+      return value <= threshold;
+    case 'neq':
+      return value !== threshold;
   }
 }
 
@@ -258,7 +301,10 @@ function checkMaxOnDuration(
   // Find the last time this device was turned off
   const offToggle = recentToggles
     .filter((t) => t.deviceId === action.deviceId && t.state === 'off')
-    .sort((a, b) => new Date(b.switchedAt).getTime() - new Date(a.switchedAt).getTime())[0];
+    .sort(
+      (a, b) =>
+        new Date(b.switchedAt).getTime() - new Date(a.switchedAt).getTime(),
+    )[0];
 
   if (!offToggle) {
     // Device has never been turned off - check if it's currently on and for how long
@@ -274,12 +320,14 @@ function checkMaxOnDuration(
   const maxMs = config.maxSeconds * 1000;
 
   if (timeSinceOff < maxMs) {
-    return [{
-      ruleId: rule.id,
-      ruleType: rule.ruleType,
-      message: `Device was turned off ${Math.round(timeSinceOff / 1000)}s ago. Must remain off for at least ${config.maxSeconds}s before turning on.`,
-      severity: 'block',
-    }];
+    return [
+      {
+        ruleId: rule.id,
+        ruleType: rule.ruleType,
+        message: `Device was turned off ${Math.round(timeSinceOff / 1000)}s ago. Must remain off for at least ${config.maxSeconds}s before turning on.`,
+        severity: 'block',
+      },
+    ];
   }
 
   return [];
@@ -298,19 +346,24 @@ function checkMinOffDuration(
   // Find the last time this device was turned off
   const offToggle = recentToggles
     .filter((t) => t.deviceId === action.deviceId && t.state === 'off')
-    .sort((a, b) => new Date(b.switchedAt).getTime() - new Date(a.switchedAt).getTime())[0];
+    .sort(
+      (a, b) =>
+        new Date(b.switchedAt).getTime() - new Date(a.switchedAt).getTime(),
+    )[0];
 
   if (!offToggle) {
     // Device has never been turned off
     if (deviceState?.lastState === 'on') {
       // Device is currently on and we don't know when it was turned on
       // This is a safety concern - but we can't determine off duration
-      return [{
-        ruleId: rule.id,
-        ruleType: rule.ruleType,
-        message: `Cannot verify minimum off duration - device currently on with unknown turn-on time.`,
-        severity: 'warn',
-      }];
+      return [
+        {
+          ruleId: rule.id,
+          ruleType: rule.ruleType,
+          message: `Cannot verify minimum off duration - device currently on with unknown turn-on time.`,
+          severity: 'warn',
+        },
+      ];
     }
     return []; // Never been on, OK to turn on
   }
@@ -320,12 +373,14 @@ function checkMinOffDuration(
   const minMs = config.minSeconds * 1000;
 
   if (timeSinceOff < minMs) {
-    return [{
-      ruleId: rule.id,
-      ruleType: rule.ruleType,
-      message: `Device was turned off ${Math.round(timeSinceOff / 1000)}s ago. Must remain off for at least ${config.minSeconds}s.`,
-      severity: 'block',
-    }];
+    return [
+      {
+        ruleId: rule.id,
+        ruleType: rule.ruleType,
+        message: `Device was turned off ${Math.round(timeSinceOff / 1000)}s ago. Must remain off for at least ${config.minSeconds}s.`,
+        severity: 'block',
+      },
+    ];
   }
 
   return [];
@@ -340,18 +395,23 @@ function checkMaxActivations(
   const config = rule.ruleConfig as MaxActivationsConfig;
   if (action.decision !== 'turn_on') return [];
 
-  const oneHourAgo = nowMs - (60 * 60 * 1000);
+  const oneHourAgo = nowMs - 60 * 60 * 1000;
   const recentOnToggles = recentToggles.filter(
-    (t) => t.deviceId === action.deviceId && t.state === 'on' && new Date(t.switchedAt).getTime() > oneHourAgo,
+    (t) =>
+      t.deviceId === action.deviceId &&
+      t.state === 'on' &&
+      new Date(t.switchedAt).getTime() > oneHourAgo,
   );
 
   if (recentOnToggles.length >= config.maxPerHour) {
-    return [{
-      ruleId: rule.id,
-      ruleType: rule.ruleType,
-      message: `Device has been turned on ${recentOnToggles.length} times in the last hour. Maximum allowed: ${config.maxPerHour}.`,
-      severity: 'block',
-    }];
+    return [
+      {
+        ruleId: rule.id,
+        ruleType: rule.ruleType,
+        message: `Device has been turned on ${recentOnToggles.length} times in the last hour. Maximum allowed: ${config.maxPerHour}.`,
+        severity: 'block',
+      },
+    ];
   }
 
   return [];
@@ -371,8 +431,12 @@ function checkScheduleWindows(
 
   for (const window of config.windows) {
     // Check if current time is within window
-    const inTimeWindow = currentHour >= window.startHour && currentHour < window.endHour;
-    const inDayWindow = !window.daysOfWeek || window.daysOfWeek.length === 0 || window.daysOfWeek.includes(currentDay);
+    const inTimeWindow =
+      currentHour >= window.startHour && currentHour < window.endHour;
+    const inDayWindow =
+      !window.daysOfWeek ||
+      window.daysOfWeek.length === 0 ||
+      window.daysOfWeek.includes(currentDay);
 
     if (inTimeWindow && inDayWindow) {
       return []; // Within allowed window
@@ -387,12 +451,14 @@ function checkScheduleWindows(
     })
     .join('; ');
 
-  return [{
-    ruleId: rule.id,
-    ruleType: rule.ruleType,
-    message: `Device can only be turned on during: ${windowStr}. Current time: ${currentHour}:00.`,
-    severity: 'block',
-  }];
+  return [
+    {
+      ruleId: rule.id,
+      ruleType: rule.ruleType,
+      message: `Device can only be turned on during: ${windowStr}. Current time: ${currentHour}:00.`,
+      severity: 'block',
+    },
+  ];
 }
 
 function checkDependency(
@@ -414,15 +480,21 @@ function checkDependency(
 
   // If we can't determine the current value, we can't evaluate the dependency
   if (currentValue === null) {
-    return [{
-      ruleId: rule.id,
-      ruleType: rule.ruleType,
-      message: `Cannot evaluate dependency rule - sensor ${config.triggerDeviceId}/${config.triggerMetric} has no recent reading.`,
-      severity: 'warn',
-    }];
+    return [
+      {
+        ruleId: rule.id,
+        ruleType: rule.ruleType,
+        message: `Cannot evaluate dependency rule - sensor ${config.triggerDeviceId}/${config.triggerMetric} has no recent reading.`,
+        severity: 'warn',
+      },
+    ];
   }
 
-  const conditionMet = compareOperator(currentValue, config.operator, config.value);
+  const conditionMet = compareOperator(
+    currentValue,
+    config.operator,
+    config.value,
+  );
 
   // Dependency rules semantics:
   // "device must stay ON when condition X is met" -> actionRequired='on'

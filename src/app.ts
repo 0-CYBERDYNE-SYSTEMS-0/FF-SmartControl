@@ -483,6 +483,13 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
       clearInterval(halAlertTimer);
       halAlertTimer = null;
     }
+    // Stop watchdog
+    try {
+      const { stopWatchdog } = await import('./safety/estop.js');
+      stopWatchdog();
+    } catch {
+      // Ignore errors stopping watchdog
+    }
     await deps.stopWebControlCenterService?.();
     await deps.stopTuiGatewayService?.();
     await deps.stopHalUiService?.();
@@ -524,7 +531,10 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     // VAL-IMG-015: Multiple provisioning attempts handled idempotently
     // VAL-IMG-021: Power loss mid-decision-cycle → re-issue safe states
     let cycleInterrupted = false;
-    let interruptedCycleData: { cycleId: string; activeRelays: string[] } | null = null;
+    let interruptedCycleData: {
+      cycleId: string;
+      activeRelays: string[];
+    } | null = null;
     try {
       const {
         getProvisioningManager,
@@ -607,8 +617,34 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
       seedHalDemoData();
       deps.logger.info?.('[HAL] Demo data seeded');
 
+      // Initialize Emergency Stop system and start watchdog
+      try {
+        const { startWatchdog, initializeDefaultSafeStates, getEstopState } =
+          await import('./safety/estop.js');
+        initializeDefaultSafeStates();
+        startWatchdog();
+        const estopState = getEstopState();
+        if (estopState.active) {
+          deps.logger.warn?.(
+            { activatedAt: estopState.activatedAt, reason: estopState.reason },
+            '[Safety] E-Stop is ACTIVE on startup — autonomous control suspended',
+          );
+        } else {
+          deps.logger.info?.('[Safety] E-Stop system initialized');
+        }
+      } catch (err) {
+        deps.logger.warn?.(
+          { err },
+          '[Safety] E-Stop/Watchdog initialization failed — continuing without safety watchdog',
+        );
+      }
+
       // VAL-IMG-021: Re-issue safe states to relays that were active when cycle was interrupted
-      if (cycleInterrupted && interruptedCycleData && interruptedCycleData.activeRelays.length > 0) {
+      if (
+        cycleInterrupted &&
+        interruptedCycleData &&
+        interruptedCycleData.activeRelays.length > 0
+      ) {
         deps.logger.info?.(
           { relays: interruptedCycleData.activeRelays },
           '[first-boot] Re-issuing safe states to interrupted relays',

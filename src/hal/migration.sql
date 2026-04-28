@@ -104,3 +104,34 @@ CREATE TABLE IF NOT EXISTS hal_safety_audit (
   reverted_steps      INTEGER,         -- number of steps reverted after interruption
   created_at          TEXT NOT NULL
 );
+
+-- Emergency Stop: persistent E-Stop state
+CREATE TABLE IF NOT EXISTS hal_emergency_stop (
+  id                TEXT PRIMARY KEY DEFAULT 'global',
+  active           INTEGER NOT NULL DEFAULT 0,  -- 1 = E-Stop active, 0 = cleared
+  activated_at      TEXT,                        -- ISO timestamp when E-Stop was activated
+  activated_by      TEXT,                        -- 'operator' | 'farm_loop_hang' | 'watchdog_failure'
+  cleared_at        TEXT,                        -- ISO timestamp when cleared (NULL if active)
+  cleared_by        TEXT,                        -- operator ID who cleared (NULL if active)
+  reason            TEXT,                        -- optional human-readable reason
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+
+-- Device Safe States: per-device safe states for E-Stop
+CREATE TABLE IF NOT EXISTS hal_device_safe_states (
+  device_id         TEXT PRIMARY KEY REFERENCES hal_devices(id) ON DELETE CASCADE,
+  safe_state        TEXT NOT NULL,  -- 'on' | 'off' | 'unknown' | 'no_change'
+  safe_value        REAL,           -- optional safe value for dimmers/adjustable devices
+  updated_at        TEXT NOT NULL
+);
+
+-- Farm Loop Hang Detection: track last decision time for hang detection
+CREATE TABLE IF NOT EXISTS hal_farm_loop_state (
+  id                TEXT PRIMARY KEY DEFAULT 'global',
+  last_decision_at  TEXT,                        -- ISO timestamp of last completed decision
+  last_heartbeat_at TEXT,                        -- ISO timestamp of last decision cycle start
+  hang_warnings     INTEGER NOT NULL DEFAULT 0,  -- count of hang warnings issued
+  safety_mode       INTEGER NOT NULL DEFAULT 0,  -- 1 = safety mode active due to hang
+  updated_at        TEXT NOT NULL
+);

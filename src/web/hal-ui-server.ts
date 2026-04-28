@@ -256,6 +256,120 @@ export async function startHalUiServer(
         return;
       }
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // E-STOP API — Emergency stop control and status
+      // ═══════════════════════════════════════════════════════════════════════
+
+      // GET /api/hal/estop/status — get current E-Stop state
+      if (apiPath === '/estop/status' && method === 'GET') {
+        const { getEstopState, isEstopActive } =
+          await import('../safety/estop.js');
+        const state = getEstopState();
+        const { getWatchdogStatus } = await import('../safety/estop.js');
+        const { getFarmLoopState } = await import('../safety/estop.js');
+        sendJson(res, 200, {
+          estop: {
+            active: state.active,
+            activatedAt: state.activatedAt,
+            activatedBy: state.activatedBy,
+            clearedAt: state.clearedAt,
+            clearedBy: state.clearedBy,
+            reason: state.reason,
+          },
+          farmLoop: getFarmLoopState(),
+          watchdog: getWatchdogStatus(),
+        });
+        return;
+      }
+
+      // POST /api/hal/estop — activate emergency stop
+      if (apiPath === '/estop' && method === 'POST') {
+        const { activateEstop } = await import('../safety/estop.js');
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const reason = parsed.reason || 'operator';
+        const reasonText = parsed.reasonText;
+
+        const result = await activateEstop(
+          reason as any,
+          'operator',
+          reasonText,
+        );
+        sendJson(res, 200, result);
+        return;
+      }
+
+      // POST /api/hal/estop/clear — clear emergency stop (requires auth)
+      if (apiPath === '/estop/clear' && method === 'POST') {
+        const { clearEstop } = await import('../safety/estop.js');
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+
+        // Check for admin auth
+        const operatorId = parsed.operatorId || parsed.operator_id;
+        if (!operatorId) {
+          sendJson(res, 401, {
+            error: 'Authentication required to clear E-Stop',
+          });
+          return;
+        }
+
+        const result = clearEstop(operatorId);
+        if (!result.success) {
+          sendJson(res, 400, { error: result.error });
+          return;
+        }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      // GET /api/hal/estop/safe-states — get all device safe states
+      if (apiPath === '/estop/safe-states' && method === 'GET') {
+        const { getAllDeviceSafeStates } = await import('../safety/estop.js');
+        sendJson(res, 200, getAllDeviceSafeStates());
+        return;
+      }
+
+      // PUT /api/hal/estop/safe-states/:deviceId — set device safe state
+      if (
+        apiPath.match(/^\/estop\/safe-states\/([^/]+)$/) &&
+        method === 'PUT'
+      ) {
+        const deviceId = apiPath.split('/')[3];
+        const { setDeviceSafeState } = await import('../safety/estop.js');
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+
+        const safeState = parsed.safeState;
+        if (
+          !safeState ||
+          !['on', 'off', 'unknown', 'no_change'].includes(safeState)
+        ) {
+          sendJson(res, 400, {
+            error: 'safeState must be one of: on, off, unknown, no_change',
+          });
+          return;
+        }
+
+        setDeviceSafeState(deviceId, safeState, parsed.safeValue);
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      // GET /api/hal/farm-loop/status — get farm loop state (for hang detection)
+      if (apiPath === '/farm-loop/status' && method === 'GET') {
+        const { getFarmLoopState, getWatchdogStatus } =
+          await import('../safety/estop.js');
+        sendJson(res, 200, {
+          farmLoop: getFarmLoopState(),
+          watchdog: getWatchdogStatus(),
+        });
+        return;
+      }
+
       sendJson(res, 404, { error: 'HAL API endpoint not found' });
       return;
     }
@@ -323,7 +437,10 @@ export async function startHalUiServer(
 
       // PUT /api/provisioning/wizard-step — update wizard step (VAL-IMG-018)
       // Also accepts POST for backward compatibility
-      if (provApiPath === '/wizard-step' && (method === 'PUT' || method === 'POST')) {
+      if (
+        provApiPath === '/wizard-step' &&
+        (method === 'PUT' || method === 'POST')
+      ) {
         let body = '';
         for await (const chunk of req) body += chunk;
         const parsed = body ? JSON.parse(body) : {};

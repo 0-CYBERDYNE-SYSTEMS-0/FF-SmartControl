@@ -57,7 +57,16 @@ export function captureSensorSnapshot(): SensorSnapshot {
 
   for (const device of devices) {
     snapshot[device.id] = {} as Record<MetricType, number>;
-    for (const metric of ['temperature', 'humidity', 'soil_moisture', 'light', 'co2', 'water_level', 'ph', 'weight'] as MetricType[]) {
+    for (const metric of [
+      'temperature',
+      'humidity',
+      'soil_moisture',
+      'light',
+      'co2',
+      'water_level',
+      'ph',
+      'weight',
+    ] as MetricType[]) {
       const reading = halSensors.latest(device.id, metric);
       if (reading && typeof reading.value === 'number') {
         (snapshot[device.id] as Record<string, number>)[metric] = reading.value;
@@ -80,13 +89,21 @@ function getRecentToggles(deviceId: string): RelayToggle[] {
   // Get from hal_relays table directly
   const { getDb } = require('../hal/db.js');
   const db = getDb();
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(
+      `
     SELECT device_id, state, switched_at
     FROM hal_relays
     WHERE device_id = ? AND switched_at >= ?
     ORDER BY switched_at DESC
     LIMIT 100
-  `).all(deviceId, oneHourAgo) as Array<{ device_id: string; state: 'on' | 'off'; switched_at: string }>;
+  `,
+    )
+    .all(deviceId, oneHourAgo) as Array<{
+    device_id: string;
+    state: 'on' | 'off';
+    switched_at: string;
+  }>;
 
   return rows.map((r) => ({
     deviceId: r.device_id,
@@ -116,7 +133,9 @@ function getDeviceState(deviceId: string): DeviceState | null {
  *
  * This is the SOLE gate to hardware - no bypass allowed.
  */
-export async function verifyAction(params: VerifyParams): Promise<VerifyResult> {
+export async function verifyAction(
+  params: VerifyParams,
+): Promise<VerifyResult> {
   const { action, triggeredBy, decisionId } = params;
   const now = Date.now();
 
@@ -127,13 +146,22 @@ export async function verifyAction(params: VerifyParams): Promise<VerifyResult> 
   const deviceState = action.deviceId ? getDeviceState(action.deviceId) : null;
 
   // Get recent relay toggles for this device (if it's an actuator)
-  const recentToggles = action.deviceId ? getRecentToggles(action.deviceId) : [];
+  const recentToggles = action.deviceId
+    ? getRecentToggles(action.deviceId)
+    : [];
 
   // Load safety rules from SQLite
   const rules = loadSafetyRules();
 
   // Evaluate against policy engine
-  const violations = evaluateAction(action, sensorSnapshot, deviceState, recentToggles, rules, now);
+  const violations = evaluateAction(
+    action,
+    sensorSnapshot,
+    deviceState,
+    recentToggles,
+    rules,
+    now,
+  );
   const outcome = computeOutcome(violations);
 
   // Determine verifier result
@@ -152,7 +180,8 @@ export async function verifyAction(params: VerifyParams): Promise<VerifyResult> 
     proposedAction: action.decision,
     verifierResult: result,
     deniedReason: outcome.deniedReason,
-    conflictingRuleIds: outcome.conflictingRuleIds.length > 0 ? outcome.conflictingRuleIds : null,
+    conflictingRuleIds:
+      outcome.conflictingRuleIds.length > 0 ? outcome.conflictingRuleIds : null,
     sensorSnapshot,
     decisionId: decisionId ?? null,
     triggeredBy,
@@ -209,11 +238,17 @@ const HARD_SAFETY_RULES_LEGACY = [
   {
     id: 'exhaust_temp',
     description: 'Never turn off exhaust if temperature > 30C',
-    check: (ctx: { proposedAction: ProposedAction; deviceState: DeviceState | null; sensorSnapshot: SensorSnapshot }) => {
+    check: (ctx: {
+      proposedAction: ProposedAction;
+      deviceState: DeviceState | null;
+      sensorSnapshot: SensorSnapshot;
+    }) => {
       if (
         ctx.proposedAction.decision !== 'turn_off' ||
         !ctx.deviceState ||
-        !['exhaust', 'fan'].some((t) => ctx.deviceState!.id.toLowerCase().includes(t))
+        !['exhaust', 'fan'].some((t) =>
+          ctx.deviceState!.id.toLowerCase().includes(t),
+        )
       ) {
         return { pass: true, message: 'not an exhaust fan shutdown' };
       }
@@ -222,24 +257,36 @@ const HARD_SAFETY_RULES_LEGACY = [
       let maxTemp: number | null = null;
       for (const [deviceId, metrics] of Object.entries(ctx.sensorSnapshot)) {
         if (metrics.temperature !== undefined) {
-          maxTemp = maxTemp === null ? metrics.temperature : Math.max(maxTemp, metrics.temperature);
+          maxTemp =
+            maxTemp === null
+              ? metrics.temperature
+              : Math.max(maxTemp, metrics.temperature);
         }
       }
 
       return {
         pass: maxTemp === null || maxTemp <= 30,
-        message: maxTemp === null ? 'Temperature: unavailable' : `Temperature: ${maxTemp}C`,
+        message:
+          maxTemp === null
+            ? 'Temperature: unavailable'
+            : `Temperature: ${maxTemp}C`,
       };
     },
   },
   {
     id: 'circulation_humidity',
     description: 'Never turn off circulation if humidity > 80%',
-    check: (ctx: { proposedAction: ProposedAction; deviceState: DeviceState | null; sensorSnapshot: SensorSnapshot }) => {
+    check: (ctx: {
+      proposedAction: ProposedAction;
+      deviceState: DeviceState | null;
+      sensorSnapshot: SensorSnapshot;
+    }) => {
       if (
         ctx.proposedAction.decision !== 'turn_off' ||
         !ctx.deviceState ||
-        !['circulation', 'fan'].some((t) => ctx.deviceState!.id.toLowerCase().includes(t))
+        !['circulation', 'fan'].some((t) =>
+          ctx.deviceState!.id.toLowerCase().includes(t),
+        )
       ) {
         return { pass: true, message: 'not a circulation shutdown' };
       }
@@ -248,13 +295,19 @@ const HARD_SAFETY_RULES_LEGACY = [
       let maxHumidity: number | null = null;
       for (const [deviceId, metrics] of Object.entries(ctx.sensorSnapshot)) {
         if (metrics.humidity !== undefined) {
-          maxHumidity = maxHumidity === null ? metrics.humidity : Math.max(maxHumidity, metrics.humidity);
+          maxHumidity =
+            maxHumidity === null
+              ? metrics.humidity
+              : Math.max(maxHumidity, metrics.humidity);
         }
       }
 
       return {
         pass: maxHumidity === null || maxHumidity <= 80,
-        message: maxHumidity === null ? 'Humidity: unavailable' : `Humidity: ${maxHumidity}%`,
+        message:
+          maxHumidity === null
+            ? 'Humidity: unavailable'
+            : `Humidity: ${maxHumidity}%`,
       };
     },
   },
@@ -268,7 +321,11 @@ export function evaluateLegacyHardRules(
   const concerns: string[] = [];
 
   for (const rule of HARD_SAFETY_RULES_LEGACY) {
-    const result = rule.check({ proposedAction: action, deviceState, sensorSnapshot });
+    const result = rule.check({
+      proposedAction: action,
+      deviceState,
+      sensorSnapshot,
+    });
     if (!result.pass) {
       concerns.push(`SAFETY FAIL: ${rule.description} (${result.message})`);
     }

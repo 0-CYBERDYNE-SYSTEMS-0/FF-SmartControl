@@ -29,21 +29,29 @@ async function getHalRelays() {
   return halRelays;
 }
 
-async function getSensorSnapshot(halSensors: any, halRegistry: any): Promise<Record<string, Record<string, number>>> {
+async function getSensorSnapshot(
+  halSensors: any,
+  halRegistry: any,
+): Promise<Record<string, Record<string, number>>> {
   const snapshot: Record<string, Record<string, number>> = {};
   const devices = halRegistry.list().filter((d: any) => d.type === 'sensor');
   for (const dev of devices) {
     snapshot[dev.id] = {};
     const tempReading = halSensors.latest(dev.id, 'temperature');
-    if (tempReading && typeof tempReading.value === 'number') snapshot[dev.id].temperature = tempReading.value;
+    if (tempReading && typeof tempReading.value === 'number')
+      snapshot[dev.id].temperature = tempReading.value;
     const humReading = halSensors.latest(dev.id, 'humidity');
-    if (humReading && typeof humReading.value === 'number') snapshot[dev.id].humidity = humReading.value;
+    if (humReading && typeof humReading.value === 'number')
+      snapshot[dev.id].humidity = humReading.value;
     const co2Reading = halSensors.latest(dev.id, 'co2');
-    if (co2Reading && typeof co2Reading.value === 'number') snapshot[dev.id].co2 = co2Reading.value;
+    if (co2Reading && typeof co2Reading.value === 'number')
+      snapshot[dev.id].co2 = co2Reading.value;
     const lightReading = halSensors.latest(dev.id, 'light');
-    if (lightReading && typeof lightReading.value === 'number') snapshot[dev.id].light = lightReading.value;
+    if (lightReading && typeof lightReading.value === 'number')
+      snapshot[dev.id].light = lightReading.value;
     const soilReading = halSensors.latest(dev.id, 'soil_moisture');
-    if (soilReading && typeof soilReading.value === 'number') snapshot[dev.id].soil_moisture = soilReading.value;
+    if (soilReading && typeof soilReading.value === 'number')
+      snapshot[dev.id].soil_moisture = soilReading.value;
   }
   return snapshot;
 }
@@ -53,6 +61,34 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
   reasoning: string;
   toolCalls: any[];
 }> {
+  // Check E-Stop and farm loop safety before proceeding
+  const {
+    isAutonomousAllowed,
+    recordDecisionHeartbeat,
+    getEstopState,
+    getFarmLoopState,
+  } = await import('../safety/estop.js');
+
+  recordDecisionHeartbeat();
+
+  if (!isAutonomousAllowed()) {
+    const estopState = getEstopState();
+    const farmLoopState = getFarmLoopState();
+
+    let reason = 'Autonomous control suspended';
+    if (estopState.active) {
+      reason = `E-Stop is active${estopState.reason ? `: ${estopState.reason}` : ''}`;
+    } else if (farmLoopState.safetyMode) {
+      reason = 'Farm loop hang detected - safety mode active';
+    }
+
+    return {
+      decision: 'noop',
+      reasoning: reason,
+      toolCalls: [],
+    };
+  }
+
   const halRegistry = await getHalRegistry();
   const halSensors = await getHalSensors();
   const halDecisions = await getHalDecisions();
@@ -66,16 +102,30 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     'You are FarmPal, an autonomous smart farm controller.',
     'You control: smart plugs, sensors, cameras, GPIO devices.',
     'You have access to these devices:',
-    devices.map((d: any) => `  - ${d.label || d.id}: ${d.type} (${d.protocol}) at ${d.host || 'gpio'}, state=${d.last_state}, value=${d.last_value}`).join('\n'),
+    devices
+      .map(
+        (d: any) =>
+          `  - ${d.label || d.id}: ${d.type} (${d.protocol}) at ${d.host || 'gpio'}, state=${d.last_state}, value=${d.last_value}`,
+      )
+      .join('\n'),
     '',
     'Recent decisions:',
-    recentDecisions.slice(0, 5).map((d: any) => `  - ${d.decision} (${d.outcome})${d.reasoning ? ': ' + d.reasoning : ''}`).join('\n'),
+    recentDecisions
+      .slice(0, 5)
+      .map(
+        (d: any) =>
+          `  - ${d.decision} (${d.outcome})${d.reasoning ? ': ' + d.reasoning : ''}`,
+      )
+      .join('\n'),
     '',
     'Current sensor readings:',
     Object.entries(sensorSnapshot)
       .flatMap(([deviceId, metrics]) =>
-        Object.entries(metrics).map(([metric, value]) => `  - ${deviceId}/${metric}: ${value}`)
-      ).join('\n'),
+        Object.entries(metrics).map(
+          ([metric, value]) => `  - ${deviceId}/${metric}: ${value}`,
+        ),
+      )
+      .join('\n'),
     '',
     `Trigger: ${ctx.trigger}`,
     ctx.message ? `User message: ${ctx.message}` : '',
@@ -94,7 +144,13 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
   });
 
   // Parse JSON from LLM response
-  let parsed: any = { decision: 'noop', reasoning: llmResult.text, confidence: 0.5, tool_calls: [], device_id: null };
+  let parsed: any = {
+    decision: 'noop',
+    reasoning: llmResult.text,
+    confidence: 0.5,
+    tool_calls: [],
+    device_id: null,
+  };
   try {
     const jsonMatch = llmResult.text.match(/\{[\s\S]*\}/);
     if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
@@ -133,7 +189,8 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
   if (parsed.decision === 'turn_on' || parsed.decision === 'turn_off') {
     if (parsed.device_id) {
       // Import verifier dynamically to avoid circular dependency
-      const { verifyAction, recordExecution } = await import('../safety/verifier.js');
+      const { verifyAction, recordExecution } =
+        await import('../safety/verifier.js');
 
       const verifyResult = await verifyAction({
         action: {
@@ -149,7 +206,9 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
 
       if (!verifyResult.approved) {
         // Action was DENIED by safety rules
-        console.log(`[DecisionLoop] Action ${parsed.decision} on ${parsed.device_id} DENIED: ${verifyResult.reason}`);
+        console.log(
+          `[DecisionLoop] Action ${parsed.decision} on ${parsed.device_id} DENIED: ${verifyResult.reason}`,
+        );
         halDecisions.complete(decision.id, 'failure');
         return {
           decision: parsed.decision,
@@ -160,7 +219,10 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
 
       // Action was APPROVED - proceed to hardware
       try {
-        await halRegistry.control(parsed.device_id, parsed.decision === 'turn_on' ? 'on' : 'off');
+        await halRegistry.control(
+          parsed.device_id,
+          parsed.decision === 'turn_on' ? 'on' : 'off',
+        );
 
         // Record execution in audit log
         await recordExecution(
@@ -181,7 +243,10 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
       }
     }
   } else {
-    halDecisions.complete(decision.id, parsed.tool_calls?.length > 0 ? 'success' : 'pending');
+    halDecisions.complete(
+      decision.id,
+      parsed.tool_calls?.length > 0 ? 'success' : 'pending',
+    );
   }
 
   return {

@@ -8,7 +8,12 @@
 import { getDb } from '../hal/db.js';
 
 export type VerifierResult = 'APPROVED' | 'DENIED' | 'DENIED_WITH_REASON';
-export type TriggeredBy = 'agent' | 'manual_ui' | 'schedule';
+export type TriggeredBy =
+  | 'agent'
+  | 'manual_ui'
+  | 'schedule'
+  | 'watchdog'
+  | 'estop_system';
 
 export interface AuditLogEntry {
   id: string;
@@ -62,13 +67,15 @@ export function createAuditEntry(entry: CreateAuditEntry): AuditLogEntry {
   const id = genId('aud');
   const now = new Date().toISOString();
 
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO hal_safety_audit (
       id, device_id, proposed_action, verifier_result, denied_reason,
       conflicting_rule_ids, sensor_snapshot, decision_id, triggered_by,
       executed, executed_state, interrupted, interrupted_at_step, reverted_steps, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     id,
     entry.deviceId ?? null,
     entry.proposedAction,
@@ -116,11 +123,13 @@ export interface UpdateAuditExecution {
 
 export function updateAuditExecution(update: UpdateAuditExecution): void {
   const db = getAuditDb();
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE hal_safety_audit
     SET executed = ?, executed_state = ?, interrupted = ?, interrupted_at_step = ?, reverted_steps = ?
     WHERE id = ?
-  `).run(
+  `,
+  ).run(
     update.executed ? 1 : 0,
     update.executedState ?? null,
     update.interrupted ? 1 : 0,
@@ -132,34 +141,54 @@ export function updateAuditExecution(update: UpdateAuditExecution): void {
 
 export function getAuditEntry(id: string): AuditLogEntry | undefined {
   const db = getAuditDb();
-  const row = db.prepare('SELECT * FROM hal_safety_audit WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  const row = db
+    .prepare('SELECT * FROM hal_safety_audit WHERE id = ?')
+    .get(id) as Record<string, unknown> | undefined;
   if (!row) return undefined;
   return parseAuditRow(row);
 }
 
 export function getRecentAuditEntries(limit = 100): AuditLogEntry[] {
   const db = getAuditDb();
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(
+      `
     SELECT * FROM hal_safety_audit ORDER BY created_at DESC LIMIT ?
-  `).all(limit) as Record<string, unknown>[];
+  `,
+    )
+    .all(limit) as Record<string, unknown>[];
   return rows.map(parseAuditRow);
 }
 
-export function getAuditEntriesForDevice(deviceId: string, limit = 50): AuditLogEntry[] {
+export function getAuditEntriesForDevice(
+  deviceId: string,
+  limit = 50,
+): AuditLogEntry[] {
   const db = getAuditDb();
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(
+      `
     SELECT * FROM hal_safety_audit WHERE device_id = ? ORDER BY created_at DESC LIMIT ?
-  `).all(deviceId, limit) as Record<string, unknown>[];
+  `,
+    )
+    .all(deviceId, limit) as Record<string, unknown>[];
   return rows.map(parseAuditRow);
 }
 
-export function getDeniedEntriesSince(since: string, limit = 100): AuditLogEntry[] {
+export function getDeniedEntriesSince(
+  since: string,
+  limit = 100,
+): AuditLogEntry[] {
   const db = getAuditDb();
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(
+      `
     SELECT * FROM hal_safety_audit
     WHERE verifier_result IN ('DENIED', 'DENIED_WITH_REASON') AND created_at >= ?
     ORDER BY created_at DESC LIMIT ?
-  `).all(since, limit) as Record<string, unknown>[];
+  `,
+    )
+    .all(since, limit) as Record<string, unknown>[];
   return rows.map(parseAuditRow);
 }
 
@@ -167,10 +196,16 @@ function parseAuditRow(row: Record<string, unknown>): AuditLogEntry {
   return {
     id: row.id as string,
     deviceId: row.device_id as string | null,
-    proposedAction: row.proposed_action as 'turn_on' | 'turn_off' | 'adjust' | 'noop',
+    proposedAction: row.proposed_action as
+      | 'turn_on'
+      | 'turn_off'
+      | 'adjust'
+      | 'noop',
     verifierResult: row.verifier_result as VerifierResult,
     deniedReason: row.denied_reason as string | null,
-    conflictingRuleIds: row.conflicting_rule_ids ? JSON.parse(row.conflicting_rule_ids as string) : null,
+    conflictingRuleIds: row.conflicting_rule_ids
+      ? JSON.parse(row.conflicting_rule_ids as string)
+      : null,
     sensorSnapshot: JSON.parse(row.sensor_snapshot as string),
     decisionId: row.decision_id as string | null,
     triggeredBy: row.triggered_by as TriggeredBy,
@@ -204,26 +239,40 @@ export function exportAuditLog(
 
   // CSV format
   const headers = [
-    'id', 'device_id', 'proposed_action', 'verifier_result', 'denied_reason',
-    'conflicting_rule_ids', 'sensor_snapshot', 'decision_id', 'triggered_by',
-    'executed', 'executed_state', 'interrupted', 'created_at',
+    'id',
+    'device_id',
+    'proposed_action',
+    'verifier_result',
+    'denied_reason',
+    'conflicting_rule_ids',
+    'sensor_snapshot',
+    'decision_id',
+    'triggered_by',
+    'executed',
+    'executed_state',
+    'interrupted',
+    'created_at',
   ];
 
-  const rows = entries.map((e) => [
-    e.id,
-    e.deviceId ?? '',
-    e.proposedAction,
-    e.verifierResult,
-    (e.deniedReason ?? '').replace(/"/g, '""'),
-    (e.conflictingRuleIds ?? []).join(';'),
-    JSON.stringify(e.sensorSnapshot).replace(/"/g, '""'),
-    e.decisionId ?? '',
-    e.triggeredBy,
-    e.executed ? '1' : '0',
-    e.executedState ?? '',
-    e.interrupted ? '1' : '0',
-    e.createdAt,
-  ].map((v) => `"${v}"`).join(','));
+  const rows = entries.map((e) =>
+    [
+      e.id,
+      e.deviceId ?? '',
+      e.proposedAction,
+      e.verifierResult,
+      (e.deniedReason ?? '').replace(/"/g, '""'),
+      (e.conflictingRuleIds ?? []).join(';'),
+      JSON.stringify(e.sensorSnapshot).replace(/"/g, '""'),
+      e.decisionId ?? '',
+      e.triggeredBy,
+      e.executed ? '1' : '0',
+      e.executedState ?? '',
+      e.interrupted ? '1' : '0',
+      e.createdAt,
+    ]
+      .map((v) => `"${v}"`)
+      .join(','),
+  );
 
   return [headers.join(','), ...rows].join('\n');
 }
@@ -260,10 +309,15 @@ function getFilteredAuditEntries(options: {
     params.push(options.verifierResult);
   }
 
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const rows = db.prepare(`
+  const where =
+    conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const rows = db
+    .prepare(
+      `
     SELECT * FROM hal_safety_audit ${where} ORDER BY created_at DESC LIMIT 10000
-  `).all(...params) as Record<string, unknown>[];
+  `,
+    )
+    .all(...params) as Record<string, unknown>[];
 
   return rows.map(parseAuditRow);
 }
