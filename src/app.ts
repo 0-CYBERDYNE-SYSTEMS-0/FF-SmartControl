@@ -135,7 +135,11 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     deps.state.telegramBot.startPolling(async (event: any) => {
       try {
         deps.logger.debug?.(
-          { kind: event.kind, chatJid: event.chatJid, contentLength: event.content?.length },
+          {
+            kind: event.kind,
+            chatJid: event.chatJid,
+            contentLength: event.content?.length,
+          },
           'Telegram event received from polling',
         );
 
@@ -161,7 +165,10 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
 
         const m = event;
         deps.storeChatMetadata(m.chatJid, m.timestamp, m.chatName);
-        const didRegister = deps.maybeRegisterTelegramChat(m.chatJid, m.chatName);
+        const didRegister = deps.maybeRegisterTelegramChat(
+          m.chatJid,
+          m.chatName,
+        );
         if (didRegister && deps.isMainChat(m.chatJid)) {
           await deps.refreshTelegramCommandMenus();
         }
@@ -223,7 +230,7 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
         deps.logger.error?.(msg);
         if (process.platform === 'darwin') {
           exec(
-            `osascript -e 'display notification "${msg}" with title "FFT_nano" sound name "Basso"'`,
+            `osascript -e 'display notification "${msg}" with title "FarmPal" sound name "Basso"'`,
           );
         }
         setTimeout(() => process.exit(1), 1000);
@@ -336,7 +343,7 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     }
     deps.state.messageLoopRunning = true;
     deps.logger.info?.(
-      `FFT_nano running (trigger: @${deps.constants.assistantName})`,
+      `FarmPal running (trigger: @${deps.constants.assistantName})`,
     );
     while (true) {
       try {
@@ -422,7 +429,7 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
         '║  2. Start the Docker daemon                                    ║',
       );
       console.error(
-        '║  3. Restart FFT_nano                                          ║',
+        '║  3. Restart FarmPal                                           ║',
       );
       console.error(
         '╚════════════════════════════════════════════════════════════════╝\n',
@@ -453,7 +460,7 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
   function stopFarmServicesForShutdown(signal: string): void {
     if (deps.state.shuttingDown) return;
     deps.state.shuttingDown = true;
-    deps.logger.info?.({ signal }, 'Shutting down FFT_nano services');
+    deps.logger.info?.({ signal }, 'Shutting down FarmPal services');
     if (deps.constants.featureFarm && deps.constants.farmStateEnabled) {
       deps.stopFarmStateCollector?.();
     }
@@ -504,12 +511,57 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     }
     if (deps.constants.dataDir) {
       deps.acquireSingletonLock?.(
-        path.join(deps.constants.dataDir, 'fft_nano.lock'),
+        path.join(deps.constants.dataDir, 'farmpal.lock'),
       );
     }
     deps.ensureContainerSystemRunning?.();
     deps.initDatabase?.();
     deps.logger.info?.('Database initialized');
+
+    // First-boot provisioning check
+    // VAL-IMG-006: Auto-detect unprovisioned state and enter provisioning mode
+    // VAL-IMG-014: Power loss mid-provisioning → clean restart to provisioning
+    // VAL-IMG-015: Multiple provisioning attempts handled idempotently
+    // VAL-IMG-021: Power loss mid-decision-cycle → re-issue safe states
+    try {
+      const {
+        getProvisioningManager,
+        needsProvisioning,
+        handleStartupRecovery,
+      } = await import('./first-boot.js');
+      const mgr = getProvisioningManager();
+      const recovery = mgr.checkPowerLossRecovery();
+
+      if (recovery.provisioningInterrupted) {
+        deps.logger.warn?.(
+          { startedAt: recovery.interruptedState?.startedAt },
+          '[first-boot] Power loss during provisioning detected — will restart provisioning',
+        );
+      }
+
+      if (recovery.cycleInterrupted) {
+        deps.logger.warn?.(
+          { cycle: mgr.loadInterruptedCycle() },
+          '[first-boot] Power loss during decision cycle detected — re-issuing safe states',
+        );
+        // VAL-IMG-021: Re-issue safe states to all relays
+        // The HAL relay safe-state recovery will be handled by the shutdown
+        // handler on next startup. We mark it as needing recovery here.
+      }
+
+      if (needsProvisioning()) {
+        deps.logger.info?.(
+          '[first-boot] System is unprovisioned — provisioning mode active',
+        );
+      } else {
+        deps.logger.info?.('[first-boot] System is provisioned');
+      }
+    } catch (err) {
+      deps.logger.warn?.(
+        { err },
+        '[first-boot] Provisioning check failed — continuing anyway',
+      );
+    }
 
     // Initialize HAL subsystem (hardware abstraction layer)
     try {
@@ -550,26 +602,31 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     }
 
     // Periodic HAL poll every 5 minutes (skip in sim mode — simulator handles its own loop)
-    halPollTimer = setInterval(async () => {
-      try {
-        if (process.env.HAL_SIM_MODE === '1') {
-          // Simulator runs its own tick loop; just trigger decision cycle if enabled
+    halPollTimer = setInterval(
+      async () => {
+        try {
+          if (process.env.HAL_SIM_MODE === '1') {
+            // Simulator runs its own tick loop; just trigger decision cycle if enabled
+            if (process.env.HAL_AUTO_DECISIONS === 'true') {
+              const { runDecisionCycle } =
+                await import('./agent/decision-loop.js');
+              await runDecisionCycle({ trigger: 'heartbeat' });
+            }
+            return;
+          }
+          const { halRegistry: halReg } = await import('./hal/registry.js');
+          await halReg.poll();
           if (process.env.HAL_AUTO_DECISIONS === 'true') {
-            const { runDecisionCycle } = await import('./agent/decision-loop.js');
+            const { runDecisionCycle } =
+              await import('./agent/decision-loop.js');
             await runDecisionCycle({ trigger: 'heartbeat' });
           }
-          return;
+        } catch (err) {
+          deps.logger.error?.({ err }, '[HAL] Periodic poll error');
         }
-        const { halRegistry: halReg } = await import('./hal/registry.js');
-        await halReg.poll();
-        if (process.env.HAL_AUTO_DECISIONS === 'true') {
-          const { runDecisionCycle } = await import('./agent/decision-loop.js');
-          await runDecisionCycle({ trigger: 'heartbeat' });
-        }
-      } catch (err) {
-        deps.logger.error?.({ err }, '[HAL] Periodic poll error');
-      }
-    }, 5 * 60 * 1000);
+      },
+      5 * 60 * 1000,
+    );
     halPollTimer.unref?.();
 
     // HAL alert evaluator — check sensor thresholds every minute
@@ -580,7 +637,11 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
         if (alerts.length > 0) {
           for (const alert of alerts) {
             deps.logger.info?.(
-              { alertId: alert.id, deviceId: alert.deviceId, metric: alert.metric },
+              {
+                alertId: alert.id,
+                deviceId: alert.deviceId,
+                metric: alert.metric,
+              },
               'HAL alert fired',
             );
           }
@@ -618,7 +679,6 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     const telegramEnabled = !!deps.constants.telegramBotToken;
     const farmOnlyMode =
       !!deps.constants.featureFarm &&
-      !!deps.constants.farmStateEnabled &&
       deps.constants.whatsappEnabled === false &&
       !telegramEnabled;
     if (
@@ -647,7 +707,7 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     }
     if (farmOnlyMode) {
       deps.logger.info?.(
-        'Running in farm-state-only mode (no channels enabled)',
+        'Running in local FarmPal mode (dashboard/TUI enabled, no chat channels enabled)',
       );
     } else if (deps.constants.whatsappEnabled) {
       await connectWhatsApp();

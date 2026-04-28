@@ -30,7 +30,11 @@ export interface HalUiServer {
   close: () => Promise<void>;
 }
 
-function sendJson(res: http.ServerResponse, statusCode: number, body: unknown): void {
+function sendJson(
+  res: http.ServerResponse,
+  statusCode: number,
+  body: unknown,
+): void {
   const payload = JSON.stringify(body);
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -40,7 +44,11 @@ function sendJson(res: http.ServerResponse, statusCode: number, body: unknown): 
   res.end(payload);
 }
 
-function sendFile(res: http.ServerResponse, filePath: string, isHtml = false): void {
+function sendFile(
+  res: http.ServerResponse,
+  filePath: string,
+  isHtml = false,
+): void {
   try {
     const body = fs.readFileSync(filePath);
     const ext = path.extname(filePath).toLowerCase();
@@ -57,7 +65,10 @@ function sendFile(res: http.ServerResponse, filePath: string, isHtml = false): v
   }
 }
 
-export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise<HalUiServer> {
+export async function startHalUiServer(
+  port = 3392,
+  host = '127.0.0.1',
+): Promise<HalUiServer> {
   // Allow overriding bind host via env for Tailscale/mobile access
   const bindHost = process.env.HAL_UI_BIND_HOST || host;
   const staticDir = path.resolve(process.cwd(), 'src', 'web', 'hal-ui');
@@ -74,15 +85,36 @@ export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise
       if (apiPath === '/state' && method === 'GET') {
         const devices = halRegistry.list();
         const sensorSnapshots: Record<string, Record<string, unknown>> = {};
-        const allMetrics: Array<{ metric: MetricType; fn: (id: string) => unknown }> = [
-          { metric: 'temperature', fn: (id: string) => halSensors.latest(id, 'temperature') },
-          { metric: 'humidity', fn: (id: string) => halSensors.latest(id, 'humidity') },
+        const allMetrics: Array<{
+          metric: MetricType;
+          fn: (id: string) => unknown;
+        }> = [
+          {
+            metric: 'temperature',
+            fn: (id: string) => halSensors.latest(id, 'temperature'),
+          },
+          {
+            metric: 'humidity',
+            fn: (id: string) => halSensors.latest(id, 'humidity'),
+          },
           { metric: 'co2', fn: (id: string) => halSensors.latest(id, 'co2') },
-          { metric: 'light', fn: (id: string) => halSensors.latest(id, 'light') },
-          { metric: 'soil_moisture', fn: (id: string) => halSensors.latest(id, 'soil_moisture') },
-          { metric: 'water_level', fn: (id: string) => halSensors.latest(id, 'water_level') },
+          {
+            metric: 'light',
+            fn: (id: string) => halSensors.latest(id, 'light'),
+          },
+          {
+            metric: 'soil_moisture',
+            fn: (id: string) => halSensors.latest(id, 'soil_moisture'),
+          },
+          {
+            metric: 'water_level',
+            fn: (id: string) => halSensors.latest(id, 'water_level'),
+          },
           { metric: 'ph', fn: (id: string) => halSensors.latest(id, 'ph') },
-          { metric: 'weight', fn: (id: string) => halSensors.latest(id, 'weight') },
+          {
+            metric: 'weight',
+            fn: (id: string) => halSensors.latest(id, 'weight'),
+          },
         ];
         for (const dev of devices.filter((d: any) => d.type === 'sensor')) {
           sensorSnapshots[dev.id] = {};
@@ -119,10 +151,20 @@ export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise
           const sim = getSimulator();
           if (sim) {
             sim.setDeviceState(deviceId, action);
-            halRelays.log({ device_id: deviceId, state: action, reason: 'manual', triggered_by: 'hal-ui' });
+            halRelays.log({
+              device_id: deviceId,
+              state: action,
+              reason: 'manual',
+              triggered_by: 'hal-ui',
+            });
           } else {
             await halRegistry.control(deviceId, action);
-            halRelays.log({ device_id: deviceId, state: action, reason: 'manual', triggered_by: 'hal-ui' });
+            halRelays.log({
+              device_id: deviceId,
+              state: action,
+              reason: 'manual',
+              triggered_by: 'hal-ui',
+            });
           }
           sendJson(res, 200, { ok: true });
         } catch (err: any) {
@@ -132,12 +174,15 @@ export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise
       }
 
       if (apiPath === '/sensors/latest' && method === 'GET') {
-        const devices = halRegistry.list().filter((d: any) => d.type === 'sensor');
+        const devices = halRegistry
+          .list()
+          .filter((d: any) => d.type === 'sensor');
         const readings = [];
         for (const dev of devices) {
           const temp = halSensors.latest(dev.id, 'temperature');
           const hum = halSensors.latest(dev.id, 'humidity');
-          if (temp || hum) readings.push({ device: dev, temperature: temp, humidity: hum });
+          if (temp || hum)
+            readings.push({ device: dev, temperature: temp, humidity: hum });
         }
         sendJson(res, 200, readings);
         return;
@@ -146,13 +191,19 @@ export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise
       if (apiPath.startsWith('/sensors/history') && method === 'GET') {
         const deviceId = url.searchParams.get('device');
         const metric = url.searchParams.get('metric');
-        const from = url.searchParams.get('from') || new Date(Date.now() - 86400000).toISOString();
+        const from =
+          url.searchParams.get('from') ||
+          new Date(Date.now() - 86400000).toISOString();
         const to = url.searchParams.get('to') || new Date().toISOString();
         if (!deviceId || !metric) {
           sendJson(res, 400, { error: 'device and metric are required' });
           return;
         }
-        sendJson(res, 200, halSensors.history(deviceId, metric as MetricType, from, to));
+        sendJson(
+          res,
+          200,
+          halSensors.history(deviceId, metric as MetricType, from, to),
+        );
         return;
       }
 
@@ -162,7 +213,10 @@ export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise
         return;
       }
 
-      if (apiPath.match(/^\/decisions\/([^/]+)\/complete$/) && method === 'POST') {
+      if (
+        apiPath.match(/^\/decisions\/([^/]+)\/complete$/) &&
+        method === 'POST'
+      ) {
         const decisionId = apiPath.split('/')[2];
         let body = '';
         for await (const chunk of req) body += chunk;
@@ -176,8 +230,199 @@ export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise
         return;
       }
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // PROVISIONING API — Used by the setup wizard
+      // All /api/provisioning/* routes are unauthenticated
+      // ═══════════════════════════════════════════════════════════════════════
+      if (requestPath.startsWith('/api/provisioning/')) {
+        // Lazy import to avoid circular deps and allow this module to work standalone
+        const {
+          getProvisioningManager,
+          getProvisionedFlagFile,
+          getProvisioningStateFile,
+        } = await import('../first-boot.js');
+        const mgr = getProvisioningManager();
+        const provApiPath = requestPath.slice('/api/provisioning'.length);
+
+        // GET /api/provisioning/status — current provisioning state
+        if (provApiPath === '/status' && method === 'GET') {
+          const state = mgr.loadState();
+          const isUnprovisioned = mgr.isUnprovisioned();
+          const hasNetwork = mgr.hasNetworkConnectivity();
+          const primaryIp = mgr.getPrimaryIpAddress();
+          const avahiRunning = mgr.isAvahiRunning();
+          sendJson(res, 200, {
+            isUnprovisioned,
+            state: state?.state ?? 'unprovisioned',
+            wizardStep: state?.wizardStep ?? 0,
+            farmName: state?.farmName ?? null,
+            timezone: state?.timezone ?? null,
+            wifiConfigured: state?.wifiConfigured ?? false,
+            llmProvider: state?.llmProvider ?? null,
+            hasNetworkConnectivity: hasNetwork,
+            primaryIp,
+            avahiRunning,
+            errorMessage: state?.errorMessage ?? null,
+          });
+          return;
+        }
+
+        // POST /api/provisioning/begin — start provisioning (VAL-IMG-006)
+        if (provApiPath === '/begin' && method === 'POST') {
+          try {
+            // VAL-IMG-020: Acquire lock to prevent concurrent provisioning
+            let releaseLock: (() => void) | null = null;
+            try {
+              releaseLock = mgr.acquireProvisioningLock();
+            } catch (lockErr: any) {
+              if (lockErr.message === 'PROVISIONING_ALREADY_IN_PROGRESS') {
+                sendJson(res, 409, {
+                  error: 'Provisioning already in progress',
+                });
+                return;
+              }
+              throw lockErr;
+            }
+            const newState = mgr.beginProvisioning();
+            releaseLock();
+            sendJson(res, 200, { ok: true, state: newState.state });
+          } catch (err: any) {
+            sendJson(res, 500, { error: err.message });
+          }
+          return;
+        }
+
+        // POST /api/provisioning/wizard-step — update wizard step (VAL-IMG-018)
+        if (provApiPath === '/wizard-step' && method === 'POST') {
+          let body = '';
+          for await (const chunk of req) body += chunk;
+          const parsed = body ? JSON.parse(body) : {};
+          const { step, farmName, timezone, wifiConfigured, llmProvider } =
+            parsed;
+          try {
+            const state = mgr.updateWizardStep(step ?? 1, {
+              farmName,
+              timezone,
+              wifiConfigured,
+              llmProvider,
+            });
+            // Also auto-save wizard session for VAL-IMG-018
+            const existingSession = mgr.loadWizardSession() ?? {
+              step: step ?? 1,
+              farmName: farmName ?? 'My Farm',
+              timezone:
+                timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+              llmProvider: llmProvider ?? 'ollama',
+              wifiConfigured: wifiConfigured ?? false,
+              telegramEnabled: false,
+              savedAt: new Date().toISOString(),
+              expiresAt: new Date(
+                Date.now() + 2 * 60 * 60 * 1000,
+              ).toISOString(), // 2 hours
+            };
+            const updatedSession = {
+              ...existingSession,
+              step: step ?? existingSession.step,
+              farmName: farmName ?? existingSession.farmName,
+              timezone: timezone ?? existingSession.timezone,
+              wifiConfigured: wifiConfigured ?? existingSession.wifiConfigured,
+              llmProvider: llmProvider ?? existingSession.llmProvider,
+              savedAt: new Date().toISOString(),
+              expiresAt: new Date(
+                Date.now() + 2 * 60 * 60 * 1000,
+              ).toISOString(),
+            };
+            mgr.saveWizardSession(updatedSession);
+            sendJson(res, 200, { ok: true, wizardStep: state.wizardStep });
+          } catch (err: any) {
+            sendJson(res, 500, { error: err.message });
+          }
+          return;
+        }
+
+        // GET /api/provisioning/wizard-session — load auto-saved session (VAL-IMG-018)
+        if (provApiPath === '/wizard-session' && method === 'GET') {
+          const session = mgr.loadWizardSession();
+          if (!session) {
+            sendJson(res, 404, { error: 'No saved wizard session found' });
+            return;
+          }
+          sendJson(res, 200, session);
+          return;
+        }
+
+        // POST /api/provisioning/complete — write .env and mark complete (VAL-IMG-007, VAL-IMG-019)
+        if (provApiPath === '/complete' && method === 'POST') {
+          let body = '';
+          for await (const chunk of req) body += chunk;
+          const parsed = body ? JSON.parse(body) : {};
+          try {
+            // VAL-IMG-019: Atomic .env write - no partial file left on failure
+            // The generateEnv method uses write-to-temp-then-rename
+            await mgr.generateEnv(parsed);
+            const state = mgr.completeProvisioning();
+            sendJson(res, 200, { ok: true, state: state.state });
+          } catch (err: any) {
+            // VAL-IMG-019: If write fails, clear error shown, no redirect
+            mgr.failProvisioning(err.message);
+            sendJson(res, 500, {
+              error:
+                err.message ?? 'Setup could not be saved — please try again.',
+            });
+          }
+          return;
+        }
+
+        // POST /api/provisioning/reset — reset to unprovisioned state (VAL-IMG-015)
+        if (provApiPath === '/reset' && method === 'POST') {
+          const {
+            getProvisioningManager: gm2,
+            getFarmPalEnvFile: getEnv,
+            getProvisionedFlagFile: getFlag,
+            getProvisioningStateFile: getState,
+          } = await import('../first-boot.js');
+          const mgr2 = gm2();
+          try {
+            const envFile = getEnv();
+            for (const file of [envFile, getFlag(), getState()]) {
+              try {
+                if (fs.existsSync(file)) fs.unlinkSync(file);
+              } catch {
+                /* ignore */
+              }
+            }
+            mgr2.clearWizardSession();
+            sendJson(res, 200, { ok: true });
+          } catch (err: any) {
+            sendJson(res, 500, { error: err.message });
+          }
+          return;
+        }
+
+        // GET /api/provisioning/network — network status for HDMI fallback (VAL-IMG-016)
+        if (provApiPath === '/network' && method === 'GET') {
+          const hasNetwork = mgr.hasNetworkConnectivity();
+          const primaryIp = mgr.getPrimaryIpAddress();
+          const avahiRunning = mgr.isAvahiRunning();
+          sendJson(res, 200, {
+            hasNetworkConnectivity: hasNetwork,
+            primaryIp,
+            avahiRunning,
+            farmpalLocal: avahiRunning ? 'http://farmpal.local:3392' : null,
+          });
+          return;
+        }
+
+        sendJson(res, 404, { error: 'Provisioning endpoint not found' });
+        return;
+      }
+
       if (apiPath === '/cameras' && method === 'GET') {
-        sendJson(res, 200, halRegistry.list().filter((d: any) => d.type === 'camera'));
+        sendJson(
+          res,
+          200,
+          halRegistry.list().filter((d: any) => d.type === 'camera'),
+        );
         return;
       }
 
@@ -252,7 +497,10 @@ export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise
     }
 
     // Static files from src/web/hal-ui/ (or built dist/web/hal-ui/)
-    let filePath = path.join(staticDir, requestPath === '/' ? 'index.html' : requestPath);
+    let filePath = path.join(
+      staticDir,
+      requestPath === '/' ? 'index.html' : requestPath,
+    );
     if (!filePath.startsWith(staticDir)) {
       res.writeHead(403);
       res.end('Forbidden');
@@ -279,6 +527,14 @@ export async function startHalUiServer(port = 3392, host = '127.0.0.1'): Promise
     server.listen(port, bindHost, () => resolve());
   });
 
-  logger.info({ port, host, bindHost }, 'HAL UI server listening on http://{bindHost}:{port}');
-  return { host, port, close: () => new Promise<void>(resolve => server.close((_err?: Error) => resolve())) };
+  logger.info(
+    { port, host, bindHost },
+    'HAL UI server listening on http://{bindHost}:{port}',
+  );
+  return {
+    host,
+    port,
+    close: () =>
+      new Promise<void>((resolve) => server.close((_err?: Error) => resolve())),
+  };
 }
