@@ -111,17 +111,9 @@
   }
   function formatTimeValue(date, format) {
     if (format === "12h") {
-      return date.toLocaleTimeString("en-US", {
-        hour12: true,
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      return date.toLocaleTimeString("en-US", { hour12: true, hour: "2-digit", minute: "2-digit" });
     }
-    return date.toLocaleTimeString("en-US", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit"
-    });
+    return date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
   }
   function formatDateTimeValue(date, format) {
     if (format === "12h") {
@@ -456,9 +448,7 @@
       const y1 = pts[i].y + m[i] * dx[i] / 3;
       const x2 = pts[i + 1].x - dx[i] / 3;
       const y2 = pts[i + 1].y - m[i + 1] * dx[i] / 3;
-      parts.push(
-        `C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`
-      );
+      parts.push(`C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`);
     }
     return parts.join(" ");
   }
@@ -502,10 +492,7 @@
     const timeLabels = Array.from({ length: timeSteps + 1 }, (_, i) => {
       const t = tMin + i / timeSteps * tSpan;
       const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       return `<text x="${x.toFixed(1)}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`;
     }).join("");
     const primary = layerPaths[0];
@@ -526,14 +513,12 @@
         return `<text x="${width - pad.right + 6}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.color}">${v.toFixed(1)}${unit}</text>`;
       }).join("");
     }
-    const defs = layerPaths.map(
-      (lp, i) => `
+    const defs = layerPaths.map((lp, i) => `
     <linearGradient id="ck-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.28"/>
       <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.02"/>
     </linearGradient>
-  `
-    ).join("");
+  `).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#ck-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -569,8 +554,7 @@
     const kpiDelta = `${primaryMetric.delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(primaryMetric.delta).toFixed(1)}%`;
     let statsHtml = "";
     if (opts.showStats !== false) {
-      statsHtml = `<div class="ck-stats">` + latestValues.map(
-        (l) => `
+      statsHtml = `<div class="ck-stats">` + latestValues.map((l) => `
         <div class="ck-stat-metric">
           <span class="ck-stat-label" style="color:${l.color}">${escapeHtml3(l.label)}</span>
           <span class="ck-stat-current" style="color:${l.color}">${l.current.toFixed(1)}${l.unit}</span>
@@ -580,8 +564,7 @@
           <div class="ck-stat-item"><label>Avg</label><strong>${l.avg.toFixed(1)}${l.unit}</strong></div>
           <div class="ck-stat-item"><label>Max</label><strong>${l.max.toFixed(1)}${l.unit}</strong></div>
         </div>
-      `
-      ).join("") + `</div>`;
+      `).join("") + `</div>`;
     }
     const titleHtml = opts.title ? `<div class="ck-head">
          <div>
@@ -598,14 +581,10 @@
     container.innerHTML = `${titleHtml}<div class="ck-chart">${svg}</div>${statsHtml}${footHtml}`;
   }
   function renderOverviewZoneCard(zone, activeKeys) {
-    const metricsByKey = new Map(
-      zone.metrics.map((metric) => [metric.key, metric])
-    );
+    const metricsByKey = new Map(zone.metrics.map((metric) => [metric.key, metric]));
     const activeMetrics = overviewMetricOrder.filter((key) => activeKeys.has(key)).map((key) => metricsByKey.get(key)).filter((metric) => Boolean(metric));
     const chartMetrics = activeMetrics.filter((metric) => metric.data.length > 0);
-    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map(
-      (metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`
-    ).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
+    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map((metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
     if (chartMetrics.length === 0) {
       return `
       <article class="dhc-card">
@@ -628,11 +607,7 @@
     const pad = { l: 48, r: 48, t: 24, b: 36 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const times = Array.from(
-      new Set(
-        chartMetrics.flatMap((metric) => metric.data.map((point) => point.t))
-      )
-    ).sort((a, b) => a - b);
+    const times = Array.from(new Set(chartMetrics.flatMap((metric) => metric.data.map((point) => point.t)))).sort((a, b) => a - b);
     const x = (i, len) => len <= 1 ? pad.l + cw / 2 : pad.l + i / (len - 1) * cw;
     const xForTs = new Map(times.map((t, i) => [t, x(i, times.length)]));
     const gradientPrefix = (zone.zoneName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "zone").slice(0, 40);
@@ -648,18 +623,12 @@
       const max = Math.max(...values);
       const span = Math.max(1e-4, max - min);
       const y = (v) => pad.t + (max - v) / span * ch;
-      const path = values.map(
-        (value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`
-      ).join(" ");
+      const path = values.map((value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`).join(" ");
       const areaPath = path ? `${path} L${x(times.length - 1, times.length)},${pad.t + ch} L${x(0, times.length)},${pad.t + ch} Z` : "";
       return { metric, values, min, max, span, y, path, areaPath };
     });
     const primary = series[0];
-    const primaryGrid = [
-      primary.max,
-      primary.min + primary.span / 2,
-      primary.min
-    ];
+    const primaryGrid = [primary.max, primary.min + primary.span / 2, primary.min];
     const primaryUnit = activeMetrics[0]?.unit || "";
     const gridLines = primaryGrid.map((value, i) => {
       const y = primary.y(value);
@@ -668,20 +637,14 @@
       <line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 15%, var(--border))"/>
     `;
     }).join("");
-    const defs = series.map(
-      (entry) => `
+    const defs = series.map((entry) => `
     <linearGradient id="${gradientPrefix}-${entry.metric.key}-grad" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${entry.metric.color}" stop-opacity="0.18"/>
       <stop offset="100%" stop-color="${entry.metric.color}" stop-opacity="0.01"/>
     </linearGradient>
-  `
-    ).join("");
-    const shade = series.map(
-      (entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : ""
-    ).join("");
-    const lines = series.map(
-      (entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`
-    ).join("");
+  `).join("");
+    const shade = series.map((entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : "").join("");
+    const lines = series.map((entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`).join("");
     const dots = series.map((entry) => {
       const lastTs = times[times.length - 1];
       const lastVal = entry.values[entry.values.length - 1];
@@ -757,9 +720,7 @@
     );
     const activeFromState = opts.activeKeys ?? new Set(overviewMetricOrder);
     const activeKeys = new Set(
-      overviewMetricOrder.filter(
-        (key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0)
-      )
+      overviewMetricOrder.filter((key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0))
     );
     if (activeKeys.size === 0) {
       const fallback = overviewMetricOrder.find((key) => availableKeys.has(key)) ?? overviewMetricOrder[0];
@@ -803,19 +764,13 @@
     }
     const activeKeys = opts.activeKeys ?? new Set(metrics2.map((m) => m.key));
     const normalizedActiveKeys = new Set(
-      Array.from(activeKeys).filter(
-        (key) => metricsWithData.some((metric) => metric.key === key)
-      )
+      Array.from(activeKeys).filter((key) => metricsWithData.some((metric) => metric.key === key))
     );
     if (normalizedActiveKeys.size === 0) {
-      const fallbackKey = ["temperature", "humidity", "co2"].find(
-        (key) => metricsWithData.some((metric) => metric.key === key)
-      ) ?? metricsWithData[0]?.key;
+      const fallbackKey = ["temperature", "humidity", "co2"].find((key) => metricsWithData.some((metric) => metric.key === key)) ?? metricsWithData[0]?.key;
       if (fallbackKey) normalizedActiveKeys.add(fallbackKey);
     }
-    const activeMetrics = metricsWithData.filter(
-      (m) => normalizedActiveKeys.has(m.key)
-    );
+    const activeMetrics = metricsWithData.filter((m) => normalizedActiveKeys.has(m.key));
     const chartMetrics = activeMetrics.filter((m) => m.data.length > 0);
     if (chartMetrics.length === 0) {
       container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
@@ -827,9 +782,7 @@
     const pad = { l: 18, r: 16, t: 20, b: 24 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const times = Array.from(
-      new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))
-    ).sort((a, b) => a - b);
+    const times = Array.from(new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))).sort((a, b) => a - b);
     if (times.length === 0) {
       container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
       return;
@@ -845,12 +798,7 @@
         axisMax = axisMax * 9 / 5 + 32;
       }
       const vSpan = Math.max(1, axisMax - axisMin);
-      const exact = new Map(
-        metric.data.map((d) => [
-          d.t,
-          Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))
-        ])
-      );
+      const exact = new Map(metric.data.map((d) => [d.t, Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))]));
       const firstNorm = exact.size > 0 ? exact.get(metric.data[0].t) ?? 0 : 0;
       let carry = firstNorm;
       const values = times.map((t) => {
@@ -882,12 +830,8 @@
         botPts.push({ x: px, y: y(seg?.y1 ?? 0) });
       }
       const topPath = monotoneCubicPath(topPts);
-      const topLine = topPts.map(
-        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
-      ).join(" ");
-      const botLine = botPts.map(
-        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
-      ).join(" ");
+      const topLine = topPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const botLine = botPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
       const area = topLine ? `${topLine} L${botPts[botPts.length - 1]?.x.toFixed(1)},${botPts[botPts.length - 1]?.y.toFixed(1)} ${botPts.slice().reverse().map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")} Z` : "";
       return { series, area, topPath, topPts };
     });
@@ -895,14 +839,12 @@
       const gy = pad.t + step * ch;
       return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${gy}" y2="${gy}" class="dhc-grid"/>`;
     }).join("");
-    const defs = layerPaths.map(
-      (lp, i) => `
+    const defs = layerPaths.map((lp, i) => `
     <linearGradient id="dhc-lake-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.series.metric.color}" stop-opacity="0.56"/>
       <stop offset="100%" stop-color="${lp.series.metric.color}" stop-opacity="0.08"/>
     </linearGradient>
-  `
-    ).join("");
+  `).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#dhc-lake-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -953,9 +895,7 @@
     const primaryCurrent = primaryMetric.data[primaryMetric.data.length - 1].v;
     const primaryPrev = primaryMetric.data[primaryMetric.data.length - 2]?.v ?? primaryCurrent;
     const delta = primaryPrev ? (primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100 : 0;
-    const titleColors = activeMetrics.map(
-      (m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`
-    ).join(' <span style="color:var(--text-secondary)">+</span> ');
+    const titleColors = activeMetrics.map((m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`).join(' <span style="color:var(--text-secondary)">+</span> ');
     const zoneToggleHtml = opts.zoneToggles ? `<div class="dhc-zone-toggles">
         <button class="dhc-zone-toggle ${opts.zoneToggles.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>
         ${opts.zoneToggles.zones.map((z) => {
@@ -1042,14 +982,8 @@
     }).join("");
     const lx = x(vals.length - 1).toFixed(1);
     const ly = y(vals[vals.length - 1]).toFixed(1);
-    const t0 = new Date(data[0].ts).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit"
-    });
+    const t0 = new Date(data[0].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     container.innerHTML = `
     <svg class="og-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
       ${grids}
@@ -1065,8 +999,7 @@
   function renderStackedAreaChart(layers, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || layers.length === 0) {
-      if (container)
-        container.innerHTML = '<div class="chart-empty">No data</div>';
+      if (container) container.innerHTML = '<div class="chart-empty">No data</div>';
       return;
     }
     const colorGroups = /* @__PURE__ */ new Map();
@@ -1132,20 +1065,15 @@
     const timeLabels = Array.from({ length: 7 }, (_, i) => {
       const t = tMin + i / 6 * tSpan;
       const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
     }).join("");
-    const defs = layerPaths.map(
-      (lp, i) => `
+    const defs = layerPaths.map((lp, i) => `
     <linearGradient id="stack-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.55"/>
       <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.08"/>
     </linearGradient>
-  `
-    ).join("");
+  `).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#stack-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -1153,35 +1081,23 @@
       (lp) => lp.topPath ? `<path d="${lp.topPath}" fill="none" stroke="${lp.layer.color}" stroke-width="1.5" stroke-linejoin="round"/>` : ""
     ).join("");
     const svg = `
-    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
       <defs>${defs}</defs>
       ${gridLines}${areas}${lines}${timeLabels}
     </svg>
   `;
-    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map(
-      (l) => `
+    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map((l) => `
         <span class="legend-item" style="--metric-color:${l.color}">
           <span class="legend-dot"></span>${escapeHtml3(l.label)}
-        </span>`
-    ).join("")}</div>` : "";
+        </span>`).join("")}</div>` : "";
     container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
   }
   function renderAreaCard(data, metricKey, containerId, title) {
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || {
-      label: metricKey,
-      color: "#888",
-      unit: "",
-      minAxis: 0,
-      maxAxis: 100
-    };
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metricKey,
-      store.unitSystem
-    );
+    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
+    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -1197,10 +1113,7 @@
     const vSpan = Math.max(1, axisMax - axisMin);
     const points = data.map((d) => {
       const v = formatSensorValue(d.value, metricKey, store.unitSystem).value;
-      return {
-        x: tx(new Date(d.timestamp).getTime()),
-        y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b)
-      };
+      return { x: tx(new Date(d.timestamp).getTime()), y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b) };
     });
     const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
     const area = `${line} L${points[points.length - 1].x.toFixed(1)},${h - pad.b} L${points[0].x.toFixed(1)},${h - pad.b} Z`;
@@ -1223,18 +1136,8 @@
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || {
-      label: metricKey,
-      color: "#888",
-      unit: "",
-      minAxis: 0,
-      maxAxis: 100
-    };
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metricKey,
-      store.unitSystem
-    );
+    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
+    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -1262,18 +1165,8 @@
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || {
-      label: metricKey,
-      color: "#888",
-      unit: "",
-      minAxis: 0,
-      maxAxis: 100
-    };
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metricKey,
-      store.unitSystem
-    );
+    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
+    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -1300,8 +1193,7 @@
   function renderDecisionBarTrend(points, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || points.length === 0) {
-      if (container)
-        container.innerHTML = '<div class="chart-empty">No decision data</div>';
+      if (container) container.innerHTML = '<div class="chart-empty">No decision data</div>';
       return;
     }
     const W = opts.width ?? (container.clientWidth || 600);
@@ -1309,10 +1201,7 @@
     const pad = { t: 20, r: 16, b: 40, l: 40 };
     const chartW = W - pad.l - pad.r;
     const chartH = H - pad.t - pad.b;
-    const maxVal = Math.max(
-      ...points.flatMap((p) => [p.success, p.failure, p.pending]),
-      1
-    );
+    const maxVal = Math.max(...points.flatMap((p) => [p.success, p.failure, p.pending]), 1);
     const groupW = chartW / points.length;
     const barW = groupW * 0.22;
     const gap = groupW * 0.04;
@@ -1506,12 +1395,7 @@
     if (!container || cells.length === 0) return;
     const W = opts.width ?? (container.clientWidth || 600);
     const H = opts.height ?? 100;
-    const colorRange = opts.colorRange ?? [
-      "#0a1a12",
-      "#1a4030",
-      "#4aB070",
-      "#F59E0B"
-    ];
+    const colorRange = opts.colorRange ?? ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B"];
     const dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const hours = Array.from({ length: 24 }, (_, i) => i);
     const cellW = (W - 40) / 24;
@@ -1522,10 +1406,7 @@
     const vSpan = Math.max(1e-3, vMax - vMin);
     const colorFor = (v) => {
       const t = (v - vMin) / vSpan;
-      const idx = Math.min(
-        colorRange.length - 1,
-        Math.floor(t * colorRange.length)
-      );
+      const idx = Math.min(colorRange.length - 1, Math.floor(t * colorRange.length));
       return colorRange[idx];
     };
     const rects = cells.map((c) => {
@@ -1663,7 +1544,6 @@
 .hero-svg {
   display: block;
   width: 100%;
-  height: 100%;
   min-height: 0;
   flex: 1;
 }
@@ -1965,56 +1845,14 @@
       "use strict";
       init_store();
       metricConfig = {
-        temperature: {
-          label: "Temperature",
-          color: "#F59E0B",
-          unit: "\xB0C",
-          minAxis: 10,
-          maxAxis: 40
-        },
-        humidity: {
-          label: "Humidity",
-          color: "#38BDF8",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
-        soil_moisture: {
-          label: "Soil Moisture",
-          color: "#EF4444",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
-        water_level: {
-          label: "Water Level",
-          color: "#2563EB",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
+        temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
+        humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
+        soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
+        water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
         ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
-        co2: {
-          label: "CO\u2082",
-          color: "#22C55E",
-          unit: "ppm",
-          minAxis: 0,
-          maxAxis: 2e3
-        },
-        light: {
-          label: "Light",
-          color: "#FACC15",
-          unit: "lux",
-          minAxis: 0,
-          maxAxis: 1e5
-        },
-        weight: {
-          label: "Weight",
-          color: "#94A3B8",
-          unit: "kg",
-          minAxis: 0,
-          maxAxis: 100
-        },
+        co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
+        light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
+        weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
         vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
       };
       DECISION_COLORS = {
@@ -2044,8 +1882,7 @@
     { id: "terminal", label: "Terminal", icon: terminalIcon() }
   ];
   function renderSidebar(activeView, collapsed) {
-    const items = navItems.map(
-      (item) => `
+    const items = navItems.map((item) => `
     <button
       class="sidebar-item ${item.id === activeView ? "active" : ""}"
       data-view="${item.id}"
@@ -2054,8 +1891,7 @@
       <span class="sidebar-icon">${item.icon}</span>
       <span class="sidebar-label">${item.label}</span>
     </button>
-  `
-    ).join("");
+  `).join("");
     return `
     <aside class="sidebar ${collapsed ? "collapsed" : ""}" id="hal-sidebar">
       <div class="sidebar-header">
@@ -2327,8 +2163,7 @@
   init_store();
   function renderHeader(theme) {
     const themes = Object.entries(themeDefinitions);
-    const dots = themes.map(
-      ([key, def]) => `
+    const dots = themes.map(([key, def]) => `
     <button
       class="theme-dot ${key === theme ? "active" : ""}"
       data-theme="${key}"
@@ -2336,8 +2171,7 @@
       title="${def.label}"
       style="--dot-color:${def.accent}"
     ></button>
-  `
-    ).join("");
+  `).join("");
     const currentDef = themeDefinitions[theme];
     return `
     <header class="hal-header">
@@ -2416,9 +2250,7 @@
     function tick() {
       const el = document.getElementById("hal-clock");
       if (el) {
-        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
-          hour12: false
-        });
+        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", { hour12: false });
       }
     }
     tick();
@@ -3152,8 +2984,7 @@
       url += "?" + qs;
     }
     const res = await fetch(url);
-    if (!res.ok)
-      throw new Error(`HAL API ${url} failed: ${res.status} ${res.statusText}`);
+    if (!res.ok) throw new Error(`HAL API ${url} failed: ${res.status} ${res.statusText}`);
     return res.json();
   }
   async function halPost(path, body) {
@@ -3162,8 +2993,7 @@
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : void 0
     });
-    if (!res.ok)
-      throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
+    if (!res.ok) throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
     return res.json();
   }
   function normalizeDevice(device) {
@@ -3194,9 +3024,7 @@
       normalized[deviceId] = {};
       for (const [metric, reading] of Object.entries(snapshot)) {
         if (reading && typeof reading === "object") {
-          const normalizedReading = normalizeSensorReading(
-            reading
-          );
+          const normalizedReading = normalizeSensorReading(reading);
           if (normalizedReading) {
             normalized[deviceId][metric] = normalizedReading;
           }
@@ -3260,9 +3088,7 @@
     },
     // GET /api/hal/decisions
     async getDecisions(limit = 20) {
-      const decisions = await halGet("/decisions", {
-        limit: String(limit)
-      });
+      const decisions = await halGet("/decisions", { limit: String(limit) });
       return decisions.map(normalizeDecision);
     },
     // GET /api/hal/cameras
@@ -3289,56 +3115,14 @@
     "weight"
   ];
   var metricConfig2 = {
-    temperature: {
-      label: "Temperature",
-      color: "#F59E0B",
-      unit: "\xB0C",
-      minAxis: 10,
-      maxAxis: 40
-    },
-    humidity: {
-      label: "Humidity",
-      color: "#38BDF8",
-      unit: "%",
-      minAxis: 0,
-      maxAxis: 100
-    },
-    soil_moisture: {
-      label: "Soil Moisture",
-      color: "#EF4444",
-      unit: "%",
-      minAxis: 0,
-      maxAxis: 100
-    },
-    water_level: {
-      label: "Water Level",
-      color: "#2563EB",
-      unit: "%",
-      minAxis: 0,
-      maxAxis: 100
-    },
+    temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
+    humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
+    soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
+    water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
     ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
-    co2: {
-      label: "CO\u2082",
-      color: "#22C55E",
-      unit: "ppm",
-      minAxis: 0,
-      maxAxis: 2e3
-    },
-    light: {
-      label: "Light",
-      color: "#FACC15",
-      unit: "lux",
-      minAxis: 0,
-      maxAxis: 1e5
-    },
-    weight: {
-      label: "Weight",
-      color: "#94A3B8",
-      unit: "kg",
-      minAxis: 0,
-      maxAxis: 100
-    },
+    co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
+    light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
+    weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
     vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
   };
   function resolveZoneName(deviceId, deviceName) {
@@ -3442,9 +3226,7 @@
   async function buildKpiData() {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter(
-      (d) => d.type === "relay" || d.type === "smart_plug"
-    );
+    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
     const activeRelays = relays.filter((d) => d.state === "on");
     const onlineDevices = store.devices.filter((d) => d.online).length;
     const [tempHistory, humHistory, co2History] = await Promise.all([
@@ -3471,11 +3253,7 @@
     for (const s of sensors) {
       const snap = store.sensors[s.id];
       if (snap?.temperature?.value != null) {
-        const converted = formatSensorValue(
-          snap.temperature.value,
-          "temperature",
-          store.unitSystem
-        );
+        const converted = formatSensorValue(snap.temperature.value, "temperature", store.unitSystem);
         tempSum += converted.value;
         tempCount++;
       }
@@ -3561,10 +3339,7 @@
         const data = await halApi.getSensorHistory(s.id, metric, from, to);
         if (data.length > 1) {
           const step = Math.max(1, Math.floor(data.length / buckets));
-          return Array.from(
-            { length: Math.min(buckets, data.length) },
-            (_, i) => data[Math.min(i * step, data.length - 1)].value
-          );
+          return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
         }
       }
     } catch {
@@ -3580,10 +3355,7 @@
         const data = await halApi.getSensorHistory(s.id, metric, from, to);
         if (data.length > 1) {
           const step = Math.max(1, Math.floor(data.length / buckets));
-          return Array.from(
-            { length: Math.min(buckets, data.length) },
-            (_, i) => data[Math.min(i * step, data.length - 1)].value
-          );
+          return Array.from({ length: Math.min(buckets, data.length) }, (_, i) => data[Math.min(i * step, data.length - 1)].value);
         }
       }
     } catch {
@@ -3699,9 +3471,7 @@
   async function renderOperatorPanels() {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter(
-      (d) => d.type === "relay" || d.type === "smart_plug"
-    );
+    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
     const cameras = store.devices.filter((d) => d.type === "camera");
     const powerHistory = await fetchPowerHistory(relays);
     return `
@@ -3728,8 +3498,7 @@
       </div>
     `;
     }
-    const grid = relays.map(
-      (r) => `
+    const grid = relays.map((r) => `
     <div class="op-device-cell ${r.online ? "online" : "offline"}" data-device-id="${r.id}">
       <div class="op-device-icon">${r.type === "relay" ? "RLY" : "PLG"}</div>
       <div class="op-device-info">
@@ -3740,8 +3509,7 @@
         <div class="op-toggle-thumb"></div>
       </div>
     </div>
-  `
-    ).join("");
+  `).join("");
     const onCount = relays.filter((r) => r.state === "on").length;
     return `
     <div class="op-panel hal-card">
@@ -3758,21 +3526,17 @@
   function renderAutomationStatsPanel(decisions) {
     const now = Date.now();
     const oneHour = 60 * 60 * 1e3;
-    const recent = decisions.filter(
-      (d) => now - new Date(d.timestamp).getTime() < oneHour
-    );
+    const recent = decisions.filter((d) => now - new Date(d.timestamp).getTime() < oneHour);
     const successCount = recent.filter((d) => d.status === "success").length;
     const successRate = recent.length > 0 ? successCount / recent.length * 100 : 0;
     const buckets = [];
     for (let h = 5; h >= 0; h--) {
       const start = now - (h + 1) * oneHour;
       const end = now - h * oneHour;
-      buckets.push(
-        decisions.filter((d) => {
-          const t = new Date(d.timestamp).getTime();
-          return t >= start && t < end;
-        }).length
-      );
+      buckets.push(decisions.filter((d) => {
+        const t = new Date(d.timestamp).getTime();
+        return t >= start && t < end;
+      }).length);
     }
     return `
     <div class="op-panel hal-card">
@@ -3804,22 +3568,12 @@
     const alerts = [];
     for (const s of sensors) {
       if (!s.online) {
-        alerts.push({
-          level: "critical",
-          text: `${s.name} offline`,
-          time: "now"
-        });
+        alerts.push({ level: "critical", text: `${s.name} offline`, time: "now" });
       }
     }
-    const failed = decisions.filter(
-      (d) => d.status === "failure" && now - new Date(d.timestamp).getTime() < 36e5
-    );
+    const failed = decisions.filter((d) => d.status === "failure" && now - new Date(d.timestamp).getTime() < 36e5);
     for (const d of failed.slice(0, 3)) {
-      alerts.push({
-        level: "warning",
-        text: d.decision.slice(0, 40),
-        time: formatRelTime(d.timestamp)
-      });
+      alerts.push({ level: "warning", text: d.decision.slice(0, 40), time: formatRelTime(d.timestamp) });
     }
     if (alerts.length === 0) {
       return `
@@ -3842,15 +3596,13 @@
         ${criticalCount > 0 ? `<span class="status-chip status-chip--offline">${criticalCount} critical</span>` : `<span class="status-chip status-chip--online">Clear</span>`}
       </div>
       <div class="op-panel-body">
-        ${alerts.slice(0, 5).map(
-      (a) => `
+        ${alerts.slice(0, 5).map((a) => `
           <div class="op-alert ${a.level}">
             <span class="op-alert-dot"></span>
             <span class="op-alert-text">${escapeHtml4(a.text)}</span>
             <span class="op-alert-time text-xs text-secondary">${a.time}</span>
           </div>
-        `
-    ).join("")}
+        `).join("")}
       </div>
     </div>
   `;
@@ -4196,15 +3948,13 @@
       </div>
     `;
     }
-    const lines = entries.map(
-      (e) => `
+    const lines = entries.map((e) => `
     <div class="terminal-line ${e.level}">
       <span class="terminal-time text-mono">${formatTime2(e.timestamp)}</span>
       <span class="terminal-source">${escapeHtml5(e.source)}</span>
       <span class="terminal-msg">${escapeHtml5(e.message)}</span>
     </div>
-  `
-    ).join("");
+  `).join("");
     return `
     <div class="terminal-wrap hal-card">
       <div class="terminal-header">
@@ -4246,19 +3996,12 @@
         message: `${d.decision} [${(d.confidence * 100).toFixed(0)}%]`
       });
     }
-    entries.sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     return entries;
   }
   function formatTime2(iso) {
     try {
-      return new Date(iso).toLocaleTimeString("en-US", {
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit"
-      });
+      return new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
     } catch {
       return "--:--:--";
     }
@@ -4400,17 +4143,14 @@
   `;
   }
   function renderCalmDeviceList(devices) {
-    if (devices.length === 0)
-      return '<p class="text-secondary text-sm">No active devices</p>';
-    return devices.slice(0, 6).map(
-      (d) => `
+    if (devices.length === 0) return '<p class="text-secondary text-sm">No active devices</p>';
+    return devices.slice(0, 6).map((d) => `
     <div class="calm-device-item ${d.online ? "online" : "offline"}">
       <span class="calm-device-dot"></span>
       <span class="calm-device-name">${escapeHtml6(d.name)}</span>
       <span class="calm-device-type text-xs text-secondary">${d.type}</span>
     </div>
-  `
-    ).join("");
+  `).join("");
   }
   var dashActiveMetrics = /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]);
   var dashLoadSequence = 0;
@@ -4429,39 +4169,28 @@
     return zones.slice().sort((a, b) => {
       if (a === "Unzoned") return 1;
       if (b === "Unzoned") return -1;
-      return a.localeCompare(b, void 0, {
-        numeric: true,
-        sensitivity: "base"
-      });
+      return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
     });
   }
   function aggregateZoneOverviewCards(layers, zones, unitSystem) {
     const zoneMetricBuckets = /* @__PURE__ */ new Map();
     for (const zone of zones) {
-      zoneMetricBuckets.set(
-        zone,
-        /* @__PURE__ */ new Map([
-          ["temperature", /* @__PURE__ */ new Map()],
-          ["humidity", /* @__PURE__ */ new Map()],
-          ["co2", /* @__PURE__ */ new Map()]
-        ])
-      );
+      zoneMetricBuckets.set(zone, /* @__PURE__ */ new Map([
+        ["temperature", /* @__PURE__ */ new Map()],
+        ["humidity", /* @__PURE__ */ new Map()],
+        ["co2", /* @__PURE__ */ new Map()]
+      ]));
     }
     for (const layer of layers) {
       if (!zoneMetricBuckets.has(layer.zoneName)) continue;
-      if (!OVERVIEW_METRIC_KEYS.includes(layer.metric))
-        continue;
+      if (!OVERVIEW_METRIC_KEYS.includes(layer.metric)) continue;
       const metricKey = layer.metric;
       const metricBuckets = zoneMetricBuckets.get(layer.zoneName).get(metricKey);
       for (const reading of layer.data) {
         const timestampMs = new Date(reading.timestamp).getTime();
         if (!Number.isFinite(timestampMs)) continue;
         const bucketTs = Math.floor(timestampMs / 6e4) * 6e4;
-        const converted = formatSensorValue(
-          reading.value,
-          metricKey,
-          unitSystem
-        ).value;
+        const converted = formatSensorValue(reading.value, metricKey, unitSystem).value;
         const current = metricBuckets.get(bucketTs) ?? { sum: 0, count: 0 };
         current.sum += converted;
         current.count += 1;
@@ -4523,9 +4252,7 @@
       const { layers } = await loadHeroChartData();
       if (sequence !== dashLoadSequence) return;
       const store = getStore();
-      const zones = sortZonesDeterministically([
-        ...new Set(layers.map((l) => l.zoneName).filter(Boolean))
-      ]);
+      const zones = sortZonesDeterministically([...new Set(layers.map((l) => l.zoneName).filter(Boolean))]);
       if (zones.length === 0) {
         const inferredZones = /* @__PURE__ */ new Set();
         for (const device of store.devices.filter((d) => d.type === "sensor")) {
@@ -4536,15 +4263,9 @@
           zones.push(...sortZonesDeterministically(Array.from(inferredZones)));
         }
       }
-      const zoneCards = aggregateZoneOverviewCards(
-        layers,
-        zones,
-        store.unitSystem
-      );
+      const zoneCards = aggregateZoneOverviewCards(layers, zones, store.unitSystem);
       const availableMetricKeys = new Set(
-        zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter(
-          (key) => OVERVIEW_METRIC_KEYS.includes(key)
-        )
+        zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter((key) => OVERVIEW_METRIC_KEYS.includes(key))
       );
       const fallbackMetric = OVERVIEW_METRIC_KEYS.find((key) => availableMetricKeys.has(key)) ?? Array.from(availableMetricKeys)[0];
       for (const key of Array.from(dashActiveMetrics)) {
@@ -4560,9 +4281,7 @@
         activeKeys: new Set(dashActiveMetrics),
         onToggle: (key) => {
           if (!availableMetricKeys.has(key)) return;
-          const currentlyActive = Array.from(dashActiveMetrics).filter(
-            (metricKey) => availableMetricKeys.has(metricKey)
-          );
+          const currentlyActive = Array.from(dashActiveMetrics).filter((metricKey) => availableMetricKeys.has(metricKey));
           if (dashActiveMetrics.has(key)) {
             if (currentlyActive.length <= 1) return;
             dashActiveMetrics.delete(key);
@@ -4686,10 +4405,7 @@
         if (snap?.[m]?.value != null) values.push(snap[m].value);
       }
       const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-      const trend = Array.from(
-        { length: 20 },
-        (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1)
-      );
+      const trend = Array.from({ length: 20 }, (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1));
       const spark = renderSparkline(trend, metricColors[m] || "#888", 120, 28);
       const label = m.charAt(0).toUpperCase() + m.slice(1);
       return `
@@ -4706,9 +4422,7 @@
   }
   function renderDiagnosticExtras(store) {
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter(
-      (d) => d.type === "relay" || d.type === "smart_plug"
-    );
+    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
     const cameras = store.devices.filter((d) => d.type === "camera");
     return `
     <div class="diag-extras hal-card">
@@ -4772,8 +4486,7 @@
     if (devices.length === 0) {
       return '<div class="empty-state"><p>No devices registered</p></div>';
     }
-    return devices.map(
-      (d) => `
+    return devices.map((d) => `
     <div class="device-mini-card ${d.online ? "online" : "offline"}" data-device-id="${d.id}">
       <div class="device-mini-icon">${deviceIcon(d.type)}</div>
       <div class="device-mini-info">
@@ -4786,15 +4499,13 @@
         </div>
       ` : ""}
     </div>
-  `
-    ).join("");
+  `).join("");
   }
   function renderRecentDecisions(decisions) {
     if (decisions.length === 0) {
       return '<div class="empty-state"><p>No decisions yet</p></div>';
     }
-    return decisions.map(
-      (d) => `
+    return decisions.map((d) => `
     <div class="decision-row ${d.status || "pending"}">
       <div class="decision-time text-mono text-xs text-secondary">${formatTime3(d.timestamp)}</div>
       <div class="decision-trigger text-sm">${escapeHtml6(d.trigger)}</div>
@@ -4804,8 +4515,7 @@
         <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor2(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
       </div>
     </div>
-  `
-    ).join("");
+  `).join("");
   }
   function attachDashboardHandlers() {
     document.querySelectorAll(".device-mini-card").forEach((card) => {
@@ -5292,10 +5002,7 @@
         continue;
       }
       const base = values[0];
-      const trend = Array.from(
-        { length: 15 },
-        (_, i) => base + Math.sin(i * 0.8) * (base * 0.05)
-      );
+      const trend = Array.from({ length: 15 }, (_, i) => base + Math.sin(i * 0.8) * (base * 0.05));
       let color;
       if (snap.temperature?.value != null) {
         const idx = tempSensors.indexOf(s);
@@ -5337,15 +5044,9 @@
     }).join("");
   }
   function attachDevicesHandlers() {
-    const filterInput = document.getElementById(
-      "device-filter"
-    );
-    const typeSelect = document.getElementById(
-      "device-type-filter"
-    );
-    const statusSelect = document.getElementById(
-      "device-status-filter"
-    );
+    const filterInput = document.getElementById("device-filter");
+    const typeSelect = document.getElementById("device-type-filter");
+    const statusSelect = document.getElementById("device-status-filter");
     function applyFilter() {
       const q = filterInput?.value.toLowerCase() || "";
       const type = typeSelect?.value || "";
@@ -5491,86 +5192,14 @@
   // src/web/hal-ui/views/Sensors.ts
   init_store();
   var metrics = [
-    {
-      key: "temperature",
-      label: "Temperature",
-      shortLabel: "Temp",
-      fallbackUnit: "\xB0C",
-      color: "#F59E0B",
-      description: "Air / probe temperature",
-      minAxis: 10,
-      maxAxis: 40
-    },
-    {
-      key: "humidity",
-      label: "Humidity",
-      shortLabel: "RH",
-      fallbackUnit: "%",
-      color: "#38BDF8",
-      description: "Relative humidity",
-      minAxis: 0,
-      maxAxis: 100
-    },
-    {
-      key: "soil_moisture",
-      label: "Soil Moisture",
-      shortLabel: "Soil",
-      fallbackUnit: "%",
-      color: "#EF4444",
-      description: "Volumetric water content",
-      minAxis: 0,
-      maxAxis: 100
-    },
-    {
-      key: "co2",
-      label: "CO\u2082",
-      shortLabel: "CO\u2082",
-      fallbackUnit: "ppm",
-      color: "#22C55E",
-      description: "Carbon dioxide",
-      minAxis: 0,
-      maxAxis: 2e3
-    },
-    {
-      key: "light",
-      label: "Light",
-      shortLabel: "Light",
-      fallbackUnit: "lux",
-      color: "#FACC15",
-      description: "PAR / illuminance",
-      minAxis: 0,
-      maxAxis: 1e5
-    },
-    {
-      key: "water_level",
-      label: "Water Level",
-      shortLabel: "Water",
-      fallbackUnit: "%",
-      color: "#2563EB",
-      description: "Reservoir level",
-      minAxis: 0,
-      maxAxis: 100
-    },
-    {
-      key: "ph",
-      label: "pH",
-      shortLabel: "pH",
-      fallbackUnit: "",
-      color: "#A855F7",
-      description: "Acidity / alkalinity",
-      minAxis: 0,
-      maxAxis: 14
-    },
-    {
-      key: "weight",
-      label: "Weight",
-      shortLabel: "Weight",
-      fallbackUnit: "kg",
-      color: "#94A3B8",
-      description: "Load cell",
-      minAxis: 0,
-      maxAxis: 100
-    }
+    { key: "temperature", label: "Temperature", shortLabel: "Temp", fallbackUnit: "\xB0C", color: "#F59E0B", description: "Air / probe temperature", minAxis: 10, maxAxis: 40 },
+    { key: "humidity", label: "Humidity", shortLabel: "RH", fallbackUnit: "%", color: "#38BDF8", description: "Relative humidity", minAxis: 0, maxAxis: 100 },
+    { key: "soil_moisture", label: "Soil Moisture", shortLabel: "Soil", fallbackUnit: "%", color: "#EF4444", description: "Volumetric water content", minAxis: 0, maxAxis: 100 },
+    { key: "co2", label: "CO\u2082", shortLabel: "CO\u2082", fallbackUnit: "ppm", color: "#22C55E", description: "Carbon dioxide", minAxis: 0, maxAxis: 2e3 },
+    { key: "light", label: "Light", shortLabel: "Light", fallbackUnit: "lux", color: "#FACC15", description: "PAR / illuminance", minAxis: 0, maxAxis: 1e5 },
+    { key: "water_level", label: "Water Level", shortLabel: "Water", fallbackUnit: "%", color: "#2563EB", description: "Reservoir level", minAxis: 0, maxAxis: 100 },
+    { key: "ph", label: "pH", shortLabel: "pH", fallbackUnit: "", color: "#A855F7", description: "Acidity / alkalinity", minAxis: 0, maxAxis: 14 },
+    { key: "weight", label: "Weight", shortLabel: "Weight", fallbackUnit: "kg", color: "#94A3B8", description: "Load cell", minAxis: 0, maxAxis: 100 }
   ];
   var viewState = {
     deviceId: "all",
@@ -5666,9 +5295,7 @@
     await loadData(sensors);
   }
   function attachHandlers(sensors) {
-    const deviceSelect = document.getElementById(
-      "sensor-device-select"
-    );
+    const deviceSelect = document.getElementById("sensor-device-select");
     deviceSelect?.addEventListener("change", () => {
       viewState.deviceId = deviceSelect.value || "all";
       void loadData(sensors);
@@ -5702,9 +5329,7 @@
         const metric = btn.dataset.metric;
         if (!viewState.availableMetrics.has(metric)) return;
         if (viewState.activeMetrics.has(metric)) {
-          const activeAvailable = Array.from(viewState.activeMetrics).filter(
-            (key) => viewState.availableMetrics.has(key)
-          );
+          const activeAvailable = Array.from(viewState.activeMetrics).filter((key) => viewState.availableMetrics.has(key));
           if (activeAvailable.length <= 1) return;
           viewState.activeMetrics.delete(metric);
         } else {
@@ -5722,24 +5347,16 @@
     viewState.availableMetrics = getAvailableMetrics(selectedDevices);
     reconcileActiveMetrics();
     syncMetricPills();
-    const activeMetricConfigs = metrics.filter(
-      (m) => viewState.activeMetrics.has(m.key)
-    );
+    const activeMetricConfigs = metrics.filter((m) => viewState.activeMetrics.has(m.key));
     const heroChart = document.getElementById("hero-chart");
-    if (heroChart)
-      heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
+    if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
     try {
       const layers = [];
       const [decisions] = await Promise.all([
         halApi.getDecisions(50).catch(() => []),
         ...selectedDevices.flatMap(
           (device) => activeMetricConfigs.map(async (metric) => {
-            const data = await halApi.getSensorHistory(
-              device.id,
-              metric.key,
-              from,
-              to
-            );
+            const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
             if (data.length > 0) {
               layers.push({
                 deviceId: device.id,
@@ -5767,8 +5384,7 @@
       renderVizCards(zoneLayers, decisions);
     } catch (err) {
       console.error("Sensor load failed:", err);
-      if (heroChart)
-        heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
+      if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
     }
   }
   function renderZoneToggles(zones) {
@@ -5777,10 +5393,7 @@
     const sortedZones = zones.slice().sort((a, b) => {
       if (a === "Unzoned") return 1;
       if (b === "Unzoned") return -1;
-      return a.localeCompare(b, void 0, {
-        numeric: true,
-        sensitivity: "base"
-      });
+      return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
     });
     if (sortedZones.length > 0) {
       if (!viewState.zoneSelectionInitialized) {
@@ -5847,9 +5460,7 @@
   function getAvailableMetrics(selectedDevices) {
     const store = getStore();
     const available = /* @__PURE__ */ new Set();
-    const zoneDevices = viewState.activeZone ? selectedDevices.filter(
-      (device) => resolveZoneName2(device.id, device.name) === viewState.activeZone
-    ) : selectedDevices;
+    const zoneDevices = viewState.activeZone ? selectedDevices.filter((device) => resolveZoneName2(device.id, device.name) === viewState.activeZone) : selectedDevices;
     for (const device of zoneDevices) {
       const snapshot = store.sensors[device.id];
       if (!snapshot) continue;
@@ -5876,9 +5487,7 @@
       }
     }
     if (viewState.activeMetrics.size > 0) return;
-    const fallback = ["temperature", "humidity", "co2"].find(
-      (key) => viewState.availableMetrics.has(key)
-    ) ?? Array.from(viewState.availableMetrics)[0];
+    const fallback = ["temperature", "humidity", "co2"].find((key) => viewState.availableMetrics.has(key)) ?? Array.from(viewState.availableMetrics)[0];
     if (fallback) viewState.activeMetrics.add(fallback);
   }
   function syncMetricPills() {
@@ -5886,14 +5495,8 @@
       const key = pill.dataset.metric;
       const available = viewState.availableMetrics.has(key);
       pill.style.display = available ? "" : "none";
-      pill.classList.toggle(
-        "active",
-        available && viewState.activeMetrics.has(key)
-      );
-      pill.setAttribute(
-        "aria-pressed",
-        available && viewState.activeMetrics.has(key) ? "true" : "false"
-      );
+      pill.classList.toggle("active", available && viewState.activeMetrics.has(key));
+      pill.setAttribute("aria-pressed", available && viewState.activeMetrics.has(key) ? "true" : "false");
     });
   }
   function escapeAttr2(s) {
@@ -5913,64 +5516,55 @@
       return;
     }
     const store = getStore();
-    const metricBuckets = /* @__PURE__ */ new Map();
-    for (const layer of layers) {
-      const key = layer.metric.key;
-      if (!metricBuckets.has(key)) metricBuckets.set(key, /* @__PURE__ */ new Map());
-      const buckets = metricBuckets.get(key);
-      for (const reading of layer.data) {
-        const ts = new Date(reading.timestamp).getTime();
-        if (!Number.isFinite(ts)) continue;
-        const bucketTs = Math.floor(ts / 6e4) * 6e4;
-        const converted = formatSensorValue(
-          reading.value,
-          key,
-          store.unitSystem
-        ).value;
-        const current = buckets.get(bucketTs) ?? { sum: 0, count: 0 };
-        current.sum += converted;
-        current.count += 1;
-        buckets.set(bucketTs, current);
+    const stackedLayers = layers.map((l) => {
+      const cfg = l.metric;
+      let axisMin = cfg.minAxis;
+      let axisMax = cfg.maxAxis;
+      if (cfg.key === "temperature" && store.unitSystem === "imperial") {
+        axisMin = axisMin * 9 / 5 + 32;
+        axisMax = axisMax * 9 / 5 + 32;
       }
-    }
-    const stackedLayers = [];
-    for (const [key, buckets] of metricBuckets) {
-      const cfg = metrics.find((m) => m.key === key);
-      if (!cfg) continue;
-      const range = cfg.maxAxis - cfg.minAxis;
-      const entries = Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]).map(([t, agg]) => {
-        const raw = agg.count > 0 ? agg.sum / agg.count : 0;
-        const pct = range > 0 ? Math.max(0, Math.min(100, (raw - cfg.minAxis) / range * 100)) : 50;
-        return { t, v: pct };
-      });
-      if (entries.length === 0) continue;
-      stackedLayers.push({
-        label: cfg.label,
+      const vSpan = Math.max(1, axisMax - axisMin);
+      return {
+        label: `${escapeHtml8(l.deviceName)} \u2014 ${cfg.label}`,
         color: cfg.color,
-        data: entries
-      });
-    }
-    if (stackedLayers.length === 0) {
-      container.innerHTML = '<div class="chart-empty">No data for selection</div>';
-      if (legend) legend.textContent = "";
-      return;
-    }
+        data: l.data.map((d) => ({
+          t: new Date(d.timestamp).getTime(),
+          v: (formatSensorValue(d.value, cfg.key, store.unitSystem).value - axisMin) / vSpan * 100
+        }))
+      };
+    });
     void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
-      if (expectedSequence !== void 0 && expectedSequence !== loadSequence)
-        return;
-      m.renderStackedAreaChart(stackedLayers, "hero-chart", {
-        showLegend: false
-      });
+      if (expectedSequence !== void 0 && expectedSequence !== loadSequence) return;
+      m.renderStackedAreaChart(stackedLayers, "hero-chart", { showLegend: true });
     });
     if (legend) {
-      legend.innerHTML = stackedLayers.map(
-        (l) => `
-      <span class="legend-item" style="--metric-color:${l.color}">
-        <span class="legend-dot"></span>
-        ${escapeHtml8(l.label)}
-      </span>
-    `
-      ).join("");
+      const colorGroups = /* @__PURE__ */ new Map();
+      for (const l of layers) {
+        const list = colorGroups.get(l.metric.color) || [];
+        list.push(l);
+        colorGroups.set(l.metric.color, list);
+      }
+      void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
+        if (expectedSequence !== void 0 && expectedSequence !== loadSequence) return;
+        const shades = /* @__PURE__ */ new Map();
+        for (const [color, group] of colorGroups) {
+          if (group.length > 1) {
+            shades.set(color, m.generateDeviceShades(color, group.length));
+          }
+        }
+        legend.innerHTML = layers.map((l) => {
+          const group = colorGroups.get(l.metric.color);
+          const idx = group.indexOf(l);
+          const shade = group.length > 1 ? shades.get(l.metric.color)[idx] : l.metric.color;
+          return `
+          <span class="legend-item" style="--metric-color:${shade}">
+            <span class="legend-dot"></span>
+            ${escapeHtml8(l.deviceName)} \u2014 ${escapeHtml8(l.metric.label)}
+          </span>
+        `;
+        }).join("");
+      });
     }
   }
   function renderDetailTable(layers) {
@@ -5980,19 +5574,12 @@
     const store = getStore();
     const rows = layers.flatMap(
       (layer) => layer.data.slice(-15).map((reading) => {
-        const converted = formatSensorValue(
-          reading.value,
-          layer.metric.key,
-          store.unitSystem
-        );
+        const converted = formatSensorValue(reading.value, layer.metric.key, store.unitSystem);
         return {
           time: reading.timestamp,
           device: layer.deviceName,
           metric: layer.metric.label,
-          value: formatValue(
-            converted.value,
-            converted.unit || layer.metric.fallbackUnit
-          ),
+          value: formatValue(converted.value, converted.unit || layer.metric.fallbackUnit),
           color: layer.metric.color
         };
       })
@@ -6002,16 +5589,14 @@
       tbody.innerHTML = '<tr><td colspan="4" class="empty-cell">No data</td></tr>';
       return;
     }
-    tbody.innerHTML = rows.map(
-      (r) => `
+    tbody.innerHTML = rows.map((r) => `
     <tr style="--metric-color:${r.color}">
       <td class="text-mono text-xs">${formatDateTimeValue(new Date(r.time), store.timeFormat)}</td>
       <td>${escapeHtml8(r.device)}</td>
       <td><span class="history-dot"></span>${escapeHtml8(r.metric)}</td>
       <td class="text-mono metric-value">${r.value}</td>
     </tr>
-  `
-    ).join("");
+  `).join("");
   }
   function updatePillValues(layers) {
     const store = getStore();
@@ -6025,10 +5610,7 @@
       }
       const latest = layer.data[layer.data.length - 1];
       const converted = formatSensorValue(latest.value, m.key, store.unitSystem);
-      el.textContent = formatValue(
-        converted.value,
-        converted.unit || m.fallbackUnit
-      );
+      el.textContent = formatValue(converted.value, converted.unit || m.fallbackUnit);
     });
   }
   function renderHorizonStrips(allLayers) {
@@ -6046,15 +5628,9 @@
     const strips = Array.from(byMetric.values()).map((layer) => {
       const { data, metric } = layer;
       if (data.length < 2) return "";
-      const converted = formatSensorValue(
-        data[data.length - 1].value,
-        metric.key,
-        store.unitSystem
-      );
+      const converted = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
       const latestLabel = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
-      const values = data.map(
-        (d) => formatSensorValue(d.value, metric.key, store.unitSystem).value
-      );
+      const values = data.map((d) => formatSensorValue(d.value, metric.key, store.unitSystem).value);
       const vMin = Math.min(...values);
       const vMax = Math.max(...values);
       const vSpan = Math.max(1e-3, vMax - vMin);
@@ -6096,8 +5672,7 @@
     }
     const cards = [];
     const tempLayers = byMetric.get("temperature");
-    if (tempLayers)
-      cards.push(renderAreaCard2(tempLayers[0], "Temperature Trend"));
+    if (tempLayers) cards.push(renderAreaCard2(tempLayers[0], "Temperature Trend"));
     const humLayers = byMetric.get("humidity");
     if (humLayers) cards.push(renderLineCard2(humLayers[0], "Humidity Trend"));
     const co2Layers = byMetric.get("co2");
@@ -6110,11 +5685,7 @@
   function renderAreaCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metric.key,
-      store.unitSystem
-    );
+    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
     const unit = latest.unit || metric.fallbackUnit;
     const id = `area-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
@@ -6133,11 +5704,7 @@
   function renderLineCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metric.key,
-      store.unitSystem
-    );
+    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
     const unit = latest.unit || metric.fallbackUnit;
     const id = `line-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
@@ -6156,11 +5723,7 @@
   function renderBarCard2(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metric.key,
-      store.unitSystem
-    );
+    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
     const unit = latest.unit || metric.fallbackUnit;
     const id = `bar-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
     setTimeout(() => {
@@ -6179,19 +5742,9 @@
   function renderGaugeCard(layer, title) {
     const { data, metric } = layer;
     const store = getStore();
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metric.key,
-      store.unitSystem
-    );
+    const latest = formatSensorValue(data[data.length - 1].value, metric.key, store.unitSystem);
     const unit = latest.unit || metric.fallbackUnit;
-    const pct = Math.max(
-      0,
-      Math.min(
-        1,
-        (latest.value - metric.minAxis) / (metric.maxAxis - metric.minAxis)
-      )
-    );
+    const pct = Math.max(0, Math.min(1, (latest.value - metric.minAxis) / (metric.maxAxis - metric.minAxis)));
     const r = 42, cx = 80, cy = 56;
     const circ = 2 * Math.PI * r;
     const dash = pct * circ;
@@ -6224,10 +5777,7 @@
     for (const l of layers) {
       if (l.data.length === 0) continue;
       const last = l.data[l.data.length - 1];
-      latestMap.set(
-        `${l.deviceId}:${l.metric.key}`,
-        new Date(last.timestamp).getTime()
-      );
+      latestMap.set(`${l.deviceId}:${l.metric.key}`, new Date(last.timestamp).getTime());
     }
     const qualityColor = (ageMs) => {
       if (ageMs === void 0) return "#1A2822";
@@ -6255,9 +5805,7 @@
       }).join("");
       return `<tr><td class="qm-device">${escapeHtml8(name.length > 20 ? name.slice(0, 18) + "\u2026" : name)}</td>${cells}</tr>`;
     }).join("");
-    const recentDecisionCount = decisions.filter(
-      (d) => now - new Date(d.timestamp).getTime() < 36e5
-    ).length;
+    const recentDecisionCount = decisions.filter((d) => now - new Date(d.timestamp).getTime() < 36e5).length;
     return `
     <div class="viz-card wide">
       <div class="viz-card-header">
@@ -6294,7 +5842,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  flex-shrink: 0;
 }
 .sensors-hero-header {
   display: flex;
@@ -6437,32 +5984,15 @@
   border-radius: var(--radius-md);
   padding: var(--space-3);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  height: 320px;
-  flex-shrink: 0;
 }
 .hero-chart {
   width: 100%;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-.stack-chart {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
+  min-height: 260px;
 }
 .hero-svg {
   display: block;
   width: 100%;
-  flex: 1;
-  min-height: 0;
-  height: 0;
+  height: auto;
 }
 .chart-grid {
   stroke: color-mix(in srgb, var(--text-tertiary) 30%, var(--border));
@@ -6511,7 +6041,6 @@
   align-items: stretch;
   gap: var(--space-3);
   margin-top: var(--space-4);
-  flex-shrink: 0;
 }
 .viz-card {
   background: var(--bg-secondary);
@@ -6569,7 +6098,6 @@
 }
 .sensor-detail-drawer {
   margin-top: var(--space-4);
-  flex-shrink: 0;
 }
 .detail-header {
   display: flex;
@@ -6634,7 +6162,6 @@
 /* \u2500\u2500 Horizon strips \u2500\u2500 */
 .horizon-strips-section {
   margin-top: var(--space-6);
-  flex-shrink: 0;
 }
 .horizon-strips-grid {
   display: grid;
@@ -6791,13 +6318,11 @@
 
     <div class="decisions-toolbar mb-4">
       <div class="filter-group" role="group" aria-label="Filter by status">
-        ${["all", "success", "failure", "pending"].map(
-      (s) => `
+        ${["all", "success", "failure", "pending"].map((s) => `
           <button class="filter-btn ${s === statusFilter ? "active" : ""}" data-filter="${s}">
             ${s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
-        `
-    ).join("")}
+        `).join("")}
       </div>
       <span class="text-xs text-secondary">${filtered.length} decisions</span>
     </div>
@@ -6833,12 +6358,9 @@
         cells.push({ dow, hour: h, value: val });
       }
     }
-    setTimeout(
-      () => renderHeatmap(cells, "decisions-heatmap", {
-        colorRange: ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B", "#FF5C6C"]
-      }),
-      0
-    );
+    setTimeout(() => renderHeatmap(cells, "decisions-heatmap", {
+      colorRange: ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B", "#FF5C6C"]
+    }), 0);
   }
   function renderDecisionsBarTrend(decisions) {
     if (decisions.length < 2) return;
@@ -6873,10 +6395,7 @@
         pending: bucket?.pending ?? 0
       });
     }
-    setTimeout(
-      () => renderDecisionBarTrend(points, "decisions-bar-trend", { height: 180 }),
-      0
-    );
+    setTimeout(() => renderDecisionBarTrend(points, "decisions-bar-trend", { height: 180 }), 0);
   }
   function attachFilterHandlers() {
     document.querySelectorAll(".filter-btn").forEach((btn) => {
@@ -6892,8 +6411,7 @@
     if (decisions.length === 0) {
       return `<div class="empty-state" style="padding: var(--space-8)"><p class="empty-state-title">No decisions</p><p class="empty-state-desc">${statusFilter === "all" ? "Decisions will appear here as the HAL makes them." : `No ${statusFilter} decisions found.`}</p></div>`;
     }
-    return decisions.map(
-      (d) => `
+    return decisions.map((d) => `
     <div class="decision-item" data-id="${d.id}">
       <div class="decision-summary">
         <div class="decision-left">
@@ -6928,16 +6446,13 @@
         </div>
       </div>
     </div>
-  `
-    ).join("");
+  `).join("");
   }
   function attachDecisionHandlers() {
     document.querySelectorAll(".decision-item").forEach((item) => {
       const summary = item.querySelector(".decision-summary");
       const detail = item.querySelector(".decision-detail");
-      const expandBtn = item.querySelector(
-        ".decision-expand-btn"
-      );
+      const expandBtn = item.querySelector(".decision-expand-btn");
       detail?.addEventListener("click", (event) => event.stopPropagation());
       summary?.addEventListener("click", () => {
         const isOpen = !detail?.hidden;
@@ -7139,11 +6654,7 @@
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(() => {
       document.querySelectorAll(".camera-time").forEach((el) => {
-        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
-          hour12: false,
-          hour: "2-digit",
-          minute: "2-digit"
-        });
+        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
       });
     }, 3e4);
   }
@@ -7352,6 +6863,18 @@
       );
     return res.json();
   }
+  async function provPut(path, body) {
+    const res = await fetch(BASE2 + path, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : void 0
+    });
+    if (!res.ok)
+      throw new Error(
+        `Provisioning API ${path} failed: ${res.status} ${res.statusText}`
+      );
+    return res.json();
+  }
   var provisioningApi = {
     // GET /api/provisioning/status
     async getStatus() {
@@ -7361,9 +6884,9 @@
     async begin() {
       return provPost("/begin");
     },
-    // POST /api/provisioning/wizard-step
+    // PUT /api/provisioning/wizard-step — updates wizardStep in ProvisioningManager state
     async updateWizardStep(step, data) {
-      return provPost("/wizard-step", {
+      return provPut("/wizard-step", {
         step,
         ...data
       });

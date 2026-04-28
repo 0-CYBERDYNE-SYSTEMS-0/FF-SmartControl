@@ -230,7 +230,6 @@ export async function startHalUiServer(
         return;
       }
 
-
       if (apiPath === '/cameras' && method === 'GET') {
         sendJson(
           res,
@@ -322,8 +321,9 @@ export async function startHalUiServer(
         return;
       }
 
-      // POST /api/provisioning/wizard-step — update wizard step (VAL-IMG-018)
-      if (provApiPath === '/wizard-step' && method === 'POST') {
+      // PUT /api/provisioning/wizard-step — update wizard step (VAL-IMG-018)
+      // Also accepts POST for backward compatibility
+      if (provApiPath === '/wizard-step' && (method === 'PUT' || method === 'POST')) {
         let body = '';
         for await (const chunk of req) body += chunk;
         const parsed = body ? JSON.parse(body) : {};
@@ -346,9 +346,7 @@ export async function startHalUiServer(
             wifiConfigured: wifiConfigured ?? false,
             telegramEnabled: false,
             savedAt: new Date().toISOString(),
-            expiresAt: new Date(
-              Date.now() + 2 * 60 * 60 * 1000,
-            ).toISOString(), // 2 hours
+            expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours
           };
           const updatedSession = {
             ...existingSession,
@@ -358,9 +356,7 @@ export async function startHalUiServer(
             wifiConfigured: wifiConfigured ?? existingSession.wifiConfigured,
             llmProvider: llmProvider ?? existingSession.llmProvider,
             savedAt: new Date().toISOString(),
-            expiresAt: new Date(
-              Date.now() + 2 * 60 * 60 * 1000,
-            ).toISOString(),
+            expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
           };
           mgr.saveWizardSession(updatedSession);
           sendJson(res, 200, { ok: true, wizardStep: state.wizardStep });

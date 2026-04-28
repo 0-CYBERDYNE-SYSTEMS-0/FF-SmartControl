@@ -25,6 +25,19 @@ async function provPost<T>(path: string, body?: object): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function provPut<T>(path: string, body?: object): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok)
+    throw new Error(
+      `Provisioning API ${path} failed: ${res.status} ${res.statusText}`,
+    );
+  return res.json() as Promise<T>;
+}
+
 export interface ProvisioningStatus {
   isUnprovisioned: boolean;
   state: 'unprovisioned' | 'in_progress' | 'completed' | 'failed';
@@ -83,7 +96,7 @@ export const provisioningApi = {
     return provPost<{ ok: boolean; state: string }>('/begin');
   },
 
-  // POST /api/provisioning/wizard-step
+  // PUT /api/provisioning/wizard-step — updates wizardStep in ProvisioningManager state
   async updateWizardStep(
     step: number,
     data: {
@@ -93,7 +106,7 @@ export const provisioningApi = {
       llmProvider?: string;
     },
   ): Promise<{ ok: boolean; wizardStep: number }> {
-    return provPost<{ ok: boolean; wizardStep: number }>('/wizard-step', {
+    return provPut<{ ok: boolean; wizardStep: number }>('/wizard-step', {
       step,
       ...data,
     });
