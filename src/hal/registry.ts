@@ -41,7 +41,11 @@ export class HalRegistry {
   // Update device label and/or zone (VAL-DISC-050, VAL-DISC-052)
   updateDevice(
     id: string,
-    data: { label?: string | null; zone?: string | null },
+    data: {
+      label?: string | null;
+      zone?: string | null;
+      calibration_offset?: number | null;
+    },
   ): HalDevice {
     const existing = this.get(id);
     if (!existing) throw new Error(`Device ${id} not found`);
@@ -50,16 +54,36 @@ export class HalRegistry {
       .prepare(
         `
       UPDATE hal_devices
-      SET label = ?, zone = ?, updated_at = ?
+      SET label = ?, zone = ?, calibration_offset = ?, updated_at = ?
       WHERE id = ?
     `,
       )
       .run(
         data.label !== undefined ? data.label : existing.label,
         data.zone !== undefined ? data.zone : existing.zone,
+        data.calibration_offset !== undefined
+          ? data.calibration_offset
+          : existing.calibration_offset,
         now,
         id,
       );
+    return this.get(id)!;
+  }
+
+  // Update device calibration offset (VAL-DISC-060, VAL-DISC-061)
+  updateDeviceCalibration(id: string, offset: number): HalDevice {
+    const existing = this.get(id);
+    if (!existing) throw new Error(`Device ${id} not found`);
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `
+      UPDATE hal_devices
+      SET calibration_offset = ?, updated_at = ?
+      WHERE id = ?
+    `,
+      )
+      .run(offset, now, id);
     return this.get(id)!;
   }
 

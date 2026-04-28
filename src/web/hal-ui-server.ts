@@ -44,6 +44,17 @@ function sendJson(
   res.end(payload);
 }
 
+// Apply calibration offset to a sensor reading (VAL-DISC-060)
+// calibrated_value = raw + offset
+function applyCalibration(
+  reading: { value: number; unit?: string } | undefined,
+  calibrationOffset: number | null,
+): { value: number; unit?: string } | undefined {
+  if (!reading) return undefined;
+  const offset = calibrationOffset ?? 0;
+  return { value: reading.value + offset, unit: reading.unit };
+}
+
 function sendFile(
   res: http.ServerResponse,
   filePath: string,
@@ -118,9 +129,18 @@ export async function startHalUiServer(
         ];
         for (const dev of devices.filter((d: any) => d.type === 'sensor')) {
           sensorSnapshots[dev.id] = {};
+          const calibrationOffset = dev.calibration_offset ?? 0;
           for (const { metric, fn } of allMetrics) {
-            const reading = fn(dev.id);
-            if (reading) sensorSnapshots[dev.id][metric] = reading;
+            const reading = fn(dev.id) as
+              | { value: number; unit?: string }
+              | undefined;
+            if (reading) {
+              // Apply calibration: calibrated_value = raw + offset (VAL-DISC-060)
+              sensorSnapshots[dev.id][metric] = {
+                ...reading,
+                value: reading.value + calibrationOffset,
+              };
+            }
           }
         }
         sendJson(res, 200, {
@@ -179,10 +199,21 @@ export async function startHalUiServer(
           .filter((d: any) => d.type === 'sensor');
         const readings = [];
         for (const dev of devices) {
+          const calibrationOffset = dev.calibration_offset ?? 0;
           const temp = halSensors.latest(dev.id, 'temperature');
           const hum = halSensors.latest(dev.id, 'humidity');
-          if (temp || hum)
-            readings.push({ device: dev, temperature: temp, humidity: hum });
+          if (temp || hum) {
+            readings.push({
+              device: dev,
+              // Apply calibration: calibrated_value = raw + offset (VAL-DISC-060)
+              temperature: temp
+                ? { ...temp, value: temp.value + calibrationOffset }
+                : undefined,
+              humidity: hum
+                ? { ...hum, value: hum.value + calibrationOffset }
+                : undefined,
+            });
+          }
         }
         sendJson(res, 200, readings);
         return;
@@ -199,11 +230,21 @@ export async function startHalUiServer(
           sendJson(res, 400, { error: 'device and metric are required' });
           return;
         }
-        sendJson(
-          res,
-          200,
-          halSensors.history(deviceId, metric as MetricType, from, to),
+        // Get device calibration offset (VAL-DISC-060)
+        const device = halRegistry.get(deviceId);
+        const calibrationOffset = device?.calibration_offset ?? 0;
+        const rawHistory = halSensors.history(
+          deviceId,
+          metric as MetricType,
+          from,
+          to,
         );
+        // Apply calibration: calibrated_value = raw + offset
+        const calibratedHistory = rawHistory.map((reading) => ({
+          ...reading,
+          value: reading.value + calibrationOffset,
+        }));
+        sendJson(res, 200, calibratedHistory);
         return;
       }
 
@@ -1189,6 +1230,29 @@ export async function startHalUiServer(
         const { label, zone } = parsed;
         try {
           const dev = halRegistry.updateDevice(deviceId, { label, zone });
+          sendJson(res, 200, dev);
+        } catch (err: any) {
+          sendJson(res, 404, { error: err.message });
+        }
+        return;
+      }
+
+      // PUT /api/hal/devices/:id/calibration — update calibration offset (VAL-DISC-060, VAL-DISC-061)
+      if (
+        apiPath.match(/^\/devices\/([^/]+)\/calibration$/) &&
+        method === 'PUT'
+      ) {
+        const deviceId = apiPath.split('/')[2];
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const { offset } = parsed;
+        if (typeof offset !== 'number') {
+          sendJson(res, 400, { error: 'offset must be a number' });
+          return;
+        }
+        try {
+          const dev = halRegistry.updateDeviceCalibration(deviceId, offset);
           sendJson(res, 200, dev);
         } catch (err: any) {
           sendJson(res, 404, { error: err.message });

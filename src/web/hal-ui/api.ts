@@ -627,6 +627,14 @@ export const halApi = {
     return halPut(`/devices/${id}`, data);
   },
 
+  // PUT /api/hal/devices/:id/calibration — update calibration offset (VAL-DISC-060, VAL-DISC-061)
+  async updateDeviceCalibration(
+    id: string,
+    offset: number,
+  ): Promise<HalDevice> {
+    return halPut(`/devices/${id}/calibration`, { offset });
+  },
+
   // DELETE /api/hal/devices/:id — remove device
   async removeDevice(id: string): Promise<{ ok: boolean }> {
     const res = await fetch(BASE + `/devices/${id}`, { method: 'DELETE' });

@@ -20,6 +20,7 @@ import { renderCameras } from './views/Cameras.js';
 import { renderTerminalView } from './views/Terminal.js';
 import { renderSetupWizard } from './views/SetupWizard.js';
 import { renderSafety } from './views/Safety.js';
+import { renderCalibration } from './views/Calibration.js';
 
 import { halApi } from './api.js';
 import type { HalState } from './api.js';
@@ -38,6 +39,7 @@ const views: Record<ViewId, AsyncViewRenderer> = {
   safety: renderSafety,
   system: renderDashboard,
   terminal: renderTerminalView,
+  calibration: renderCalibration,
 };
 
 // Uptime tracking
