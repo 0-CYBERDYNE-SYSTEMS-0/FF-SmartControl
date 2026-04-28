@@ -51,14 +51,30 @@ rm -f /tmp/farmpal.tar.gz
 if [[ -f "${INSTALL_DIR}/package.json" ]]; then
     echo "Installing Node.js dependencies..."
     cd "${INSTALL_DIR}"
-    npm ci --production --ignore-scripts 2>/dev/null || npm install --production --ignore-scripts 2>/dev/null || true
+    npm ci --production --ignore-scripts
+    if [[ ${?} -ne 0 ]]; then
+        echo "ERROR: npm ci failed, trying npm install..."
+        npm install --production --ignore-scripts
+        if [[ ${?} -ne 0 ]]; then
+            echo "ERROR: npm install failed"
+            exit 1
+        fi
+    fi
 fi
 
 # Build TypeScript
 if [[ -f "${INSTALL_DIR}/tsconfig.json" ]]; then
     echo "Building TypeScript..."
     cd "${INSTALL_DIR}"
-    npx tsc 2>/dev/null || npm run build 2>/dev/null || true
+    npx tsc
+    if [[ ${?} -ne 0 ]]; then
+        echo "ERROR: tsc failed, trying npm run build..."
+        npm run build
+        if [[ ${?} -ne 0 ]]; then
+            echo "ERROR: TypeScript build failed"
+            exit 1
+        fi
+    fi
 fi
 
 # Create symbolic link for CLI

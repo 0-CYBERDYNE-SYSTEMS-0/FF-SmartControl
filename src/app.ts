@@ -523,6 +523,8 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     // VAL-IMG-014: Power loss mid-provisioning → clean restart to provisioning
     // VAL-IMG-015: Multiple provisioning attempts handled idempotently
     // VAL-IMG-021: Power loss mid-decision-cycle → re-issue safe states
+    let cycleInterrupted = false;
+    let interruptedCycleData: { cycleId: string; activeRelays: string[] } | null = null;
     try {
       const {
         getProvisioningManager,
@@ -530,23 +532,26 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
         handleStartupRecovery,
       } = await import('./first-boot.js');
       const mgr = getProvisioningManager();
-      const recovery = mgr.checkPowerLossRecovery();
+
+      // VAL-IMG-021: Call handleStartupRecovery and use its return value
+      const recovery = handleStartupRecovery();
 
       if (recovery.provisioningInterrupted) {
         deps.logger.warn?.(
-          { startedAt: recovery.interruptedState?.startedAt },
+          { startedAt: recovery.provisioningState?.startedAt },
           '[first-boot] Power loss during provisioning detected — will restart provisioning',
         );
       }
 
       if (recovery.cycleInterrupted) {
+        const cycleData = mgr.loadInterruptedCycle();
         deps.logger.warn?.(
-          { cycle: mgr.loadInterruptedCycle() },
-          '[first-boot] Power loss during decision cycle detected — re-issuing safe states',
+          { cycle: cycleData },
+          '[first-boot] Power loss during decision cycle detected — will re-issue safe states',
         );
-        // VAL-IMG-021: Re-issue safe states to all relays
-        // The HAL relay safe-state recovery will be handled by the shutdown
-        // handler on next startup. We mark it as needing recovery here.
+        // VAL-IMG-021: Re-issue safe states to all relays that were active
+        cycleInterrupted = true;
+        interruptedCycleData = cycleData;
       }
 
       if (needsProvisioning()) {
@@ -555,6 +560,12 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
         );
       } else {
         deps.logger.info?.('[first-boot] System is provisioned');
+      }
+
+      // VAL-IMG-011: Display IP on console when no network (no mDNS)
+      const networkInfo = mgr.getNetworkInfo();
+      if (networkInfo.primaryIp && !mgr.isAvahiRunning()) {
+        mgr.displayIpOnConsole(networkInfo.primaryIp, networkInfo.hostname);
       }
     } catch (err) {
       deps.logger.warn?.(
@@ -595,6 +606,40 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
       const { seedHalDemoData } = await import('./hal/seed-data.js');
       seedHalDemoData();
       deps.logger.info?.('[HAL] Demo data seeded');
+
+      // VAL-IMG-021: Re-issue safe states to relays that were active when cycle was interrupted
+      if (cycleInterrupted && interruptedCycleData && interruptedCycleData.activeRelays.length > 0) {
+        deps.logger.info?.(
+          { relays: interruptedCycleData.activeRelays },
+          '[first-boot] Re-issuing safe states to interrupted relays',
+        );
+        try {
+          const { halRegistry: halReg } = await import('./hal/registry.js');
+          for (const relayId of interruptedCycleData.activeRelays) {
+            try {
+              await halReg.control(relayId, 'off');
+              deps.logger.info?.(
+                { relayId },
+                '[first-boot] Set relay to safe state (off)',
+              );
+            } catch (relayErr) {
+              deps.logger.warn?.(
+                { relayId, err: relayErr },
+                '[first-boot] Failed to set relay safe state',
+              );
+            }
+          }
+          // Clear the interrupted cycle marker after safe states are issued
+          const { getProvisioningManager } = await import('./first-boot.js');
+          getProvisioningManager().clearInterruptedCycle();
+          deps.logger.info?.('[first-boot] Interrupted cycle marker cleared');
+        } catch (err) {
+          deps.logger.warn?.(
+            { err },
+            '[first-boot] Failed to re-issue relay safe states',
+          );
+        }
+      }
 
       await deps.startHalUiService?.();
     } catch (err) {

@@ -31,6 +31,17 @@ cat > /etc/avahi/services/ssh.service << 'EOF'
 EOF
 
 # Enable and start Avahi
-systemctl enable avahi-daemon 2>/dev/null || true
+systemctl enable avahi-daemon
+if systemctl is-active avahi-daemon &>/dev/null; then
+    echo "Avahi daemon already running"
+else
+    systemctl start avahi-daemon
+    if systemctl is-active avahi-daemon &>/dev/null; then
+        echo "Avahi daemon started"
+    else
+        echo "ERROR: Failed to start avahi-daemon"
+        exit 1
+    fi
+fi
 
-echo "Avahi configured"
+echo "Avahi configured and running"

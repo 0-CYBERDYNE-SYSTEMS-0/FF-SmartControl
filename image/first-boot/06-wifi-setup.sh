@@ -22,7 +22,10 @@ validate_psk_encoding() {
     # WPA2-PSK must be 8-63 ASCII characters or exactly 64 hex characters
     if [[ ${#psk} -ge 8 ]] && [[ ${#psk} -le 63 ]]; then
         # Check for valid ASCII printable characters
-        if [[ "$psk" =~ ^[A-Za-z0-9!@#$%^&*()_+\-=\[\]{}|;':",./<>?`~\-]+$ ]]; then
+        # Exclude double-quote, backslash, and control chars
+        # Use a variable to avoid issues with special chars in =~ operator
+        local valid_chars='^[A-Za-z0-9!@#$%^*()_+\-=\[\]{}|;'"'"':",./<>?`~\\-]+$'
+        if [[ "$psk" =~ $valid_chars ]]; then
             return 0
         else
             log "PSK contains non-ASCII or special characters that may cause encoding issues"
@@ -47,6 +50,9 @@ generate_wpa_config() {
     
     log "Generating wpa_supplicant configuration for SSID: ${ssid}"
     
+    # WiFi country code - configurable via env var (default: US)
+    local wifi_country="${WIFI_COUNTRY:-US}"
+    
     # Escape special characters in SSID and PSK
     local escaped_ssid="${ssid//\\/\\\\}"
     escaped_ssid="${escaped_ssid//\"/\\\"}"
@@ -56,7 +62,7 @@ generate_wpa_config() {
     cat > "${conf_file}" << EOF
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
-country=US
+country=${wifi_country}
 
 network={
     ssid="${escaped_ssid}"
@@ -69,7 +75,7 @@ network={
 EOF
     
     chmod 0600 "${conf_file}"
-    log "wpa_supplicant configuration written"
+    log "wpa_supplicant configuration written (country: ${wifi_country})"
 }
 
 # Scan for available WiFi networks

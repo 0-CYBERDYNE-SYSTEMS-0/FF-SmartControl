@@ -101,6 +101,31 @@ check_prereqs() {
         exit 1
     fi
 
+    # Verify git repository state
+    log "Verifying git repository state..."
+    cd "${PROJECT_ROOT}"
+
+    # Check for uncommitted changes
+    if ! git diff --quiet 2>/dev/null; then
+        warn "Git repository has uncommitted changes"
+        if [[ "${FARMPAL_VERSION}" == "latest" ]]; then
+            error "Cannot build 'latest' version with uncommitted changes. Commit your changes or specify a version."
+            error "To build anyway, use: --version <specific-version>"
+            exit 1
+        fi
+        warn "Building with uncommitted changes (non-latest version: ${FARMPAL_VERSION})"
+    fi
+
+    # Check for untracked files that might be important
+    if git status --porcelain 2>/dev/null | grep -qE "^\?\?"; then
+        local untracked=$(git status --porcelain 2>/dev/null | grep -E "^\?\?" | wc -l | tr -d ' ')
+        warn "Git repository has ${untracked} untracked file(s)"
+    fi
+
+    # Verify we're on main or a release branch
+    local current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    log "Current branch: ${current_branch}"
+
     # Check we're on a supported platform
     if [[ "$(uname -s)" != "Linux" ]]; then
         if [[ "$(uname -s)" == "Darwin" ]] && command -v colima &>/dev/null; then

@@ -27,7 +27,11 @@ fi
 # Use raspi-config or parted to resize
 if command -v raspi-config &>/dev/null; then
     log "Using raspi-config to expand filesystem..."
-    raspi-config --expand-rootfs 2>&1 | tee -a "${LOGFILE}" || true
+    raspi-config --expand-rootfs 2>&1 | tee -a "${LOGFILE}"
+    if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+        log "ERROR: raspi-config partition resize failed"
+        exit 1
+    fi
 elif command -v parted &>/dev/null; then
     log "Using parted to expand root partition..."
     
@@ -36,7 +40,7 @@ elif command -v parted &>/dev/null; then
     ROOT_PART=$(findmnt / -o source -n)
     
     if [[ -z "${ROOT_DEV}" ]] || [[ -z "${ROOT_PART}" ]]; then
-        log "Could not determine root device/partition"
+        log "ERROR: Could not determine root device/partition"
         exit 1
     fi
     
@@ -47,8 +51,16 @@ elif command -v parted &>/dev/null; then
     
     if [[ -n "${LAST_SECTOR}" ]]; then
         log "Expanding partition to cover entire disk (last sector: ${LAST_SECTOR})..."
-        parted -s "${ROOT_DEV}" resizepart 2 "${LAST_SECTOR}" 2>&1 | tee -a "${LOGFILE}" || true
-        partprobe "${ROOT_DEV}" 2>&1 | tee -a "${LOGFILE}" || true
+        parted -s "${ROOT_DEV}" resizepart 2 "${LAST_SECTOR}" 2>&1 | tee -a "${LOGFILE}"
+        if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+            log "ERROR: parted resizepart failed"
+            exit 1
+        fi
+        partprobe "${ROOT_DEV}" 2>&1 | tee -a "${LOGFILE}"
+        if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+            log "ERROR: partprobe failed"
+            exit 1
+        fi
     fi
 fi
 
@@ -56,7 +68,11 @@ fi
 if command -v resize2fs &>/dev/null; then
     ROOT_PART=$(findmnt / -o source -n)
     log "Resizing filesystem on ${ROOT_PART}..."
-    resize2fs "${ROOT_PART}" 2>&1 | tee -a "${LOGFILE}" || true
+    resize2fs "${ROOT_PART}" 2>&1 | tee -a "${LOGFILE}"
+    if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+        log "ERROR: resize2fs failed"
+        exit 1
+    fi
 fi
 
 # Mark partition as resized

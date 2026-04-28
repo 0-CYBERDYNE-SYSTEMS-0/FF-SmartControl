@@ -836,19 +836,44 @@ export class ProvisioningManager {
 
     if (ip) {
       if (this.isEthernetConnected()) {
-        return { state: 'connected', connectionType: 'ethernet', primaryIp: ip, hostname };
+        return {
+          state: 'connected',
+          connectionType: 'ethernet',
+          primaryIp: ip,
+          hostname,
+        };
       }
       if (this.isWifiConnected()) {
-        return { state: 'connected', connectionType: 'wifi', primaryIp: ip, hostname };
+        return {
+          state: 'connected',
+          connectionType: 'wifi',
+          primaryIp: ip,
+          hostname,
+        };
       }
-      return { state: 'connected', connectionType: 'none', primaryIp: ip, hostname };
+      return {
+        state: 'connected',
+        connectionType: 'none',
+        primaryIp: ip,
+        hostname,
+      };
     }
 
     if (this.isWifiInterfaceAvailable()) {
-      return { state: 'wifi_available', connectionType: 'none', primaryIp: null, hostname };
+      return {
+        state: 'wifi_available',
+        connectionType: 'none',
+        primaryIp: null,
+        hostname,
+      };
     }
 
-    return { state: 'disconnected', connectionType: 'none', primaryIp: null, hostname };
+    return {
+      state: 'disconnected',
+      connectionType: 'none',
+      primaryIp: null,
+      hostname,
+    };
   }
 
   isAvahiRunning(): boolean {
@@ -1007,12 +1032,14 @@ export class ProvisioningManager {
     // WPA2-PSK must be 8-63 ASCII characters OR exactly 64 hex characters
     if (psk.length >= 8 && psk.length <= 63) {
       // Check for valid ASCII printable characters
-      const asciiRegex =
-        /^[A-Za-z0-9!@#$%^&*()_+\-=\[\]{}|;':",./<>?`~\-]+$/;
+      const asciiRegex = /^[A-Za-z0-9!@#$%^&*()_+\-=\[\]{}|;':",./<>?`~\-]+$/;
       if (asciiRegex.test(psk)) {
         return { valid: true };
       } else {
-        log('warn', 'WiFi PSK contains non-ASCII or unsupported special characters');
+        log(
+          'warn',
+          'WiFi PSK contains non-ASCII or unsupported special characters',
+        );
         return { valid: false, error: 'INVALID_CHARS' };
       }
     } else if (psk.length === 64 && /^[a-fA-F0-9]+$/.test(psk)) {
@@ -1064,10 +1091,12 @@ export class ProvisioningManager {
       const wpaConfigPath = `/tmp/wpa_test_${Date.now()}.conf`;
       const escapedSsid = ssid.replace(/"/g, '\\"');
       const escapedPsk = psk.replace(/"/g, '\\"');
+      // WiFi country code - configurable via env var (default: US)
+      const wifiCountry = process.env.WIFI_COUNTRY || 'US';
 
       const config = `ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
-country=US
+country=${wifiCountry}
 
 network={
     ssid="${escapedSsid}"
@@ -1127,18 +1156,24 @@ network={
 
         // Check wpa_supplicant status
         try {
-          const status = execSync(`wpa_cli -i ${iface} status 2>/dev/null | grep wpa_state || true`, {
-            encoding: 'utf-8',
-            stdio: ['pipe', 'pipe', 'pipe'],
-          });
+          const status = execSync(
+            `wpa_cli -i ${iface} status 2>/dev/null | grep wpa_state || true`,
+            {
+              encoding: 'utf-8',
+              stdio: ['pipe', 'pipe', 'pipe'],
+            },
+          );
           if (status.includes('COMPLETED')) {
             connected = true;
             break;
           }
           if (status.includes('WRONG_PSK')) {
-            execSync(`pkill -f "wpa_supplicant.*${iface}" 2>/dev/null || true`, {
-              stdio: 'pipe',
-            });
+            execSync(
+              `pkill -f "wpa_supplicant.*${iface}" 2>/dev/null || true`,
+              {
+                stdio: 'pipe',
+              },
+            );
             fs.unlinkSync(wpaConfigPath);
             log('warn', 'Wrong WiFi password detected');
             return { success: false, error: 'WRONG_PASSWORD' };
