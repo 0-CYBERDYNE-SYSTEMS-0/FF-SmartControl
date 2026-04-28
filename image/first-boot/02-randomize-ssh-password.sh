@@ -56,7 +56,7 @@ This file will be deleted after first login.
 Access: ssh ${TARGET_USER}@<pi-ip-address>
 EOF
 
-chmod 644 "${PASSWORD_FILE}"
+chmod 0600 "${PASSWORD_FILE}"
 
 log "SSH password randomized for user ${TARGET_USER}"
 log "Password stored in ${PASSWORD_FILE}"
