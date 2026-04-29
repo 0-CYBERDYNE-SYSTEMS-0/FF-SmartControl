@@ -1,0 +1,16 @@
+[Unit]
+Description=FarmPal Daily State Backup Timer
+Requires=farmpal-backup.service
+
+[Timer]
+# Run daily at 3:00 AM (quiet hours)
+OnCalendar=*-*-* 03:00:00
+
+# Randomize start time by up to 1 hour to avoid thundering herd
+RandomizedDelaySec=3600
+
+# Run immediately if we missed the last scheduled run (e.g., system was off)
+Persistent=true
+
+[Install]
+WantedBy=timers.target

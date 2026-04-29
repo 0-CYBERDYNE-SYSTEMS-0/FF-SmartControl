@@ -1,0 +1,23 @@
+# Logrotate configuration for FarmPal
+# Installed to /etc/logrotate.d/farmpal
+
+# FarmPal log location
+/var/log/farmpal/*.log {
+    daily
+    rotate 7
+    compress
+    notifempty
+    create 0640 farmpal farmpal
+    missingok
+
+    # Copy and truncate to ensure atomic log rotation
+    postrotate
+        # Send SIGUSR1 to FarmPal to reopen logs after rotation
+        if [ -f /var/run/farmpal.pid ]; then
+            kill -USR1 $(cat /var/run/farmpal.pid) 2>/dev/null || true
+        fi
+    endscript
+}
+
+# Additional log location (if using journald with syslog)
+# Journald logs are handled separately by systemd-journald

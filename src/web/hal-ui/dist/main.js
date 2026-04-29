@@ -203,6 +203,9 @@
         mqttStatus: "connected",
         dbStatus: "healthy",
         autoMode: true,
+        automationMode: "AUTONOMOUS",
+        automationModeColor: { bg: "#F85149", text: "#F0F6FC", label: "AUTO" },
+        pendingDecisions: [],
         safetyState: "NORMAL",
         safetyActiveRulesCount: 0,
         safetyWarningDevicesCount: 0,
@@ -686,6 +689,14 @@
       throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
     return res.json();
   }
+  async function settingsGet(path) {
+    const res = await fetch(SETTINGS_BASE + path);
+    if (!res.ok)
+      throw new Error(
+        `Settings API ${path} failed: ${res.status} ${res.statusText}`
+      );
+    return res.json();
+  }
   function normalizeDevice(device) {
     const rawState = device.state ?? device.last_state ?? "unknown";
     const state2 = rawState === "on" || rawState === "off" ? rawState : "unknown";
@@ -731,14 +742,34 @@
   function normalizeDecision(decision) {
     const outcome = decision.outcome;
     const status = decision.status || (outcome === "success" || outcome === "failure" ? outcome : "pending");
+    let sensorSnapshot;
+    if (decision.sensor_snapshot) {
+      if (typeof decision.sensor_snapshot === "string") {
+        try {
+          sensorSnapshot = JSON.parse(decision.sensor_snapshot);
+        } catch {
+          sensorSnapshot = void 0;
+        }
+      } else if (typeof decision.sensor_snapshot === "object") {
+        sensorSnapshot = decision.sensor_snapshot;
+      }
+    }
     return {
       id: decision.id || "unknown",
       timestamp: decision.timestamp || decision.decided_at || decision.completed_at || (/* @__PURE__ */ new Date()).toISOString(),
       trigger: decision.trigger || decision.device_id || "HAL",
-      decision: decision.reasoning || decision.decision || "No decision text",
+      decision: decision.decision || "No decision text",
       confidence: Math.max(0, Math.min(1, Number(decision.confidence ?? 0))),
       status,
-      outcome
+      outcome,
+      // Extended fields
+      reasoning: decision.reasoning ?? void 0,
+      deviceId: decision.device_id ?? void 0,
+      sensorSnapshot,
+      triggeredBy: decision.triggered_by ?? void 0,
+      pendingStatus: decision.pending_status ?? void 0,
+      model: decision.model ?? void 0,
+      completedAt: decision.completed_at ?? void 0
     };
   }
   function normalizeState(state2) {
@@ -748,11 +779,12 @@
       recentDecisions: (state2.recentDecisions || []).map(normalizeDecision)
     };
   }
-  var BASE, halApi;
+  var BASE, SETTINGS_BASE, halApi;
   var init_api = __esm({
     "src/web/hal-ui/api.ts"() {
       "use strict";
       BASE = "/api/hal";
+      SETTINGS_BASE = "/api/settings";
       halApi = {
         // GET /api/hal/state
         async getState() {
@@ -875,6 +907,33 @@
           return halGet("/safety/summary");
         },
         // ══════════════════════════════════════════════════════════════════════════════
+        // Threshold API (VAL-AUTO-010, VAL-AUTO-011, VAL-AUTO-012)
+        // ══════════════════════════════════════════════════════════════════════════════
+        // GET /api/hal/thresholds — list all thresholds
+        async getThresholds(params) {
+          return halGet("/thresholds", params);
+        },
+        // GET /api/hal/thresholds/:id — get a specific threshold
+        async getThreshold(id) {
+          return halGet(`/thresholds/${id}`);
+        },
+        // POST /api/hal/thresholds — create a new threshold
+        async createThreshold(data) {
+          return halPost("/thresholds", data);
+        },
+        // PUT /api/hal/thresholds/:id — update a threshold
+        async updateThreshold(id, updates) {
+          return halPut(`/thresholds/${id}`, updates);
+        },
+        // DELETE /api/hal/thresholds/:id — delete a threshold
+        async deleteThreshold(id) {
+          const res = await fetch(BASE + `/thresholds/${id}`, {
+            method: "DELETE"
+          });
+          if (!res.ok) throw new Error(`Failed to delete threshold: ${res.status}`);
+          return { ok: true };
+        },
+        // ══════════════════════════════════════════════════════════════════════════════
         // Discovery API (VAL-DISC-001 to VAL-DISC-052)
         // ══════════════════════════════════════════════════════════════════════════════
         // GET /api/hal/discovery/gpio/status — check pigpiod availability (VAL-DISC-010)
@@ -943,6 +1002,47 @@
         async renameZone(oldName, newName) {
           const encodedId = oldName ? encodeURIComponent(oldName) : "_none";
           return halPut(`/zones/${encodedId}`, { name: newName });
+        },
+        // ══════════════════════════════════════════════════════════════════════════════
+        // Automation Mode API (VAL-AUTO-001 to VAL-AUTO-003)
+        // ══════════════════════════════════════════════════════════════════════════════
+        // GET /api/hal/automation/mode — get current automation mode
+        async getAutomationMode() {
+          return halGet("/automation/mode");
+        },
+        // PUT /api/hal/automation/mode — set automation mode
+        async setAutomationMode(mode, operatorId) {
+          return halPut("/automation/mode", { mode, operatorId });
+        },
+        // GET /api/hal/automation/pending — get all pending decisions
+        async getAutomationPending() {
+          return halGet("/automation/pending");
+        },
+        // POST /api/hal/automation/veto — veto a pending decision
+        async vetoDecision(decisionId, operatorId) {
+          return halPost("/automation/veto", { decisionId, operatorId });
+        },
+        // POST /api/hal/automation/approve — approve a pending decision
+        async approveDecision(decisionId, operatorId) {
+          return halPost("/automation/approve", { decisionId, operatorId });
+        },
+        // POST /api/hal/automation/trigger — manually trigger a decision cycle
+        async triggerDecisionCycle() {
+          return halPost("/automation/trigger");
+        },
+        // ══════════════════════════════════════════════════════════════════════════════
+        // LLM Settings API
+        // ══════════════════════════════════════════════════════════════════════════════
+        // GET /api/settings/llm — get saved LLM provider settings
+        async getLlmSettings() {
+          return settingsGet("/llm");
+        },
+        // ══════════════════════════════════════════════════════════════════════════════
+        // Backup API (VAL-SVC-033)
+        // ══════════════════════════════════════════════════════════════════════════════
+        // POST /api/hal/backup — trigger a manual backup
+        async triggerBackup() {
+          return halPost("/backup");
         }
       };
     }
@@ -1007,6 +1107,42 @@
         <div class="theme-picker-popover" id="theme-picker-popover">
           <div class="theme-picker-grid">${dots}</div>
         </div>
+        <div class="auto-mode-selector" id="auto-mode-selector">
+          <button class="auto-mode-btn" id="auto-mode-btn" aria-label="Automation mode" title="Automation mode">
+            <span class="auto-mode-badge" id="auto-mode-badge" style="background:${store.automationModeColor.bg};color:${store.automationModeColor.text}">${store.automationModeColor.label}</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="auto-mode-popover" id="auto-mode-popover">
+            <div class="auto-mode-header">Automation Mode</div>
+            <div class="auto-mode-list">
+              <button class="auto-mode-option" data-mode="OBSERVE_ONLY">
+                <span class="auto-mode-dot" style="background:#238636"></span>
+                <span class="auto-mode-name">OBSERVE</span>
+                <span class="auto-mode-desc">No actions, LLM sees data</span>
+              </button>
+              <button class="auto-mode-option" data-mode="SUGGEST">
+                <span class="auto-mode-dot" style="background:#388BFD"></span>
+                <span class="auto-mode-name">SUGGEST</span>
+                <span class="auto-mode-desc">Recommendations, no execution</span>
+              </button>
+              <button class="auto-mode-option" data-mode="ASSISTED_CONTROL">
+                <span class="auto-mode-dot" style="background:#D29922"></span>
+                <span class="auto-mode-name">ASSISTED</span>
+                <span class="auto-mode-desc">30s veto window</span>
+              </button>
+              <button class="auto-mode-option" data-mode="AUTONOMOUS">
+                <span class="auto-mode-dot" style="background:#F85149"></span>
+                <span class="auto-mode-name">AUTO</span>
+                <span class="auto-mode-desc">Executes immediately</span>
+              </button>
+            </div>
+            <div class="auto-mode-divider"></div>
+            <button class="auto-mode-trigger" id="auto-mode-trigger-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run Decision Now
+            </button>
+          </div>
+        </div>
       </div>
       <div class="hal-header-right">
         <button class="settings-btn" id="settings-btn" aria-label="Settings" title="Settings">
@@ -1037,17 +1173,21 @@
       cameras: "Cameras",
       safety: "Safety",
       system: "System",
-      terminal: "Terminal"
+      terminal: "Terminal",
+      calibration: "Calibration",
+      settings: "Settings"
     };
     return labels[location.hash.slice(1) || "dashboard"] || "Overview";
   }
-  function initHeader(theme, onThemeChange, onEstopChange, onLayoutChange, onSettingsClick) {
+  function initHeader(theme, onThemeChange, onEstopChange, onLayoutChange, onSettingsClick, onModeChange, onManualTrigger) {
     injectHeaderStyles();
+    injectAutoModeStyles();
     startClock();
     setupThemeButtons(onThemeChange);
     setupEstopButton(onEstopChange);
     setupLayoutButtons(onLayoutChange);
     setupSettingsButton(onSettingsClick);
+    setupAutoModeSelector(onModeChange, onManualTrigger);
     refreshEstopStatus();
   }
   function refreshEstopStatus() {
@@ -1201,6 +1341,61 @@ ${result.failures.join("\n")}`
     const btn = document.getElementById("settings-btn");
     btn?.addEventListener("click", () => {
       onSettingsClick?.();
+    });
+  }
+  function setupAutoModeSelector(onModeChange, onManualTrigger) {
+    const selector = document.getElementById("auto-mode-selector");
+    const btn = document.getElementById("auto-mode-btn");
+    const popover = document.getElementById("auto-mode-popover");
+    const triggerBtn = document.getElementById("auto-mode-trigger-btn");
+    if (!selector || !btn || !popover) return;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      popover.classList.toggle("open");
+    });
+    document.addEventListener("click", (e) => {
+      if (!selector.contains(e.target)) {
+        popover.classList.remove("open");
+      }
+    });
+    popover.querySelectorAll(".auto-mode-option").forEach((option) => {
+      option.addEventListener("click", async () => {
+        const mode = option.dataset.mode;
+        if (!mode) return;
+        try {
+          await halApi.setAutomationMode(mode);
+          const badge = document.getElementById("auto-mode-badge");
+          const modeColors = {
+            OBSERVE_ONLY: { bg: "#238636", text: "#F0F6FC", label: "OBSERVE" },
+            SUGGEST: { bg: "#388BFD", text: "#F0F6FC", label: "SUGGEST" },
+            ASSISTED_CONTROL: {
+              bg: "#D29922",
+              text: "#0D1117",
+              label: "ASSISTED"
+            },
+            AUTONOMOUS: { bg: "#F85149", text: "#F0F6FC", label: "AUTO" }
+          };
+          const colors = modeColors[mode] || modeColors["AUTONOMOUS"];
+          if (badge) {
+            badge.style.background = colors.bg;
+            badge.style.color = colors.text;
+            badge.textContent = colors.label;
+          }
+          popover.classList.remove("open");
+          onModeChange?.(mode);
+        } catch (err) {
+          alert(`Failed to set automation mode: ${err.message}`);
+        }
+      });
+    });
+    triggerBtn?.addEventListener("click", async () => {
+      try {
+        await halApi.triggerDecisionCycle();
+        popover.classList.remove("open");
+        onManualTrigger?.();
+      } catch (err) {
+        alert(`Failed to trigger decision: ${err.message}`);
+      }
     });
   }
   function startClock() {
@@ -1588,6 +1783,140 @@ ${result.failures.join("\n")}`
   }
   .hal-header-right {
     gap: var(--space-2);
+  }
+}
+`;
+    document.head.appendChild(style);
+  }
+  function injectAutoModeStyles() {
+    if (document.getElementById("hal-auto-mode-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-auto-mode-styles";
+    style.textContent = `
+/* Automation Mode Selector */
+.auto-mode-selector {
+  position: relative;
+}
+.auto-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--text-secondary);
+}
+.auto-mode-btn:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-tertiary));
+}
+.auto-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.auto-mode-popover {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+  box-shadow: var(--shadow-card-lg);
+  z-index: 120;
+  min-width: 220px;
+}
+.auto-mode-popover.open {
+  display: block;
+}
+.auto-mode-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 8px 8px;
+}
+.auto-mode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.auto-mode-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background var(--transition-fast);
+}
+.auto-mode-option:hover {
+  background: var(--bg-tertiary);
+}
+.auto-mode-option.selected {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.auto-mode-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.auto-mode-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 56px;
+}
+.auto-mode-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex: 1;
+}
+.auto-mode-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: var(--space-2) 0;
+}
+.auto-mode-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.auto-mode-trigger:hover {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-tertiary));
+  border-color: var(--accent);
+}
+@media (max-width: 1023px) {
+  .auto-mode-selector {
+    display: none;
   }
 }
 `;
@@ -2296,9 +2625,7 @@ ${result.failures.join("\n")}`
       const y1 = pts[i].y + m[i] * dx[i] / 3;
       const x2 = pts[i + 1].x - dx[i] / 3;
       const y2 = pts[i + 1].y - m[i + 1] * dx[i] / 3;
-      parts.push(
-        `C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`
-      );
+      parts.push(`C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`);
     }
     return parts.join(" ");
   }
@@ -2342,10 +2669,7 @@ ${result.failures.join("\n")}`
     const timeLabels = Array.from({ length: timeSteps + 1 }, (_, i) => {
       const t = tMin + i / timeSteps * tSpan;
       const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       return `<text x="${x.toFixed(1)}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`;
     }).join("");
     const primary = layerPaths[0];
@@ -2366,14 +2690,12 @@ ${result.failures.join("\n")}`
         return `<text x="${width - pad.right + 6}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.color}">${v.toFixed(1)}${unit}</text>`;
       }).join("");
     }
-    const defs = layerPaths.map(
-      (lp, i) => `
+    const defs = layerPaths.map((lp, i) => `
     <linearGradient id="ck-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.28"/>
       <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.02"/>
     </linearGradient>
-  `
-    ).join("");
+  `).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#ck-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -2409,8 +2731,7 @@ ${result.failures.join("\n")}`
     const kpiDelta = `${primaryMetric.delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(primaryMetric.delta).toFixed(1)}%`;
     let statsHtml = "";
     if (opts.showStats !== false) {
-      statsHtml = `<div class="ck-stats">` + latestValues.map(
-        (l) => `
+      statsHtml = `<div class="ck-stats">` + latestValues.map((l) => `
         <div class="ck-stat-metric">
           <span class="ck-stat-label" style="color:${l.color}">${escapeHtml3(l.label)}</span>
           <span class="ck-stat-current" style="color:${l.color}">${l.current.toFixed(1)}${l.unit}</span>
@@ -2420,8 +2741,7 @@ ${result.failures.join("\n")}`
           <div class="ck-stat-item"><label>Avg</label><strong>${l.avg.toFixed(1)}${l.unit}</strong></div>
           <div class="ck-stat-item"><label>Max</label><strong>${l.max.toFixed(1)}${l.unit}</strong></div>
         </div>
-      `
-      ).join("") + `</div>`;
+      `).join("") + `</div>`;
     }
     const titleHtml = opts.title ? `<div class="ck-head">
          <div>
@@ -2438,14 +2758,10 @@ ${result.failures.join("\n")}`
     container.innerHTML = `${titleHtml}<div class="ck-chart">${svg}</div>${statsHtml}${footHtml}`;
   }
   function renderOverviewZoneCard(zone, activeKeys) {
-    const metricsByKey = new Map(
-      zone.metrics.map((metric) => [metric.key, metric])
-    );
+    const metricsByKey = new Map(zone.metrics.map((metric) => [metric.key, metric]));
     const activeMetrics = overviewMetricOrder.filter((key) => activeKeys.has(key)).map((key) => metricsByKey.get(key)).filter((metric) => Boolean(metric));
     const chartMetrics = activeMetrics.filter((metric) => metric.data.length > 0);
-    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map(
-      (metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`
-    ).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
+    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map((metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
     if (chartMetrics.length === 0) {
       return `
       <article class="dhc-card">
@@ -2468,11 +2784,7 @@ ${result.failures.join("\n")}`
     const pad = { l: 48, r: 48, t: 24, b: 36 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const times = Array.from(
-      new Set(
-        chartMetrics.flatMap((metric) => metric.data.map((point) => point.t))
-      )
-    ).sort((a, b) => a - b);
+    const times = Array.from(new Set(chartMetrics.flatMap((metric) => metric.data.map((point) => point.t)))).sort((a, b) => a - b);
     const x = (i, len) => len <= 1 ? pad.l + cw / 2 : pad.l + i / (len - 1) * cw;
     const xForTs = new Map(times.map((t, i) => [t, x(i, times.length)]));
     const gradientPrefix = (zone.zoneName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "zone").slice(0, 40);
@@ -2488,18 +2800,12 @@ ${result.failures.join("\n")}`
       const max = Math.max(...values);
       const span = Math.max(1e-4, max - min);
       const y = (v) => pad.t + (max - v) / span * ch;
-      const path = values.map(
-        (value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`
-      ).join(" ");
+      const path = values.map((value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`).join(" ");
       const areaPath = path ? `${path} L${x(times.length - 1, times.length)},${pad.t + ch} L${x(0, times.length)},${pad.t + ch} Z` : "";
       return { metric, values, min, max, span, y, path, areaPath };
     });
     const primary = series[0];
-    const primaryGrid = [
-      primary.max,
-      primary.min + primary.span / 2,
-      primary.min
-    ];
+    const primaryGrid = [primary.max, primary.min + primary.span / 2, primary.min];
     const primaryUnit = activeMetrics[0]?.unit || "";
     const gridLines = primaryGrid.map((value, i) => {
       const y = primary.y(value);
@@ -2508,20 +2814,14 @@ ${result.failures.join("\n")}`
       <line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 15%, var(--border))"/>
     `;
     }).join("");
-    const defs = series.map(
-      (entry) => `
+    const defs = series.map((entry) => `
     <linearGradient id="${gradientPrefix}-${entry.metric.key}-grad" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${entry.metric.color}" stop-opacity="0.18"/>
       <stop offset="100%" stop-color="${entry.metric.color}" stop-opacity="0.01"/>
     </linearGradient>
-  `
-    ).join("");
-    const shade = series.map(
-      (entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : ""
-    ).join("");
-    const lines = series.map(
-      (entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`
-    ).join("");
+  `).join("");
+    const shade = series.map((entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : "").join("");
+    const lines = series.map((entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`).join("");
     const dots = series.map((entry) => {
       const lastTs = times[times.length - 1];
       const lastVal = entry.values[entry.values.length - 1];
@@ -2597,9 +2897,7 @@ ${result.failures.join("\n")}`
     );
     const activeFromState = opts.activeKeys ?? new Set(overviewMetricOrder);
     const activeKeys = new Set(
-      overviewMetricOrder.filter(
-        (key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0)
-      )
+      overviewMetricOrder.filter((key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0))
     );
     if (activeKeys.size === 0) {
       const fallback = overviewMetricOrder.find((key) => availableKeys.has(key)) ?? overviewMetricOrder[0];
@@ -2643,19 +2941,13 @@ ${result.failures.join("\n")}`
     }
     const activeKeys = opts.activeKeys ?? new Set(metrics2.map((m) => m.key));
     const normalizedActiveKeys = new Set(
-      Array.from(activeKeys).filter(
-        (key) => metricsWithData.some((metric) => metric.key === key)
-      )
+      Array.from(activeKeys).filter((key) => metricsWithData.some((metric) => metric.key === key))
     );
     if (normalizedActiveKeys.size === 0) {
-      const fallbackKey = ["temperature", "humidity", "co2"].find(
-        (key) => metricsWithData.some((metric) => metric.key === key)
-      ) ?? metricsWithData[0]?.key;
+      const fallbackKey = ["temperature", "humidity", "co2"].find((key) => metricsWithData.some((metric) => metric.key === key)) ?? metricsWithData[0]?.key;
       if (fallbackKey) normalizedActiveKeys.add(fallbackKey);
     }
-    const activeMetrics = metricsWithData.filter(
-      (m) => normalizedActiveKeys.has(m.key)
-    );
+    const activeMetrics = metricsWithData.filter((m) => normalizedActiveKeys.has(m.key));
     const chartMetrics = activeMetrics.filter((m) => m.data.length > 0);
     if (chartMetrics.length === 0) {
       container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
@@ -2667,9 +2959,7 @@ ${result.failures.join("\n")}`
     const pad = { l: 18, r: 16, t: 20, b: 24 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const times = Array.from(
-      new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))
-    ).sort((a, b) => a - b);
+    const times = Array.from(new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))).sort((a, b) => a - b);
     if (times.length === 0) {
       container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
       return;
@@ -2685,12 +2975,7 @@ ${result.failures.join("\n")}`
         axisMax = axisMax * 9 / 5 + 32;
       }
       const vSpan = Math.max(1, axisMax - axisMin);
-      const exact = new Map(
-        metric.data.map((d) => [
-          d.t,
-          Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))
-        ])
-      );
+      const exact = new Map(metric.data.map((d) => [d.t, Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))]));
       const firstNorm = exact.size > 0 ? exact.get(metric.data[0].t) ?? 0 : 0;
       let carry = firstNorm;
       const values = times.map((t) => {
@@ -2722,12 +3007,8 @@ ${result.failures.join("\n")}`
         botPts.push({ x: px, y: y(seg?.y1 ?? 0) });
       }
       const topPath = monotoneCubicPath(topPts);
-      const topLine = topPts.map(
-        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
-      ).join(" ");
-      const botLine = botPts.map(
-        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
-      ).join(" ");
+      const topLine = topPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const botLine = botPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
       const area = topLine ? `${topLine} L${botPts[botPts.length - 1]?.x.toFixed(1)},${botPts[botPts.length - 1]?.y.toFixed(1)} ${botPts.slice().reverse().map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")} Z` : "";
       return { series, area, topPath, topPts };
     });
@@ -2735,14 +3016,12 @@ ${result.failures.join("\n")}`
       const gy = pad.t + step * ch;
       return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${gy}" y2="${gy}" class="dhc-grid"/>`;
     }).join("");
-    const defs = layerPaths.map(
-      (lp, i) => `
+    const defs = layerPaths.map((lp, i) => `
     <linearGradient id="dhc-lake-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.series.metric.color}" stop-opacity="0.56"/>
       <stop offset="100%" stop-color="${lp.series.metric.color}" stop-opacity="0.08"/>
     </linearGradient>
-  `
-    ).join("");
+  `).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#dhc-lake-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -2793,9 +3072,7 @@ ${result.failures.join("\n")}`
     const primaryCurrent = primaryMetric.data[primaryMetric.data.length - 1].v;
     const primaryPrev = primaryMetric.data[primaryMetric.data.length - 2]?.v ?? primaryCurrent;
     const delta = primaryPrev ? (primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100 : 0;
-    const titleColors = activeMetrics.map(
-      (m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`
-    ).join(' <span style="color:var(--text-secondary)">+</span> ');
+    const titleColors = activeMetrics.map((m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`).join(' <span style="color:var(--text-secondary)">+</span> ');
     const zoneToggleHtml = opts.zoneToggles ? `<div class="dhc-zone-toggles">
         <button class="dhc-zone-toggle ${opts.zoneToggles.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>
         ${opts.zoneToggles.zones.map((z) => {
@@ -2882,14 +3159,8 @@ ${result.failures.join("\n")}`
     }).join("");
     const lx = x(vals.length - 1).toFixed(1);
     const ly = y(vals[vals.length - 1]).toFixed(1);
-    const t0 = new Date(data[0].ts).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit"
-    });
+    const t0 = new Date(data[0].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     container.innerHTML = `
     <svg class="og-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
       ${grids}
@@ -2905,8 +3176,7 @@ ${result.failures.join("\n")}`
   function renderStackedAreaChart(layers, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || layers.length === 0) {
-      if (container)
-        container.innerHTML = '<div class="chart-empty">No data</div>';
+      if (container) container.innerHTML = '<div class="chart-empty">No data</div>';
       return;
     }
     const colorGroups = /* @__PURE__ */ new Map();
@@ -2972,20 +3242,15 @@ ${result.failures.join("\n")}`
     const timeLabels = Array.from({ length: 7 }, (_, i) => {
       const t = tMin + i / 6 * tSpan;
       const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
     }).join("");
-    const defs = layerPaths.map(
-      (lp, i) => `
+    const defs = layerPaths.map((lp, i) => `
     <linearGradient id="stack-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.55"/>
       <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.08"/>
     </linearGradient>
-  `
-    ).join("");
+  `).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#stack-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -2998,30 +3263,18 @@ ${result.failures.join("\n")}`
       ${gridLines}${areas}${lines}${timeLabels}
     </svg>
   `;
-    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map(
-      (l) => `
+    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map((l) => `
         <span class="legend-item" style="--metric-color:${l.color}">
           <span class="legend-dot"></span>${escapeHtml3(l.label)}
-        </span>`
-    ).join("")}</div>` : "";
+        </span>`).join("")}</div>` : "";
     container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
   }
   function renderAreaCard(data, metricKey, containerId, title) {
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || {
-      label: metricKey,
-      color: "#888",
-      unit: "",
-      minAxis: 0,
-      maxAxis: 100
-    };
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metricKey,
-      store.unitSystem
-    );
+    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
+    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -3037,10 +3290,7 @@ ${result.failures.join("\n")}`
     const vSpan = Math.max(1, axisMax - axisMin);
     const points = data.map((d) => {
       const v = formatSensorValue(d.value, metricKey, store.unitSystem).value;
-      return {
-        x: tx(new Date(d.timestamp).getTime()),
-        y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b)
-      };
+      return { x: tx(new Date(d.timestamp).getTime()), y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b) };
     });
     const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
     const area = `${line} L${points[points.length - 1].x.toFixed(1)},${h - pad.b} L${points[0].x.toFixed(1)},${h - pad.b} Z`;
@@ -3063,18 +3313,8 @@ ${result.failures.join("\n")}`
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || {
-      label: metricKey,
-      color: "#888",
-      unit: "",
-      minAxis: 0,
-      maxAxis: 100
-    };
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metricKey,
-      store.unitSystem
-    );
+    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
+    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -3102,18 +3342,8 @@ ${result.failures.join("\n")}`
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || {
-      label: metricKey,
-      color: "#888",
-      unit: "",
-      minAxis: 0,
-      maxAxis: 100
-    };
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metricKey,
-      store.unitSystem
-    );
+    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
+    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -3140,8 +3370,7 @@ ${result.failures.join("\n")}`
   function renderDecisionBarTrend(points, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || points.length === 0) {
-      if (container)
-        container.innerHTML = '<div class="chart-empty">No decision data</div>';
+      if (container) container.innerHTML = '<div class="chart-empty">No decision data</div>';
       return;
     }
     const W = opts.width ?? (container.clientWidth || 600);
@@ -3149,10 +3378,7 @@ ${result.failures.join("\n")}`
     const pad = { t: 20, r: 16, b: 40, l: 40 };
     const chartW = W - pad.l - pad.r;
     const chartH = H - pad.t - pad.b;
-    const maxVal = Math.max(
-      ...points.flatMap((p) => [p.success, p.failure, p.pending]),
-      1
-    );
+    const maxVal = Math.max(...points.flatMap((p) => [p.success, p.failure, p.pending]), 1);
     const groupW = chartW / points.length;
     const barW = groupW * 0.22;
     const gap = groupW * 0.04;
@@ -3346,12 +3572,7 @@ ${result.failures.join("\n")}`
     if (!container || cells.length === 0) return;
     const W = opts.width ?? (container.clientWidth || 600);
     const H = opts.height ?? 100;
-    const colorRange = opts.colorRange ?? [
-      "#0a1a12",
-      "#1a4030",
-      "#4aB070",
-      "#F59E0B"
-    ];
+    const colorRange = opts.colorRange ?? ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B"];
     const dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const hours = Array.from({ length: 24 }, (_, i) => i);
     const cellW = (W - 40) / 24;
@@ -3362,10 +3583,7 @@ ${result.failures.join("\n")}`
     const vSpan = Math.max(1e-3, vMax - vMin);
     const colorFor = (v) => {
       const t = (v - vMin) / vSpan;
-      const idx = Math.min(
-        colorRange.length - 1,
-        Math.floor(t * colorRange.length)
-      );
+      const idx = Math.min(colorRange.length - 1, Math.floor(t * colorRange.length));
       return colorRange[idx];
     };
     const rects = cells.map((c) => {
@@ -3804,56 +4022,14 @@ ${result.failures.join("\n")}`
       "use strict";
       init_store();
       metricConfig = {
-        temperature: {
-          label: "Temperature",
-          color: "#F59E0B",
-          unit: "\xB0C",
-          minAxis: 10,
-          maxAxis: 40
-        },
-        humidity: {
-          label: "Humidity",
-          color: "#38BDF8",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
-        soil_moisture: {
-          label: "Soil Moisture",
-          color: "#EF4444",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
-        water_level: {
-          label: "Water Level",
-          color: "#2563EB",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
+        temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
+        humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
+        soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
+        water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
         ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
-        co2: {
-          label: "CO\u2082",
-          color: "#22C55E",
-          unit: "ppm",
-          minAxis: 0,
-          maxAxis: 2e3
-        },
-        light: {
-          label: "Light",
-          color: "#FACC15",
-          unit: "lux",
-          minAxis: 0,
-          maxAxis: 1e5
-        },
-        weight: {
-          label: "Weight",
-          color: "#94A3B8",
-          unit: "kg",
-          minAxis: 0,
-          maxAxis: 100
-        },
+        co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
+        light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
+        weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
         vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
       };
       DECISION_COLORS = {
@@ -3948,56 +4124,14 @@ ${result.failures.join("\n")}`
         "weight"
       ];
       metricConfig2 = {
-        temperature: {
-          label: "Temperature",
-          color: "#F59E0B",
-          unit: "\xB0C",
-          minAxis: 10,
-          maxAxis: 40
-        },
-        humidity: {
-          label: "Humidity",
-          color: "#38BDF8",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
-        soil_moisture: {
-          label: "Soil Moisture",
-          color: "#EF4444",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
-        water_level: {
-          label: "Water Level",
-          color: "#2563EB",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
+        temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
+        humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
+        soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
+        water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
         ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
-        co2: {
-          label: "CO\u2082",
-          color: "#22C55E",
-          unit: "ppm",
-          minAxis: 0,
-          maxAxis: 2e3
-        },
-        light: {
-          label: "Light",
-          color: "#FACC15",
-          unit: "lux",
-          minAxis: 0,
-          maxAxis: 1e5
-        },
-        weight: {
-          label: "Weight",
-          color: "#94A3B8",
-          unit: "kg",
-          minAxis: 0,
-          maxAxis: 100
-        },
+        co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
+        light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
+        weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
         vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
       };
     }
@@ -4342,9 +4476,7 @@ ${result.failures.join("\n")}`
   async function renderOperatorPanels() {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter(
-      (d) => d.type === "relay" || d.type === "smart_plug"
-    );
+    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
     const cameras = store.devices.filter((d) => d.type === "camera");
     const powerHistory = await fetchPowerHistory(relays);
     return `
@@ -4371,8 +4503,7 @@ ${result.failures.join("\n")}`
       </div>
     `;
     }
-    const grid = relays.map(
-      (r) => `
+    const grid = relays.map((r) => `
     <div class="op-device-cell ${r.online ? "online" : "offline"}" data-device-id="${r.id}">
       <div class="op-device-icon">${r.type === "relay" ? "RLY" : "PLG"}</div>
       <div class="op-device-info">
@@ -4383,8 +4514,7 @@ ${result.failures.join("\n")}`
         <div class="op-toggle-thumb"></div>
       </div>
     </div>
-  `
-    ).join("");
+  `).join("");
     const onCount = relays.filter((r) => r.state === "on").length;
     return `
     <div class="op-panel hal-card">
@@ -4401,21 +4531,17 @@ ${result.failures.join("\n")}`
   function renderAutomationStatsPanel(decisions) {
     const now = Date.now();
     const oneHour = 60 * 60 * 1e3;
-    const recent = decisions.filter(
-      (d) => now - new Date(d.timestamp).getTime() < oneHour
-    );
+    const recent = decisions.filter((d) => now - new Date(d.timestamp).getTime() < oneHour);
     const successCount = recent.filter((d) => d.status === "success").length;
     const successRate = recent.length > 0 ? successCount / recent.length * 100 : 0;
     const buckets = [];
     for (let h = 5; h >= 0; h--) {
       const start = now - (h + 1) * oneHour;
       const end = now - h * oneHour;
-      buckets.push(
-        decisions.filter((d) => {
-          const t = new Date(d.timestamp).getTime();
-          return t >= start && t < end;
-        }).length
-      );
+      buckets.push(decisions.filter((d) => {
+        const t = new Date(d.timestamp).getTime();
+        return t >= start && t < end;
+      }).length);
     }
     return `
     <div class="op-panel hal-card">
@@ -4447,22 +4573,12 @@ ${result.failures.join("\n")}`
     const alerts = [];
     for (const s of sensors) {
       if (!s.online) {
-        alerts.push({
-          level: "critical",
-          text: `${s.name} offline`,
-          time: "now"
-        });
+        alerts.push({ level: "critical", text: `${s.name} offline`, time: "now" });
       }
     }
-    const failed = decisions.filter(
-      (d) => d.status === "failure" && now - new Date(d.timestamp).getTime() < 36e5
-    );
+    const failed = decisions.filter((d) => d.status === "failure" && now - new Date(d.timestamp).getTime() < 36e5);
     for (const d of failed.slice(0, 3)) {
-      alerts.push({
-        level: "warning",
-        text: d.decision.slice(0, 40),
-        time: formatRelTime(d.timestamp)
-      });
+      alerts.push({ level: "warning", text: d.decision.slice(0, 40), time: formatRelTime(d.timestamp) });
     }
     if (alerts.length === 0) {
       return `
@@ -4485,15 +4601,13 @@ ${result.failures.join("\n")}`
         ${criticalCount > 0 ? `<span class="status-chip status-chip--offline">${criticalCount} critical</span>` : `<span class="status-chip status-chip--online">Clear</span>`}
       </div>
       <div class="op-panel-body">
-        ${alerts.slice(0, 5).map(
-      (a) => `
+        ${alerts.slice(0, 5).map((a) => `
           <div class="op-alert ${a.level}">
             <span class="op-alert-dot"></span>
             <span class="op-alert-text">${escapeHtml4(a.text)}</span>
             <span class="op-alert-time text-xs text-secondary">${a.time}</span>
           </div>
-        `
-    ).join("")}
+        `).join("")}
       </div>
     </div>
   `;
@@ -4845,15 +4959,13 @@ ${result.failures.join("\n")}`
       </div>
     `;
     }
-    const lines = entries.map(
-      (e) => `
+    const lines = entries.map((e) => `
     <div class="terminal-line ${e.level}">
       <span class="terminal-time text-mono">${formatTime2(e.timestamp)}</span>
       <span class="terminal-source">${escapeHtml5(e.source)}</span>
       <span class="terminal-msg">${escapeHtml5(e.message)}</span>
     </div>
-  `
-    ).join("");
+  `).join("");
     return `
     <div class="terminal-wrap hal-card">
       <div class="terminal-header">
@@ -4895,19 +5007,12 @@ ${result.failures.join("\n")}`
         message: `${d.decision} [${(d.confidence * 100).toFixed(0)}%]`
       });
     }
-    entries.sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     return entries;
   }
   function formatTime2(iso) {
     try {
-      return new Date(iso).toLocaleTimeString("en-US", {
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit"
-      });
+      return new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
     } catch {
       return "--:--:--";
     }
@@ -5055,55 +5160,41 @@ ${result.failures.join("\n")}`
   `;
   }
   function renderCalmDeviceList(devices) {
-    if (devices.length === 0)
-      return '<p class="text-secondary text-sm">No active devices</p>';
-    return devices.slice(0, 6).map(
-      (d) => `
+    if (devices.length === 0) return '<p class="text-secondary text-sm">No active devices</p>';
+    return devices.slice(0, 6).map((d) => `
     <div class="calm-device-item ${d.online ? "online" : "offline"}">
       <span class="calm-device-dot"></span>
       <span class="calm-device-name">${escapeHtml6(d.name)}</span>
       <span class="calm-device-type text-xs text-secondary">${d.type}</span>
     </div>
-  `
-    ).join("");
+  `).join("");
   }
   function sortZonesDeterministically(zones2) {
     return zones2.slice().sort((a, b) => {
       if (a === "Unzoned") return 1;
       if (b === "Unzoned") return -1;
-      return a.localeCompare(b, void 0, {
-        numeric: true,
-        sensitivity: "base"
-      });
+      return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
     });
   }
   function aggregateZoneOverviewCards(layers, zones2, unitSystem) {
     const zoneMetricBuckets = /* @__PURE__ */ new Map();
     for (const zone of zones2) {
-      zoneMetricBuckets.set(
-        zone,
-        /* @__PURE__ */ new Map([
-          ["temperature", /* @__PURE__ */ new Map()],
-          ["humidity", /* @__PURE__ */ new Map()],
-          ["co2", /* @__PURE__ */ new Map()]
-        ])
-      );
+      zoneMetricBuckets.set(zone, /* @__PURE__ */ new Map([
+        ["temperature", /* @__PURE__ */ new Map()],
+        ["humidity", /* @__PURE__ */ new Map()],
+        ["co2", /* @__PURE__ */ new Map()]
+      ]));
     }
     for (const layer of layers) {
       if (!zoneMetricBuckets.has(layer.zoneName)) continue;
-      if (!OVERVIEW_METRIC_KEYS.includes(layer.metric))
-        continue;
+      if (!OVERVIEW_METRIC_KEYS.includes(layer.metric)) continue;
       const metricKey = layer.metric;
       const metricBuckets = zoneMetricBuckets.get(layer.zoneName).get(metricKey);
       for (const reading of layer.data) {
         const timestampMs = new Date(reading.timestamp).getTime();
         if (!Number.isFinite(timestampMs)) continue;
         const bucketTs = Math.floor(timestampMs / 6e4) * 6e4;
-        const converted = formatSensorValue(
-          reading.value,
-          metricKey,
-          unitSystem
-        ).value;
+        const converted = formatSensorValue(reading.value, metricKey, unitSystem).value;
         const current = metricBuckets.get(bucketTs) ?? { sum: 0, count: 0 };
         current.sum += converted;
         current.count += 1;
@@ -5165,9 +5256,7 @@ ${result.failures.join("\n")}`
       const { layers } = await loadHeroChartData();
       if (sequence !== dashLoadSequence) return;
       const store = getStore();
-      const zones2 = sortZonesDeterministically([
-        ...new Set(layers.map((l) => l.zoneName).filter(Boolean))
-      ]);
+      const zones2 = sortZonesDeterministically([...new Set(layers.map((l) => l.zoneName).filter(Boolean))]);
       if (zones2.length === 0) {
         const inferredZones = /* @__PURE__ */ new Set();
         for (const device of store.devices.filter((d) => d.type === "sensor")) {
@@ -5178,15 +5267,9 @@ ${result.failures.join("\n")}`
           zones2.push(...sortZonesDeterministically(Array.from(inferredZones)));
         }
       }
-      const zoneCards = aggregateZoneOverviewCards(
-        layers,
-        zones2,
-        store.unitSystem
-      );
+      const zoneCards = aggregateZoneOverviewCards(layers, zones2, store.unitSystem);
       const availableMetricKeys = new Set(
-        zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter(
-          (key) => OVERVIEW_METRIC_KEYS.includes(key)
-        )
+        zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter((key) => OVERVIEW_METRIC_KEYS.includes(key))
       );
       const fallbackMetric = OVERVIEW_METRIC_KEYS.find((key) => availableMetricKeys.has(key)) ?? Array.from(availableMetricKeys)[0];
       for (const key of Array.from(dashActiveMetrics)) {
@@ -5202,9 +5285,7 @@ ${result.failures.join("\n")}`
         activeKeys: new Set(dashActiveMetrics),
         onToggle: (key) => {
           if (!availableMetricKeys.has(key)) return;
-          const currentlyActive = Array.from(dashActiveMetrics).filter(
-            (metricKey) => availableMetricKeys.has(metricKey)
-          );
+          const currentlyActive = Array.from(dashActiveMetrics).filter((metricKey) => availableMetricKeys.has(metricKey));
           if (dashActiveMetrics.has(key)) {
             if (currentlyActive.length <= 1) return;
             dashActiveMetrics.delete(key);
@@ -5328,10 +5409,7 @@ ${result.failures.join("\n")}`
         if (snap?.[m]?.value != null) values.push(snap[m].value);
       }
       const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-      const trend = Array.from(
-        { length: 20 },
-        (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1)
-      );
+      const trend = Array.from({ length: 20 }, (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1));
       const spark = renderSparkline(trend, metricColors[m] || "#888", 120, 28);
       const label = m.charAt(0).toUpperCase() + m.slice(1);
       return `
@@ -5348,9 +5426,7 @@ ${result.failures.join("\n")}`
   }
   function renderDiagnosticExtras(store) {
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter(
-      (d) => d.type === "relay" || d.type === "smart_plug"
-    );
+    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
     const cameras = store.devices.filter((d) => d.type === "camera");
     return `
     <div class="diag-extras hal-card">
@@ -5414,8 +5490,7 @@ ${result.failures.join("\n")}`
     if (devices.length === 0) {
       return '<div class="empty-state"><p>No devices registered</p></div>';
     }
-    return devices.map(
-      (d) => `
+    return devices.map((d) => `
     <div class="device-mini-card ${d.online ? "online" : "offline"}" data-device-id="${d.id}">
       <div class="device-mini-icon">${deviceIcon(d.type)}</div>
       <div class="device-mini-info">
@@ -5428,15 +5503,13 @@ ${result.failures.join("\n")}`
         </div>
       ` : ""}
     </div>
-  `
-    ).join("");
+  `).join("");
   }
   function renderRecentDecisions(decisions) {
     if (decisions.length === 0) {
       return '<div class="empty-state"><p>No decisions yet</p></div>';
     }
-    return decisions.map(
-      (d) => `
+    return decisions.map((d) => `
     <div class="decision-row ${d.status || "pending"}">
       <div class="decision-time text-mono text-xs text-secondary">${formatTime3(d.timestamp)}</div>
       <div class="decision-trigger text-sm">${escapeHtml6(d.trigger)}</div>
@@ -5446,8 +5519,7 @@ ${result.failures.join("\n")}`
         <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor2(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
       </div>
     </div>
-  `
-    ).join("");
+  `).join("");
   }
   function attachDashboardHandlers() {
     document.querySelectorAll(".device-mini-card").forEach((card) => {
@@ -8745,12 +8817,15 @@ ${result.failures.join("\n")}`
   // src/web/hal-ui/views/Decisions.ts
   async function renderDecisions(container) {
     const store = getStore();
+    const pendingDecisions = store.pendingDecisions || [];
     const filtered = statusFilter === "all" ? store.decisions : store.decisions.filter((d) => (d.status || "pending") === statusFilter);
     container.innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Decisions</h1>
       <p class="page-subtitle">HAL autonomous decision log</p>
     </div>
+
+    ${renderPendingDecisionsSection(pendingDecisions)}
 
     <div class="decisions-chart-section mb-4">
       <div class="hal-card" style="padding: var(--space-3)">
@@ -8789,8 +8864,53 @@ ${result.failures.join("\n")}`
     injectChartKitStyles();
     attachDecisionHandlers();
     attachFilterHandlers();
+    attachPendingHandlers();
     renderDecisionsHeatmap(store.decisions);
     renderDecisionsBarTrend(store.decisions);
+    startPendingCountdown();
+  }
+  function renderPendingDecisionsSection(pending) {
+    if (pending.length === 0) {
+      return "";
+    }
+    const items = pending.filter((p) => p.decision && !p.executed).map((p) => {
+      const remaining = p.remainingSeconds ?? 0;
+      const isAssisted = p.mode === "ASSISTED_CONTROL";
+      const modeColor = {
+        SUGGEST: "#388BFD",
+        ASSISTED_CONTROL: "#D29922"
+      };
+      const color = modeColor[p.mode] || "#388BFD";
+      const countdown = isAssisted ? `<span class="pending-countdown" data-deadline="${p.veto_deadline || ""}">${remaining}s</span>` : "";
+      const decisionText = p.decision?.reasoning || p.decision?.decision || "No description";
+      const confidence = p.decision?.confidence ? `${(p.decision.confidence * 100).toFixed(0)}%` : "--";
+      return `
+    <div class="pending-decision-item" data-decision-id="${p.decision_id}">
+      <div class="pending-decision-left">
+        <span class="pending-mode-badge" style="background:${color}">${p.mode === "ASSISTED_CONTROL" ? "ASSISTED" : "SUGGEST"}</span>
+        ${countdown}
+      </div>
+      <div class="pending-decision-middle">
+        <span class="pending-decision-text">${escapeHtml10(decisionText)}</span>
+        <span class="pending-decision-confidence text-mono text-xs">${confidence}</span>
+      </div>
+      <div class="pending-decision-right">
+        <button class="pending-btn approve-btn" data-decision-id="${p.decision_id}">Approve</button>
+        <button class="pending-btn veto-btn" data-decision-id="${p.decision_id}">Veto</button>
+      </div>
+    </div>
+  `;
+    }).join("");
+    return `
+    <div class="pending-decisions-section mb-4" id="pending-decisions-section">
+      <div class="hal-card" style="padding: var(--space-3)">
+        <div class="section-title mb-3">Pending Decisions <span class="pending-count-badge">${pending.length}</span></div>
+        <div class="pending-decisions-list">
+          ${items || '<p class="text-sm text-secondary">No pending decisions.</p>'}
+        </div>
+      </div>
+    </div>
+  `;
   }
   function renderDecisionsHeatmap(decisions) {
     if (decisions.length < 3) return;
@@ -8930,6 +9050,58 @@ ${result.failures.join("\n")}`
         }
       });
     });
+  }
+  function attachPendingHandlers() {
+    document.querySelectorAll(".pending-btn.approve-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const decisionId = btn.dataset.decisionId;
+        if (!decisionId) return;
+        try {
+          await halApi.approveDecision(decisionId);
+          const { refreshHALData: refreshHALData2 } = await Promise.resolve().then(() => (init_main(), main_exports));
+          await refreshHALData2();
+          const container = document.getElementById("view-container");
+          if (container) await renderDecisions(container);
+        } catch (err) {
+          alert(`Failed to approve: ${err.message}`);
+        }
+      });
+    });
+    document.querySelectorAll(".pending-btn.veto-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const decisionId = btn.dataset.decisionId;
+        if (!decisionId) return;
+        try {
+          await halApi.vetoDecision(decisionId);
+          const { refreshHALData: refreshHALData2 } = await Promise.resolve().then(() => (init_main(), main_exports));
+          await refreshHALData2();
+          const container = document.getElementById("view-container");
+          if (container) await renderDecisions(container);
+        } catch (err) {
+          alert(`Failed to veto: ${err.message}`);
+        }
+      });
+    });
+  }
+  function startPendingCountdown() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    function tick() {
+      document.querySelectorAll(".pending-countdown").forEach((el) => {
+        const deadline = el.dataset.deadline;
+        if (!deadline) return;
+        const remaining = Math.max(
+          0,
+          Math.ceil((new Date(deadline).getTime() - Date.now()) / 1e3)
+        );
+        el.textContent = `${remaining}s`;
+        if (remaining <= 0) {
+          el.textContent = "0s";
+          el.classList.add("expired");
+        }
+      });
+    }
+    tick();
+    countdownInterval = setInterval(tick, 1e3);
   }
   function confidenceColor3(conf) {
     if (conf >= 0.8) return "var(--success)";
@@ -9084,17 +9256,126 @@ ${result.failures.join("\n")}`
     min-width: 0;
   }
 }
+
+/* Pending Decisions Section */
+.pending-decisions-section .section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pending-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--on-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+.pending-decisions-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.pending-decision-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+}
+.pending-decision-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.pending-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+.pending-countdown {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--warning);
+  min-width: 32px;
+}
+.pending-countdown.expired {
+  color: var(--danger);
+}
+.pending-decision-middle {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pending-decision-text {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pending-decision-confidence {
+  color: var(--text-secondary);
+}
+.pending-decision-right {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.pending-btn {
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: all var(--transition-fast);
+}
+.pending-btn.approve-btn {
+  background: color-mix(in srgb, var(--success) 20%, transparent);
+  color: var(--success);
+  border-color: var(--success);
+}
+.pending-btn.approve-btn:hover {
+  background: color-mix(in srgb, var(--success) 35%, transparent);
+}
+.pending-btn.veto-btn {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.pending-btn.veto-btn:hover {
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
+}
 `;
     document.head.appendChild(style);
   }
-  var expandedDecisionIds, statusFilter;
+  var expandedDecisionIds, statusFilter, countdownInterval;
   var init_Decisions = __esm({
     "src/web/hal-ui/views/Decisions.ts"() {
       "use strict";
       init_store();
+      init_api();
       init_ChartKit();
       expandedDecisionIds = /* @__PURE__ */ new Set();
       statusFilter = "all";
+      countdownInterval = null;
     }
   });
 
@@ -11249,9 +11530,7 @@ ${result.failures.join("\n")}`
     try {
       status = await provisioningApi.getStatus();
     } catch {
-      container.innerHTML = renderError(
-        "Could not connect to FarmPal. Please refresh."
-      );
+      container.innerHTML = renderError("Could not connect to FarmPal. Please refresh.");
       return;
     }
     if (!status.isUnprovisioned && status.state === "completed") {
@@ -11652,14 +11931,9 @@ ${result.failures.join("\n")}`
     setupPasswordToggle("toggle-api-key", "llm-api-key");
     setupPasswordToggle("toggle-telegram-token", "telegram-token");
     const passwordInput = document.getElementById("password");
-    const passwordConfirm = document.getElementById(
-      "password-confirm"
-    );
+    const passwordConfirm = document.getElementById("password-confirm");
     if (passwordInput) {
-      passwordInput.addEventListener(
-        "input",
-        () => updatePasswordStrength(passwordInput.value)
-      );
+      passwordInput.addEventListener("input", () => updatePasswordStrength(passwordInput.value));
       passwordInput.addEventListener("blur", () => validatePasswordStep());
     }
     if (passwordConfirm) {
@@ -11678,9 +11952,7 @@ ${result.failures.join("\n")}`
         attachWizardEvents(container, effectiveSteps, currentIndex);
       });
     });
-    const telegramToggle = document.getElementById(
-      "telegram-enabled"
-    );
+    const telegramToggle = document.getElementById("telegram-enabled");
     const telegramFields = document.querySelector(".telegram-fields");
     if (telegramToggle && telegramFields) {
       telegramToggle.addEventListener("change", () => {
@@ -11878,10 +12150,7 @@ ${result.failures.join("\n")}`
       window.location.hash = "#dashboard";
       window.location.reload();
     } catch (err) {
-      showStepError(
-        6,
-        err.message || "Setup could not be saved \u2014 please try again."
-      );
+      showStepError(6, err.message || "Setup could not be saved \u2014 please try again.");
     }
   }
   function updatePasswordStrength(pwd) {
@@ -11908,10 +12177,7 @@ ${result.failures.join("\n")}`
     btn.addEventListener("click", () => {
       const isPassword = input.type === "password";
       input.type = isPassword ? "text" : "password";
-      btn.setAttribute(
-        "aria-label",
-        isPassword ? "Hide password" : "Show password"
-      );
+      btn.setAttribute("aria-label", isPassword ? "Hide password" : "Show password");
     });
   }
   function escapeHtml12(str) {
@@ -12527,22 +12793,12 @@ ${result.failures.join("\n")}`
       ];
       wifiNetworks = [];
       LLM_PROVIDERS = [
-        {
-          id: "ollama",
-          name: "Ollama (Local)",
-          defaultEndpoint: "http://localhost:11434",
-          supportsModel: true
-        },
+        { id: "ollama", name: "Ollama (Local)", defaultEndpoint: "http://localhost:11434", supportsModel: true },
         { id: "openai", name: "OpenAI", supportsApiKey: true },
         { id: "anthropic", name: "Anthropic", supportsApiKey: true },
         { id: "zai", name: "ZAI", supportsApiKey: true },
         { id: "minimax", name: "MiniMax", supportsApiKey: true },
-        {
-          id: "lmstudio",
-          name: "LM Studio (Local)",
-          defaultEndpoint: "http://localhost:1234",
-          supportsModel: true
-        }
+        { id: "lmstudio", name: "LM Studio (Local)", defaultEndpoint: "http://localhost:1234", supportsModel: true }
       ];
     }
   });
@@ -12567,35 +12823,86 @@ ${result.failures.join("\n")}`
         <div class="safety-summary-card loading">Loading...</div>
       </div>
 
-      <div class="safety-rules-section">
-        <div class="safety-section-header">
-          <h2>Safety Rules</h2>
-          <div class="safety-filter">
-            <select id="rule-device-filter" class="form-select">
-              <option value="">All Devices</option>
-            </select>
+      <!-- Tab bar for Safety Rules vs Thresholds -->
+      <div class="safety-tabs" id="safety-tabs">
+        <button class="safety-tab active" data-tab="rules">Safety Rules</button>
+        <button class="safety-tab" data-tab="thresholds">Thresholds</button>
+      </div>
+
+      <div id="safety-rules-panel">
+        <div class="safety-rules-section">
+          <div class="safety-section-header">
+            <h2>Safety Rules</h2>
+            <div class="safety-filter">
+              <select id="rule-device-filter" class="form-select">
+                <option value="">All Devices</option>
+              </select>
+            </div>
+          </div>
+          <div class="safety-rules-list" id="safety-rules-list">
+            <div class="safety-rules-loading">Loading rules...</div>
           </div>
         </div>
-        <div class="safety-rules-list" id="safety-rules-list">
-          <div class="safety-rules-loading">Loading rules...</div>
+
+        <div class="safety-recent-denials">
+          <div class="safety-section-header">
+            <h2>Recent Denials (24h)</h2>
+          </div>
+          <div class="safety-denials-list" id="safety-denials-list">
+            <div class="safety-denials-loading">Loading...</div>
+          </div>
         </div>
       </div>
 
-      <div class="safety-recent-denials">
-        <div class="safety-section-header">
-          <h2>Recent Denials (24h)</h2>
-        </div>
-        <div class="safety-denials-list" id="safety-denials-list">
-          <div class="safety-denials-loading">Loading...</div>
+      <div id="safety-thresholds-panel" style="display:none;">
+        <div class="safety-thresholds-section">
+          <div class="safety-section-header">
+            <h2>Sensor Thresholds</h2>
+            <button class="btn btn-primary" id="add-threshold-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Threshold
+            </button>
+          </div>
+          <div class="safety-thresholds-list" id="safety-thresholds-list">
+            <div class="safety-thresholds-loading">Loading thresholds...</div>
+          </div>
         </div>
       </div>
     </div>
   `;
     setupSafetyEventListeners();
+    setupThresholdTabListeners();
     await loadSafetySummary();
     await loadSafetyRules();
     await loadRecentDenials();
     await loadDevicesForFilter();
+    await loadThresholds();
+  }
+  function setupThresholdTabListeners() {
+    document.querySelectorAll(".safety-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const tabName = tab.dataset.tab;
+        document.querySelectorAll(".safety-tab").forEach((t) => {
+          t.classList.toggle("active", t === tab);
+        });
+        const rulesPanel = document.getElementById("safety-rules-panel");
+        const thresholdsPanel = document.getElementById(
+          "safety-thresholds-panel"
+        );
+        if (tabName === "rules") {
+          if (rulesPanel) rulesPanel.style.display = "";
+          if (thresholdsPanel) thresholdsPanel.style.display = "none";
+        } else {
+          if (rulesPanel) rulesPanel.style.display = "none";
+          if (thresholdsPanel) thresholdsPanel.style.display = "";
+          loadThresholds();
+        }
+      });
+    });
+    const addThresholdBtn = document.getElementById("add-threshold-btn");
+    addThresholdBtn?.addEventListener("click", () => {
+      showAddThresholdModal();
+    });
   }
   async function loadSafetySummary() {
     try {
@@ -13347,6 +13654,400 @@ ${result.failures.join("\n")}`
       showToast(`Failed to update rule: ${err.message}`, "error");
     }
   }
+  async function loadThresholds() {
+    try {
+      const thresholds = await halApi.getThresholds();
+      const listEl = document.getElementById("safety-thresholds-list");
+      if (!listEl) return;
+      if (thresholds.length === 0) {
+        listEl.innerHTML = `
+        <div class="safety-empty">
+          <p>No thresholds configured.</p>
+          <p>Click "Add Threshold" to set min/max bounds for sensor metrics.</p>
+        </div>
+      `;
+        return;
+      }
+      listEl.innerHTML = thresholds.map((t) => renderThresholdCard(t)).join("");
+      listEl.querySelectorAll(".threshold-edit-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const thresholdId = btn.dataset.thresholdId;
+          editThreshold(thresholdId);
+        });
+      });
+      listEl.querySelectorAll(".threshold-delete-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const thresholdId = btn.dataset.thresholdId;
+          const metric = btn.dataset.metric;
+          confirmDeleteThreshold(thresholdId, metric);
+        });
+      });
+      listEl.querySelectorAll(".threshold-toggle-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const thresholdId = btn.dataset.thresholdId;
+          const threshold = thresholds.find((t) => t.id === thresholdId);
+          if (threshold) {
+            await toggleThreshold(threshold);
+          }
+        });
+      });
+    } catch (err) {
+      console.error("Failed to load thresholds:", err);
+      const listEl = document.getElementById("safety-thresholds-list");
+      if (listEl) {
+        listEl.innerHTML = `<div class="safety-empty text-danger">Failed to load thresholds.</div>`;
+      }
+    }
+  }
+  function renderThresholdCard(threshold) {
+    const store = getStore();
+    let deviceName = "All Devices";
+    if (threshold.deviceId) {
+      const device = store.devices.find((d) => d.id === threshold.deviceId);
+      deviceName = device?.name || threshold.deviceId;
+    } else if (threshold.zone) {
+      deviceName = `Zone: ${threshold.zone}`;
+    }
+    const metricLabel = METRIC_LABELS[threshold.metric] || threshold.metric;
+    const unit = METRIC_UNITS[threshold.metric] || "";
+    const minDisplay = threshold.minValue !== null ? `${threshold.minValue}${unit}` : "\u2014";
+    const maxDisplay = threshold.maxValue !== null ? `${threshold.maxValue}${unit}` : "\u2014";
+    return `
+    <div class="threshold-card ${threshold.enabled ? "" : "disabled"}" data-threshold-id="${threshold.id}">
+      <div class="threshold-header">
+        <div class="threshold-device">${escapeHtml13(deviceName)}</div>
+        <div class="threshold-metric-badge">${metricLabel}</div>
+      </div>
+      <div class="threshold-bounds">
+        <div class="threshold-bound">
+          <span class="threshold-bound-label">MIN</span>
+          <span class="threshold-bound-value">${minDisplay}</span>
+        </div>
+        <div class="threshold-bound-divider">\u2014</div>
+        <div class="threshold-bound">
+          <span class="threshold-bound-label">MAX</span>
+          <span class="threshold-bound-value">${maxDisplay}</span>
+        </div>
+      </div>
+      <div class="threshold-meta">
+        Updated ${formatRelativeTime2(threshold.updatedAt)}
+      </div>
+      <div class="threshold-actions">
+        <button class="btn btn-sm threshold-toggle-btn ${threshold.enabled ? "btn-warning" : "btn-success"}" data-threshold-id="${threshold.id}">
+          ${threshold.enabled ? "Disable" : "Enable"}
+        </button>
+        <button class="btn btn-sm btn-secondary threshold-edit-btn" data-threshold-id="${threshold.id}">Edit</button>
+        <button class="btn btn-sm btn-danger threshold-delete-btn" data-threshold-id="${threshold.id}" data-metric="${threshold.metric}">Delete</button>
+      </div>
+    </div>
+  `;
+  }
+  async function toggleThreshold(threshold) {
+    try {
+      await halApi.updateThreshold(threshold.id, { enabled: !threshold.enabled });
+      showToast(
+        `Threshold ${threshold.enabled ? "disabled" : "enabled"}`,
+        "success"
+      );
+      await loadThresholds();
+    } catch (err) {
+      showToast(`Failed to toggle threshold: ${err.message}`, "error");
+    }
+  }
+  function confirmDeleteThreshold(thresholdId, metric) {
+    const metricLabel = METRIC_LABELS[metric] || metric;
+    openModal(
+      "Delete Threshold",
+      `<p>Are you sure you want to delete this <strong>${metricLabel}</strong> threshold?</p>
+     <p class="text-danger">This action cannot be undone.</p>`,
+      `<button class="btn btn-secondary" onclick="window.__closeModal && window.__closeModal()">Cancel</button>
+     <button class="btn btn-danger" id="confirm-delete-threshold-btn">Delete Threshold</button>`
+    );
+    window.__closeModal = closeModal;
+    const confirmBtn = document.getElementById("confirm-delete-threshold-btn");
+    confirmBtn?.addEventListener("click", async () => {
+      closeModal();
+      try {
+        await halApi.deleteThreshold(thresholdId);
+        showToast("Threshold deleted", "success");
+        await loadThresholds();
+      } catch (err) {
+        showToast(`Failed to delete threshold: ${err.message}`, "error");
+      }
+    });
+  }
+  function showAddThresholdModal() {
+    const store = getStore();
+    const sensorDevices = store.devices.filter((d) => d.type === "sensor");
+    const zones2 = [
+      ...new Set(store.devices.map((d) => d.zone).filter(Boolean))
+    ];
+    const deviceOptions = `<option value="">All Devices (global)</option>` + sensorDevices.map(
+      (d) => `<option value="${d.id}">${escapeHtml13(d.name || d.id)}</option>`
+    ).join("");
+    const zoneOptions = zones2.length > 0 ? `<option value="">All Zones</option>` + zones2.map(
+      (z) => `<option value="${escapeHtml13(z)}">${escapeHtml13(z)}</option>`
+    ).join("") : "";
+    const metricOptions = Object.entries(METRIC_LABELS).map(([key, label]) => `<option value="${key}">${label}</option>`).join("");
+    openModal(
+      "Add Threshold",
+      `
+    <form id="add-threshold-form" class="add-rule-form">
+      <div class="form-group">
+        <label for="threshold-scope">Applies To</label>
+        <select id="threshold-scope" class="form-select">
+          <option value="global">All Devices (Global)</option>
+          <option value="device">Specific Device</option>
+          ${zoneOptions ? `<option value="zone">Specific Zone</option>` : ""}
+        </select>
+      </div>
+
+      <div class="form-group" id="threshold-device-group" style="display:none;">
+        <label for="threshold-device">Device</label>
+        <select id="threshold-device" class="form-select">
+          <option value="">Select device...</option>
+          ${deviceOptions}
+        </select>
+      </div>
+
+      <div class="form-group" id="threshold-zone-group" style="display:none;">
+        <label for="threshold-zone">Zone</label>
+        <select id="threshold-zone" class="form-select">
+          <option value="">Select zone...</option>
+          ${zoneOptions}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="threshold-metric">Metric</label>
+        <select id="threshold-metric" class="form-select" required>
+          <option value="">Select metric...</option>
+          ${metricOptions}
+        </select>
+      </div>
+
+      <div class="threshold-bounds-form">
+        <div class="form-group">
+          <label for="threshold-min">Min Value</label>
+          <input type="number" id="threshold-min" class="form-input" placeholder="No minimum" step="any">
+        </div>
+        <div class="form-group">
+          <label for="threshold-max">Max Value</label>
+          <input type="number" id="threshold-max" class="form-input" placeholder="No maximum" step="any">
+        </div>
+      </div>
+    </form>
+    `,
+      `<button class="btn btn-secondary" onclick="window.__closeModal && window.__closeModal()">Cancel</button>
+     <button class="btn btn-primary" id="save-threshold-btn">Save Threshold</button>`
+    );
+    window.__closeModal = closeModal;
+    const scopeSelect = document.getElementById(
+      "threshold-scope"
+    );
+    scopeSelect?.addEventListener("change", () => {
+      const deviceGroup = document.getElementById("threshold-device-group");
+      const zoneGroup = document.getElementById("threshold-zone-group");
+      const scope = scopeSelect.value;
+      if (deviceGroup)
+        deviceGroup.style.display = scope === "device" ? "" : "none";
+      if (zoneGroup) zoneGroup.style.display = scope === "zone" ? "" : "none";
+    });
+    const saveBtn = document.getElementById("save-threshold-btn");
+    saveBtn?.addEventListener("click", () => saveThreshold());
+  }
+  async function saveThreshold() {
+    const scopeSelect = document.getElementById(
+      "threshold-scope"
+    );
+    const deviceSelect = document.getElementById(
+      "threshold-device"
+    );
+    const zoneSelect = document.getElementById(
+      "threshold-zone"
+    );
+    const metricSelect = document.getElementById(
+      "threshold-metric"
+    );
+    const minInput = document.getElementById("threshold-min");
+    const maxInput = document.getElementById("threshold-max");
+    const scope = scopeSelect?.value || "global";
+    const deviceId = scope === "device" ? deviceSelect?.value || void 0 : void 0;
+    const zone = scope === "zone" ? zoneSelect?.value || void 0 : void 0;
+    const metric = metricSelect?.value;
+    const minValue = minInput?.value ? parseFloat(minInput.value) : void 0;
+    const maxValue = maxInput?.value ? parseFloat(maxInput.value) : void 0;
+    if (!metric) {
+      showToast("Please select a metric", "error");
+      return;
+    }
+    if (minValue === void 0 && maxValue === void 0) {
+      showToast("Please enter at least a minimum or maximum value", "error");
+      return;
+    }
+    try {
+      await halApi.createThreshold({
+        deviceId: deviceId || void 0,
+        zone: zone || void 0,
+        metric,
+        minValue: minValue ?? null,
+        maxValue: maxValue ?? null,
+        enabled: true
+      });
+      closeModal();
+      showToast("Threshold created successfully", "success");
+      await loadThresholds();
+    } catch (err) {
+      showToast(`Failed to create threshold: ${err.message}`, "error");
+    }
+  }
+  async function editThreshold(thresholdId) {
+    try {
+      const threshold = await halApi.getThreshold(thresholdId);
+      showEditThresholdModal(threshold);
+    } catch (err) {
+      showToast(`Failed to load threshold: ${err.message}`, "error");
+    }
+  }
+  function showEditThresholdModal(threshold) {
+    const store = getStore();
+    const sensorDevices = store.devices.filter((d) => d.type === "sensor");
+    const zones2 = [
+      ...new Set(store.devices.map((d) => d.zone).filter(Boolean))
+    ];
+    let scope = "global";
+    if (threshold.deviceId) scope = "device";
+    else if (threshold.zone) scope = "zone";
+    const deviceOptions = `<option value="">All Devices (global)</option>` + sensorDevices.map(
+      (d) => `<option value="${d.id}" ${d.id === threshold.deviceId ? "selected" : ""}>${escapeHtml13(d.name || d.id)}</option>`
+    ).join("");
+    const zoneOptions = zones2.length > 0 ? `<option value="">All Zones</option>` + zones2.map(
+      (z) => `<option value="${escapeHtml13(z)}" ${z === threshold.zone ? "selected" : ""}>${escapeHtml13(z)}</option>`
+    ).join("") : "";
+    const metricOptions = Object.entries(METRIC_LABELS).map(
+      ([key, label]) => `<option value="${key}" ${key === threshold.metric ? "selected" : ""}>${label}</option>`
+    ).join("");
+    const unit = METRIC_UNITS[threshold.metric] || "";
+    openModal(
+      "Edit Threshold",
+      `
+    <form id="edit-threshold-form" class="add-rule-form">
+      <div class="form-group">
+        <label for="threshold-scope">Applies To</label>
+        <select id="threshold-scope" class="form-select">
+          <option value="global" ${scope === "global" ? "selected" : ""}>All Devices (Global)</option>
+          <option value="device" ${scope === "device" ? "selected" : ""}>Specific Device</option>
+          ${zoneOptions ? `<option value="zone" ${scope === "zone" ? "selected" : ""}>Specific Zone</option>` : ""}
+        </select>
+      </div>
+
+      <div class="form-group" id="threshold-device-group" style="display:${scope === "device" ? "" : "none"};">
+        <label for="threshold-device">Device</label>
+        <select id="threshold-device" class="form-select">
+          ${deviceOptions}
+        </select>
+      </div>
+
+      <div class="form-group" id="threshold-zone-group" style="display:${scope === "zone" ? "" : "none"};">
+        <label for="threshold-zone">Zone</label>
+        <select id="threshold-zone" class="form-select">
+          ${zoneOptions}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="threshold-metric">Metric</label>
+        <select id="threshold-metric" class="form-select" required>
+          ${metricOptions}
+        </select>
+      </div>
+
+      <div class="threshold-bounds-form">
+        <div class="form-group">
+          <label for="threshold-min">Min Value (${unit})</label>
+          <input type="number" id="threshold-min" class="form-input" value="${threshold.minValue ?? ""}" placeholder="No minimum" step="any">
+        </div>
+        <div class="form-group">
+          <label for="threshold-max">Max Value (${unit})</label>
+          <input type="number" id="threshold-max" class="form-input" value="${threshold.maxValue ?? ""}" placeholder="No maximum" step="any">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="threshold-enabled">Enabled</label>
+        <select id="threshold-enabled" class="form-select">
+          <option value="true" ${threshold.enabled ? "selected" : ""}>Yes</option>
+          <option value="false" ${!threshold.enabled ? "selected" : ""}>No</option>
+        </select>
+      </div>
+    </form>
+    `,
+      `<button class="btn btn-secondary" onclick="window.__closeModal && window.__closeModal()">Cancel</button>
+     <button class="btn btn-primary" id="update-threshold-btn">Save Changes</button>`
+    );
+    window.__closeModal = closeModal;
+    const scopeSelect = document.getElementById(
+      "threshold-scope"
+    );
+    scopeSelect?.addEventListener("change", () => {
+      const deviceGroup = document.getElementById("threshold-device-group");
+      const zoneGroup = document.getElementById("threshold-zone-group");
+      const s = scopeSelect.value;
+      if (deviceGroup) deviceGroup.style.display = s === "device" ? "" : "none";
+      if (zoneGroup) zoneGroup.style.display = s === "zone" ? "" : "none";
+    });
+    const updateBtn = document.getElementById("update-threshold-btn");
+    updateBtn?.addEventListener("click", () => saveEditedThreshold(threshold.id));
+  }
+  async function saveEditedThreshold(thresholdId) {
+    const scopeSelect = document.getElementById(
+      "threshold-scope"
+    );
+    const deviceSelect = document.getElementById(
+      "threshold-device"
+    );
+    const zoneSelect = document.getElementById(
+      "threshold-zone"
+    );
+    const metricSelect = document.getElementById(
+      "threshold-metric"
+    );
+    const minInput = document.getElementById("threshold-min");
+    const maxInput = document.getElementById("threshold-max");
+    const enabledSelect = document.getElementById(
+      "threshold-enabled"
+    );
+    const scope = scopeSelect?.value || "global";
+    const deviceId = scope === "device" ? deviceSelect?.value || void 0 : void 0;
+    const zone = scope === "zone" ? zoneSelect?.value || void 0 : void 0;
+    const metric = metricSelect?.value;
+    const minValue = minInput?.value ? parseFloat(minInput.value) : void 0;
+    const maxValue = maxInput?.value ? parseFloat(maxInput.value) : void 0;
+    const enabled = enabledSelect?.value === "true";
+    if (!metric) {
+      showToast("Please select a metric", "error");
+      return;
+    }
+    if (minValue === void 0 && maxValue === void 0) {
+      showToast("Please enter at least a minimum or maximum value", "error");
+      return;
+    }
+    try {
+      await halApi.updateThreshold(thresholdId, {
+        deviceId: deviceId || null,
+        zone: zone || null,
+        metric,
+        minValue: minValue ?? null,
+        maxValue: maxValue ?? null,
+        enabled
+      });
+      closeModal();
+      showToast("Threshold updated successfully", "success");
+      await loadThresholds();
+    } catch (err) {
+      showToast(`Failed to update threshold: ${err.message}`, "error");
+    }
+  }
   function formatRelativeTime2(isoString) {
     try {
       const date2 = new Date(isoString);
@@ -13602,10 +14303,113 @@ ${result.failures.join("\n")}`
 .text-sm {
   font-size: 12px;
 }
+/* Safety tabs */
+.safety-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.safety-tab {
+  padding: var(--space-3) var(--space-5);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-bottom: -1px;
+}
+.safety-tab:hover {
+  color: var(--text-primary);
+}
+.safety-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+/* Threshold cards */
+.threshold-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  border-left: 3px solid var(--accent);
+  margin-bottom: var(--space-3);
+}
+.threshold-card.disabled {
+  opacity: 0.5;
+  border-left-color: var(--text-tertiary);
+}
+.threshold-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.threshold-device {
+  font-weight: 600;
+  font-size: 14px;
+}
+.threshold-metric-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.threshold-bounds {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.threshold-bound {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+.threshold-bound-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+}
+.threshold-bound-value {
+  font-size: 20px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+.threshold-bound-divider {
+  font-size: 18px;
+  color: var(--text-tertiary);
+  padding-top: 12px;
+}
+.threshold-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-3);
+}
+.threshold-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.threshold-bounds-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
 `;
     document.head.appendChild(style);
   }
-  var RULE_TYPE_LABELS, RULE_TYPE_DESCRIPTIONS;
+  var RULE_TYPE_LABELS, RULE_TYPE_DESCRIPTIONS, METRIC_LABELS, METRIC_UNITS;
   var init_Safety = __esm({
     "src/web/hal-ui/views/Safety.ts"() {
       "use strict";
@@ -13626,6 +14430,20 @@ ${result.failures.join("\n")}`
         max_activations_per_hour: "Device cannot be turned on more than N times per hour",
         allowed_schedule_windows: "Device can only be turned on during specific time windows",
         dependency: "Device state depends on another device/sensor condition"
+      };
+      METRIC_LABELS = {
+        temperature: "Temperature (\xB0C)",
+        humidity: "Humidity (%)",
+        soil_moisture: "Soil Moisture (%)",
+        co2: "CO\u2082 (ppm)",
+        light: "Light (lux)"
+      };
+      METRIC_UNITS = {
+        temperature: "\xB0C",
+        humidity: "%",
+        soil_moisture: "%",
+        co2: "ppm",
+        light: "lux"
       };
     }
   });
@@ -14194,6 +15012,576 @@ ${result.failures.join("\n")}`
     }
   });
 
+  // src/web/hal-ui/views/Settings.ts
+  async function renderSettings(container) {
+    injectSettingsStyles();
+    container.innerHTML = renderLoadingState();
+    try {
+      const llmSettings = await halApi.getLlmSettings();
+      settingsData.llmProvider = llmSettings.llmProvider || "ollama";
+      settingsData.llmEndpoint = llmSettings.llmEndpoint || "http://localhost:11434";
+      settingsData.llmApiKey = llmSettings.llmApiKey || "";
+      settingsData.llmModel = llmSettings.llmModel || "";
+    } catch {
+    }
+    try {
+      const status = await provisioningApi.getStatus();
+      settingsData.farmName = status.farmName || "My Farm";
+      settingsData.timezone = status.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (!settingsData.llmProvider || settingsData.llmProvider === "ollama") {
+        settingsData.llmProvider = status.llmProvider || "ollama";
+      }
+    } catch {
+    }
+    container.innerHTML = renderSettingsPage();
+    attachSettingsEvents();
+  }
+  function renderLoadingState() {
+    return `
+    <div class="settings-view">
+      <div class="settings-loading">Loading settings...</div>
+    </div>
+  `;
+  }
+  function renderSettingsPage() {
+    const selectedProvider = LLM_PROVIDERS2.find((p) => p.id === settingsData.llmProvider) || LLM_PROVIDERS2[0];
+    const showApiKey = "supportsApiKey" in selectedProvider && selectedProvider.supportsApiKey;
+    const showEndpoint = "defaultEndpoint" in selectedProvider;
+    const regionGroups = {};
+    for (const tz of COMMON_TIMEZONES2) {
+      const region = tz.split("/")[0];
+      if (!regionGroups[region]) regionGroups[region] = [];
+      regionGroups[region].push(tz);
+    }
+    const currentTz = settingsData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return `
+    <div class="settings-view">
+      <div class="settings-header">
+        <h1 class="view-title">Settings</h1>
+      </div>
+
+      <div class="settings-sections">
+        <!-- Farm Info Section -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            Farm Info
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <label class="settings-label" for="farm-name">Farm Name</label>
+              <input
+                type="text"
+                id="farm-name"
+                class="form-input"
+                value="${escapeHtml15(settingsData.farmName)}"
+                maxlength="64"
+                placeholder="My Farm"
+              />
+              <p class="settings-hint">This appears in the dashboard header and notifications.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Timezone Section -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Timezone
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <label class="settings-label" for="timezone">Timezone</label>
+              <select id="timezone" class="form-select">
+                ${Object.entries(regionGroups).map(
+      ([region, tzs]) => `
+                  <optgroup label="${region}">
+                    ${tzs.map(
+        (tz) => `
+                      <option value="${tz}" ${tz === currentTz ? "selected" : ""}>${tz}</option>
+                    `
+      ).join("")}
+                  </optgroup>
+                `
+    ).join("")}
+              </select>
+              <p class="settings-hint">Used for scheduling and decision logs.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- LLM Provider Section -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 8v4l3 3"/></svg>
+            AI / LLM Provider
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <label class="settings-label">Provider</label>
+              <div class="provider-grid">
+                ${LLM_PROVIDERS2.map(
+      (p) => `
+                  <button type="button" class="provider-card ${p.id === settingsData.llmProvider ? "selected" : ""}" data-provider="${p.id}">
+                    <div class="provider-name">${p.name}</div>
+                  </button>
+                `
+    ).join("")}
+              </div>
+            </div>
+
+            ${showEndpoint ? `
+            <div class="settings-field">
+              <label class="settings-label" for="llm-endpoint">Endpoint</label>
+              <input
+                type="text"
+                id="llm-endpoint"
+                class="form-input"
+                value="${escapeHtml15(settingsData.llmEndpoint)}"
+                placeholder="http://localhost:11434"
+              />
+              <p class="settings-hint">${settingsData.llmProvider === "ollama" ? "Ollama server address." : "LM Studio server address."}</p>
+            </div>
+            ` : ""}
+
+            ${showApiKey ? `
+            <div class="settings-field">
+              <label class="settings-label" for="llm-api-key">API Key</label>
+              <input
+                type="password"
+                id="llm-api-key"
+                class="form-input"
+                value="${escapeHtml15(settingsData.llmApiKey)}"
+                placeholder="sk-..."
+                autocomplete="off"
+              />
+            </div>
+            ` : ""}
+
+            <div class="settings-field">
+              <label class="settings-label" for="llm-model">Model</label>
+              <input
+                type="text"
+                id="llm-model"
+                class="form-input"
+                value="${escapeHtml15(settingsData.llmModel)}"
+                placeholder="${settingsData.llmProvider === "ollama" ? "llama3.2, mistral, etc." : "e.g., llama3.2"}"
+                autocomplete="off"
+              />
+              <p class="settings-hint">${"supportsModel" in selectedProvider && selectedProvider.supportsModel ? "Must match an installed model in your Ollama/LM Studio." : "Model identifier for the provider."}</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Update Section -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Updates
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <div class="settings-row">
+                <div>
+                  <p class="settings-label">Current Version</p>
+                  <p class="settings-value" id="current-version">Loading...</p>
+                </div>
+                <button class="btn btn-secondary" id="check-updates-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  Check for Updates
+                </button>
+              </div>
+            </div>
+            <div class="settings-field" id="update-status-field" style="display:none;">
+              <p class="settings-label">Status</p>
+              <p class="settings-value" id="update-status">-</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Backup Section -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Backup & Restore
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <p class="settings-label">Configuration Backup</p>
+              <p class="settings-hint">Download a backup of your FarmPal configuration and settings.</p>
+              <div class="settings-actions">
+                <button class="btn btn-secondary" id="backup-now-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Backup Now
+                </button>
+                <button class="btn btn-secondary" id="restore-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  Restore
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- License Section -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            License
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <p class="settings-label">License Status</p>
+              <p class="settings-value" id="license-status">
+                <span class="badge badge-slate">Loading...</span>
+              </p>
+            </div>
+            <div class="settings-field">
+              <p class="settings-label">Features</p>
+              <ul class="settings-feature-list" id="license-features">
+                <li>Local AI control</li>
+                <li>Sensor monitoring</li>
+                <li>Device automation</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- Save Button -->
+      <div class="settings-footer">
+        <button class="btn btn-primary" id="save-settings-btn" ${isSaving ? "disabled" : ""}>
+          ${isSaving ? "Saving..." : "Save Settings"}
+        </button>
+      </div>
+    </div>
+  `;
+  }
+  function attachSettingsEvents() {
+    document.querySelectorAll(".provider-card").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const provider = btn.dataset.provider;
+        settingsData.llmProvider = provider;
+        const p = LLM_PROVIDERS2.find((x) => x.id === provider);
+        if (p && "defaultEndpoint" in p && p.defaultEndpoint) {
+          settingsData.llmEndpoint = p.defaultEndpoint;
+        }
+        document.querySelectorAll(".provider-card").forEach((b) => {
+          b.classList.toggle("selected", b.dataset.provider === provider);
+        });
+        const endpointField = document.getElementById(
+          "llm-endpoint"
+        );
+        if (endpointField) {
+          endpointField.value = settingsData.llmEndpoint;
+        }
+      });
+    });
+    const saveBtn = document.getElementById("save-settings-btn");
+    saveBtn?.addEventListener("click", async () => {
+      if (isSaving) return;
+      isSaving = true;
+      saveBtn.textContent = "Saving...";
+      saveBtn.setAttribute("disabled", "");
+      try {
+        settingsData.farmName = document.getElementById("farm-name")?.value || "My Farm";
+        settingsData.timezone = document.getElementById("timezone")?.value || settingsData.timezone;
+        settingsData.llmEndpoint = document.getElementById("llm-endpoint")?.value || settingsData.llmEndpoint;
+        settingsData.llmApiKey = document.getElementById("llm-api-key")?.value || "";
+        settingsData.llmModel = document.getElementById("llm-model")?.value || "";
+        await provisioningApi.updateWizardStep(2, {
+          farmName: settingsData.farmName,
+          timezone: settingsData.timezone,
+          llmProvider: settingsData.llmProvider
+        });
+        const settingsRes = await fetch(
+          "http://127.0.0.1:3392/api/settings/llm",
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              llmProvider: settingsData.llmProvider,
+              llmEndpoint: settingsData.llmEndpoint,
+              llmApiKey: settingsData.llmApiKey,
+              llmModel: settingsData.llmModel
+            })
+          }
+        );
+        if (!settingsRes.ok) {
+          throw new Error("Failed to save LLM settings");
+        }
+        showToast("Settings saved", "success", 2e3);
+      } catch (err) {
+        showToast(
+          "Failed to save settings: " + (err.message || "Unknown error"),
+          "danger",
+          3e3
+        );
+      } finally {
+        isSaving = false;
+        saveBtn.textContent = "Save Settings";
+        saveBtn.removeAttribute("disabled");
+      }
+    });
+    const checkUpdatesBtn = document.getElementById("check-updates-btn");
+    checkUpdatesBtn?.addEventListener("click", async () => {
+      checkUpdatesBtn.setAttribute("disabled", "");
+      checkUpdatesBtn.textContent = "Checking...";
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const statusField = document.getElementById("update-status-field");
+      const statusText = document.getElementById("update-status");
+      if (statusField) statusField.style.display = "block";
+      if (statusText) {
+        statusText.innerHTML = '<span class="badge badge-slate">No updates available</span>';
+      }
+      checkUpdatesBtn.textContent = "Check for Updates";
+      checkUpdatesBtn.removeAttribute("disabled");
+      showToast("You are running the latest version", "info", 2e3);
+    });
+    const backupBtn = document.getElementById("backup-now-btn");
+    backupBtn?.addEventListener("click", async () => {
+      backupBtn.setAttribute("disabled", "");
+      const originalText = backupBtn.innerHTML;
+      backupBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"/></svg> Backing up...';
+      try {
+        const result = await halApi.triggerBackup();
+        if (result.ok) {
+          showToast(`Backup created: ${result.archive}`, "success", 4e3);
+        } else {
+          showToast("Backup failed", "danger", 3e3);
+        }
+      } catch (err) {
+        showToast("Backup failed: " + (err.message || "Unknown error"), "danger", 3e3);
+      } finally {
+        backupBtn.innerHTML = originalText;
+        backupBtn.removeAttribute("disabled");
+      }
+    });
+    const restoreBtn = document.getElementById("restore-btn");
+    restoreBtn?.addEventListener("click", async () => {
+      showToast("Restore feature coming soon", "info", 2e3);
+    });
+    loadVersionInfo();
+    loadLicenseInfo();
+  }
+  async function loadVersionInfo() {
+    const versionEl = document.getElementById("current-version");
+    if (versionEl) {
+      versionEl.textContent = "1.0.0";
+    }
+  }
+  async function loadLicenseInfo() {
+    const statusEl = document.getElementById("license-status");
+    if (statusEl) {
+      statusEl.innerHTML = '<span class="badge badge-slate">Free Tier</span>';
+    }
+  }
+  function escapeHtml15(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+  function injectSettingsStyles() {
+    if (document.getElementById("settings-view-styles")) return;
+    const style = document.createElement("style");
+    style.id = "settings-view-styles";
+    style.textContent = `
+.settings-view {
+  padding: var(--page-padding);
+  max-width: 720px;
+  margin: 0 auto;
+}
+.settings-header {
+  margin-bottom: var(--space-lg);
+}
+.settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.settings-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.settings-section-title svg {
+  color: var(--accent);
+}
+.settings-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.settings-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.settings-value {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.settings-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.settings-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.settings-footer {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+.settings-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl);
+  color: var(--text-secondary);
+}
+.settings-feature-list {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.settings-feature-list li {
+  margin-bottom: var(--space-1);
+}
+
+/* Provider grid (same as SetupWizard) */
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-3);
+}
+.provider-card {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+}
+.provider-card:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+}
+.provider-card.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, var(--bg-tertiary));
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.provider-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+`;
+    document.head.appendChild(style);
+  }
+  var LLM_PROVIDERS2, COMMON_TIMEZONES2, settingsData, isSaving;
+  var init_Settings = __esm({
+    "src/web/hal-ui/views/Settings.ts"() {
+      "use strict";
+      init_api_provisioning();
+      init_api();
+      init_Toast();
+      LLM_PROVIDERS2 = [
+        {
+          id: "ollama",
+          name: "Ollama (Local)",
+          defaultEndpoint: "http://localhost:11434",
+          supportsModel: true
+        },
+        { id: "openai", name: "OpenAI", supportsApiKey: true },
+        { id: "anthropic", name: "Anthropic", supportsApiKey: true },
+        { id: "zai", name: "ZAI", supportsApiKey: true },
+        { id: "minimax", name: "MiniMax", supportsApiKey: true },
+        {
+          id: "lmstudio",
+          name: "LM Studio (Local)",
+          defaultEndpoint: "http://localhost:1234",
+          supportsModel: true
+        }
+      ];
+      COMMON_TIMEZONES2 = [
+        "America/New_York",
+        "America/Chicago",
+        "America/Denver",
+        "America/Los_Angeles",
+        "America/Anchorage",
+        "Pacific/Honolulu",
+        "America/Toronto",
+        "America/Vancouver",
+        "America/Mexico_City",
+        "America/Bogota",
+        "America/Lima",
+        "America/Sao_Paulo",
+        "Europe/London",
+        "Europe/Paris",
+        "Europe/Berlin",
+        "Europe/Rome",
+        "Europe/Madrid",
+        "Europe/Amsterdam",
+        "Europe/Stockholm",
+        "Europe/Moscow",
+        "Asia/Tokyo",
+        "Asia/Shanghai",
+        "Asia/Hong_Kong",
+        "Asia/Singapore",
+        "Asia/Seoul",
+        "Asia/Mumbai",
+        "Asia/Dubai",
+        "Australia/Sydney",
+        "Australia/Melbourne",
+        "Australia/Perth",
+        "Pacific/Auckland",
+        "Pacific/Fiji"
+      ];
+      settingsData = {
+        farmName: "My Farm",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        llmProvider: "ollama",
+        llmEndpoint: "http://localhost:11434",
+        llmApiKey: "",
+        llmModel: ""
+      };
+      isSaving = false;
+    }
+  });
+
   // src/web/hal-ui/main.ts
   var main_exports = {};
   __export(main_exports, {
@@ -14242,7 +15630,9 @@ ${result.failures.join("\n")}`
       handleThemeChange,
       void 0,
       handleLayoutChange,
-      handleSettingsClick
+      handleSettingsClick,
+      handleModeChange,
+      handleManualTrigger
     );
     initSidebar(handleViewChange);
     window.addEventListener("hashchange", handleHashChange);
@@ -14261,8 +15651,22 @@ ${result.failures.join("\n")}`
     showToast(`Layout: ${layout.toUpperCase()}`, "info", 2e3);
     render2();
   }
+  function handleModeChange(mode) {
+    showToast(`Automation mode: ${mode}`, "info", 2e3);
+    refreshHALData();
+  }
+  function handleManualTrigger() {
+    showToast("Decision cycle triggered manually", "info", 2e3);
+    setTimeout(() => refreshHALData(), 1e3);
+  }
   function handleSettingsClick() {
-    showToast("Settings panel coming soon", "info", 2e3);
+    const newHash = "#settings";
+    if (location.hash !== newHash) {
+      history.replaceState(null, "", newHash);
+    }
+    updateHeaderViewLabel("settings");
+    setStore({ activeView: "settings" });
+    render2();
   }
   async function handleViewChange(viewId) {
     const newHash = `#${viewId}`;
@@ -14283,7 +15687,8 @@ ${result.failures.join("\n")}`
       safety: "Safety",
       system: "System",
       terminal: "Terminal",
-      calibration: "Calibration"
+      calibration: "Calibration",
+      settings: "Settings"
     };
     const labelEl = document.getElementById("header-view-label");
     if (labelEl) {
@@ -14292,7 +15697,18 @@ ${result.failures.join("\n")}`
   }
   function handleHashChange() {
     const hash2 = location.hash.slice(1) || "dashboard";
-    const validViews = ["dashboard", "devices", "sensors", "decisions", "cameras", "safety", "system", "terminal", "calibration"];
+    const validViews = [
+      "dashboard",
+      "devices",
+      "sensors",
+      "decisions",
+      "cameras",
+      "safety",
+      "system",
+      "terminal",
+      "calibration",
+      "settings"
+    ];
     const viewId = validViews.includes(hash2) ? hash2 : "dashboard";
     document.querySelectorAll(".sidebar-item").forEach((item) => {
       item.classList.toggle("active", item.getAttribute("data-view") === viewId);
@@ -14303,7 +15719,18 @@ ${result.failures.join("\n")}`
   }
   function getInitialView() {
     const hash2 = location.hash.slice(1) || "dashboard";
-    const validViews = ["dashboard", "devices", "sensors", "decisions", "cameras", "safety", "system", "terminal", "calibration"];
+    const validViews = [
+      "dashboard",
+      "devices",
+      "sensors",
+      "decisions",
+      "cameras",
+      "safety",
+      "system",
+      "terminal",
+      "calibration",
+      "settings"
+    ];
     return validViews.includes(hash2) ? hash2 : "dashboard";
   }
   async function render2() {
@@ -14317,13 +15744,23 @@ ${result.failures.join("\n")}`
   }
   async function refreshHALData() {
     try {
-      const state2 = await halApi.getState();
+      const [halState, modeData, pendingData] = await Promise.all([
+        halApi.getState(),
+        halApi.getAutomationMode().catch(() => ({
+          mode: "AUTONOMOUS",
+          color: { bg: "#F85149", text: "#F0F6FC", label: "AUTO" }
+        })),
+        halApi.getAutomationPending().catch(() => [])
+      ]);
       setStore({
-        devices: state2.devices,
-        sensors: state2.sensorSnapshots,
-        cameras: state2.devices.filter((device) => device.type === "camera"),
-        decisions: state2.recentDecisions,
-        decisionsToday: countTodayDecisions(state2.recentDecisions)
+        devices: halState.devices,
+        sensors: halState.sensorSnapshots,
+        cameras: halState.devices.filter((device) => device.type === "camera"),
+        decisions: halState.recentDecisions,
+        decisionsToday: countTodayDecisions(halState.recentDecisions),
+        automationMode: modeData.mode,
+        automationModeColor: modeData.color,
+        pendingDecisions: pendingData
       });
     } catch (err) {
       console.error("HAL data refresh failed:", err);
@@ -14380,6 +15817,7 @@ ${result.failures.join("\n")}`
       init_SetupWizard();
       init_Safety();
       init_Calibration();
+      init_Settings();
       init_api();
       init_api_provisioning();
       init_store();
@@ -14392,7 +15830,8 @@ ${result.failures.join("\n")}`
         safety: renderSafety,
         system: renderDashboard,
         terminal: renderTerminalView,
-        calibration: renderCalibration
+        calibration: renderCalibration,
+        settings: renderSettings
       };
       pageLoadTime = Date.now();
       pollInterval = null;

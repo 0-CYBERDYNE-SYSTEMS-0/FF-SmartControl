@@ -2220,6 +2220,74 @@ export async function startHalUiServer(
         return;
       }
 
+      // BACKUP API — Manual backup trigger (VAL-SVC-033)
+      // POST /api/hal/backup — trigger a manual backup
+      if (apiPath === '/backup' && method === 'POST') {
+        const { execSync } = await import('child_process');
+        const ROOT_DIR = process.cwd();
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const backupDir = path.join(ROOT_DIR, 'backups');
+        const archiveName = `farmpal-backup-${timestamp}.tar.gz`;
+        const archivePath = path.join(backupDir, archiveName);
+
+        // Ensure backup directory exists
+        try {
+          execSync(`mkdir -p "${backupDir}"`, { stdio: 'pipe' });
+        } catch {
+          sendJson(res, 500, { error: 'Failed to create backup directory' });
+          return;
+        }
+
+        // Build list of files to backup
+        const filesToBackup: string[] = [];
+        const envPath = path.join(ROOT_DIR, '.env');
+        const dataDir = path.join(ROOT_DIR, 'data');
+        const groupsDir = path.join(ROOT_DIR, 'groups');
+
+        if (fs.existsSync(envPath)) {
+          filesToBackup.push('.env');
+        }
+        if (fs.existsSync(dataDir)) {
+          filesToBackup.push('data');
+        }
+        if (fs.existsSync(groupsDir)) {
+          filesToBackup.push('groups');
+        }
+
+        if (filesToBackup.length === 0) {
+          sendJson(res, 400, { error: 'No backup sources found' });
+          return;
+        }
+
+        // Create backup using tar
+        try {
+          const tarCmd = `tar -czf "${archivePath}" ${filesToBackup.map(f => `-C "${ROOT_DIR}" "${f}"`).join(' ')}`;
+          execSync(tarCmd, { stdio: 'pipe', cwd: ROOT_DIR });
+        } catch (err: any) {
+          sendJson(res, 500, { error: `Backup failed: ${err.message}` });
+          return;
+        }
+
+        // Apply retention policy (keep last 7 daily backups)
+        try {
+          execSync(
+            `find "${backupDir}" -name "farmpal-backup-*.tar.gz" -type f -mtime +7 -delete 2>/dev/null || true`,
+            { stdio: 'pipe' },
+          );
+        } catch {
+          // Ignore retention errors
+        }
+
+        sendJson(res, 200, {
+          ok: true,
+          archive: archiveName,
+          path: archivePath,
+          files: filesToBackup,
+          timestamp,
+        });
+        return;
+      }
+
       sendJson(res, 404, { error: 'HAL API endpoint not found' });
       return;
     }

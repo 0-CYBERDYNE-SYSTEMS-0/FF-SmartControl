@@ -922,4 +922,19 @@ export const halApi = {
   }> {
     return settingsGet('/llm');
   },
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // Backup API (VAL-SVC-033)
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // POST /api/hal/backup — trigger a manual backup
+  async triggerBackup(): Promise<{
+    ok: boolean;
+    archive: string;
+    path: string;
+    files: string[];
+    timestamp: string;
+  }> {
+    return halPost('/backup');
+  },
 };

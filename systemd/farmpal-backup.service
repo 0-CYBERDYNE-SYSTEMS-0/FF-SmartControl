@@ -1,0 +1,32 @@
+[Unit]
+Description=FarmPal State Backup
+Requires=farmpal.service
+After=farmpal.service
+ConditionPathExists=/opt/farmpal
+
+[Service]
+Type=oneshot
+User=farmpal
+Group=farmpal
+WorkingDirectory=/opt/farmpal
+ExecStart=/usr/bin/env bash /opt/farmpal/scripts/backup-state.sh \
+    --name farmpal \
+    --out-dir /opt/farmpal/backups
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=farmpal-backup
+
+# Security: restrict to backup directory only
+ReadOnlyPaths=/opt/farmpal
+ReadWritePaths=/opt/farmpal/backups
+
+# Backup must complete within 5 minutes
+TimeoutStartSec=300
+
+# Cleanup old backups after backup completes (7 daily + 4 weekly)
+ExecStartPost=/usr/bin/env bash -c \
+    'find /opt/farmpal/backups -name "farmpal-backup-*.tar.gz" -type f -mtime +7 -delete 2>/dev/null || true; \
+     find /opt/farmpal/backups -name "farmpal-weekly-*.tar.gz" -type f -mtime +28 -delete 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target

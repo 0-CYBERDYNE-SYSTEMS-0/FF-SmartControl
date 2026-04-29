@@ -473,7 +473,23 @@ function attachSettingsEvents(): void {
   // Backup button
   const backupBtn = document.getElementById('backup-now-btn');
   backupBtn?.addEventListener('click', async () => {
-    showToast('Backup feature coming soon', 'info', 2000);
+    backupBtn.setAttribute('disabled', '');
+    const originalText = backupBtn.innerHTML;
+    backupBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"/></svg> Backing up...';
+
+    try {
+      const result = await halApi.triggerBackup();
+      if (result.ok) {
+        showToast(`Backup created: ${result.archive}`, 'success', 4000);
+      } else {
+        showToast('Backup failed', 'danger', 3000);
+      }
+    } catch (err: any) {
+      showToast('Backup failed: ' + (err.message || 'Unknown error'), 'danger', 3000);
+    } finally {
+      backupBtn.innerHTML = originalText;
+      backupBtn.removeAttribute('disabled');
+    }
   });
 
   // Restore button
