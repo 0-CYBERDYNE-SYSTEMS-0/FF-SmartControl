@@ -15515,17 +15515,19 @@ ${result.failures.join("\n")}`
         </section>
 
         <!-- Update Section -->
+        <!-- Update Section (VAL-UPDT-001 through VAL-UPDT-012, VAL-VERS-001, VAL-VERS-002, VAL-VERS-003) -->
         <section class="settings-section">
           <h2 class="settings-section-title">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Updates
+            <span id="update-badge" class="badge badge-green" style="display:none; margin-left:8px;">Update Available</span>
           </h2>
           <div class="settings-card">
             <div class="settings-field">
               <div class="settings-row">
                 <div>
                   <p class="settings-label">Current Version</p>
-                  <p class="settings-value" id="current-version">Loading...</p>
+                  <p class="settings-value mono-md" id="current-version">Loading...</p>
                 </div>
                 <button class="btn btn-secondary" id="check-updates-btn">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -15533,9 +15535,65 @@ ${result.failures.join("\n")}`
                 </button>
               </div>
             </div>
-            <div class="settings-field" id="update-status-field" style="display:none;">
-              <p class="settings-label">Status</p>
-              <p class="settings-value" id="update-status">-</p>
+
+            <!-- Update available section -->
+            <div class="settings-field" id="update-available-section" style="display:none;">
+              <div class="update-info-card">
+                <div class="update-info-header">
+                  <div>
+                    <p class="settings-label">Available Version</p>
+                    <p class="settings-value mono-md" id="available-version">-</p>
+                  </div>
+                  <span class="badge badge-green" id="update-version-badge"></span>
+                </div>
+                <div class="settings-field" style="margin-top:12px;">
+                  <button class="btn btn-primary" id="install-update-btn" style="width:100%;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Install Update
+                  </button>
+                </div>
+                <details class="changelog-details">
+                  <summary class="changelog-summary">What's New</summary>
+                  <div class="changelog-content" id="changelog-content"></div>
+                </details>
+              </div>
+            </div>
+
+            <!-- Offline status -->
+            <div class="settings-field" id="update-offline-section" style="display:none;">
+              <div class="update-offline-banner">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                <span>Offline \u2014 updates available when connected</span>
+              </div>
+            </div>
+
+            <!-- No update available -->
+            <div class="settings-field" id="update-no-available-section" style="display:none;">
+              <p class="settings-hint" id="update-no-available-text">You are running the latest version.</p>
+            </div>
+
+            <!-- Update status message -->
+            <div class="settings-field" id="update-last-checked" style="display:none;">
+              <p class="settings-hint">Last checked: <span id="last-checked-time">-</span></p>
+            </div>
+
+            <!-- Rollback section (VAL-UPDT-011) -->
+            <div class="settings-field" id="rollback-section" style="display:none; margin-top:16px;">
+              <hr class="settings-divider"/>
+              <p class="settings-label" style="margin-top:12px;">Previous Version</p>
+              <p class="settings-hint">A previous version snapshot is available. You can rollback if the current version is not working correctly.</p>
+              <button class="btn btn-secondary" id="rollback-btn" style="margin-top:8px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                Rollback to Previous Version
+              </button>
+            </div>
+
+            <!-- Update history link -->
+            <div class="settings-field" style="margin-top:12px;">
+              <button class="btn btn-ghost" id="show-update-history-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                View Update History
+              </button>
             </div>
           </div>
         </section>
@@ -15657,6 +15715,85 @@ ${result.failures.join("\n")}`
           </div>
         </section>
 
+        <!-- Help & Documentation Section (VAL-DOC-009, VAL-DOC-010) -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Help & Documentation
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <p class="settings-hint">Access operator guides for setup, hardware, safety, and troubleshooting. All guides work offline \u2014 they are bundled with FarmPal.</p>
+            </div>
+            <div class="docs-links-grid">
+              <a href="/docs/QUICKSTART.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">\u{1F680}</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Quick Start Guide</div>
+                  <div class="doc-link-desc">Flash \u2192 boot \u2192 wizard \u2192 dashboard in 15 minutes</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/HARDWARE.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">\u{1F50C}</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Hardware Guide</div>
+                  <div class="doc-link-desc">Wiring diagrams, GPIO pinouts, electrical safety</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/SAFETY.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">\u26A0\uFE0F</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Safety Guide</div>
+                  <div class="doc-link-desc">Electrical disclaimers, fire hazards, grounding, IP rating</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/DASHBOARD.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">\u{1F4CA}</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Dashboard Guide</div>
+                  <div class="doc-link-desc">All views, controls, chart interpretation, mode switching</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/AUTOMATION.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">\u{1F916}</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Automation Guide</div>
+                  <div class="doc-link-desc">Autonomous control, four modes, thresholds, safety policies</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/TROUBLESHOOTING.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">\u{1F527}</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Troubleshooting Guide</div>
+                  <div class="doc-link-desc">Common issues with fix steps for each</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/BACKUP_RESTORE.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">\u{1F4BE}</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Backup &amp; Restore Guide</div>
+                  <div class="doc-link-desc">Manual/auto backup, storage location, restore steps</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/FACTORY_RESET.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">\u{1F5C4}\uFE0F</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Factory Reset Guide</div>
+                  <div class="doc-link-desc">How to reset, what is erased, confirmation required</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+            </div>
+          </div>
+        </section>
+
       </div>
 
       <!-- Save Button -->
@@ -15664,6 +15801,11 @@ ${result.failures.join("\n")}`
         <button class="btn btn-primary" id="save-settings-btn" ${isSaving ? "disabled" : ""}>
           ${isSaving ? "Saving..." : "Save Settings"}
         </button>
+      </div>
+
+      <!-- Version Footer (VAL-VERS-001) -->
+      <div class="settings-version-footer" id="settings-version-footer">
+        <span class="settings-version-text" id="settings-version-text">FarmPal v1.0.0</span>
       </div>
     </div>
   `;
@@ -15756,17 +15898,198 @@ ${result.failures.join("\n")}`
     checkUpdatesBtn?.addEventListener("click", async () => {
       checkUpdatesBtn.setAttribute("disabled", "");
       checkUpdatesBtn.textContent = "Checking...";
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      const statusField = document.getElementById("update-status-field");
-      const statusText = document.getElementById("update-status");
-      if (statusField) statusField.style.display = "block";
-      if (statusText) {
-        statusText.innerHTML = '<span class="badge badge-slate">No updates available</span>';
+      try {
+        const response = await fetch("http://127.0.0.1:3392/api/update/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        });
+        const data = await response.json();
+        document.getElementById("update-available-section").style.display = "none";
+        document.getElementById("update-offline-section").style.display = "none";
+        document.getElementById("update-no-available-section").style.display = "none";
+        document.getElementById("update-badge").style.display = "none";
+        document.getElementById("rollback-section").style.display = "none";
+        document.getElementById("update-last-checked").style.display = "none";
+        const lastCheckedEl = document.getElementById("last-checked-time");
+        if (lastCheckedEl && data.lastChecked) {
+          const date2 = new Date(data.lastChecked);
+          lastCheckedEl.textContent = date2.toLocaleString();
+          document.getElementById("update-last-checked").style.display = "block";
+        }
+        if (data.status === "offline") {
+          document.getElementById("update-offline-section").style.display = "block";
+          const installBtn = document.getElementById(
+            "install-update-btn"
+          );
+          if (installBtn) installBtn.disabled = true;
+        } else if (data.status === "available" || data.status === "prerelease") {
+          document.getElementById("update-available-section").style.display = "block";
+          document.getElementById("update-badge").style.display = "inline";
+          const availableVersionEl = document.getElementById("available-version");
+          if (availableVersionEl)
+            availableVersionEl.textContent = data.availableVersion || "-";
+          const changelogEl = document.getElementById("changelog-content");
+          if (changelogEl && data.changelog) {
+            changelogEl.innerHTML = formatChangelog(data.changelog);
+          }
+          const badgeEl = document.getElementById("update-version-badge");
+          if (badgeEl) {
+            badgeEl.textContent = data.status === "prerelease" ? "Beta" : "New";
+          }
+          const installBtn = document.getElementById(
+            "install-update-btn"
+          );
+          if (installBtn) {
+            installBtn.disabled = false;
+            installBtn.dataset.version = data.availableVersion || "";
+            installBtn.dataset.changelog = data.changelog || "";
+          }
+        } else if (data.status === "none") {
+          document.getElementById("update-no-available-section").style.display = "block";
+          const noUpdateText = document.getElementById(
+            "update-no-available-text"
+          );
+          if (noUpdateText)
+            noUpdateText.textContent = "You are running the latest version.";
+        } else if (data.status === "error") {
+          document.getElementById("update-no-available-section").style.display = "block";
+          const noUpdateText = document.getElementById(
+            "update-no-available-text"
+          );
+          if (noUpdateText)
+            noUpdateText.textContent = data.errorMessage || "Failed to check for updates.";
+        }
+        if (data.canRollback) {
+          document.getElementById("rollback-section").style.display = "block";
+        }
+        const currentVersionEl = document.getElementById("current-version");
+        if (currentVersionEl)
+          currentVersionEl.textContent = data.currentVersion || "Unknown";
+      } catch (err) {
+        showToast(
+          "Failed to check for updates: " + (err.message || "Unknown error"),
+          "danger",
+          3e3
+        );
+      } finally {
+        checkUpdatesBtn.textContent = "Check for Updates";
+        checkUpdatesBtn.removeAttribute("disabled");
       }
-      checkUpdatesBtn.textContent = "Check for Updates";
-      checkUpdatesBtn.removeAttribute("disabled");
-      showToast("You are running the latest version", "info", 2e3);
     });
+    const installUpdateBtn = document.getElementById("install-update-btn");
+    installUpdateBtn?.addEventListener("click", async () => {
+      const version = installUpdateBtn.dataset.version;
+      const changelog = installUpdateBtn.dataset.changelog || "";
+      if (!confirm(
+        `Install FarmPal v${version}?
+
+A backup will be created automatically before the update.
+
+The service will restart after the update.`
+      )) {
+        return;
+      }
+      showUpdateProgressModal(version || "unknown");
+      try {
+        const response = await fetch("http://127.0.0.1:3392/api/update/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            release: {
+              version,
+              changelog,
+              downloadUrl: `https://updates.farmpal.io/releases/v${version}/farmpal.tar.gz`,
+              checksum: "mock_checksum_for_testing",
+              checksumUrl: `https://updates.farmpal.io/releases/v${version}/SHA256SUMS`,
+              releaseDate: (/* @__PURE__ */ new Date()).toISOString()
+            }
+          })
+        });
+        const result = await response.json();
+        if (result.success) {
+          updateProgressModal("Restarting...", 100);
+          showToast(
+            `FarmPal v${version} installed successfully!`,
+            "success",
+            5e3
+          );
+          setTimeout(() => {
+            closeUpdateProgressModal();
+            window.location.reload();
+          }, 3e3);
+        } else {
+          updateProgressModal(
+            "Update failed: " + (result.error || "Unknown error"),
+            -1
+          );
+          showToast(
+            "Update failed: " + (result.error || "Unknown error"),
+            "danger",
+            5e3
+          );
+        }
+      } catch (err) {
+        updateProgressModal(
+          "Update failed: " + (err.message || "Unknown error"),
+          -1
+        );
+        showToast(
+          "Update failed: " + (err.message || "Unknown error"),
+          "danger",
+          5e3
+        );
+      }
+    });
+    const rollbackBtn = document.getElementById("rollback-btn");
+    rollbackBtn?.addEventListener("click", async () => {
+      if (!confirm(
+        "Rollback to the previous version?\n\nThe current version will be replaced and FarmPal will restart."
+      )) {
+        return;
+      }
+      rollbackBtn.setAttribute("disabled", "");
+      try {
+        const response = await fetch(
+          "http://127.0.0.1:3392/api/update/rollback",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+        const result = await response.json();
+        if (result.success) {
+          showToast("Rollback initiated. Restarting...", "success", 3e3);
+          setTimeout(() => {
+            window.location.reload();
+          }, 2e3);
+        } else {
+          showToast(
+            "Rollback failed: " + (result.error || "Unknown error"),
+            "danger",
+            5e3
+          );
+          rollbackBtn.removeAttribute("disabled");
+        }
+      } catch (err) {
+        showToast(
+          "Rollback failed: " + (err.message || "Unknown error"),
+          "danger",
+          5e3
+        );
+        rollbackBtn.removeAttribute("disabled");
+      }
+    });
+    const showHistoryBtn = document.getElementById("show-update-history-btn");
+    showHistoryBtn?.addEventListener("click", async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:3392/api/update/history");
+        const data = await response.json();
+        showUpdateHistoryModal(data.history || []);
+      } catch (err) {
+        showToast("Failed to load update history", "danger", 3e3);
+      }
+    });
+    loadUpdateStatus();
     const backupBtn = document.getElementById("backup-now-btn");
     backupBtn?.addEventListener("click", async () => {
       backupBtn.setAttribute("disabled", "");
@@ -15803,8 +16126,24 @@ ${result.failures.join("\n")}`
   }
   async function loadVersionInfo() {
     const versionEl = document.getElementById("current-version");
-    if (versionEl) {
-      versionEl.textContent = "1.0.0";
+    const versionFooterEl = document.getElementById("settings-version-text");
+    try {
+      const response = await fetch("http://127.0.0.1:3392/api/update/status");
+      const data = await response.json();
+      const version = data.currentVersion || "Unknown";
+      if (versionEl) {
+        versionEl.textContent = version;
+      }
+      if (versionFooterEl) {
+        versionFooterEl.textContent = `FarmPal v${version}`;
+      }
+    } catch {
+      if (versionEl) {
+        versionEl.textContent = "Unknown";
+      }
+      if (versionFooterEl) {
+        versionFooterEl.textContent = "FarmPal vUnknown";
+      }
     }
   }
   async function loadLicenseInfo() {
@@ -15818,6 +16157,7 @@ ${result.failures.join("\n")}`
       let badgeHtml = "";
       let badgeClass = "badge-slate";
       let featuresHtml = "";
+      let bannerHtml = "";
       switch (status.status) {
         case "LICENSED":
           badgeClass = "badge-green";
@@ -15847,12 +16187,25 @@ ${result.failures.join("\n")}`
         `;
           break;
         case "EXPIRED":
-          badgeClass = "badge-amber";
-          badgeHtml = `<span class="badge ${badgeClass}">EXPIRED</span>`;
+          badgeClass = "badge-red";
+          badgeHtml = `<span class="badge badge-red">EXPIRED</span>`;
           if (status.expiresAt) {
             const expiryDate = new Date(status.expiresAt).toLocaleDateString();
             badgeHtml += ` <span style="color: var(--text-secondary); font-size: 13px;">Expired ${expiryDate}</span>`;
           }
+          bannerHtml = `
+          <div class="license-expired-banner">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div>
+              <strong>License Expired</strong>
+              <p>Your license has expired. Cloud and remote features are disabled. Activate a license to restore full functionality.</p>
+            </div>
+          </div>
+        `;
           featuresHtml = `
           <li style="color: var(--text-secondary);">\u2717 Cloud features (license expired)</li>
           <li style="color: var(--text-secondary);">\u2717 Remote access (license expired)</li>
@@ -15874,9 +16227,31 @@ ${result.failures.join("\n")}`
         `;
           break;
       }
+      if (status.isOffline && status.offlineExpiresAt) {
+        const offlineExpiryDate = new Date(
+          status.offlineExpiresAt
+        ).toLocaleString();
+        bannerHtml += `
+        <div class="license-offline-banner">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="1" y1="1" x2="23" y2="23"/>
+            <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+            <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+            <path d="M10.71 5.05A16 16 0 0 1 22.58 9"/>
+            <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <line x1="12" y1="20" x2="12.01" y2="20"/>
+          </svg>
+          <span>Offline mode \u2014 license cache expires ${offlineExpiryDate}</span>
+        </div>
+      `;
+      }
       statusEl.innerHTML = badgeHtml;
       if (featuresEl) {
         featuresEl.innerHTML = featuresHtml;
+      }
+      if (bannerHtml && featuresEl) {
+        featuresEl.insertAdjacentHTML("beforebegin", bannerHtml);
       }
       if (licenseSection) {
         if (status.status === "UNLICENSED" || status.status === "EXPIRED") {
@@ -15953,10 +16328,18 @@ ${result.failures.join("\n")}`
     </div>
   `;
     document.body.appendChild(overlay);
-    const inputEl = document.getElementById("license-key-input");
-    const activateBtn = document.getElementById("license-activate-btn");
-    const cancelBtn = document.getElementById("license-cancel-btn");
-    const errorEl = document.getElementById("license-error");
+    const inputEl = document.getElementById(
+      "license-key-input"
+    );
+    const activateBtn = document.getElementById(
+      "license-activate-btn"
+    );
+    const cancelBtn = document.getElementById(
+      "license-cancel-btn"
+    );
+    const errorEl = document.getElementById(
+      "license-error"
+    );
     inputEl?.addEventListener("input", () => {
       let value = inputEl.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
       if (value.length > 16) value = value.slice(0, 16);
@@ -15966,7 +16349,9 @@ ${result.failures.join("\n")}`
       }
       inputEl.value = parts.join("-");
       if (activateBtn) {
-        activateBtn.disabled = !/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(inputEl.value);
+        activateBtn.disabled = !/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(
+          inputEl.value
+        );
       }
     });
     cancelBtn?.addEventListener("click", () => {
@@ -16032,8 +16417,12 @@ ${result.failures.join("\n")}`
     </div>
   `;
     document.body.appendChild(overlay);
-    const deactivateBtn = document.getElementById("license-deactivate-btn");
-    const cancelBtn = document.getElementById("license-cancel-btn");
+    const deactivateBtn = document.getElementById(
+      "license-deactivate-btn"
+    );
+    const cancelBtn = document.getElementById(
+      "license-cancel-btn"
+    );
     cancelBtn?.addEventListener("click", () => {
       document.body.removeChild(overlay);
     });
@@ -16051,7 +16440,11 @@ ${result.failures.join("\n")}`
         showToast("License deactivated", "success", 3e3);
         loadLicenseInfo();
       } catch (err) {
-        showToast("Deactivation failed: " + (err.message || "Unknown error"), "danger", 4e3);
+        showToast(
+          "Deactivation failed: " + (err.message || "Unknown error"),
+          "danger",
+          4e3
+        );
         deactivateBtn.removeAttribute("disabled");
         deactivateBtn.textContent = "Deactivate";
       }
@@ -16237,6 +16630,20 @@ ${result.failures.join("\n")}`
   border-top: 1px solid var(--border);
   display: flex;
   justify-content: flex-end;
+}
+
+/* Version Footer (VAL-VERS-001) */
+.settings-version-footer {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+}
+.settings-version-text {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-family: monospace;
 }
 .settings-loading {
   display: flex;
@@ -16445,6 +16852,54 @@ ${result.failures.join("\n")}`
 .settings-warning-banner span {
   flex: 1;
 }
+
+/* License banners */
+.license-expired-banner {
+  background: color-mix(in srgb, var(--color-danger, #F85149) 15%, var(--bg-secondary));
+  border: 1px solid var(--color-danger, #F85149);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.license-expired-banner svg {
+  flex-shrink: 0;
+  color: var(--color-danger, #F85149);
+  margin-top: 2px;
+}
+.license-expired-banner strong {
+  display: block;
+  color: var(--color-danger, #F85149);
+  font-size: 15px;
+  margin-bottom: var(--space-1);
+}
+.license-expired-banner p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.license-offline-banner {
+  background: color-mix(in srgb, var(--color-info, #388BFD) 15%, var(--bg-secondary));
+  border: 1px solid var(--color-info, #388BFD);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.license-offline-banner svg {
+  flex-shrink: 0;
+  color: var(--color-info, #388BFD);
+}
+
 .settings-hint-error {
   color: var(--color-danger, #F85149);
   font-size: 12px;
@@ -16473,6 +16928,102 @@ ${result.failures.join("\n")}`
   font-size: 12px;
   font-weight: 500;
 }
+.badge-red {
+  background: var(--color-danger, #F85149);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Update system styles (VAL-UPDT-001 through VAL-UPDT-012) */
+.update-info-card {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-top: var(--space-2);
+}
+.update-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.update-offline-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.update-offline-banner svg {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+.changelog-details {
+  margin-top: var(--space-3);
+}
+.changelog-summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  user-select: none;
+  padding: var(--space-2) 0;
+}
+.changelog-summary:hover {
+  color: var(--text-primary);
+}
+.changelog-content {
+  padding: var(--space-3);
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: var(--space-2);
+}
+.changelog-content h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2) 0;
+}
+.changelog-content h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: var(--space-3) 0 var(--space-1) 0;
+}
+.changelog-content li {
+  margin-left: var(--space-4);
+  margin-bottom: var(--space-1);
+}
+.settings-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: var(--space-4) 0;
+}
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.btn-ghost:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
 
 /* License modal */
 .license-hardware-id {
@@ -16489,8 +17040,375 @@ ${result.failures.join("\n")}`
   margin: var(--space-1) 0;
   letter-spacing: 0.05em;
 }
+
+/* Help & Documentation links (VAL-DOC-009, VAL-DOC-010, VAL-DOC-011) */
+.docs-links-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.doc-link-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.doc-link-card:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+}
+.doc-link-card:hover .doc-link-arrow {
+  color: var(--accent);
+  transform: translate(2px, -2px);
+}
+.doc-link-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+  width: 32px;
+  text-align: center;
+}
+.doc-link-content {
+  flex: 1;
+  min-width: 0;
+}
+.doc-link-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.doc-link-desc {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+.doc-link-arrow {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: all var(--transition-fast);
+}
 `;
     document.head.appendChild(style);
+  }
+  async function loadUpdateStatus() {
+    try {
+      const response = await fetch("http://127.0.0.1:3392/api/update/status");
+      const data = await response.json();
+      const currentVersionEl = document.getElementById("current-version");
+      if (currentVersionEl)
+        currentVersionEl.textContent = data.currentVersion || "Unknown";
+      document.getElementById("update-available-section").style.display = "none";
+      document.getElementById("update-offline-section").style.display = "none";
+      document.getElementById("update-no-available-section").style.display = "none";
+      document.getElementById("update-badge").style.display = "none";
+      document.getElementById("rollback-section").style.display = "none";
+      if (data.status === "offline") {
+        document.getElementById("update-offline-section").style.display = "block";
+        const installBtn = document.getElementById(
+          "install-update-btn"
+        );
+        if (installBtn) installBtn.disabled = true;
+      } else if (data.status === "available" || data.status === "prerelease") {
+        document.getElementById("update-available-section").style.display = "block";
+        document.getElementById("update-badge").style.display = "inline";
+        const availableVersionEl = document.getElementById("available-version");
+        if (availableVersionEl)
+          availableVersionEl.textContent = data.availableVersion || "-";
+        const changelogEl = document.getElementById("changelog-content");
+        if (changelogEl && data.changelog) {
+          changelogEl.innerHTML = formatChangelog(data.changelog);
+        }
+        const badgeEl = document.getElementById("update-version-badge");
+        if (badgeEl)
+          badgeEl.textContent = data.status === "prerelease" ? "Beta" : "New";
+        const installBtn = document.getElementById(
+          "install-update-btn"
+        );
+        if (installBtn) {
+          installBtn.disabled = false;
+          installBtn.dataset.version = data.availableVersion || "";
+          installBtn.dataset.changelog = data.changelog || "";
+        }
+      } else if (data.status === "none") {
+        document.getElementById("update-no-available-section").style.display = "block";
+      }
+      if (data.canRollback) {
+        document.getElementById("rollback-section").style.display = "block";
+      }
+      if (data.lastChecked) {
+        const lastCheckedEl = document.getElementById("last-checked-time");
+        if (lastCheckedEl) {
+          const date2 = new Date(data.lastChecked);
+          lastCheckedEl.textContent = date2.toLocaleString();
+          document.getElementById("update-last-checked").style.display = "block";
+        }
+      }
+    } catch {
+    }
+  }
+  function formatChangelog(changelog) {
+    if (!changelog) return "";
+    return changelog.replace(/^# (.*$)/gim, "<h3>$1</h3>").replace(/^## (.*$)/gim, "<h4>$1</h4>").replace(/^- (.*$)/gim, "<li>$1</li>").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\*(.*?)\*/g, "<em>$1</em>").replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br/>");
+  }
+  function showUpdateProgressModal(version) {
+    closeUpdateProgressModal();
+    const modal = document.createElement("div");
+    modal.id = "update-progress-modal";
+    modal.className = "modal-overlay";
+    modal.innerHTML = `
+    <div class="modal-panel" style="max-width:420px;">
+      <div class="modal-header">
+        <h2>Installing FarmPal v${escapeHtml15(version)}</h2>
+      </div>
+      <div class="modal-body">
+        <div class="update-progress-steps">
+          <div class="progress-step" id="step-backup">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Backing up...</span>
+          </div>
+          <div class="progress-step" id="step-download">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Downloading...</span>
+          </div>
+          <div class="progress-step" id="step-verify">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Verifying...</span>
+          </div>
+          <div class="progress-step" id="step-install">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Installing...</span>
+          </div>
+          <div class="progress-step" id="step-restart">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Restarting...</span>
+          </div>
+          <div class="progress-step" id="step-health">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Health check...</span>
+          </div>
+        </div>
+        <div class="progress-bar-container" id="progress-bar-container">
+          <div class="progress-bar" id="update-progress-bar" style="width:0%"></div>
+        </div>
+        <p class="progress-message" id="progress-message">Preparing update...</p>
+      </div>
+    </div>
+  `;
+    document.body.appendChild(modal);
+    const style = document.createElement("style");
+    style.textContent = `
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .modal-panel {
+      background: var(--bg-secondary, #161B22);
+      border-radius: 12px;
+      border: 1px solid var(--border, #30363D);
+      padding: 24px;
+      width: 90%;
+      max-width: 480px;
+    }
+    .modal-header h2 {
+      margin: 0 0 20px 0;
+      font-size: 18px;
+      color: var(--text-primary, #F0F6FC);
+    }
+    .update-progress-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .progress-step {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .step-icon {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .step-icon.pending svg {
+      color: var(--text-tertiary, #484F58);
+    }
+    .step-icon.active svg {
+      color: var(--accent, #388BFD);
+      animation: pulse 1s infinite;
+    }
+    .step-icon.complete svg {
+      color: var(--color-success, #2EA043);
+    }
+    .step-icon.failed svg {
+      color: var(--color-danger, #F85149);
+    }
+    .step-label {
+      color: var(--text-secondary, #8B949E);
+      font-size: 14px;
+    }
+    .step-label.active {
+      color: var(--text-primary, #F0F6FC);
+    }
+    .step-label.complete {
+      color: var(--color-success, #2EA043);
+    }
+    .step-label.failed {
+      color: var(--color-danger, #F85149);
+    }
+    .progress-bar-container {
+      height: 6px;
+      background: var(--bg-tertiary, #21262D);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .progress-bar {
+      height: 100%;
+      background: var(--accent, #388BFD);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+    .progress-message {
+      text-align: center;
+      color: var(--text-secondary, #8B949E);
+      font-size: 13px;
+      margin: 0;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  `;
+    document.head.appendChild(style);
+  }
+  function updateProgressModal(message, percent) {
+    const messageEl = document.getElementById("progress-message");
+    if (messageEl) messageEl.textContent = message;
+    const barEl = document.getElementById("update-progress-bar");
+    if (barEl) barEl.style.width = percent >= 0 ? `${percent}%` : "0%";
+    const steps = [
+      "backup",
+      "download",
+      "verify",
+      "install",
+      "restart",
+      "health"
+    ];
+    const stepPercent = percent >= 0 ? percent : 0;
+    const completedSteps = Math.floor(stepPercent / (100 / steps.length));
+    steps.forEach((step, index) => {
+      const stepEl = document.getElementById(`step-${step}`);
+      if (!stepEl) return;
+      const iconEl = stepEl.querySelector(".step-icon");
+      const labelEl = stepEl.querySelector(".step-label");
+      if (index < completedSteps) {
+        iconEl.className = "step-icon complete";
+        iconEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+        labelEl.className = "step-label complete";
+      } else if (index === completedSteps) {
+        iconEl.className = "step-icon active";
+        iconEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+        labelEl.className = "step-label active";
+      } else {
+        iconEl.className = "step-icon pending";
+        iconEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+        labelEl.className = "step-label";
+      }
+    });
+    if (percent < 0) {
+      steps.forEach((step, index) => {
+        if (index >= completedSteps) {
+          const stepEl = document.getElementById(`step-${step}`);
+          if (!stepEl) return;
+          const iconEl = stepEl.querySelector(".step-icon");
+          const labelEl = stepEl.querySelector(".step-label");
+          iconEl.className = "step-icon failed";
+          iconEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+          labelEl.className = "step-label failed";
+        }
+      });
+    }
+  }
+  function closeUpdateProgressModal() {
+    const modal = document.getElementById("update-progress-modal");
+    if (modal) modal.remove();
+  }
+  function showUpdateHistoryModal(history2) {
+    const existingModal = document.getElementById("update-history-modal");
+    if (existingModal) existingModal.remove();
+    const historyRows = history2.length === 0 ? '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-tertiary);">No update history yet</td></tr>' : history2.map(
+      (entry) => `
+        <tr>
+          <td class="mono">v${escapeHtml15(entry.fromVersion)} \u2192 v${escapeHtml15(entry.toVersion)}</td>
+          <td><span class="badge ${entry.status === "success" ? "badge-green" : entry.status === "rolled_back" ? "badge-amber" : "badge-red"}">${entry.status}</span></td>
+          <td>${escapeHtml15(entry.triggeredBy)}</td>
+          <td>${new Date(entry.startedAt).toLocaleDateString()}</td>
+        </tr>
+      `
+    ).join("");
+    const modal = document.createElement("div");
+    modal.id = "update-history-modal";
+    modal.className = "modal-overlay";
+    modal.innerHTML = `
+    <div class="modal-panel" style="max-width:600px;">
+      <div class="modal-header">
+        <h2>Update History</h2>
+        <button class="modal-close" id="close-history-modal" style="background:none;border:none;color:var(--text-primary);cursor:pointer;font-size:20px;padding:4px;">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height:400px;overflow-y:auto;">
+        <table class="settings-table" style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);">
+              <th style="text-align:left;padding:8px;">Version</th>
+              <th style="text-align:left;padding:8px;">Status</th>
+              <th style="text-align:left;padding:8px;">Type</th>
+              <th style="text-align:left;padding:8px;">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${historyRows}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+    document.body.appendChild(modal);
+    document.getElementById("close-history-modal")?.addEventListener("click", () => {
+      modal.remove();
+    });
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) modal.remove();
+    });
   }
   var LLM_PROVIDERS2, COMMON_TIMEZONES2, settingsData, networkData, isSaving;
   var init_Settings = __esm({

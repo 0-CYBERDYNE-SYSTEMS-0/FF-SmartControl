@@ -54,6 +54,7 @@ const MIME_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.webp': 'image/webp',
+  '.md': 'text/markdown; charset=utf-8',
 };
 
 export interface HalUiServer {
@@ -166,11 +167,13 @@ function sendFile(
   res: http.ServerResponse,
   filePath: string,
   isHtml = false,
+  contentTypeOverride?: string,
 ): void {
   try {
     const body = fs.readFileSync(filePath);
     const ext = path.extname(filePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const contentType =
+      contentTypeOverride || MIME_TYPES[ext] || 'application/octet-stream';
     res.writeHead(200, {
       'Content-Type': contentType,
       'Cache-Control': isHtml ? 'no-cache' : 'public, max-age=300',
@@ -3406,6 +3409,25 @@ export async function startHalUiServer(
       }
 
       sendJson(res, 404, { error: 'Simulator endpoint not found' });
+      return;
+    }
+
+    // Documentation files (VAL-DOC-012 — docs bundled locally, work offline)
+    if (requestPath.startsWith('/docs/')) {
+      const docsDir = path.resolve(process.cwd(), 'docs');
+      let docsFilePath = path.join(docsDir, requestPath.slice(6)); // remove '/docs/'
+      if (!docsFilePath.startsWith(docsDir)) {
+        res.writeHead(403);
+        res.end('Forbidden');
+        return;
+      }
+      if (fs.existsSync(docsFilePath) && fs.statSync(docsFilePath).isFile()) {
+        const ext = path.extname(docsFilePath);
+        const mimeType = MIME_TYPES[ext] || 'text/plain; charset=utf-8';
+        sendFile(res, docsFilePath, false, mimeType);
+        return;
+      }
+      sendJson(res, 404, { error: 'Documentation file not found' });
       return;
     }
 

@@ -509,6 +509,85 @@ function renderSettingsPage(): string {
           </div>
         </section>
 
+        <!-- Help & Documentation Section (VAL-DOC-009, VAL-DOC-010) -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Help & Documentation
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <p class="settings-hint">Access operator guides for setup, hardware, safety, and troubleshooting. All guides work offline — they are bundled with FarmPal.</p>
+            </div>
+            <div class="docs-links-grid">
+              <a href="/docs/QUICKSTART.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">🚀</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Quick Start Guide</div>
+                  <div class="doc-link-desc">Flash → boot → wizard → dashboard in 15 minutes</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/HARDWARE.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">🔌</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Hardware Guide</div>
+                  <div class="doc-link-desc">Wiring diagrams, GPIO pinouts, electrical safety</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/SAFETY.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">⚠️</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Safety Guide</div>
+                  <div class="doc-link-desc">Electrical disclaimers, fire hazards, grounding, IP rating</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/DASHBOARD.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">📊</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Dashboard Guide</div>
+                  <div class="doc-link-desc">All views, controls, chart interpretation, mode switching</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/AUTOMATION.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">🤖</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Automation Guide</div>
+                  <div class="doc-link-desc">Autonomous control, four modes, thresholds, safety policies</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/TROUBLESHOOTING.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">🔧</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Troubleshooting Guide</div>
+                  <div class="doc-link-desc">Common issues with fix steps for each</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/BACKUP_RESTORE.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">💾</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Backup &amp; Restore Guide</div>
+                  <div class="doc-link-desc">Manual/auto backup, storage location, restore steps</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+              <a href="/docs/FACTORY_RESET.md" target="_blank" rel="noopener" class="doc-link-card">
+                <div class="doc-link-icon">🗄️</div>
+                <div class="doc-link-content">
+                  <div class="doc-link-title">Factory Reset Guide</div>
+                  <div class="doc-link-desc">How to reset, what is erased, confirmation required</div>
+                </div>
+                <svg class="doc-link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+            </div>
+          </div>
+        </section>
+
       </div>
 
       <!-- Save Button -->
@@ -1935,6 +2014,60 @@ function injectSettingsStyles(): void {
   color: var(--text-primary);
   margin: var(--space-1) 0;
   letter-spacing: 0.05em;
+}
+
+/* Help & Documentation links (VAL-DOC-009, VAL-DOC-010, VAL-DOC-011) */
+.docs-links-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.doc-link-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.doc-link-card:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+}
+.doc-link-card:hover .doc-link-arrow {
+  color: var(--accent);
+  transform: translate(2px, -2px);
+}
+.doc-link-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+  width: 32px;
+  text-align: center;
+}
+.doc-link-content {
+  flex: 1;
+  min-width: 0;
+}
+.doc-link-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.doc-link-desc {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+.doc-link-arrow {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: all var(--transition-fast);
 }
 `;
   document.head.appendChild(style);
