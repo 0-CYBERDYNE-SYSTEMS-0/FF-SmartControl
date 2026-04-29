@@ -602,13 +602,10 @@ function renderHeroChart(
     metricGroups.set(layer.metric.key, list);
   }
 
-  // Build DualAxisLayer[] — one entry per metric, averaging across devices
-  const dualLayers: Array<{
+  // Build LakeLayer[] — one entry per metric, normalized to 0-1, averaged across devices
+  const lakeLayers: Array<{
     label: string;
     color: string;
-    minAxis: number;
-    maxAxis: number;
-    unit: string;
     data: Array<{ t: number; v: number }>;
   }> = [];
 
@@ -621,6 +618,7 @@ function renderHeroChart(
       axisMin = (axisMin * 9) / 5 + 32;
       axisMax = (axisMax * 9) / 5 + 32;
     }
+    const vSpan = Math.max(1, axisMax - axisMin);
 
     // Merge all device data for this metric into one series (average per timestamp)
     const timeMap = new Map<number, number[]>();
@@ -637,38 +635,28 @@ function renderHeroChart(
 
     const merged = Array.from(timeMap.entries())
       .sort((a, b) => a[0] - b[0])
-      .map(([t, vals]) => ({ t, v: vals.reduce((a, b) => a + b, 0) / vals.length }));
+      .map(([t, vals]) => ({
+        t,
+        // Normalize to 0-1 range for lake chart
+        v: Math.max(0, Math.min(1, (vals.reduce((a, b) => a + b, 0) / vals.length - axisMin) / vSpan)),
+      }));
 
-    dualLayers.push({
+    lakeLayers.push({
       label: cfg.label,
       color: cfg.color,
-      minAxis: axisMin,
-      maxAxis: axisMax,
-      unit: metricKey === 'temperature' ? `°${store.unitSystem === 'metric' ? 'C' : 'F'}` : cfg.fallbackUnit,
       data: merged,
     });
   }
 
-  // Sort: first non-temperature metric gets left axis, rest get right axis
-  // Actually, let dual-axis figure it out — use first 2 layers
   void import('../components/ChartKit.js').then((m) => {
     if (expectedSequence !== undefined && expectedSequence !== loadSequence)
       return;
-
-    // Use renderDualAxisCard for proper multi-scale rendering
-    const title = dualLayers.map(l => l.label).join(' + ') || 'Sensor Data';
-    m.renderDualAxisCard(dualLayers, 'hero-chart', {
-      title,
-      subtitle: `${viewState.range} range`,
-      showStats: true,
-      showGrid: true,
-      smooth: true,
-    });
+    m.renderLakeChart(lakeLayers, 'hero-chart', { showLegend: true });
   });
 
   // Legend below chart
   if (legend) {
-    legend.innerHTML = dualLayers
+    legend.innerHTML = lakeLayers
       .map((l) => `
         <span class="legend-item" style="--metric-color:${l.color}">
           <span class="legend-dot"></span>

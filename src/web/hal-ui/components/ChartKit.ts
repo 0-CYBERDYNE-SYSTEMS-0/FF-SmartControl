@@ -1312,6 +1312,152 @@ export function renderStackedAreaChart(
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   LAKE CHART — Translucent overlapping areas with glowing line outlines
+   All metrics share a single normalized 0-1 Y axis (each metric normalized
+   by its own min/max range). Areas overlap with mix-blend-mode:screen for
+   luminous color mixing. No stacking — all metrics float freely.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export interface LakeLayer {
+  label: string;
+  color: string;
+  data: Array<{ t: number; v: number }>;
+}
+
+export function renderLakeChart(
+  layers: LakeLayer[],
+  containerId: string,
+  opts: {
+    width?: number;
+    height?: number;
+    showLegend?: boolean;
+  } = {},
+): void {
+  const container = document.getElementById(containerId);
+  if (!container || layers.length === 0) {
+    if (container) container.innerHTML = '<div class="chart-empty">No data</div>';
+    return;
+  }
+
+  const width = opts.width ?? 900;
+  const height = opts.height ?? 300;
+  const pad = { top: 24, right: 24, bottom: 40, left: 52 };
+
+  // Unified time domain
+  const allTimes = layers.flatMap((l) => l.data.map((d) => d.t));
+  const tMin = Math.min(...allTimes);
+  const tMax = Math.max(...allTimes);
+  const tSpan = Math.max(1, tMax - tMin);
+  const tx = (t: number) =>
+    pad.left + ((t - tMin) / tSpan) * (width - pad.left - pad.right);
+
+  // Each layer has its own yScale (0-1 normalized)
+  // We project each metric's value onto [0, 1] relative to its metric domain
+  // Since LakeLayer.v is already 0-1 normalized, just map to pixel coords
+  const yScale = (v: number) =>
+    pad.top + (1 - v) * (height - pad.top - pad.bottom);
+
+  // Build per-layer paths
+  const layerPaths = layers.map((layer) => {
+    const pts = layer.data
+      .slice()
+      .sort((a, b) => a.t - b.t)
+      .map((d) => ({ x: tx(d.t), y: yScale(d.v) }));
+
+    if (pts.length < 2) return null;
+
+    const linePath = pts
+      .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+      .join(' ');
+    const areaPath = `${linePath} L${pts[pts.length - 1].x.toFixed(1)},${height - pad.bottom} L${pts[0].x.toFixed(1)},${height - pad.bottom} Z`;
+
+    return { layer, pts, linePath, areaPath };
+  }).filter(Boolean) as Array<{ layer: LakeLayer; pts: Array<{x: number; y: number}>; linePath: string; areaPath: string }>;
+
+  if (layerPaths.length === 0) return;
+
+  // Y axis labels (0 to 1, show as percentages)
+  const yLabels = [0, 0.25, 0.5, 0.75, 1].map((v) => {
+    const y = yScale(v);
+    const pct = Math.round(v * 100);
+    return `<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${pct}%</text>`;
+  }).join('');
+
+  // Time axis labels
+  const timeLabels = Array.from({ length: 7 }, (_, i) => {
+    const t = tMin + (i / 6) * tSpan;
+    const x = tx(t);
+    const label = new Date(t).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
+  }).join('');
+
+  // Gradient defs — high opacity like the reference spec
+  const defs = layerPaths
+    .map(
+      (lp, i) => `
+    <linearGradient id="lake-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.40"/>
+      <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.02"/>
+    </linearGradient>
+  `,
+    )
+    .join('');
+
+  // Areas (behind lines)
+  const areas = layerPaths
+    .map((lp, i) =>
+      `<path d="${lp.areaPath}" fill="url(#lake-grad-${containerId}-${i})" stroke="none" style="mix-blend-mode:screen"/>`
+    )
+    .join('');
+
+  // Glowing line outlines
+  const lines = layerPaths
+    .map((lp) =>
+      `<path d="${lp.linePath}" fill="none" stroke="${lp.layer.color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" opacity="0.95"/>`
+    )
+    .join('');
+
+  // Leading edge dots
+  const dots = layerPaths
+    .map((lp) => {
+      const last = lp.pts[lp.pts.length - 1];
+      if (!last) return '';
+      return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.color}" stroke="var(--bg-primary)" stroke-width="2"/>`;
+    })
+    .join('');
+
+  // Grid lines — subtle horizontal only
+  const gridLines = Array.from({ length: 5 }, (_, i) => {
+    const y = pad.top + (i / 4) * (height - pad.top - pad.bottom);
+    return `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid" stroke-dasharray="2 3"/>`;
+  }).join('');
+
+  const svg = `
+    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+      <defs>${defs}</defs>
+      ${gridLines}${areas}${lines}${dots}${yLabels}${timeLabels}
+    </svg>
+  `;
+
+  const legendHtml =
+    opts.showLegend !== false
+      ? `<div class="stack-legend">${layers
+          .map(
+            (l) => `
+        <span class="legend-item" style="--metric-color:${l.color}">
+          <span class="legend-dot"></span>${escapeHtml(l.label)}
+        </span>`,
+          )
+          .join('')}</div>`
+      : '';
+
+  container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    #v5-v7 — CARD CHARTS (Area, Line, Bar)
    Compact tiles for viz grids.
    ═══════════════════════════════════════════════════════════════════════════ */

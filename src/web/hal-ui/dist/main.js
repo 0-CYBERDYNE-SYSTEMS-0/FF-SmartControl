@@ -2556,6 +2556,7 @@ ${result.failures.join("\n")}`
     renderDecisionMarkers: () => renderDecisionMarkers,
     renderDualAxisCard: () => renderDualAxisCard,
     renderHeatmap: () => renderHeatmap,
+    renderLakeChart: () => renderLakeChart,
     renderLineCard: () => renderLineCard,
     renderOriginalAreaChart: () => renderOriginalAreaChart,
     renderSparkline: () => renderSparkline,
@@ -3372,6 +3373,80 @@ ${result.failures.join("\n")}`
     </svg>
   `;
     const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map(
+      (l) => `
+        <span class="legend-item" style="--metric-color:${l.color}">
+          <span class="legend-dot"></span>${escapeHtml3(l.label)}
+        </span>`
+    ).join("")}</div>` : "";
+    container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
+  }
+  function renderLakeChart(layers, containerId, opts = {}) {
+    const container = document.getElementById(containerId);
+    if (!container || layers.length === 0) {
+      if (container) container.innerHTML = '<div class="chart-empty">No data</div>';
+      return;
+    }
+    const width = opts.width ?? 900;
+    const height = opts.height ?? 300;
+    const pad = { top: 24, right: 24, bottom: 40, left: 52 };
+    const allTimes = layers.flatMap((l) => l.data.map((d) => d.t));
+    const tMin = Math.min(...allTimes);
+    const tMax = Math.max(...allTimes);
+    const tSpan = Math.max(1, tMax - tMin);
+    const tx = (t) => pad.left + (t - tMin) / tSpan * (width - pad.left - pad.right);
+    const yScale = (v) => pad.top + (1 - v) * (height - pad.top - pad.bottom);
+    const layerPaths = layers.map((layer) => {
+      const pts = layer.data.slice().sort((a, b) => a.t - b.t).map((d) => ({ x: tx(d.t), y: yScale(d.v) }));
+      if (pts.length < 2) return null;
+      const linePath = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const areaPath = `${linePath} L${pts[pts.length - 1].x.toFixed(1)},${height - pad.bottom} L${pts[0].x.toFixed(1)},${height - pad.bottom} Z`;
+      return { layer, pts, linePath, areaPath };
+    }).filter(Boolean);
+    if (layerPaths.length === 0) return;
+    const yLabels = [0, 0.25, 0.5, 0.75, 1].map((v) => {
+      const y = yScale(v);
+      const pct = Math.round(v * 100);
+      return `<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${pct}%</text>`;
+    }).join("");
+    const timeLabels = Array.from({ length: 7 }, (_, i) => {
+      const t = tMin + i / 6 * tSpan;
+      const x = tx(t);
+      const label = new Date(t).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+      return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
+    }).join("");
+    const defs = layerPaths.map(
+      (lp, i) => `
+    <linearGradient id="lake-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.40"/>
+      <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.02"/>
+    </linearGradient>
+  `
+    ).join("");
+    const areas = layerPaths.map(
+      (lp, i) => `<path d="${lp.areaPath}" fill="url(#lake-grad-${containerId}-${i})" stroke="none" style="mix-blend-mode:screen"/>`
+    ).join("");
+    const lines = layerPaths.map(
+      (lp) => `<path d="${lp.linePath}" fill="none" stroke="${lp.layer.color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" opacity="0.95"/>`
+    ).join("");
+    const dots = layerPaths.map((lp) => {
+      const last = lp.pts[lp.pts.length - 1];
+      if (!last) return "";
+      return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.color}" stroke="var(--bg-primary)" stroke-width="2"/>`;
+    }).join("");
+    const gridLines = Array.from({ length: 5 }, (_, i) => {
+      const y = pad.top + i / 4 * (height - pad.top - pad.bottom);
+      return `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid" stroke-dasharray="2 3"/>`;
+    }).join("");
+    const svg = `
+    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+      <defs>${defs}</defs>
+      ${gridLines}${areas}${lines}${dots}${yLabels}${timeLabels}
+    </svg>
+  `;
+    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${layers.map(
       (l) => `
         <span class="legend-item" style="--metric-color:${l.color}">
           <span class="legend-dot"></span>${escapeHtml3(l.label)}
@@ -8222,7 +8297,7 @@ ${result.failures.join("\n")}`
       list.push(layer);
       metricGroups.set(layer.metric.key, list);
     }
-    const dualLayers = [];
+    const lakeLayers = [];
     for (const [metricKey, metricLayers] of metricGroups) {
       if (metricLayers.length === 0) continue;
       const cfg = metricLayers[0].metric;
@@ -8232,6 +8307,7 @@ ${result.failures.join("\n")}`
         axisMin = axisMin * 9 / 5 + 32;
         axisMax = axisMax * 9 / 5 + 32;
       }
+      const vSpan = Math.max(1, axisMax - axisMin);
       const timeMap = /* @__PURE__ */ new Map();
       for (const l of metricLayers) {
         for (const d of l.data) {
@@ -8243,30 +8319,24 @@ ${result.failures.join("\n")}`
           timeMap.set(bucket, list);
         }
       }
-      const merged = Array.from(timeMap.entries()).sort((a, b) => a[0] - b[0]).map(([t, vals]) => ({ t, v: vals.reduce((a, b) => a + b, 0) / vals.length }));
-      dualLayers.push({
+      const merged = Array.from(timeMap.entries()).sort((a, b) => a[0] - b[0]).map(([t, vals]) => ({
+        t,
+        // Normalize to 0-1 range for lake chart
+        v: Math.max(0, Math.min(1, (vals.reduce((a, b) => a + b, 0) / vals.length - axisMin) / vSpan))
+      }));
+      lakeLayers.push({
         label: cfg.label,
         color: cfg.color,
-        minAxis: axisMin,
-        maxAxis: axisMax,
-        unit: metricKey === "temperature" ? `\xB0${store.unitSystem === "metric" ? "C" : "F"}` : cfg.fallbackUnit,
         data: merged
       });
     }
     void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
       if (expectedSequence !== void 0 && expectedSequence !== loadSequence)
         return;
-      const title = dualLayers.map((l) => l.label).join(" + ") || "Sensor Data";
-      m.renderDualAxisCard(dualLayers, "hero-chart", {
-        title,
-        subtitle: `${viewState.range} range`,
-        showStats: true,
-        showGrid: true,
-        smooth: true
-      });
+      m.renderLakeChart(lakeLayers, "hero-chart", { showLegend: true });
     });
     if (legend) {
-      legend.innerHTML = dualLayers.map((l) => `
+      legend.innerHTML = lakeLayers.map((l) => `
         <span class="legend-item" style="--metric-color:${l.color}">
           <span class="legend-dot"></span>
           ${escapeHtml9(l.label)}
