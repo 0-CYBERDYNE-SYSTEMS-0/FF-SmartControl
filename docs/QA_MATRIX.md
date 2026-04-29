@@ -135,8 +135,9 @@ This matrix documents all formal test cases for FarmPal. Each test can be execut
 | Test ID | Description | Pre-conditions | Test Steps | Expected Result | Pass/Fail | Tested By | Date |
 |---|---|---|---|---|---|---|---|
 | VAL-QA-RC-001 | Power loss during operation does not corrupt data | FarmPal running, writing sensor data | 1. While FarmPal is active, unplug power suddenly<br>2. Wait 10 seconds<br>3. Restore power<br>4. Boot | FarmPal boots normally, no database corruption, recent data intact | | | |
-| VAL-QA-RC-002 | Backup can be restored after factory reset | FarmPal with data, valid backup file | 1. Create backup<br>2. Perform factory reset<br>3. Re-provision<br>4. Upload and restore backup | Most settings restored correctly, devices and rules reappear | | | |
+| VAL-QA-RC-002 | Database corruption handled gracefully | FarmPal running with active SQLite database | 1. Corrupt the SQLite WAL file (append random bytes to farmpal.db-wal)<br>2. Corrupt the database header (overwrite first 100 bytes with nulls)<br>3. Restart FarmPal service<br>4. Observe startup behavior | FarmPal detects corruption, logs clear error message ("Database corruption detected"), displays recovery options (restore from backup or factory reset). Does NOT start with corrupt data silently. | | | |
 | VAL-QA-RC-003 | Graceful degradation when sensor goes offline | Multiple sensors reporting, one sensor disconnects | 1. Unplug one sensor<br>2. Observe dashboard<br>3. Reconnect sensor | Offline sensor shows "Offline" status, other sensors continue working, reconnection restores data | | | |
+| VAL-QA-RC-004 | Backup can be restored after factory reset | FarmPal with data, valid backup file | 1. Create backup<br>2. Perform factory reset<br>3. Re-provision<br>4. Upload and restore backup | Most settings restored correctly, devices and rules reappear | | | |
 
 ---
 
@@ -154,8 +155,8 @@ This matrix documents all formal test cases for FarmPal. Each test can be execut
 | Service | 4 |
 | Security | 4 |
 | Updates | 4 |
-| Recovery | 3 |
-| **TOTAL** | **40** |
+| Recovery | 4 |
+| **TOTAL** | **41** |
 
 ---
 
@@ -203,4 +204,5 @@ Before executing tests, ensure the following:
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1 | 2026-04-29 | Fixed VAL-QA-RC-002 to test database corruption handling; added VAL-QA-RC-004 for backup/restore; Recovery section now has 4 tests |
 | 1.0 | 2024-01-15 | Initial release with 40 test cases |
