@@ -39,6 +39,17 @@ async function halPut<T>(path: string, body?: object): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+const SETTINGS_BASE = '/api/settings';
+
+async function settingsGet<T>(path: string): Promise<T> {
+  const res = await fetch(SETTINGS_BASE + path);
+  if (!res.ok)
+    throw new Error(
+      `Settings API ${path} failed: ${res.status} ${res.statusText}`,
+    );
+  return res.json() as Promise<T>;
+}
+
 // Types
 export interface HalDevice {
   id: string;
@@ -69,6 +80,14 @@ export interface HalDecision {
   confidence: number;
   status?: 'pending' | 'success' | 'failure';
   outcome?: string;
+  // Extended fields for decision-display feature
+  reasoning?: string;
+  deviceId?: string;
+  sensorSnapshot?: Record<string, number>;
+  triggeredBy?: string;
+  pendingStatus?: string;
+  model?: string;
+  completedAt?: string;
 }
 
 export type SensorMetricSnapshot = Partial<
@@ -111,6 +130,10 @@ type RawHalDecision = Partial<HalDecision> & {
   decided_at?: string;
   completed_at?: string;
   outcome?: string;
+  sensor_snapshot?: string | Record<string, number>;
+  triggered_by?: string;
+  pending_status?: string;
+  model?: string;
 };
 
 function normalizeDevice(device: RawHalDevice): HalDevice {
@@ -177,6 +200,21 @@ function normalizeDecision(decision: RawHalDecision): HalDecision {
   const status =
     decision.status ||
     (outcome === 'success' || outcome === 'failure' ? outcome : 'pending');
+
+  // Parse sensor_snapshot if it's a JSON string
+  let sensorSnapshot: Record<string, number> | undefined;
+  if (decision.sensor_snapshot) {
+    if (typeof decision.sensor_snapshot === 'string') {
+      try {
+        sensorSnapshot = JSON.parse(decision.sensor_snapshot);
+      } catch {
+        sensorSnapshot = undefined;
+      }
+    } else if (typeof decision.sensor_snapshot === 'object') {
+      sensorSnapshot = decision.sensor_snapshot;
+    }
+  }
+
   return {
     id: decision.id || 'unknown',
     timestamp:
@@ -185,10 +223,18 @@ function normalizeDecision(decision: RawHalDecision): HalDecision {
       decision.completed_at ||
       new Date().toISOString(),
     trigger: decision.trigger || decision.device_id || 'HAL',
-    decision: decision.reasoning || decision.decision || 'No decision text',
+    decision: decision.decision || 'No decision text',
     confidence: Math.max(0, Math.min(1, Number(decision.confidence ?? 0))),
     status,
     outcome,
+    // Extended fields
+    reasoning: decision.reasoning ?? undefined,
+    deviceId: decision.device_id ?? undefined,
+    sensorSnapshot,
+    triggeredBy: decision.triggered_by ?? undefined,
+    pendingStatus: decision.pending_status ?? undefined,
+    model: decision.model ?? undefined,
+    completedAt: decision.completed_at ?? undefined,
   };
 }
 
@@ -861,5 +907,19 @@ export const halApi = {
     reasoning: string;
   }> {
     return halPost('/automation/trigger');
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // LLM Settings API
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // GET /api/settings/llm — get saved LLM provider settings
+  async getLlmSettings(): Promise<{
+    llmProvider: string;
+    llmEndpoint: string;
+    llmApiKey: string;
+    llmModel: string;
+  }> {
+    return settingsGet('/llm');
   },
 };

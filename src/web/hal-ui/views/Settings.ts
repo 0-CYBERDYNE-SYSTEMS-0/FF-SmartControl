@@ -86,20 +86,25 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
   container.innerHTML = renderLoadingState();
 
   try {
-    // Load current settings from provisioning API
+    // Load LLM settings from halApi (persisted via PUT /api/settings/llm)
+    const llmSettings = await halApi.getLlmSettings();
+    settingsData.llmProvider = llmSettings.llmProvider || 'ollama';
+    settingsData.llmEndpoint = llmSettings.llmEndpoint || 'http://localhost:11434';
+    settingsData.llmApiKey = llmSettings.llmApiKey || '';
+    settingsData.llmModel = llmSettings.llmModel || '';
+  } catch {
+    // Fall back to provisioning API for LLM provider
+  }
+
+  try {
+    // Load farm info from provisioning API
     const status = await provisioningApi.getStatus();
     settingsData.farmName = status.farmName || 'My Farm';
     settingsData.timezone =
       status.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    settingsData.llmProvider = status.llmProvider || 'ollama';
-
-    // Also load wizard session for more details
-    const session = await provisioningApi.getWizardSession();
-    if (session) {
-      settingsData.llmEndpoint =
-        session.llmEndpoint || settingsData.llmEndpoint;
-      settingsData.llmModel = session.llmModel || '';
-      settingsData.llmApiKey = session.llmApiKey || '';
+    // Only clobber llmProvider if halApi failed
+    if (!settingsData.llmProvider || settingsData.llmProvider === 'ollama') {
+      settingsData.llmProvider = status.llmProvider || 'ollama';
     }
   } catch {
     // Use defaults
