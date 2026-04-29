@@ -937,4 +937,78 @@ export const halApi = {
   }> {
     return halPost('/backup');
   },
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // License API (VAL-LIC-001 through VAL-LIC-016)
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // GET /api/license/status — get current license status
+  async getLicenseStatus(): Promise<{
+    status: string;
+    expiresAt: string | null;
+    hardwareId: string;
+    activatedAt: string | null;
+    trialStartedAt: string | null;
+    daysRemaining?: number;
+    lastCheckedAt: string | null;
+    isOffline: boolean;
+    offlineExpiresAt?: string;
+  }> {
+    const res = await fetch('/api/license/status');
+    if (!res.ok) throw new Error(`License status failed: ${res.status}`);
+    return res.json();
+  },
+
+  // GET /api/license/hardware-id — get hardware ID for this device
+  async getHardwareId(): Promise<{
+    hardwareId: string;
+    hardwareIdDisplay: string;
+  }> {
+    const res = await fetch('/api/license/hardware-id');
+    if (!res.ok) throw new Error(`Hardware ID failed: ${res.status}`);
+    return res.json();
+  },
+
+  // POST /api/license/activate — activate a license key
+  async activateLicense(licenseKey: string): Promise<{
+    status: string;
+    expiresAt: string | null;
+    error?: string;
+    errorCode?: string;
+  }> {
+    const res = await fetch('/api/license/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ licenseKey }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `License activation failed: ${res.status}`);
+    }
+    return data;
+  },
+
+  // POST /api/license/deactivate — deactivate license
+  async deactivateLicense(): Promise<{ ok: boolean }> {
+    const res = await fetch('/api/license/deactivate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) throw new Error(`License deactivation failed: ${res.status}`);
+    return res.json();
+  },
+
+  // GET /api/license/feature-gates — get feature gates based on license
+  async getFeatureGates(): Promise<{
+    localControl: boolean;
+    cloudFeatures: boolean;
+    aiFeatures: boolean;
+    remoteAccess: boolean;
+    allFeatures: boolean;
+  }> {
+    const res = await fetch('/api/license/feature-gates');
+    if (!res.ok) throw new Error(`Feature gates failed: ${res.status}`);
+    return res.json();
+  },
 };

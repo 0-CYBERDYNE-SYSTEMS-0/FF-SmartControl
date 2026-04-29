@@ -1043,6 +1043,50 @@
         // POST /api/hal/backup — trigger a manual backup
         async triggerBackup() {
           return halPost("/backup");
+        },
+        // ══════════════════════════════════════════════════════════════════════════════
+        // License API (VAL-LIC-001 through VAL-LIC-016)
+        // ══════════════════════════════════════════════════════════════════════════════
+        // GET /api/license/status — get current license status
+        async getLicenseStatus() {
+          const res = await fetch("/api/license/status");
+          if (!res.ok) throw new Error(`License status failed: ${res.status}`);
+          return res.json();
+        },
+        // GET /api/license/hardware-id — get hardware ID for this device
+        async getHardwareId() {
+          const res = await fetch("/api/license/hardware-id");
+          if (!res.ok) throw new Error(`Hardware ID failed: ${res.status}`);
+          return res.json();
+        },
+        // POST /api/license/activate — activate a license key
+        async activateLicense(licenseKey) {
+          const res = await fetch("/api/license/activate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ licenseKey })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || `License activation failed: ${res.status}`);
+          }
+          return data;
+        },
+        // POST /api/license/deactivate — deactivate license
+        async deactivateLicense() {
+          const res = await fetch("/api/license/deactivate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          });
+          if (!res.ok) throw new Error(`License deactivation failed: ${res.status}`);
+          return res.json();
+        },
+        // GET /api/license/feature-gates — get feature gates based on license
+        async getFeatureGates() {
+          const res = await fetch("/api/license/feature-gates");
+          if (!res.ok) throw new Error(`Feature gates failed: ${res.status}`);
+          return res.json();
         }
       };
     }
@@ -2625,7 +2669,9 @@ ${result.failures.join("\n")}`
       const y1 = pts[i].y + m[i] * dx[i] / 3;
       const x2 = pts[i + 1].x - dx[i] / 3;
       const y2 = pts[i + 1].y - m[i + 1] * dx[i] / 3;
-      parts.push(`C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`);
+      parts.push(
+        `C${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`
+      );
     }
     return parts.join(" ");
   }
@@ -2669,7 +2715,10 @@ ${result.failures.join("\n")}`
     const timeLabels = Array.from({ length: timeSteps + 1 }, (_, i) => {
       const t = tMin + i / timeSteps * tSpan;
       const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const label = new Date(t).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
       return `<text x="${x.toFixed(1)}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`;
     }).join("");
     const primary = layerPaths[0];
@@ -2690,12 +2739,14 @@ ${result.failures.join("\n")}`
         return `<text x="${width - pad.right + 6}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.color}">${v.toFixed(1)}${unit}</text>`;
       }).join("");
     }
-    const defs = layerPaths.map((lp, i) => `
+    const defs = layerPaths.map(
+      (lp, i) => `
     <linearGradient id="ck-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.28"/>
       <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.02"/>
     </linearGradient>
-  `).join("");
+  `
+    ).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#ck-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -2731,7 +2782,8 @@ ${result.failures.join("\n")}`
     const kpiDelta = `${primaryMetric.delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(primaryMetric.delta).toFixed(1)}%`;
     let statsHtml = "";
     if (opts.showStats !== false) {
-      statsHtml = `<div class="ck-stats">` + latestValues.map((l) => `
+      statsHtml = `<div class="ck-stats">` + latestValues.map(
+        (l) => `
         <div class="ck-stat-metric">
           <span class="ck-stat-label" style="color:${l.color}">${escapeHtml3(l.label)}</span>
           <span class="ck-stat-current" style="color:${l.color}">${l.current.toFixed(1)}${l.unit}</span>
@@ -2741,7 +2793,8 @@ ${result.failures.join("\n")}`
           <div class="ck-stat-item"><label>Avg</label><strong>${l.avg.toFixed(1)}${l.unit}</strong></div>
           <div class="ck-stat-item"><label>Max</label><strong>${l.max.toFixed(1)}${l.unit}</strong></div>
         </div>
-      `).join("") + `</div>`;
+      `
+      ).join("") + `</div>`;
     }
     const titleHtml = opts.title ? `<div class="ck-head">
          <div>
@@ -2758,10 +2811,14 @@ ${result.failures.join("\n")}`
     container.innerHTML = `${titleHtml}<div class="ck-chart">${svg}</div>${statsHtml}${footHtml}`;
   }
   function renderOverviewZoneCard(zone, activeKeys) {
-    const metricsByKey = new Map(zone.metrics.map((metric) => [metric.key, metric]));
+    const metricsByKey = new Map(
+      zone.metrics.map((metric) => [metric.key, metric])
+    );
     const activeMetrics = overviewMetricOrder.filter((key) => activeKeys.has(key)).map((key) => metricsByKey.get(key)).filter((metric) => Boolean(metric));
     const chartMetrics = activeMetrics.filter((metric) => metric.data.length > 0);
-    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map((metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
+    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map(
+      (metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`
+    ).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
     if (chartMetrics.length === 0) {
       return `
       <article class="dhc-card">
@@ -2784,7 +2841,11 @@ ${result.failures.join("\n")}`
     const pad = { l: 48, r: 48, t: 24, b: 36 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const times = Array.from(new Set(chartMetrics.flatMap((metric) => metric.data.map((point) => point.t)))).sort((a, b) => a - b);
+    const times = Array.from(
+      new Set(
+        chartMetrics.flatMap((metric) => metric.data.map((point) => point.t))
+      )
+    ).sort((a, b) => a - b);
     const x = (i, len) => len <= 1 ? pad.l + cw / 2 : pad.l + i / (len - 1) * cw;
     const xForTs = new Map(times.map((t, i) => [t, x(i, times.length)]));
     const gradientPrefix = (zone.zoneName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "zone").slice(0, 40);
@@ -2800,12 +2861,18 @@ ${result.failures.join("\n")}`
       const max = Math.max(...values);
       const span = Math.max(1e-4, max - min);
       const y = (v) => pad.t + (max - v) / span * ch;
-      const path = values.map((value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`).join(" ");
+      const path = values.map(
+        (value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`
+      ).join(" ");
       const areaPath = path ? `${path} L${x(times.length - 1, times.length)},${pad.t + ch} L${x(0, times.length)},${pad.t + ch} Z` : "";
       return { metric, values, min, max, span, y, path, areaPath };
     });
     const primary = series[0];
-    const primaryGrid = [primary.max, primary.min + primary.span / 2, primary.min];
+    const primaryGrid = [
+      primary.max,
+      primary.min + primary.span / 2,
+      primary.min
+    ];
     const primaryUnit = activeMetrics[0]?.unit || "";
     const gridLines = primaryGrid.map((value, i) => {
       const y = primary.y(value);
@@ -2814,14 +2881,20 @@ ${result.failures.join("\n")}`
       <line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 15%, var(--border))"/>
     `;
     }).join("");
-    const defs = series.map((entry) => `
+    const defs = series.map(
+      (entry) => `
     <linearGradient id="${gradientPrefix}-${entry.metric.key}-grad" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${entry.metric.color}" stop-opacity="0.18"/>
       <stop offset="100%" stop-color="${entry.metric.color}" stop-opacity="0.01"/>
     </linearGradient>
-  `).join("");
-    const shade = series.map((entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : "").join("");
-    const lines = series.map((entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`).join("");
+  `
+    ).join("");
+    const shade = series.map(
+      (entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : ""
+    ).join("");
+    const lines = series.map(
+      (entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`
+    ).join("");
     const dots = series.map((entry) => {
       const lastTs = times[times.length - 1];
       const lastVal = entry.values[entry.values.length - 1];
@@ -2897,7 +2970,9 @@ ${result.failures.join("\n")}`
     );
     const activeFromState = opts.activeKeys ?? new Set(overviewMetricOrder);
     const activeKeys = new Set(
-      overviewMetricOrder.filter((key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0))
+      overviewMetricOrder.filter(
+        (key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0)
+      )
     );
     if (activeKeys.size === 0) {
       const fallback = overviewMetricOrder.find((key) => availableKeys.has(key)) ?? overviewMetricOrder[0];
@@ -2941,13 +3016,19 @@ ${result.failures.join("\n")}`
     }
     const activeKeys = opts.activeKeys ?? new Set(metrics2.map((m) => m.key));
     const normalizedActiveKeys = new Set(
-      Array.from(activeKeys).filter((key) => metricsWithData.some((metric) => metric.key === key))
+      Array.from(activeKeys).filter(
+        (key) => metricsWithData.some((metric) => metric.key === key)
+      )
     );
     if (normalizedActiveKeys.size === 0) {
-      const fallbackKey = ["temperature", "humidity", "co2"].find((key) => metricsWithData.some((metric) => metric.key === key)) ?? metricsWithData[0]?.key;
+      const fallbackKey = ["temperature", "humidity", "co2"].find(
+        (key) => metricsWithData.some((metric) => metric.key === key)
+      ) ?? metricsWithData[0]?.key;
       if (fallbackKey) normalizedActiveKeys.add(fallbackKey);
     }
-    const activeMetrics = metricsWithData.filter((m) => normalizedActiveKeys.has(m.key));
+    const activeMetrics = metricsWithData.filter(
+      (m) => normalizedActiveKeys.has(m.key)
+    );
     const chartMetrics = activeMetrics.filter((m) => m.data.length > 0);
     if (chartMetrics.length === 0) {
       container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
@@ -2959,7 +3040,9 @@ ${result.failures.join("\n")}`
     const pad = { l: 18, r: 16, t: 20, b: 24 };
     const cw = w - pad.l - pad.r;
     const ch = h - pad.t - pad.b;
-    const times = Array.from(new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))).sort((a, b) => a - b);
+    const times = Array.from(
+      new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))
+    ).sort((a, b) => a - b);
     if (times.length === 0) {
       container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
       return;
@@ -2975,7 +3058,12 @@ ${result.failures.join("\n")}`
         axisMax = axisMax * 9 / 5 + 32;
       }
       const vSpan = Math.max(1, axisMax - axisMin);
-      const exact = new Map(metric.data.map((d) => [d.t, Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))]));
+      const exact = new Map(
+        metric.data.map((d) => [
+          d.t,
+          Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))
+        ])
+      );
       const firstNorm = exact.size > 0 ? exact.get(metric.data[0].t) ?? 0 : 0;
       let carry = firstNorm;
       const values = times.map((t) => {
@@ -3007,8 +3095,12 @@ ${result.failures.join("\n")}`
         botPts.push({ x: px, y: y(seg?.y1 ?? 0) });
       }
       const topPath = monotoneCubicPath(topPts);
-      const topLine = topPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-      const botLine = botPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const topLine = topPts.map(
+        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
+      ).join(" ");
+      const botLine = botPts.map(
+        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
+      ).join(" ");
       const area = topLine ? `${topLine} L${botPts[botPts.length - 1]?.x.toFixed(1)},${botPts[botPts.length - 1]?.y.toFixed(1)} ${botPts.slice().reverse().map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")} Z` : "";
       return { series, area, topPath, topPts };
     });
@@ -3016,12 +3108,14 @@ ${result.failures.join("\n")}`
       const gy = pad.t + step * ch;
       return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${gy}" y2="${gy}" class="dhc-grid"/>`;
     }).join("");
-    const defs = layerPaths.map((lp, i) => `
+    const defs = layerPaths.map(
+      (lp, i) => `
     <linearGradient id="dhc-lake-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.series.metric.color}" stop-opacity="0.56"/>
       <stop offset="100%" stop-color="${lp.series.metric.color}" stop-opacity="0.08"/>
     </linearGradient>
-  `).join("");
+  `
+    ).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#dhc-lake-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -3072,7 +3166,9 @@ ${result.failures.join("\n")}`
     const primaryCurrent = primaryMetric.data[primaryMetric.data.length - 1].v;
     const primaryPrev = primaryMetric.data[primaryMetric.data.length - 2]?.v ?? primaryCurrent;
     const delta = primaryPrev ? (primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100 : 0;
-    const titleColors = activeMetrics.map((m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`).join(' <span style="color:var(--text-secondary)">+</span> ');
+    const titleColors = activeMetrics.map(
+      (m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`
+    ).join(' <span style="color:var(--text-secondary)">+</span> ');
     const zoneToggleHtml = opts.zoneToggles ? `<div class="dhc-zone-toggles">
         <button class="dhc-zone-toggle ${opts.zoneToggles.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>
         ${opts.zoneToggles.zones.map((z) => {
@@ -3159,8 +3255,14 @@ ${result.failures.join("\n")}`
     }).join("");
     const lx = x(vals.length - 1).toFixed(1);
     const ly = y(vals[vals.length - 1]).toFixed(1);
-    const t0 = new Date(data[0].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const t0 = new Date(data[0].ts).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
     container.innerHTML = `
     <svg class="og-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
       ${grids}
@@ -3176,7 +3278,8 @@ ${result.failures.join("\n")}`
   function renderStackedAreaChart(layers, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || layers.length === 0) {
-      if (container) container.innerHTML = '<div class="chart-empty">No data</div>';
+      if (container)
+        container.innerHTML = '<div class="chart-empty">No data</div>';
       return;
     }
     const colorGroups = /* @__PURE__ */ new Map();
@@ -3242,15 +3345,20 @@ ${result.failures.join("\n")}`
     const timeLabels = Array.from({ length: 7 }, (_, i) => {
       const t = tMin + i / 6 * tSpan;
       const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const label = new Date(t).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
       return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
     }).join("");
-    const defs = layerPaths.map((lp, i) => `
+    const defs = layerPaths.map(
+      (lp, i) => `
     <linearGradient id="stack-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.55"/>
       <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.08"/>
     </linearGradient>
-  `).join("");
+  `
+    ).join("");
     const areas = layerPaths.map(
       (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#stack-grad-${containerId}-${i})" stroke="none"/>` : ""
     ).join("");
@@ -3263,18 +3371,30 @@ ${result.failures.join("\n")}`
       ${gridLines}${areas}${lines}${timeLabels}
     </svg>
   `;
-    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map((l) => `
+    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map(
+      (l) => `
         <span class="legend-item" style="--metric-color:${l.color}">
           <span class="legend-dot"></span>${escapeHtml3(l.label)}
-        </span>`).join("")}</div>` : "";
+        </span>`
+    ).join("")}</div>` : "";
     container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
   }
   function renderAreaCard(data, metricKey, containerId, title) {
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const cfg = metricConfig[metricKey] || {
+      label: metricKey,
+      color: "#888",
+      unit: "",
+      minAxis: 0,
+      maxAxis: 100
+    };
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metricKey,
+      store.unitSystem
+    );
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -3290,7 +3410,10 @@ ${result.failures.join("\n")}`
     const vSpan = Math.max(1, axisMax - axisMin);
     const points = data.map((d) => {
       const v = formatSensorValue(d.value, metricKey, store.unitSystem).value;
-      return { x: tx(new Date(d.timestamp).getTime()), y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b) };
+      return {
+        x: tx(new Date(d.timestamp).getTime()),
+        y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b)
+      };
     });
     const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
     const area = `${line} L${points[points.length - 1].x.toFixed(1)},${h - pad.b} L${points[0].x.toFixed(1)},${h - pad.b} Z`;
@@ -3313,8 +3436,18 @@ ${result.failures.join("\n")}`
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const cfg = metricConfig[metricKey] || {
+      label: metricKey,
+      color: "#888",
+      unit: "",
+      minAxis: 0,
+      maxAxis: 100
+    };
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metricKey,
+      store.unitSystem
+    );
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -3342,8 +3475,18 @@ ${result.failures.join("\n")}`
     const container = document.getElementById(containerId);
     if (!container || data.length < 2) return;
     const store = getStore();
-    const cfg = metricConfig[metricKey] || { label: metricKey, color: "#888", unit: "", minAxis: 0, maxAxis: 100 };
-    const latest = formatSensorValue(data[data.length - 1].value, metricKey, store.unitSystem);
+    const cfg = metricConfig[metricKey] || {
+      label: metricKey,
+      color: "#888",
+      unit: "",
+      minAxis: 0,
+      maxAxis: 100
+    };
+    const latest = formatSensorValue(
+      data[data.length - 1].value,
+      metricKey,
+      store.unitSystem
+    );
     const unit = latest.unit || cfg.unit;
     const w = 340, h = 120;
     const pad = { t: 8, r: 8, b: 20, l: 32 };
@@ -3370,7 +3513,8 @@ ${result.failures.join("\n")}`
   function renderDecisionBarTrend(points, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || points.length === 0) {
-      if (container) container.innerHTML = '<div class="chart-empty">No decision data</div>';
+      if (container)
+        container.innerHTML = '<div class="chart-empty">No decision data</div>';
       return;
     }
     const W = opts.width ?? (container.clientWidth || 600);
@@ -3378,7 +3522,10 @@ ${result.failures.join("\n")}`
     const pad = { t: 20, r: 16, b: 40, l: 40 };
     const chartW = W - pad.l - pad.r;
     const chartH = H - pad.t - pad.b;
-    const maxVal = Math.max(...points.flatMap((p) => [p.success, p.failure, p.pending]), 1);
+    const maxVal = Math.max(
+      ...points.flatMap((p) => [p.success, p.failure, p.pending]),
+      1
+    );
     const groupW = chartW / points.length;
     const barW = groupW * 0.22;
     const gap = groupW * 0.04;
@@ -3572,7 +3719,12 @@ ${result.failures.join("\n")}`
     if (!container || cells.length === 0) return;
     const W = opts.width ?? (container.clientWidth || 600);
     const H = opts.height ?? 100;
-    const colorRange = opts.colorRange ?? ["#0a1a12", "#1a4030", "#4aB070", "#F59E0B"];
+    const colorRange = opts.colorRange ?? [
+      "#0a1a12",
+      "#1a4030",
+      "#4aB070",
+      "#F59E0B"
+    ];
     const dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const hours = Array.from({ length: 24 }, (_, i) => i);
     const cellW = (W - 40) / 24;
@@ -3583,7 +3735,10 @@ ${result.failures.join("\n")}`
     const vSpan = Math.max(1e-3, vMax - vMin);
     const colorFor = (v) => {
       const t = (v - vMin) / vSpan;
-      const idx = Math.min(colorRange.length - 1, Math.floor(t * colorRange.length));
+      const idx = Math.min(
+        colorRange.length - 1,
+        Math.floor(t * colorRange.length)
+      );
       return colorRange[idx];
     };
     const rects = cells.map((c) => {
@@ -4022,14 +4177,56 @@ ${result.failures.join("\n")}`
       "use strict";
       init_store();
       metricConfig = {
-        temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
-        humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
-        soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
-        water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
+        temperature: {
+          label: "Temperature",
+          color: "#F59E0B",
+          unit: "\xB0C",
+          minAxis: 10,
+          maxAxis: 40
+        },
+        humidity: {
+          label: "Humidity",
+          color: "#38BDF8",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        soil_moisture: {
+          label: "Soil Moisture",
+          color: "#EF4444",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        water_level: {
+          label: "Water Level",
+          color: "#2563EB",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
         ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
-        co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
-        light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
-        weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
+        co2: {
+          label: "CO\u2082",
+          color: "#22C55E",
+          unit: "ppm",
+          minAxis: 0,
+          maxAxis: 2e3
+        },
+        light: {
+          label: "Light",
+          color: "#FACC15",
+          unit: "lux",
+          minAxis: 0,
+          maxAxis: 1e5
+        },
+        weight: {
+          label: "Weight",
+          color: "#94A3B8",
+          unit: "kg",
+          minAxis: 0,
+          maxAxis: 100
+        },
         vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
       };
       DECISION_COLORS = {
@@ -4124,14 +4321,56 @@ ${result.failures.join("\n")}`
         "weight"
       ];
       metricConfig2 = {
-        temperature: { label: "Temperature", color: "#F59E0B", unit: "\xB0C", minAxis: 10, maxAxis: 40 },
-        humidity: { label: "Humidity", color: "#38BDF8", unit: "%", minAxis: 0, maxAxis: 100 },
-        soil_moisture: { label: "Soil Moisture", color: "#EF4444", unit: "%", minAxis: 0, maxAxis: 100 },
-        water_level: { label: "Water Level", color: "#2563EB", unit: "%", minAxis: 0, maxAxis: 100 },
+        temperature: {
+          label: "Temperature",
+          color: "#F59E0B",
+          unit: "\xB0C",
+          minAxis: 10,
+          maxAxis: 40
+        },
+        humidity: {
+          label: "Humidity",
+          color: "#38BDF8",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        soil_moisture: {
+          label: "Soil Moisture",
+          color: "#EF4444",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        water_level: {
+          label: "Water Level",
+          color: "#2563EB",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
         ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
-        co2: { label: "CO\u2082", color: "#22C55E", unit: "ppm", minAxis: 0, maxAxis: 2e3 },
-        light: { label: "Light", color: "#FACC15", unit: "lux", minAxis: 0, maxAxis: 1e5 },
-        weight: { label: "Weight", color: "#94A3B8", unit: "kg", minAxis: 0, maxAxis: 100 },
+        co2: {
+          label: "CO\u2082",
+          color: "#22C55E",
+          unit: "ppm",
+          minAxis: 0,
+          maxAxis: 2e3
+        },
+        light: {
+          label: "Light",
+          color: "#FACC15",
+          unit: "lux",
+          minAxis: 0,
+          maxAxis: 1e5
+        },
+        weight: {
+          label: "Weight",
+          color: "#94A3B8",
+          unit: "kg",
+          minAxis: 0,
+          maxAxis: 100
+        },
         vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
       };
     }
@@ -4476,7 +4715,9 @@ ${result.failures.join("\n")}`
   async function renderOperatorPanels() {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
+    const relays = store.devices.filter(
+      (d) => d.type === "relay" || d.type === "smart_plug"
+    );
     const cameras = store.devices.filter((d) => d.type === "camera");
     const powerHistory = await fetchPowerHistory(relays);
     return `
@@ -4503,7 +4744,8 @@ ${result.failures.join("\n")}`
       </div>
     `;
     }
-    const grid = relays.map((r) => `
+    const grid = relays.map(
+      (r) => `
     <div class="op-device-cell ${r.online ? "online" : "offline"}" data-device-id="${r.id}">
       <div class="op-device-icon">${r.type === "relay" ? "RLY" : "PLG"}</div>
       <div class="op-device-info">
@@ -4514,7 +4756,8 @@ ${result.failures.join("\n")}`
         <div class="op-toggle-thumb"></div>
       </div>
     </div>
-  `).join("");
+  `
+    ).join("");
     const onCount = relays.filter((r) => r.state === "on").length;
     return `
     <div class="op-panel hal-card">
@@ -4531,17 +4774,21 @@ ${result.failures.join("\n")}`
   function renderAutomationStatsPanel(decisions) {
     const now = Date.now();
     const oneHour = 60 * 60 * 1e3;
-    const recent = decisions.filter((d) => now - new Date(d.timestamp).getTime() < oneHour);
+    const recent = decisions.filter(
+      (d) => now - new Date(d.timestamp).getTime() < oneHour
+    );
     const successCount = recent.filter((d) => d.status === "success").length;
     const successRate = recent.length > 0 ? successCount / recent.length * 100 : 0;
     const buckets = [];
     for (let h = 5; h >= 0; h--) {
       const start = now - (h + 1) * oneHour;
       const end = now - h * oneHour;
-      buckets.push(decisions.filter((d) => {
-        const t = new Date(d.timestamp).getTime();
-        return t >= start && t < end;
-      }).length);
+      buckets.push(
+        decisions.filter((d) => {
+          const t = new Date(d.timestamp).getTime();
+          return t >= start && t < end;
+        }).length
+      );
     }
     return `
     <div class="op-panel hal-card">
@@ -4573,12 +4820,22 @@ ${result.failures.join("\n")}`
     const alerts = [];
     for (const s of sensors) {
       if (!s.online) {
-        alerts.push({ level: "critical", text: `${s.name} offline`, time: "now" });
+        alerts.push({
+          level: "critical",
+          text: `${s.name} offline`,
+          time: "now"
+        });
       }
     }
-    const failed = decisions.filter((d) => d.status === "failure" && now - new Date(d.timestamp).getTime() < 36e5);
+    const failed = decisions.filter(
+      (d) => d.status === "failure" && now - new Date(d.timestamp).getTime() < 36e5
+    );
     for (const d of failed.slice(0, 3)) {
-      alerts.push({ level: "warning", text: d.decision.slice(0, 40), time: formatRelTime(d.timestamp) });
+      alerts.push({
+        level: "warning",
+        text: d.decision.slice(0, 40),
+        time: formatRelTime(d.timestamp)
+      });
     }
     if (alerts.length === 0) {
       return `
@@ -4601,13 +4858,15 @@ ${result.failures.join("\n")}`
         ${criticalCount > 0 ? `<span class="status-chip status-chip--offline">${criticalCount} critical</span>` : `<span class="status-chip status-chip--online">Clear</span>`}
       </div>
       <div class="op-panel-body">
-        ${alerts.slice(0, 5).map((a) => `
+        ${alerts.slice(0, 5).map(
+      (a) => `
           <div class="op-alert ${a.level}">
             <span class="op-alert-dot"></span>
             <span class="op-alert-text">${escapeHtml4(a.text)}</span>
             <span class="op-alert-time text-xs text-secondary">${a.time}</span>
           </div>
-        `).join("")}
+        `
+    ).join("")}
       </div>
     </div>
   `;
@@ -4959,13 +5218,15 @@ ${result.failures.join("\n")}`
       </div>
     `;
     }
-    const lines = entries.map((e) => `
+    const lines = entries.map(
+      (e) => `
     <div class="terminal-line ${e.level}">
       <span class="terminal-time text-mono">${formatTime2(e.timestamp)}</span>
       <span class="terminal-source">${escapeHtml5(e.source)}</span>
       <span class="terminal-msg">${escapeHtml5(e.message)}</span>
     </div>
-  `).join("");
+  `
+    ).join("");
     return `
     <div class="terminal-wrap hal-card">
       <div class="terminal-header">
@@ -5007,12 +5268,19 @@ ${result.failures.join("\n")}`
         message: `${d.decision} [${(d.confidence * 100).toFixed(0)}%]`
       });
     }
-    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    entries.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
     return entries;
   }
   function formatTime2(iso) {
     try {
-      return new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      return new Date(iso).toLocaleTimeString("en-US", {
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
     } catch {
       return "--:--:--";
     }
@@ -5160,41 +5428,55 @@ ${result.failures.join("\n")}`
   `;
   }
   function renderCalmDeviceList(devices) {
-    if (devices.length === 0) return '<p class="text-secondary text-sm">No active devices</p>';
-    return devices.slice(0, 6).map((d) => `
+    if (devices.length === 0)
+      return '<p class="text-secondary text-sm">No active devices</p>';
+    return devices.slice(0, 6).map(
+      (d) => `
     <div class="calm-device-item ${d.online ? "online" : "offline"}">
       <span class="calm-device-dot"></span>
       <span class="calm-device-name">${escapeHtml6(d.name)}</span>
       <span class="calm-device-type text-xs text-secondary">${d.type}</span>
     </div>
-  `).join("");
+  `
+    ).join("");
   }
   function sortZonesDeterministically(zones2) {
     return zones2.slice().sort((a, b) => {
       if (a === "Unzoned") return 1;
       if (b === "Unzoned") return -1;
-      return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
+      return a.localeCompare(b, void 0, {
+        numeric: true,
+        sensitivity: "base"
+      });
     });
   }
   function aggregateZoneOverviewCards(layers, zones2, unitSystem) {
     const zoneMetricBuckets = /* @__PURE__ */ new Map();
     for (const zone of zones2) {
-      zoneMetricBuckets.set(zone, /* @__PURE__ */ new Map([
-        ["temperature", /* @__PURE__ */ new Map()],
-        ["humidity", /* @__PURE__ */ new Map()],
-        ["co2", /* @__PURE__ */ new Map()]
-      ]));
+      zoneMetricBuckets.set(
+        zone,
+        /* @__PURE__ */ new Map([
+          ["temperature", /* @__PURE__ */ new Map()],
+          ["humidity", /* @__PURE__ */ new Map()],
+          ["co2", /* @__PURE__ */ new Map()]
+        ])
+      );
     }
     for (const layer of layers) {
       if (!zoneMetricBuckets.has(layer.zoneName)) continue;
-      if (!OVERVIEW_METRIC_KEYS.includes(layer.metric)) continue;
+      if (!OVERVIEW_METRIC_KEYS.includes(layer.metric))
+        continue;
       const metricKey = layer.metric;
       const metricBuckets = zoneMetricBuckets.get(layer.zoneName).get(metricKey);
       for (const reading of layer.data) {
         const timestampMs = new Date(reading.timestamp).getTime();
         if (!Number.isFinite(timestampMs)) continue;
         const bucketTs = Math.floor(timestampMs / 6e4) * 6e4;
-        const converted = formatSensorValue(reading.value, metricKey, unitSystem).value;
+        const converted = formatSensorValue(
+          reading.value,
+          metricKey,
+          unitSystem
+        ).value;
         const current = metricBuckets.get(bucketTs) ?? { sum: 0, count: 0 };
         current.sum += converted;
         current.count += 1;
@@ -5256,7 +5538,9 @@ ${result.failures.join("\n")}`
       const { layers } = await loadHeroChartData();
       if (sequence !== dashLoadSequence) return;
       const store = getStore();
-      const zones2 = sortZonesDeterministically([...new Set(layers.map((l) => l.zoneName).filter(Boolean))]);
+      const zones2 = sortZonesDeterministically([
+        ...new Set(layers.map((l) => l.zoneName).filter(Boolean))
+      ]);
       if (zones2.length === 0) {
         const inferredZones = /* @__PURE__ */ new Set();
         for (const device of store.devices.filter((d) => d.type === "sensor")) {
@@ -5267,9 +5551,15 @@ ${result.failures.join("\n")}`
           zones2.push(...sortZonesDeterministically(Array.from(inferredZones)));
         }
       }
-      const zoneCards = aggregateZoneOverviewCards(layers, zones2, store.unitSystem);
+      const zoneCards = aggregateZoneOverviewCards(
+        layers,
+        zones2,
+        store.unitSystem
+      );
       const availableMetricKeys = new Set(
-        zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter((key) => OVERVIEW_METRIC_KEYS.includes(key))
+        zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter(
+          (key) => OVERVIEW_METRIC_KEYS.includes(key)
+        )
       );
       const fallbackMetric = OVERVIEW_METRIC_KEYS.find((key) => availableMetricKeys.has(key)) ?? Array.from(availableMetricKeys)[0];
       for (const key of Array.from(dashActiveMetrics)) {
@@ -5285,7 +5575,9 @@ ${result.failures.join("\n")}`
         activeKeys: new Set(dashActiveMetrics),
         onToggle: (key) => {
           if (!availableMetricKeys.has(key)) return;
-          const currentlyActive = Array.from(dashActiveMetrics).filter((metricKey) => availableMetricKeys.has(metricKey));
+          const currentlyActive = Array.from(dashActiveMetrics).filter(
+            (metricKey) => availableMetricKeys.has(metricKey)
+          );
           if (dashActiveMetrics.has(key)) {
             if (currentlyActive.length <= 1) return;
             dashActiveMetrics.delete(key);
@@ -5409,7 +5701,10 @@ ${result.failures.join("\n")}`
         if (snap?.[m]?.value != null) values.push(snap[m].value);
       }
       const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-      const trend = Array.from({ length: 20 }, (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1));
+      const trend = Array.from(
+        { length: 20 },
+        (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1)
+      );
       const spark = renderSparkline(trend, metricColors[m] || "#888", 120, 28);
       const label = m.charAt(0).toUpperCase() + m.slice(1);
       return `
@@ -5426,7 +5721,9 @@ ${result.failures.join("\n")}`
   }
   function renderDiagnosticExtras(store) {
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    const relays = store.devices.filter((d) => d.type === "relay" || d.type === "smart_plug");
+    const relays = store.devices.filter(
+      (d) => d.type === "relay" || d.type === "smart_plug"
+    );
     const cameras = store.devices.filter((d) => d.type === "camera");
     return `
     <div class="diag-extras hal-card">
@@ -5490,7 +5787,8 @@ ${result.failures.join("\n")}`
     if (devices.length === 0) {
       return '<div class="empty-state"><p>No devices registered</p></div>';
     }
-    return devices.map((d) => `
+    return devices.map(
+      (d) => `
     <div class="device-mini-card ${d.online ? "online" : "offline"}" data-device-id="${d.id}">
       <div class="device-mini-icon">${deviceIcon(d.type)}</div>
       <div class="device-mini-info">
@@ -5503,13 +5801,15 @@ ${result.failures.join("\n")}`
         </div>
       ` : ""}
     </div>
-  `).join("");
+  `
+    ).join("");
   }
   function renderRecentDecisions(decisions) {
     if (decisions.length === 0) {
       return '<div class="empty-state"><p>No decisions yet</p></div>';
     }
-    return decisions.map((d) => `
+    return decisions.map(
+      (d) => `
     <div class="decision-row ${d.status || "pending"}">
       <div class="decision-time text-mono text-xs text-secondary">${formatTime3(d.timestamp)}</div>
       <div class="decision-trigger text-sm">${escapeHtml6(d.trigger)}</div>
@@ -5519,7 +5819,8 @@ ${result.failures.join("\n")}`
         <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor2(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
       </div>
     </div>
-  `).join("");
+  `
+    ).join("");
   }
   function attachDashboardHandlers() {
     document.querySelectorAll(".device-mini-card").forEach((card) => {
@@ -9495,7 +9796,9 @@ ${result.failures.join("\n")}`
           const result = await halApi.captureCamera(cameraId);
           const captureTime = (/* @__PURE__ */ new Date()).toISOString();
           setLastCaptureTime(cameraId, captureTime);
-          const timeEl = document.querySelector(`.camera-time[data-camera-id="${cameraId}"]`);
+          const timeEl = document.querySelector(
+            `.camera-time[data-camera-id="${cameraId}"]`
+          );
           if (timeEl) {
             const date2 = new Date(captureTime);
             timeEl.textContent = date2.toLocaleTimeString("en-US", {
@@ -11530,7 +11833,9 @@ ${result.failures.join("\n")}`
     try {
       status = await provisioningApi.getStatus();
     } catch {
-      container.innerHTML = renderError("Could not connect to FarmPal. Please refresh.");
+      container.innerHTML = renderError(
+        "Could not connect to FarmPal. Please refresh."
+      );
       return;
     }
     if (!status.isUnprovisioned && status.state === "completed") {
@@ -11931,9 +12236,14 @@ ${result.failures.join("\n")}`
     setupPasswordToggle("toggle-api-key", "llm-api-key");
     setupPasswordToggle("toggle-telegram-token", "telegram-token");
     const passwordInput = document.getElementById("password");
-    const passwordConfirm = document.getElementById("password-confirm");
+    const passwordConfirm = document.getElementById(
+      "password-confirm"
+    );
     if (passwordInput) {
-      passwordInput.addEventListener("input", () => updatePasswordStrength(passwordInput.value));
+      passwordInput.addEventListener(
+        "input",
+        () => updatePasswordStrength(passwordInput.value)
+      );
       passwordInput.addEventListener("blur", () => validatePasswordStep());
     }
     if (passwordConfirm) {
@@ -11952,7 +12262,9 @@ ${result.failures.join("\n")}`
         attachWizardEvents(container, effectiveSteps, currentIndex);
       });
     });
-    const telegramToggle = document.getElementById("telegram-enabled");
+    const telegramToggle = document.getElementById(
+      "telegram-enabled"
+    );
     const telegramFields = document.querySelector(".telegram-fields");
     if (telegramToggle && telegramFields) {
       telegramToggle.addEventListener("change", () => {
@@ -12147,10 +12459,14 @@ ${result.failures.join("\n")}`
     };
     try {
       await provisioningApi.complete(completeData);
+      sessionStorage.setItem("operatorId", "admin");
       window.location.hash = "#dashboard";
       window.location.reload();
     } catch (err) {
-      showStepError(6, err.message || "Setup could not be saved \u2014 please try again.");
+      showStepError(
+        6,
+        err.message || "Setup could not be saved \u2014 please try again."
+      );
     }
   }
   function updatePasswordStrength(pwd) {
@@ -12177,7 +12493,10 @@ ${result.failures.join("\n")}`
     btn.addEventListener("click", () => {
       const isPassword = input.type === "password";
       input.type = isPassword ? "text" : "password";
-      btn.setAttribute("aria-label", isPassword ? "Hide password" : "Show password");
+      btn.setAttribute(
+        "aria-label",
+        isPassword ? "Hide password" : "Show password"
+      );
     });
   }
   function escapeHtml12(str) {
@@ -12793,12 +13112,22 @@ ${result.failures.join("\n")}`
       ];
       wifiNetworks = [];
       LLM_PROVIDERS = [
-        { id: "ollama", name: "Ollama (Local)", defaultEndpoint: "http://localhost:11434", supportsModel: true },
+        {
+          id: "ollama",
+          name: "Ollama (Local)",
+          defaultEndpoint: "http://localhost:11434",
+          supportsModel: true
+        },
         { id: "openai", name: "OpenAI", supportsApiKey: true },
         { id: "anthropic", name: "Anthropic", supportsApiKey: true },
         { id: "zai", name: "ZAI", supportsApiKey: true },
         { id: "minimax", name: "MiniMax", supportsApiKey: true },
-        { id: "lmstudio", name: "LM Studio (Local)", defaultEndpoint: "http://localhost:1234", supportsModel: true }
+        {
+          id: "lmstudio",
+          name: "LM Studio (Local)",
+          defaultEndpoint: "http://localhost:1234",
+          supportsModel: true
+        }
       ];
     }
   });
@@ -15033,6 +15362,18 @@ ${result.failures.join("\n")}`
       }
     } catch {
     }
+    try {
+      const networkRes = await fetch(
+        "http://127.0.0.1:3392/api/settings/network"
+      );
+      if (networkRes.ok) {
+        const net = await networkRes.json();
+        networkData.accessMode = net.accessMode || "localhost";
+        networkData.httpsEnabled = net.httpsEnabled || false;
+        networkData.lanWithoutHttps = net.lanWithoutHttps || false;
+      }
+    } catch {
+    }
     container.innerHTML = renderSettingsPage();
     attachSettingsEvents();
   }
@@ -15244,6 +15585,75 @@ ${result.failures.join("\n")}`
                 <li>Device automation</li>
               </ul>
             </div>
+            <div id="license-section-actions"></div>
+          </div>
+        </section>
+
+        <!-- Network Section (VAL-SEC-050, VAL-SEC-051, VAL-SEC-052, VAL-SEC-053) -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            Network Access
+          </h2>
+          <div class="settings-card">
+            ${networkData.lanWithoutHttps ? `
+            <div class="settings-warning-banner">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span>Warning: FarmPal is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
+            </div>
+            ` : ""}
+            <div class="settings-field">
+              <p class="settings-label">Access Mode</p>
+              <div class="access-mode-grid">
+                <button type="button" class="access-mode-card ${networkData.accessMode === "localhost" ? "selected" : ""}" data-access-mode="localhost">
+                  <div class="access-mode-icon">\u{1F512}</div>
+                  <div class="access-mode-name">Local Only</div>
+                  <div class="access-mode-desc">Only accessible from this device (127.0.0.1)</div>
+                </button>
+                <button type="button" class="access-mode-card ${networkData.accessMode === "lan" ? "selected" : ""}" data-access-mode="lan">
+                  <div class="access-mode-icon">\u{1F310}</div>
+                  <div class="access-mode-name">Local Network</div>
+                  <div class="access-mode-desc">Accessible from devices on your LAN (0.0.0.0)</div>
+                </button>
+                <button type="button" class="access-mode-card ${networkData.accessMode === "remote" ? "selected" : ""}" data-access-mode="remote" ${!networkData.httpsEnabled ? 'disabled title="HTTPS required for remote access"' : ""}>
+                  <div class="access-mode-icon">\u{1F30D}</div>
+                  <div class="access-mode-name">Remote Access</div>
+                  <div class="access-mode-desc">Accessible from anywhere (requires HTTPS)</div>
+                </button>
+              </div>
+            </div>
+            <div class="settings-field">
+              <p class="settings-label">HTTPS Status</p>
+              <p class="settings-value">
+                ${networkData.httpsEnabled ? '<span class="badge badge-green">Enabled</span>' : '<span class="badge badge-slate">Disabled</span>'}
+                ${!networkData.httpsEnabled && networkData.accessMode === "remote" ? '<span class="settings-hint-error"> \u2014 HTTPS is required for remote access</span>' : ""}
+              </p>
+              <p class="settings-hint">HTTPS is required for remote (WAN) access. Local network access works with or without HTTPS.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Factory Reset Section -->
+        <section class="settings-section">
+          <h2 class="settings-section-title factory-reset-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            Factory Reset
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <p class="settings-label">Reset FarmPal</p>
+              <p class="settings-hint">Completely reset FarmPal to first-boot state. All data will be permanently deleted including sensor history, device configuration, automation rules, and admin password.</p>
+              <div class="settings-actions">
+                <button class="btn btn-danger" id="factory-reset-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                  Factory Reset
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -15276,6 +15686,24 @@ ${result.failures.join("\n")}`
         if (endpointField) {
           endpointField.value = settingsData.llmEndpoint;
         }
+      });
+    });
+    document.querySelectorAll(".access-mode-card").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const mode = btn.dataset.accessMode;
+        if (!mode) return;
+        if (mode === "remote" && !networkData.httpsEnabled) {
+          showToast(
+            "Enable HTTPS first to allow remote access",
+            "warning",
+            3e3
+          );
+          return;
+        }
+        networkData.accessMode = mode;
+        document.querySelectorAll(".access-mode-card").forEach((b) => {
+          b.classList.toggle("selected", b.dataset.accessMode === mode);
+        });
       });
     });
     const saveBtn = document.getElementById("save-settings-btn");
@@ -15352,7 +15780,11 @@ ${result.failures.join("\n")}`
           showToast("Backup failed", "danger", 3e3);
         }
       } catch (err) {
-        showToast("Backup failed: " + (err.message || "Unknown error"), "danger", 3e3);
+        showToast(
+          "Backup failed: " + (err.message || "Unknown error"),
+          "danger",
+          3e3
+        );
       } finally {
         backupBtn.innerHTML = originalText;
         backupBtn.removeAttribute("disabled");
@@ -15361,6 +15793,10 @@ ${result.failures.join("\n")}`
     const restoreBtn = document.getElementById("restore-btn");
     restoreBtn?.addEventListener("click", async () => {
       showToast("Restore feature coming soon", "info", 2e3);
+    });
+    const factoryResetBtn = document.getElementById("factory-reset-btn");
+    factoryResetBtn?.addEventListener("click", () => {
+      showFactoryResetConfirmDialog();
     });
     loadVersionInfo();
     loadLicenseInfo();
@@ -15373,9 +15809,349 @@ ${result.failures.join("\n")}`
   }
   async function loadLicenseInfo() {
     const statusEl = document.getElementById("license-status");
-    if (statusEl) {
-      statusEl.innerHTML = '<span class="badge badge-slate">Free Tier</span>';
+    const featuresEl = document.getElementById("license-features");
+    const licenseSection = document.getElementById("license-section-actions");
+    if (!statusEl) return;
+    try {
+      const status = await halApi.getLicenseStatus();
+      const gates = await halApi.getFeatureGates();
+      let badgeHtml = "";
+      let badgeClass = "badge-slate";
+      let featuresHtml = "";
+      switch (status.status) {
+        case "LICENSED":
+          badgeClass = "badge-green";
+          badgeHtml = `<span class="badge ${badgeClass}">LICENSED</span>`;
+          if (status.expiresAt) {
+            const expiryDate = new Date(status.expiresAt).toLocaleDateString();
+            badgeHtml += ` <span style="color: var(--text-secondary); font-size: 13px;">Expires ${expiryDate}</span>`;
+          }
+          featuresHtml = `
+          <li>\u2713 Local AI control</li>
+          <li>\u2713 Sensor monitoring</li>
+          <li>\u2713 Device automation</li>
+          <li>\u2713 Cloud features</li>
+          <li>\u2713 Remote access</li>
+        `;
+          break;
+        case "TRIAL":
+          badgeClass = "badge-blue";
+          const daysLeft = status.daysRemaining ?? 0;
+          badgeHtml = `<span class="badge ${badgeClass}">TRIAL \u2014 ${daysLeft} day${daysLeft === 1 ? "" : "s"}</span>`;
+          featuresHtml = `
+          <li>\u2713 Local AI control</li>
+          <li>\u2713 Sensor monitoring</li>
+          <li>\u2713 Device automation</li>
+          <li>\u2713 Cloud features (${daysLeft} days left)</li>
+          <li>\u2713 Remote access (${daysLeft} days left)</li>
+        `;
+          break;
+        case "EXPIRED":
+          badgeClass = "badge-amber";
+          badgeHtml = `<span class="badge ${badgeClass}">EXPIRED</span>`;
+          if (status.expiresAt) {
+            const expiryDate = new Date(status.expiresAt).toLocaleDateString();
+            badgeHtml += ` <span style="color: var(--text-secondary); font-size: 13px;">Expired ${expiryDate}</span>`;
+          }
+          featuresHtml = `
+          <li style="color: var(--text-secondary);">\u2717 Cloud features (license expired)</li>
+          <li style="color: var(--text-secondary);">\u2717 Remote access (license expired)</li>
+          <li>\u2713 Local AI control</li>
+          <li>\u2713 Sensor monitoring</li>
+          <li>\u2713 Device automation</li>
+        `;
+          break;
+        case "UNLICENSED":
+        default:
+          badgeClass = "badge-slate";
+          badgeHtml = `<span class="badge ${badgeClass}">UNLICENSED</span>`;
+          featuresHtml = `
+          <li style="color: var(--text-secondary);">\u2717 Cloud features</li>
+          <li style="color: var(--text-secondary);">\u2717 Remote access</li>
+          <li>\u2713 Local AI control</li>
+          <li>\u2713 Sensor monitoring</li>
+          <li>\u2713 Device automation</li>
+        `;
+          break;
+      }
+      statusEl.innerHTML = badgeHtml;
+      if (featuresEl) {
+        featuresEl.innerHTML = featuresHtml;
+      }
+      if (licenseSection) {
+        if (status.status === "UNLICENSED" || status.status === "EXPIRED") {
+          licenseSection.innerHTML = `
+          <button class="btn btn-primary" id="activate-license-btn" style="margin-top: var(--space-3);">
+            Activate License
+          </button>
+        `;
+          document.getElementById("activate-license-btn")?.addEventListener("click", showLicenseActivationDialog);
+        } else if (status.status === "LICENSED" || status.status === "TRIAL") {
+          licenseSection.innerHTML = `
+          <button class="btn btn-danger" id="deactivate-license-btn" style="margin-top: var(--space-3);">
+            Deactivate License
+          </button>
+        `;
+          document.getElementById("deactivate-license-btn")?.addEventListener("click", showLicenseDeactivationDialog);
+        }
+      }
+    } catch (err) {
+      statusEl.innerHTML = '<span class="badge badge-slate">UNLICENSED</span>';
+      if (featuresEl) {
+        featuresEl.innerHTML = `
+        <li style="color: var(--text-secondary);">\u2717 Cloud features</li>
+        <li style="color: var(--text-secondary);">\u2717 Remote access</li>
+        <li>\u2713 Local AI control</li>
+        <li>\u2713 Sensor monitoring</li>
+        <li>\u2713 Device automation</li>
+      `;
+      }
     }
+  }
+  async function showLicenseActivationDialog() {
+    let hardwareId = "Loading...";
+    let hardwareIdDisplay = "";
+    try {
+      const hwInfo = await halApi.getHardwareId();
+      hardwareId = hwInfo.hardwareIdDisplay;
+      hardwareIdDisplay = hwInfo.hardwareId;
+    } catch {
+      hardwareId = "Unknown";
+      hardwareIdDisplay = "unknown";
+    }
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+    <div class="modal-panel license-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Activate License</h3>
+      </div>
+      <div class="modal-body">
+        <div class="license-hardware-id">
+          <p class="settings-label">Hardware ID</p>
+          <p class="license-hw-id-display">${hardwareId}</p>
+          <p class="settings-hint">This is your device's unique identifier. License is bound to this hardware.</p>
+        </div>
+        <div class="settings-field" style="margin-top: var(--space-4);">
+          <label class="settings-label" for="license-key-input">License Key</label>
+          <input
+            type="text"
+            id="license-key-input"
+            class="form-input"
+            placeholder="XXXX-XXXX-XXXX-XXXX"
+            maxlength="19"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <p class="settings-hint" id="license-error" style="color: var(--color-danger, #F85149); display: none;"></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="license-cancel-btn">Cancel</button>
+        <button class="btn btn-primary" id="license-activate-btn" disabled>Activate</button>
+      </div>
+    </div>
+  `;
+    document.body.appendChild(overlay);
+    const inputEl = document.getElementById("license-key-input");
+    const activateBtn = document.getElementById("license-activate-btn");
+    const cancelBtn = document.getElementById("license-cancel-btn");
+    const errorEl = document.getElementById("license-error");
+    inputEl?.addEventListener("input", () => {
+      let value = inputEl.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (value.length > 16) value = value.slice(0, 16);
+      const parts = [];
+      for (let i = 0; i < value.length; i += 4) {
+        parts.push(value.slice(i, i + 4));
+      }
+      inputEl.value = parts.join("-");
+      if (activateBtn) {
+        activateBtn.disabled = !/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(inputEl.value);
+      }
+    });
+    cancelBtn?.addEventListener("click", () => {
+      document.body.removeChild(overlay);
+    });
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        document.body.removeChild(overlay);
+      }
+    });
+    activateBtn?.addEventListener("click", async () => {
+      const key = inputEl.value.trim();
+      if (!key) return;
+      activateBtn.setAttribute("disabled", "");
+      activateBtn.textContent = "Activating...";
+      errorEl.style.display = "none";
+      try {
+        const result = await halApi.activateLicense(key);
+        if (result.error) {
+          errorEl.textContent = result.error;
+          errorEl.style.display = "block";
+          activateBtn.removeAttribute("disabled");
+          activateBtn.textContent = "Activate";
+        } else {
+          document.body.removeChild(overlay);
+          showToast("License activated successfully!", "success", 3e3);
+          loadLicenseInfo();
+        }
+      } catch (err) {
+        errorEl.textContent = err.message || "Activation failed. Please try again.";
+        errorEl.style.display = "block";
+        activateBtn.removeAttribute("disabled");
+        activateBtn.textContent = "Activate";
+      }
+    });
+    inputEl?.focus();
+  }
+  async function showLicenseDeactivationDialog() {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+    <div class="modal-panel license-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Deactivate License</h3>
+      </div>
+      <div class="modal-body">
+        <p style="color: var(--text-primary); margin: 0 0 var(--space-3) 0;">
+          Are you sure you want to deactivate your license? This will:
+        </p>
+        <ul style="color: var(--text-secondary); margin: 0 0 var(--space-3) 0; padding-left: var(--space-5);">
+          <li>Remove the license from this device</li>
+          <li>Disable cloud and remote features</li>
+          <li>Required to activate on a different device</li>
+        </ul>
+        <p style="color: var(--text-secondary); font-size: 13px;">
+          Your license key can be reused to activate on another device.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="license-cancel-btn">Cancel</button>
+        <button class="btn btn-danger" id="license-deactivate-btn">Deactivate</button>
+      </div>
+    </div>
+  `;
+    document.body.appendChild(overlay);
+    const deactivateBtn = document.getElementById("license-deactivate-btn");
+    const cancelBtn = document.getElementById("license-cancel-btn");
+    cancelBtn?.addEventListener("click", () => {
+      document.body.removeChild(overlay);
+    });
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        document.body.removeChild(overlay);
+      }
+    });
+    deactivateBtn?.addEventListener("click", async () => {
+      deactivateBtn.setAttribute("disabled", "");
+      deactivateBtn.textContent = "Deactivating...";
+      try {
+        await halApi.deactivateLicense();
+        document.body.removeChild(overlay);
+        showToast("License deactivated", "success", 3e3);
+        loadLicenseInfo();
+      } catch (err) {
+        showToast("Deactivation failed: " + (err.message || "Unknown error"), "danger", 4e3);
+        deactivateBtn.removeAttribute("disabled");
+        deactivateBtn.textContent = "Deactivate";
+      }
+    });
+  }
+  function showFactoryResetConfirmDialog() {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+    <div class="modal-panel factory-reset-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">\u26A0\uFE0F Factory Reset</h3>
+      </div>
+      <div class="modal-body">
+        <p class="reset-warning">This will <strong>permanently delete</strong> all FarmPal data:</p>
+        <ul class="reset-list">
+          <li>All sensor readings and history</li>
+          <li>All device registrations and configuration</li>
+          <li>All automation and safety rules</li>
+          <li>Your admin password and sessions</li>
+          <li>Your .env configuration</li>
+        </ul>
+        <p class="reset-irreversible">This action <strong>cannot be undone</strong>.</p>
+        <div class="reset-confirm-field">
+          <label for="reset-confirm-input">Type <strong>FACTORY RESET</strong> to confirm:</label>
+          <input type="text" id="reset-confirm-input" class="form-input" placeholder="FACTORY RESET" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="reset-cancel-btn">Cancel</button>
+        <button class="btn btn-danger" id="reset-confirm-btn" disabled>Reset FarmPal</button>
+      </div>
+    </div>
+  `;
+    document.body.appendChild(overlay);
+    const confirmInput = document.getElementById(
+      "reset-confirm-input"
+    );
+    const confirmBtn = document.getElementById(
+      "reset-confirm-btn"
+    );
+    const cancelBtn = document.getElementById(
+      "reset-cancel-btn"
+    );
+    confirmInput?.addEventListener("input", () => {
+      if (confirmBtn) {
+        confirmBtn.disabled = confirmInput.value.trim().toUpperCase() !== "FACTORY RESET";
+      }
+    });
+    cancelBtn?.addEventListener("click", () => {
+      document.body.removeChild(overlay);
+    });
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        document.body.removeChild(overlay);
+      }
+    });
+    confirmBtn?.addEventListener("click", async () => {
+      if (confirmInput.value.trim().toUpperCase() !== "FACTORY RESET") {
+        return;
+      }
+      confirmBtn.setAttribute("disabled", "");
+      confirmBtn.textContent = "Resetting...";
+      try {
+        const operatorId = sessionStorage.getItem("operatorId") || "admin";
+        const response = await fetch(
+          "http://127.0.0.1:3392/api/admin/factory-reset",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ operatorId })
+          }
+        );
+        if (response.ok) {
+          showToast("Factory reset initiated. Restarting...", "success", 3e3);
+          document.body.removeChild(overlay);
+          setTimeout(() => {
+            window.location.href = "/";
+          }, 2e3);
+        } else {
+          const data = await response.json();
+          showToast(
+            "Reset failed: " + (data.error || "Unknown error"),
+            "danger",
+            4e3
+          );
+          confirmBtn.removeAttribute("disabled");
+          confirmBtn.textContent = "Reset FarmPal";
+        }
+      } catch (err) {
+        showToast(
+          "Reset failed: " + (err.message || "Network error"),
+          "danger",
+          4e3
+        );
+        confirmBtn.removeAttribute("disabled");
+        confirmBtn.textContent = "Reset FarmPal";
+      }
+    });
+    confirmInput?.focus();
   }
   function escapeHtml15(str) {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -15508,10 +16284,215 @@ ${result.failures.join("\n")}`
   font-weight: 600;
   color: var(--text-primary);
 }
+
+/* Danger button */
+.btn-danger {
+  background: var(--color-danger, #F85149);
+  color: #fff;
+  border: none;
+}
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger, #F85149) 85%, white);
+}
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Factory reset section */
+.factory-reset-title svg {
+  color: var(--color-danger, #F85149);
+}
+
+/* Factory reset modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  max-width: 480px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-header {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+.modal-body {
+  padding: var(--space-4);
+}
+.modal-footer {
+  padding: var(--space-4);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+}
+.reset-warning {
+  color: var(--text-primary);
+  margin: 0 0 var(--space-3) 0;
+}
+.reset-warning strong {
+  color: var(--color-danger, #F85149);
+}
+.reset-list {
+  margin: 0 0 var(--space-3) 0;
+  padding-left: var(--space-5);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.reset-list li {
+  margin-bottom: var(--space-1);
+}
+.reset-irreversible {
+  color: var(--color-danger, #F85149);
+  font-weight: 600;
+  margin: 0 0 var(--space-4) 0;
+}
+.reset-confirm-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.reset-confirm-field label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.reset-confirm-field strong {
+  color: var(--text-primary);
+  font-family: monospace;
+}
+
+/* Network access mode grid */
+.access-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+@media (max-width: 640px) {
+  .access-mode-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.access-mode-card {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+}
+.access-mode-card:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+}
+.access-mode-card.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, var(--bg-tertiary));
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.access-mode-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.access-mode-icon {
+  font-size: 24px;
+  margin-bottom: var(--space-2);
+}
+.access-mode-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+.access-mode-desc {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+.settings-warning-banner {
+  background: color-mix(in srgb, var(--color-warning, #D29922) 15%, var(--bg-secondary));
+  border: 1px solid var(--color-warning, #D29922);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--color-warning, #D29922);
+  font-size: 13px;
+}
+.settings-warning-banner svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.settings-warning-banner span {
+  flex: 1;
+}
+.settings-hint-error {
+  color: var(--color-danger, #F85149);
+  font-size: 12px;
+}
+.badge-green {
+  background: var(--color-success, #2EA043);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.badge-blue {
+  background: var(--color-info, #388BFD);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.badge-amber {
+  background: var(--color-warning, #D29922);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* License modal */
+.license-hardware-id {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.license-hw-id-display {
+  font-family: monospace;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: var(--space-1) 0;
+  letter-spacing: 0.05em;
+}
 `;
     document.head.appendChild(style);
   }
-  var LLM_PROVIDERS2, COMMON_TIMEZONES2, settingsData, isSaving;
+  var LLM_PROVIDERS2, COMMON_TIMEZONES2, settingsData, networkData, isSaving;
   var init_Settings = __esm({
     "src/web/hal-ui/views/Settings.ts"() {
       "use strict";
@@ -15578,6 +16559,11 @@ ${result.failures.join("\n")}`
         llmApiKey: "",
         llmModel: ""
       };
+      networkData = {
+        accessMode: "localhost",
+        httpsEnabled: false,
+        lanWithoutHttps: false
+      };
       isSaving = false;
     }
   });
@@ -15587,6 +16573,66 @@ ${result.failures.join("\n")}`
   __export(main_exports, {
     refreshHALData: () => refreshHALData
   });
+  async function checkNetworkWarning() {
+    try {
+      const response = await fetch("http://127.0.0.1:3392/api/settings/network");
+      if (response.ok) {
+        const data = await response.json();
+        if (data.lanWithoutHttps) {
+          const banner = document.getElementById("lan-warning-banner");
+          if (banner) {
+            banner.innerHTML = `
+            <div class="lan-warning-banner">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span>Warning: FarmPal is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
+              <a href="#settings" class="lan-warning-link">Configure</a>
+            </div>
+          `;
+            injectLanWarningStyles();
+          }
+        }
+      }
+    } catch {
+    }
+  }
+  function injectLanWarningStyles() {
+    if (document.getElementById("lan-warning-styles")) return;
+    const style = document.createElement("style");
+    style.id = "lan-warning-styles";
+    style.textContent = `
+    .lan-warning-banner {
+      background: color-mix(in srgb, var(--color-warning, #D29922) 15%, var(--bg-primary));
+      border-bottom: 1px solid var(--color-warning, #D29922);
+      color: var(--color-warning, #D29922);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .lan-warning-banner svg {
+      flex-shrink: 0;
+    }
+    .lan-warning-banner span {
+      flex: 1;
+    }
+    .lan-warning-link {
+      color: var(--color-warning, #D29922);
+      text-decoration: underline;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .lan-warning-link:hover {
+      opacity: 0.8;
+    }
+  `;
+    document.head.appendChild(style);
+  }
   async function init() {
     const app = document.getElementById("app");
     if (!app) throw new Error("#app element not found");
@@ -15618,11 +16664,13 @@ ${result.failures.join("\n")}`
     <div class="app-layout" id="app-layout">
       ${renderSidebar(initialView, store.sidebarCollapsed)}
       <div class="app-main">
+        <div id="lan-warning-banner"></div>
         <div id="hal-header"></div>
         <main class="main-content" id="view-container"></main>
       </div>
     </div>
   `;
+    checkNetworkWarning();
     const headerEl = document.getElementById("hal-header");
     headerEl.innerHTML = renderHeader(store.theme);
     initHeader(

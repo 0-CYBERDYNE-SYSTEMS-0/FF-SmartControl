@@ -195,6 +195,10 @@ export async function startHalUiServer(
   initApiRateLimitDatabase();
   initSecurityAuditDatabase();
 
+  // Initialize license cache (VAL-LIC-003)
+  const { initLicense } = await import('../license/index.js');
+  initLicense();
+
   // Check if HTTPS is enabled
   const httpsEnabled = process.env.HAL_UI_HTTPS_ENABLED === 'true';
   let server: http.Server | https.Server;
@@ -262,10 +266,11 @@ export async function startHalUiServer(
         const csrfResult = csrfMiddleware(req);
         if (!csrfResult.valid) {
           // Log CSRF failure to security audit (VAL-SEC-073)
-          const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-            || (req.headers['x-real-ip'] as string)
-            || req.socket.remoteAddress
-            || 'unknown';
+          const ipAddress =
+            (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+            (req.headers['x-real-ip'] as string) ||
+            req.socket.remoteAddress ||
+            'unknown';
           logCsrfFailure(
             authResult.authContext?.session?.id ?? null,
             ipAddress,
@@ -282,13 +287,16 @@ export async function startHalUiServer(
         authResult.authContext?.session?.id &&
         requestPath.startsWith('/api/')
       ) {
-        const rateLimitResult = checkApiRateLimit(authResult.authContext.session.id);
+        const rateLimitResult = checkApiRateLimit(
+          authResult.authContext.session.id,
+        );
         if (!rateLimitResult.allowed) {
           // Log rate limit hit to security audit (VAL-SEC-074)
-          const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-            || (req.headers['x-real-ip'] as string)
-            || req.socket.remoteAddress
-            || 'unknown';
+          const ipAddress =
+            (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+            (req.headers['x-real-ip'] as string) ||
+            req.socket.remoteAddress ||
+            'unknown';
           logRateLimitHit(
             'api',
             ipAddress,
@@ -300,10 +308,12 @@ export async function startHalUiServer(
             'Content-Type': 'application/json',
             'Retry-After': String(rateLimitResult.retryAfterSeconds || 60),
           });
-          res.end(JSON.stringify({
-            error: 'Too many requests. Please try again later.',
-            retryAfterSeconds: rateLimitResult.retryAfterSeconds || 60,
-          }));
+          res.end(
+            JSON.stringify({
+              error: 'Too many requests. Please try again later.',
+              retryAfterSeconds: rateLimitResult.retryAfterSeconds || 60,
+            }),
+          );
           return;
         }
         // Record the request
@@ -317,10 +327,11 @@ export async function startHalUiServer(
 
     // POST /api/auth/login — authenticate and create session (VAL-SEC-001, VAL-SEC-002, VAL-SEC-004, VAL-SEC-010)
     if (requestPath === '/api/auth/login' && method === 'POST') {
-      const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-        || (req.headers['x-real-ip'] as string)
-        || req.socket.remoteAddress
-        || 'unknown';
+      const ipAddress =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        (req.headers['x-real-ip'] as string) ||
+        req.socket.remoteAddress ||
+        'unknown';
       const userAgent = req.headers['user-agent'];
 
       let body = '';
@@ -2938,7 +2949,9 @@ export async function startHalUiServer(
 
           if (fs.existsSync(envPath)) {
             const envContent = fs.readFileSync(envPath, 'utf-8');
-            const accessModeMatch = envContent.match(/^FFT_NANO_WEB_ACCESS_MODE=(.+)$/m);
+            const accessModeMatch = envContent.match(
+              /^FFT_NANO_WEB_ACCESS_MODE=(.+)$/m,
+            );
             if (accessModeMatch) {
               accessMode = accessModeMatch[1].trim();
             }
@@ -2966,10 +2979,11 @@ export async function startHalUiServer(
         // Get session info for audit logging
         const token = parseSessionCookie(req.headers.cookie);
         const session = token ? validateSession(token) : null;
-        const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-          || (req.headers['x-real-ip'] as string)
-          || req.socket.remoteAddress
-          || 'unknown';
+        const ipAddress =
+          (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+          (req.headers['x-real-ip'] as string) ||
+          req.socket.remoteAddress ||
+          'unknown';
         const operatorId = session?.operatorId || 'admin';
         const sessionId = session?.id || 'unknown';
 
@@ -2979,8 +2993,13 @@ export async function startHalUiServer(
         const { accessMode } = parsed;
 
         // Validate accessMode
-        if (!accessMode || !['localhost', 'lan', 'remote'].includes(accessMode)) {
-          sendJson(res, 400, { error: 'accessMode must be localhost, lan, or remote' });
+        if (
+          !accessMode ||
+          !['localhost', 'lan', 'remote'].includes(accessMode)
+        ) {
+          sendJson(res, 400, {
+            error: 'accessMode must be localhost, lan, or remote',
+          });
           return;
         }
 
@@ -2998,7 +3017,8 @@ export async function startHalUiServer(
           }
           if (!httpsEnabled) {
             sendJson(res, 400, {
-              error: 'WAN access requires HTTPS to be enabled. Enable HTTPS first.',
+              error:
+                'WAN access requires HTTPS to be enabled. Enable HTTPS first.',
             });
             return;
           }
@@ -3012,7 +3032,10 @@ export async function startHalUiServer(
             let envContent = fs.readFileSync(envPath, 'utf-8');
             const regex = /^FFT_NANO_WEB_ACCESS_MODE=.*$/m;
             if (regex.test(envContent)) {
-              envContent = envContent.replace(regex, `FFT_NANO_WEB_ACCESS_MODE=${accessMode}`);
+              envContent = envContent.replace(
+                regex,
+                `FFT_NANO_WEB_ACCESS_MODE=${accessMode}`,
+              );
             } else {
               envContent += `\nFFT_NANO_WEB_ACCESS_MODE=${accessMode}`;
             }
@@ -3031,7 +3054,8 @@ export async function startHalUiServer(
           sendJson(res, 200, {
             ok: true,
             accessMode,
-            message: 'Network access mode updated. Restart FarmPal for changes to take effect.',
+            message:
+              'Network access mode updated. Restart FarmPal for changes to take effect.',
           });
         } catch (err: any) {
           sendJson(res, 500, { error: err.message });
@@ -3040,6 +3064,109 @@ export async function startHalUiServer(
       }
 
       sendJson(res, 404, { error: 'Settings endpoint not found' });
+      return;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // LICENSE API — License activation, deactivation, and status
+    // VAL-LIC-001 through VAL-LIC-016
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // GET /api/license/status — get current license status (VAL-LIC-010)
+    if (requestPath === '/api/license/status' && method === 'GET') {
+      try {
+        const { getLicenseStatus, initLicense } =
+          await import('../license/index.js');
+        initLicense(); // Ensure license cache is initialized
+        const status = await getLicenseStatus();
+        sendJson(res, 200, status);
+      } catch (err: any) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // GET /api/license/hardware-id — get the hardware ID for this device (VAL-LIC-012)
+    if (requestPath === '/api/license/hardware-id' && method === 'GET') {
+      try {
+        const { getHardwareId, getHardwareIdDisplay } =
+          await import('../license/hardware-id.js');
+        sendJson(res, 200, {
+          hardwareId: getHardwareId(),
+          hardwareIdDisplay: getHardwareIdDisplay(),
+        });
+      } catch (err: any) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // POST /api/license/activate — activate a license key (VAL-LIC-002, VAL-LIC-015)
+    if (requestPath === '/api/license/activate' && method === 'POST') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      try {
+        const { licenseKey } = JSON.parse(body);
+        if (!licenseKey || typeof licenseKey !== 'string') {
+          sendJson(res, 400, { error: 'licenseKey is required' });
+          return;
+        }
+
+        const { activateLicense, initLicense } =
+          await import('../license/index.js');
+        initLicense(); // Ensure license cache is initialized
+        const result = await activateLicense(licenseKey);
+
+        if (result.error) {
+          sendJson(res, 400, {
+            error: result.error,
+            errorCode: result.errorCode,
+            status: result.status,
+          });
+          return;
+        }
+
+        sendJson(res, 200, {
+          status: result.status,
+          expiresAt: result.expiresAt,
+        });
+      } catch (err: any) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // POST /api/license/deactivate — deactivate license (VAL-LIC-014)
+    if (requestPath === '/api/license/deactivate' && method === 'POST') {
+      try {
+        const { deactivateLicense, initLicense } =
+          await import('../license/index.js');
+        initLicense(); // Ensure license cache is initialized
+        const result = await deactivateLicense();
+
+        if (!result.success) {
+          sendJson(res, 400, { error: result.error || 'Deactivation failed' });
+          return;
+        }
+
+        sendJson(res, 200, { ok: true });
+      } catch (err: any) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // GET /api/license/feature-gates — check if a feature is allowed (VAL-LIC-005)
+    if (requestPath === '/api/license/feature-gates' && method === 'GET') {
+      try {
+        const { getFeatureGates, initLicense } =
+          await import('../license/index.js');
+        initLicense(); // Ensure license cache is initialized
+        const gates = getFeatureGates();
+        sendJson(res, 200, gates);
+      } catch (err: any) {
+        sendJson(res, 500, { error: err.message });
+      }
       return;
     }
 

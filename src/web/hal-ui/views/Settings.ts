@@ -125,7 +125,9 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
 
   // Load network settings
   try {
-    const networkRes = await fetch('http://127.0.0.1:3392/api/settings/network');
+    const networkRes = await fetch(
+      'http://127.0.0.1:3392/api/settings/network',
+    );
     if (networkRes.ok) {
       const net = await networkRes.json();
       networkData.accessMode = net.accessMode || 'localhost';
@@ -369,6 +371,7 @@ function renderSettingsPage(): string {
                 <li>Device automation</li>
               </ul>
             </div>
+            <div id="license-section-actions"></div>
           </div>
         </section>
 
@@ -379,7 +382,9 @@ function renderSettingsPage(): string {
             Network Access
           </h2>
           <div class="settings-card">
-            ${networkData.lanWithoutHttps ? `
+            ${
+              networkData.lanWithoutHttps
+                ? `
             <div class="settings-warning-banner">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
@@ -388,7 +393,9 @@ function renderSettingsPage(): string {
               </svg>
               <span>Warning: FarmPal is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
             </div>
-            ` : ''}
+            `
+                : ''
+            }
             <div class="settings-field">
               <p class="settings-label">Access Mode</p>
               <div class="access-mode-grid">
@@ -412,9 +419,11 @@ function renderSettingsPage(): string {
             <div class="settings-field">
               <p class="settings-label">HTTPS Status</p>
               <p class="settings-value">
-                ${networkData.httpsEnabled
-                  ? '<span class="badge badge-green">Enabled</span>'
-                  : '<span class="badge badge-slate">Disabled</span>'}
+                ${
+                  networkData.httpsEnabled
+                    ? '<span class="badge badge-green">Enabled</span>'
+                    : '<span class="badge badge-slate">Disabled</span>'
+                }
                 ${!networkData.httpsEnabled && networkData.accessMode === 'remote' ? '<span class="settings-hint-error"> — HTTPS is required for remote access</span>' : ''}
               </p>
               <p class="settings-hint">HTTPS is required for remote (WAN) access. Local network access works with or without HTTPS.</p>
@@ -490,7 +499,11 @@ function attachSettingsEvents(): void {
 
         // Remote access requires HTTPS
         if (mode === 'remote' && !networkData.httpsEnabled) {
-          showToast('Enable HTTPS first to allow remote access', 'warning', 3000);
+          showToast(
+            'Enable HTTPS first to allow remote access',
+            'warning',
+            3000,
+          );
           return;
         }
 
@@ -644,10 +657,317 @@ async function loadVersionInfo(): Promise<void> {
 
 async function loadLicenseInfo(): Promise<void> {
   const statusEl = document.getElementById('license-status');
-  if (statusEl) {
-    // Placeholder - would come from license API
-    statusEl.innerHTML = '<span class="badge badge-slate">Free Tier</span>';
+  const featuresEl = document.getElementById('license-features');
+  const licenseSection = document.getElementById('license-section-actions');
+
+  if (!statusEl) return;
+
+  try {
+    const status = await halApi.getLicenseStatus();
+    const gates = await halApi.getFeatureGates();
+
+    // Build badge HTML based on status
+    let badgeHtml = '';
+    let badgeClass = 'badge-slate';
+    let featuresHtml = '';
+
+    switch (status.status) {
+      case 'LICENSED':
+        badgeClass = 'badge-green';
+        badgeHtml = `<span class="badge ${badgeClass}">LICENSED</span>`;
+        if (status.expiresAt) {
+          const expiryDate = new Date(status.expiresAt).toLocaleDateString();
+          badgeHtml += ` <span style="color: var(--text-secondary); font-size: 13px;">Expires ${expiryDate}</span>`;
+        }
+        featuresHtml = `
+          <li>✓ Local AI control</li>
+          <li>✓ Sensor monitoring</li>
+          <li>✓ Device automation</li>
+          <li>✓ Cloud features</li>
+          <li>✓ Remote access</li>
+        `;
+        break;
+
+      case 'TRIAL':
+        badgeClass = 'badge-blue';
+        const daysLeft = status.daysRemaining ?? 0;
+        badgeHtml = `<span class="badge ${badgeClass}">TRIAL — ${daysLeft} day${daysLeft === 1 ? '' : 's'}</span>`;
+        featuresHtml = `
+          <li>✓ Local AI control</li>
+          <li>✓ Sensor monitoring</li>
+          <li>✓ Device automation</li>
+          <li>✓ Cloud features (${daysLeft} days left)</li>
+          <li>✓ Remote access (${daysLeft} days left)</li>
+        `;
+        break;
+
+      case 'EXPIRED':
+        badgeClass = 'badge-amber';
+        badgeHtml = `<span class="badge ${badgeClass}">EXPIRED</span>`;
+        if (status.expiresAt) {
+          const expiryDate = new Date(status.expiresAt).toLocaleDateString();
+          badgeHtml += ` <span style="color: var(--text-secondary); font-size: 13px;">Expired ${expiryDate}</span>`;
+        }
+        featuresHtml = `
+          <li style="color: var(--text-secondary);">✗ Cloud features (license expired)</li>
+          <li style="color: var(--text-secondary);">✗ Remote access (license expired)</li>
+          <li>✓ Local AI control</li>
+          <li>✓ Sensor monitoring</li>
+          <li>✓ Device automation</li>
+        `;
+        break;
+
+      case 'UNLICENSED':
+      default:
+        badgeClass = 'badge-slate';
+        badgeHtml = `<span class="badge ${badgeClass}">UNLICENSED</span>`;
+        featuresHtml = `
+          <li style="color: var(--text-secondary);">✗ Cloud features</li>
+          <li style="color: var(--text-secondary);">✗ Remote access</li>
+          <li>✓ Local AI control</li>
+          <li>✓ Sensor monitoring</li>
+          <li>✓ Device automation</li>
+        `;
+        break;
+    }
+
+    statusEl.innerHTML = badgeHtml;
+
+    if (featuresEl) {
+      featuresEl.innerHTML = featuresHtml;
+    }
+
+    // Add activate/deactivate button
+    if (licenseSection) {
+      if (status.status === 'UNLICENSED' || status.status === 'EXPIRED') {
+        licenseSection.innerHTML = `
+          <button class="btn btn-primary" id="activate-license-btn" style="margin-top: var(--space-3);">
+            Activate License
+          </button>
+        `;
+        document
+          .getElementById('activate-license-btn')
+          ?.addEventListener('click', showLicenseActivationDialog);
+      } else if (status.status === 'LICENSED' || status.status === 'TRIAL') {
+        licenseSection.innerHTML = `
+          <button class="btn btn-danger" id="deactivate-license-btn" style="margin-top: var(--space-3);">
+            Deactivate License
+          </button>
+        `;
+        document
+          .getElementById('deactivate-license-btn')
+          ?.addEventListener('click', showLicenseDeactivationDialog);
+      }
+    }
+  } catch (err) {
+    // Show unlicensed state on error
+    statusEl.innerHTML = '<span class="badge badge-slate">UNLICENSED</span>';
+    if (featuresEl) {
+      featuresEl.innerHTML = `
+        <li style="color: var(--text-secondary);">✗ Cloud features</li>
+        <li style="color: var(--text-secondary);">✗ Remote access</li>
+        <li>✓ Local AI control</li>
+        <li>✓ Sensor monitoring</li>
+        <li>✓ Device automation</li>
+      `;
+    }
   }
+}
+
+// License Activation Dialog (VAL-LIC-011, VAL-LIC-012)
+async function showLicenseActivationDialog(): Promise<void> {
+  // Get hardware ID first
+  let hardwareId = 'Loading...';
+  let hardwareIdDisplay = '';
+  try {
+    const hwInfo = await halApi.getHardwareId();
+    hardwareId = hwInfo.hardwareIdDisplay;
+    hardwareIdDisplay = hwInfo.hardwareId;
+  } catch {
+    hardwareId = 'Unknown';
+    hardwareIdDisplay = 'unknown';
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-panel license-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Activate License</h3>
+      </div>
+      <div class="modal-body">
+        <div class="license-hardware-id">
+          <p class="settings-label">Hardware ID</p>
+          <p class="license-hw-id-display">${hardwareId}</p>
+          <p class="settings-hint">This is your device's unique identifier. License is bound to this hardware.</p>
+        </div>
+        <div class="settings-field" style="margin-top: var(--space-4);">
+          <label class="settings-label" for="license-key-input">License Key</label>
+          <input
+            type="text"
+            id="license-key-input"
+            class="form-input"
+            placeholder="XXXX-XXXX-XXXX-XXXX"
+            maxlength="19"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <p class="settings-hint" id="license-error" style="color: var(--color-danger, #F85149); display: none;"></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="license-cancel-btn">Cancel</button>
+        <button class="btn btn-primary" id="license-activate-btn" disabled>Activate</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const inputEl = document.getElementById(
+    'license-key-input',
+  ) as HTMLInputElement;
+  const activateBtn = document.getElementById(
+    'license-activate-btn',
+  ) as HTMLButtonElement;
+  const cancelBtn = document.getElementById(
+    'license-cancel-btn',
+  ) as HTMLButtonElement;
+  const errorEl = document.getElementById(
+    'license-error',
+  ) as HTMLParagraphElement;
+
+  // Format license key input (add dashes)
+  inputEl?.addEventListener('input', () => {
+    let value = inputEl.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (value.length > 16) value = value.slice(0, 16);
+    // Add dashes
+    const parts = [];
+    for (let i = 0; i < value.length; i += 4) {
+      parts.push(value.slice(i, i + 4));
+    }
+    inputEl.value = parts.join('-');
+
+    // Enable button if valid format
+    if (activateBtn) {
+      activateBtn.disabled =
+        !/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(
+          inputEl.value,
+        );
+    }
+  });
+
+  cancelBtn?.addEventListener('click', () => {
+    document.body.removeChild(overlay);
+  });
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      document.body.removeChild(overlay);
+    }
+  });
+
+  activateBtn?.addEventListener('click', async () => {
+    const key = inputEl.value.trim();
+    if (!key) return;
+
+    activateBtn.setAttribute('disabled', '');
+    activateBtn.textContent = 'Activating...';
+    errorEl.style.display = 'none';
+
+    try {
+      const result = await halApi.activateLicense(key);
+      if (result.error) {
+        errorEl.textContent = result.error;
+        errorEl.style.display = 'block';
+        activateBtn.removeAttribute('disabled');
+        activateBtn.textContent = 'Activate';
+      } else {
+        document.body.removeChild(overlay);
+        showToast('License activated successfully!', 'success', 3000);
+        // Reload license info
+        loadLicenseInfo();
+      }
+    } catch (err: any) {
+      errorEl.textContent =
+        err.message || 'Activation failed. Please try again.';
+      errorEl.style.display = 'block';
+      activateBtn.removeAttribute('disabled');
+      activateBtn.textContent = 'Activate';
+    }
+  });
+
+  inputEl?.focus();
+}
+
+// License Deactivation Dialog (VAL-LIC-014)
+async function showLicenseDeactivationDialog(): Promise<void> {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-panel license-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Deactivate License</h3>
+      </div>
+      <div class="modal-body">
+        <p style="color: var(--text-primary); margin: 0 0 var(--space-3) 0;">
+          Are you sure you want to deactivate your license? This will:
+        </p>
+        <ul style="color: var(--text-secondary); margin: 0 0 var(--space-3) 0; padding-left: var(--space-5);">
+          <li>Remove the license from this device</li>
+          <li>Disable cloud and remote features</li>
+          <li>Required to activate on a different device</li>
+        </ul>
+        <p style="color: var(--text-secondary); font-size: 13px;">
+          Your license key can be reused to activate on another device.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="license-cancel-btn">Cancel</button>
+        <button class="btn btn-danger" id="license-deactivate-btn">Deactivate</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const deactivateBtn = document.getElementById(
+    'license-deactivate-btn',
+  ) as HTMLButtonElement;
+  const cancelBtn = document.getElementById(
+    'license-cancel-btn',
+  ) as HTMLButtonElement;
+
+  cancelBtn?.addEventListener('click', () => {
+    document.body.removeChild(overlay);
+  });
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      document.body.removeChild(overlay);
+    }
+  });
+
+  deactivateBtn?.addEventListener('click', async () => {
+    deactivateBtn.setAttribute('disabled', '');
+    deactivateBtn.textContent = 'Deactivating...';
+
+    try {
+      await halApi.deactivateLicense();
+      document.body.removeChild(overlay);
+      showToast('License deactivated', 'success', 3000);
+      // Reload license info
+      loadLicenseInfo();
+    } catch (err: any) {
+      showToast(
+        'Deactivation failed: ' + (err.message || 'Unknown error'),
+        'danger',
+        4000,
+      );
+      deactivateBtn.removeAttribute('disabled');
+      deactivateBtn.textContent = 'Deactivate';
+    }
+  });
 }
 
 // Factory Reset confirmation dialog (VAL-SVC-023, VAL-SVC-024)
@@ -1076,6 +1396,38 @@ function injectSettingsStyles(): void {
   padding: 2px 8px;
   font-size: 12px;
   font-weight: 500;
+}
+.badge-blue {
+  background: var(--color-info, #388BFD);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.badge-amber {
+  background: var(--color-warning, #D29922);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* License modal */
+.license-hardware-id {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.license-hw-id-display {
+  font-family: monospace;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: var(--space-1) 0;
+  letter-spacing: 0.05em;
 }
 `;
   document.head.appendChild(style);
