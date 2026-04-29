@@ -199,6 +199,10 @@ export async function startHalUiServer(
   const { initLicense } = await import('../license/index.js');
   initLicense();
 
+  // Start periodic update checker (VAL-UPDT-001)
+  const { startUpdateChecker } = await import('../update/checker.js');
+  startUpdateChecker();
+
   // Check if HTTPS is enabled
   const httpsEnabled = process.env.HAL_UI_HTTPS_ENABLED === 'true';
   let server: http.Server | https.Server;
@@ -450,6 +454,181 @@ export async function startHalUiServer(
         }),
       );
       return;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // UPDATE API — Version checking, updates, rollback (VAL-UPDT-001 through VAL-UPDT-012)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // GET /api/update/status — get current update status (VAL-UPDT-001, VAL-OFFL-002)
+    if (requestPath === '/api/update/status' && method === 'GET') {
+      try {
+        const { checkForUpdate, isOnline } =
+          await import('../update/checker.js');
+        const { getInstalledVersion, hasSnapshot } =
+          await import('../update/installer.js');
+
+        const currentVersion = getInstalledVersion();
+        const online = await isOnline();
+
+        if (!online) {
+          sendJson(res, 200, {
+            status: 'offline',
+            currentVersion,
+            lastChecked: null,
+            errorMessage: 'Offline — updates available when connected',
+          });
+          return;
+        }
+
+        const updateState = await checkForUpdate(currentVersion);
+        sendJson(res, 200, {
+          ...updateState,
+          canRollback: hasSnapshot(),
+        });
+        return;
+      } catch (err) {
+        logger.error({ err }, 'Failed to get update status');
+        sendJson(res, 500, { error: 'Failed to check for updates' });
+        return;
+      }
+    }
+
+    // POST /api/update/check — manually trigger update check (VAL-UPDT-012)
+    if (requestPath === '/api/update/check' && method === 'POST') {
+      try {
+        const { checkForUpdate, isOnline } =
+          await import('../update/checker.js');
+        const { getInstalledVersion, hasSnapshot } =
+          await import('../update/installer.js');
+
+        const currentVersion = getInstalledVersion();
+        const online = await isOnline();
+
+        if (!online) {
+          sendJson(res, 200, {
+            status: 'offline',
+            currentVersion,
+            lastChecked: new Date().toISOString(),
+            errorMessage: 'Offline — updates available when connected',
+          });
+          return;
+        }
+
+        const updateState = await checkForUpdate(currentVersion);
+        sendJson(res, 200, {
+          ...updateState,
+          canRollback: hasSnapshot(),
+        });
+        return;
+      } catch (err) {
+        logger.error({ err }, 'Failed to check for updates');
+        sendJson(res, 500, { error: 'Failed to check for updates' });
+        return;
+      }
+    }
+
+    // GET /api/update/history — get update history (VAL-VERS-003)
+    if (requestPath === '/api/update/history' && method === 'GET') {
+      try {
+        const { getUpdateHistory } = await import('../update/installer.js');
+        const history = getUpdateHistory(20);
+        sendJson(res, 200, { history });
+        return;
+      } catch (err) {
+        logger.error({ err }, 'Failed to get update history');
+        sendJson(res, 500, { error: 'Failed to get update history' });
+        return;
+      }
+    }
+
+    // POST /api/update/install — trigger update installation (VAL-UPDT-004, VAL-UPDT-005, VAL-UPDT-006, VAL-UPDT-007, VAL-UPDT-008)
+    if (requestPath === '/api/update/install' && method === 'POST') {
+      try {
+        const { checkForUpdate } = await import('../update/checker.js');
+        const { getInstalledVersion, installUpdate } =
+          await import('../update/installer.js');
+
+        const currentVersion = getInstalledVersion();
+        const updateState = await checkForUpdate(currentVersion);
+
+        if (
+          updateState.status !== 'available' &&
+          updateState.status !== 'prerelease'
+        ) {
+          sendJson(res, 400, { error: 'No update available' });
+          return;
+        }
+
+        // The release info should be included in the request or fetched again
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const release = parsed.release;
+
+        if (!release || !release.version) {
+          sendJson(res, 400, { error: 'Missing release information' });
+          return;
+        }
+
+        // Install with progress tracking
+        const progress = await installUpdate(release, (p) => {
+          // Progress callback - could emit via SSE in future
+          logger.info({ step: p.step, percent: p.percent }, 'Update progress');
+        });
+
+        if (progress.success) {
+          sendJson(res, 200, {
+            success: true,
+            newVersion: release.version,
+          });
+        } else {
+          sendJson(res, 500, {
+            success: false,
+            error: progress.error,
+          });
+        }
+        return;
+      } catch (err) {
+        logger.error({ err }, 'Failed to install update');
+        sendJson(res, 500, { error: 'Failed to install update' });
+        return;
+      }
+    }
+
+    // POST /api/update/rollback — trigger manual rollback (VAL-UPDT-011, VAL-RBK-003)
+    if (requestPath === '/api/update/rollback' && method === 'POST') {
+      try {
+        const { hasSnapshot, performRollback, getInstalledVersion } =
+          await import('../update/installer.js');
+
+        if (!hasSnapshot()) {
+          sendJson(res, 400, {
+            error: 'No previous version available to rollback to',
+          });
+          return;
+        }
+
+        const currentVersion = getInstalledVersion();
+
+        const result = await performRollback((p) => {
+          logger.info(
+            { step: p.step, percent: p.percent },
+            'Rollback progress',
+          );
+        });
+
+        if (result.success) {
+          sendJson(res, 200, { success: true });
+        } else {
+          sendJson(res, 500, { success: false, error: result.error });
+        }
+        return;
+      } catch (err) {
+        logger.error({ err }, 'Failed to rollback');
+        sendJson(res, 500, { error: 'Failed to rollback' });
+        return;
+      }
     }
 
     // GET /health — returns health status without requiring auth (VAL-SVC-008, VAL-SVC-009, VAL-SVC-010)

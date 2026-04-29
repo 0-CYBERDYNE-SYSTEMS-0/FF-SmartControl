@@ -301,17 +301,19 @@ function renderSettingsPage(): string {
         </section>
 
         <!-- Update Section -->
+        <!-- Update Section (VAL-UPDT-001 through VAL-UPDT-012, VAL-VERS-001, VAL-VERS-002, VAL-VERS-003) -->
         <section class="settings-section">
           <h2 class="settings-section-title">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Updates
+            <span id="update-badge" class="badge badge-green" style="display:none; margin-left:8px;">Update Available</span>
           </h2>
           <div class="settings-card">
             <div class="settings-field">
               <div class="settings-row">
                 <div>
                   <p class="settings-label">Current Version</p>
-                  <p class="settings-value" id="current-version">Loading...</p>
+                  <p class="settings-value mono-md" id="current-version">Loading...</p>
                 </div>
                 <button class="btn btn-secondary" id="check-updates-btn">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -319,9 +321,65 @@ function renderSettingsPage(): string {
                 </button>
               </div>
             </div>
-            <div class="settings-field" id="update-status-field" style="display:none;">
-              <p class="settings-label">Status</p>
-              <p class="settings-value" id="update-status">-</p>
+
+            <!-- Update available section -->
+            <div class="settings-field" id="update-available-section" style="display:none;">
+              <div class="update-info-card">
+                <div class="update-info-header">
+                  <div>
+                    <p class="settings-label">Available Version</p>
+                    <p class="settings-value mono-md" id="available-version">-</p>
+                  </div>
+                  <span class="badge badge-green" id="update-version-badge"></span>
+                </div>
+                <div class="settings-field" style="margin-top:12px;">
+                  <button class="btn btn-primary" id="install-update-btn" style="width:100%;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Install Update
+                  </button>
+                </div>
+                <details class="changelog-details">
+                  <summary class="changelog-summary">What's New</summary>
+                  <div class="changelog-content" id="changelog-content"></div>
+                </details>
+              </div>
+            </div>
+
+            <!-- Offline status -->
+            <div class="settings-field" id="update-offline-section" style="display:none;">
+              <div class="update-offline-banner">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                <span>Offline — updates available when connected</span>
+              </div>
+            </div>
+
+            <!-- No update available -->
+            <div class="settings-field" id="update-no-available-section" style="display:none;">
+              <p class="settings-hint" id="update-no-available-text">You are running the latest version.</p>
+            </div>
+
+            <!-- Update status message -->
+            <div class="settings-field" id="update-last-checked" style="display:none;">
+              <p class="settings-hint">Last checked: <span id="last-checked-time">-</span></p>
+            </div>
+
+            <!-- Rollback section (VAL-UPDT-011) -->
+            <div class="settings-field" id="rollback-section" style="display:none; margin-top:16px;">
+              <hr class="settings-divider"/>
+              <p class="settings-label" style="margin-top:12px;">Previous Version</p>
+              <p class="settings-hint">A previous version snapshot is available. You can rollback if the current version is not working correctly.</p>
+              <button class="btn btn-secondary" id="rollback-btn" style="margin-top:8px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                Rollback to Previous Version
+              </button>
+            </div>
+
+            <!-- Update history link -->
+            <div class="settings-field" style="margin-top:12px;">
+              <button class="btn btn-ghost" id="show-update-history-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                View Update History
+              </button>
             </div>
           </div>
         </section>
@@ -579,27 +637,251 @@ function attachSettingsEvents(): void {
     }
   });
 
-  // Check updates button
+  // Check updates button (VAL-UPDT-001, VAL-UPDT-012)
   const checkUpdatesBtn = document.getElementById('check-updates-btn');
   checkUpdatesBtn?.addEventListener('click', async () => {
     checkUpdatesBtn.setAttribute('disabled', '');
     checkUpdatesBtn.textContent = 'Checking...';
 
-    // Simulate update check - in real implementation, this would call an update API
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      const response = await fetch('http://127.0.0.1:3392/api/update/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
-    const statusField = document.getElementById('update-status-field');
-    const statusText = document.getElementById('update-status');
-    if (statusField) statusField.style.display = 'block';
-    if (statusText) {
-      statusText.innerHTML =
-        '<span class="badge badge-slate">No updates available</span>';
+      const data = await response.json();
+
+      // Hide all sections first
+      document.getElementById('update-available-section')!.style.display =
+        'none';
+      document.getElementById('update-offline-section')!.style.display = 'none';
+      document.getElementById('update-no-available-section')!.style.display =
+        'none';
+      document.getElementById('update-badge')!.style.display = 'none';
+      document.getElementById('rollback-section')!.style.display = 'none';
+      document.getElementById('update-last-checked')!.style.display = 'none';
+
+      // Show last checked time
+      const lastCheckedEl = document.getElementById('last-checked-time');
+      if (lastCheckedEl && data.lastChecked) {
+        const date = new Date(data.lastChecked);
+        lastCheckedEl.textContent = date.toLocaleString();
+        document.getElementById('update-last-checked')!.style.display = 'block';
+      }
+
+      if (data.status === 'offline') {
+        // Show offline message (VAL-OFFL-002)
+        document.getElementById('update-offline-section')!.style.display =
+          'block';
+        // Disable install button
+        const installBtn = document.getElementById(
+          'install-update-btn',
+        ) as HTMLButtonElement | null;
+        if (installBtn) installBtn.disabled = true;
+      } else if (data.status === 'available' || data.status === 'prerelease') {
+        // Show available update
+        document.getElementById('update-available-section')!.style.display =
+          'block';
+        document.getElementById('update-badge')!.style.display = 'inline';
+
+        const availableVersionEl = document.getElementById('available-version');
+        if (availableVersionEl)
+          availableVersionEl.textContent = data.availableVersion || '-';
+
+        const changelogEl = document.getElementById('changelog-content');
+        if (changelogEl && data.changelog) {
+          changelogEl.innerHTML = formatChangelog(data.changelog);
+        }
+
+        const badgeEl = document.getElementById('update-version-badge');
+        if (badgeEl) {
+          badgeEl.textContent = data.status === 'prerelease' ? 'Beta' : 'New';
+        }
+
+        // Enable install button
+        const installBtn = document.getElementById(
+          'install-update-btn',
+        ) as HTMLButtonElement | null;
+        if (installBtn) {
+          installBtn.disabled = false;
+          installBtn.dataset.version = data.availableVersion || '';
+          installBtn.dataset.changelog = data.changelog || '';
+        }
+      } else if (data.status === 'none') {
+        // No update available
+        document.getElementById('update-no-available-section')!.style.display =
+          'block';
+        const noUpdateText = document.getElementById(
+          'update-no-available-text',
+        );
+        if (noUpdateText)
+          noUpdateText.textContent = 'You are running the latest version.';
+      } else if (data.status === 'error') {
+        document.getElementById('update-no-available-section')!.style.display =
+          'block';
+        const noUpdateText = document.getElementById(
+          'update-no-available-text',
+        );
+        if (noUpdateText)
+          noUpdateText.textContent =
+            data.errorMessage || 'Failed to check for updates.';
+      }
+
+      // Show rollback section if available (VAL-UPDT-011)
+      if (data.canRollback) {
+        document.getElementById('rollback-section')!.style.display = 'block';
+      }
+
+      // Update current version display
+      const currentVersionEl = document.getElementById('current-version');
+      if (currentVersionEl)
+        currentVersionEl.textContent = data.currentVersion || 'Unknown';
+    } catch (err: any) {
+      showToast(
+        'Failed to check for updates: ' + (err.message || 'Unknown error'),
+        'danger',
+        3000,
+      );
+    } finally {
+      checkUpdatesBtn.textContent = 'Check for Updates';
+      checkUpdatesBtn.removeAttribute('disabled');
+    }
+  });
+
+  // Install update button (VAL-UPDT-004, VAL-UPDT-005, VAL-UPDT-006, VAL-UPDT-007)
+  const installUpdateBtn = document.getElementById('install-update-btn');
+  installUpdateBtn?.addEventListener('click', async () => {
+    const version = installUpdateBtn.dataset.version;
+    const changelog = installUpdateBtn.dataset.changelog || '';
+
+    // Show confirmation dialog
+    if (
+      !confirm(
+        `Install FarmPal v${version}?\n\nA backup will be created automatically before the update.\n\nThe service will restart after the update.`,
+      )
+    ) {
+      return;
     }
 
-    checkUpdatesBtn.textContent = 'Check for Updates';
-    checkUpdatesBtn.removeAttribute('disabled');
-    showToast('You are running the latest version', 'info', 2000);
+    // Show progress modal
+    showUpdateProgressModal(version || 'unknown');
+
+    try {
+      const response = await fetch('http://127.0.0.1:3392/api/update/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          release: {
+            version,
+            changelog,
+            downloadUrl: `https://updates.farmpal.io/releases/v${version}/farmpal.tar.gz`,
+            checksum: 'mock_checksum_for_testing',
+            checksumUrl: `https://updates.farmpal.io/releases/v${version}/SHA256SUMS`,
+            releaseDate: new Date().toISOString(),
+          },
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        updateProgressModal('Restarting...', 100);
+        showToast(
+          `FarmPal v${version} installed successfully!`,
+          'success',
+          5000,
+        );
+        setTimeout(() => {
+          closeUpdateProgressModal();
+          // Refresh page to show new version
+          window.location.reload();
+        }, 3000);
+      } else {
+        updateProgressModal(
+          'Update failed: ' + (result.error || 'Unknown error'),
+          -1,
+        );
+        showToast(
+          'Update failed: ' + (result.error || 'Unknown error'),
+          'danger',
+          5000,
+        );
+      }
+    } catch (err: any) {
+      updateProgressModal(
+        'Update failed: ' + (err.message || 'Unknown error'),
+        -1,
+      );
+      showToast(
+        'Update failed: ' + (err.message || 'Unknown error'),
+        'danger',
+        5000,
+      );
+    }
   });
+
+  // Rollback button (VAL-UPDT-011)
+  const rollbackBtn = document.getElementById('rollback-btn');
+  rollbackBtn?.addEventListener('click', async () => {
+    if (
+      !confirm(
+        'Rollback to the previous version?\n\nThe current version will be replaced and FarmPal will restart.',
+      )
+    ) {
+      return;
+    }
+
+    rollbackBtn.setAttribute('disabled', '');
+
+    try {
+      const response = await fetch(
+        'http://127.0.0.1:3392/api/update/rollback',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast('Rollback initiated. Restarting...', 'success', 3000);
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } else {
+        showToast(
+          'Rollback failed: ' + (result.error || 'Unknown error'),
+          'danger',
+          5000,
+        );
+        rollbackBtn.removeAttribute('disabled');
+      }
+    } catch (err: any) {
+      showToast(
+        'Rollback failed: ' + (err.message || 'Unknown error'),
+        'danger',
+        5000,
+      );
+      rollbackBtn.removeAttribute('disabled');
+    }
+  });
+
+  // Show update history button
+  const showHistoryBtn = document.getElementById('show-update-history-btn');
+  showHistoryBtn?.addEventListener('click', async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:3392/api/update/history');
+      const data = await response.json();
+
+      showUpdateHistoryModal(data.history || []);
+    } catch (err: any) {
+      showToast('Failed to load update history', 'danger', 3000);
+    }
+  });
+
+  // Load initial update status
+  loadUpdateStatus();
 
   // Backup button
   const backupBtn = document.getElementById('backup-now-btn');
@@ -1413,6 +1695,102 @@ function injectSettingsStyles(): void {
   font-size: 12px;
   font-weight: 500;
 }
+.badge-red {
+  background: var(--color-danger, #F85149);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Update system styles (VAL-UPDT-001 through VAL-UPDT-012) */
+.update-info-card {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-top: var(--space-2);
+}
+.update-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.update-offline-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.update-offline-banner svg {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+.changelog-details {
+  margin-top: var(--space-3);
+}
+.changelog-summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  user-select: none;
+  padding: var(--space-2) 0;
+}
+.changelog-summary:hover {
+  color: var(--text-primary);
+}
+.changelog-content {
+  padding: var(--space-3);
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: var(--space-2);
+}
+.changelog-content h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2) 0;
+}
+.changelog-content h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: var(--space-3) 0 var(--space-1) 0;
+}
+.changelog-content li {
+  margin-left: var(--space-4);
+  margin-bottom: var(--space-1);
+}
+.settings-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: var(--space-4) 0;
+}
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.btn-ghost:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
 
 /* License modal */
 .license-hardware-id {
@@ -1431,4 +1809,413 @@ function injectSettingsStyles(): void {
 }
 `;
   document.head.appendChild(style);
+}
+
+// ============================================================
+// Update System Helper Functions (VAL-UPDT-001 through VAL-UPDT-012)
+// ============================================================
+
+/**
+ * Load initial update status on page load
+ */
+async function loadUpdateStatus(): Promise<void> {
+  try {
+    const response = await fetch('http://127.0.0.1:3392/api/update/status');
+    const data = await response.json();
+
+    // Update current version display
+    const currentVersionEl = document.getElementById('current-version');
+    if (currentVersionEl)
+      currentVersionEl.textContent = data.currentVersion || 'Unknown';
+
+    // Hide all sections first
+    document.getElementById('update-available-section')!.style.display = 'none';
+    document.getElementById('update-offline-section')!.style.display = 'none';
+    document.getElementById('update-no-available-section')!.style.display =
+      'none';
+    document.getElementById('update-badge')!.style.display = 'none';
+    document.getElementById('rollback-section')!.style.display = 'none';
+
+    if (data.status === 'offline') {
+      document.getElementById('update-offline-section')!.style.display =
+        'block';
+      const installBtn = document.getElementById(
+        'install-update-btn',
+      ) as HTMLButtonElement | null;
+      if (installBtn) installBtn.disabled = true;
+    } else if (data.status === 'available' || data.status === 'prerelease') {
+      document.getElementById('update-available-section')!.style.display =
+        'block';
+      document.getElementById('update-badge')!.style.display = 'inline';
+
+      const availableVersionEl = document.getElementById('available-version');
+      if (availableVersionEl)
+        availableVersionEl.textContent = data.availableVersion || '-';
+
+      const changelogEl = document.getElementById('changelog-content');
+      if (changelogEl && data.changelog) {
+        changelogEl.innerHTML = formatChangelog(data.changelog);
+      }
+
+      const badgeEl = document.getElementById('update-version-badge');
+      if (badgeEl)
+        badgeEl.textContent = data.status === 'prerelease' ? 'Beta' : 'New';
+
+      const installBtn = document.getElementById(
+        'install-update-btn',
+      ) as HTMLButtonElement | null;
+      if (installBtn) {
+        installBtn.disabled = false;
+        installBtn.dataset.version = data.availableVersion || '';
+        installBtn.dataset.changelog = data.changelog || '';
+      }
+    } else if (data.status === 'none') {
+      document.getElementById('update-no-available-section')!.style.display =
+        'block';
+    }
+
+    // Show rollback section if available
+    if (data.canRollback) {
+      document.getElementById('rollback-section')!.style.display = 'block';
+    }
+
+    // Show last checked time if available
+    if (data.lastChecked) {
+      const lastCheckedEl = document.getElementById('last-checked-time');
+      if (lastCheckedEl) {
+        const date = new Date(data.lastChecked);
+        lastCheckedEl.textContent = date.toLocaleString();
+        document.getElementById('update-last-checked')!.style.display = 'block';
+      }
+    }
+  } catch {
+    // Silently fail - user can click "Check for Updates" to retry
+  }
+}
+
+/**
+ * Format changelog markdown to HTML (simplified)
+ */
+function formatChangelog(changelog: string): string {
+  if (!changelog) return '';
+
+  return changelog
+    .replace(/^# (.*$)/gim, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gim, '<h4>$1</h4>')
+    .replace(/^- (.*$)/gim, '<li>$1</li>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br/>');
+}
+
+/**
+ * Show the update progress modal (VAL-UPDT-006)
+ */
+function showUpdateProgressModal(version: string): void {
+  // Remove existing modal if any
+  closeUpdateProgressModal();
+
+  const modal = document.createElement('div');
+  modal.id = 'update-progress-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-panel" style="max-width:420px;">
+      <div class="modal-header">
+        <h2>Installing FarmPal v${escapeHtml(version)}</h2>
+      </div>
+      <div class="modal-body">
+        <div class="update-progress-steps">
+          <div class="progress-step" id="step-backup">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Backing up...</span>
+          </div>
+          <div class="progress-step" id="step-download">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Downloading...</span>
+          </div>
+          <div class="progress-step" id="step-verify">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Verifying...</span>
+          </div>
+          <div class="progress-step" id="step-install">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Installing...</span>
+          </div>
+          <div class="progress-step" id="step-restart">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Restarting...</span>
+          </div>
+          <div class="progress-step" id="step-health">
+            <div class="step-icon pending">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="step-label">Health check...</span>
+          </div>
+        </div>
+        <div class="progress-bar-container" id="progress-bar-container">
+          <div class="progress-bar" id="update-progress-bar" style="width:0%"></div>
+        </div>
+        <p class="progress-message" id="progress-message">Preparing update...</p>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Add modal styles
+  const style = document.createElement('style');
+  style.textContent = `
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .modal-panel {
+      background: var(--bg-secondary, #161B22);
+      border-radius: 12px;
+      border: 1px solid var(--border, #30363D);
+      padding: 24px;
+      width: 90%;
+      max-width: 480px;
+    }
+    .modal-header h2 {
+      margin: 0 0 20px 0;
+      font-size: 18px;
+      color: var(--text-primary, #F0F6FC);
+    }
+    .update-progress-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .progress-step {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .step-icon {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .step-icon.pending svg {
+      color: var(--text-tertiary, #484F58);
+    }
+    .step-icon.active svg {
+      color: var(--accent, #388BFD);
+      animation: pulse 1s infinite;
+    }
+    .step-icon.complete svg {
+      color: var(--color-success, #2EA043);
+    }
+    .step-icon.failed svg {
+      color: var(--color-danger, #F85149);
+    }
+    .step-label {
+      color: var(--text-secondary, #8B949E);
+      font-size: 14px;
+    }
+    .step-label.active {
+      color: var(--text-primary, #F0F6FC);
+    }
+    .step-label.complete {
+      color: var(--color-success, #2EA043);
+    }
+    .step-label.failed {
+      color: var(--color-danger, #F85149);
+    }
+    .progress-bar-container {
+      height: 6px;
+      background: var(--bg-tertiary, #21262D);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .progress-bar {
+      height: 100%;
+      background: var(--accent, #388BFD);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+    .progress-message {
+      text-align: center;
+      color: var(--text-secondary, #8B949E);
+      font-size: 13px;
+      margin: 0;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+/**
+ * Update the progress modal with current step and message
+ */
+function updateProgressModal(message: string, percent: number): void {
+  const messageEl = document.getElementById('progress-message');
+  if (messageEl) messageEl.textContent = message;
+
+  const barEl = document.getElementById('update-progress-bar');
+  if (barEl) barEl.style.width = percent >= 0 ? `${percent}%` : '0%';
+
+  // Update step icons based on progress
+  const steps = [
+    'backup',
+    'download',
+    'verify',
+    'install',
+    'restart',
+    'health',
+  ];
+  const stepPercent = percent >= 0 ? percent : 0;
+  const completedSteps = Math.floor(stepPercent / (100 / steps.length));
+
+  steps.forEach((step, index) => {
+    const stepEl = document.getElementById(`step-${step}`);
+    if (!stepEl) return;
+
+    const iconEl = stepEl.querySelector('.step-icon') as HTMLElement;
+    const labelEl = stepEl.querySelector('.step-label') as HTMLElement;
+
+    if (index < completedSteps) {
+      iconEl.className = 'step-icon complete';
+      iconEl.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+      labelEl.className = 'step-label complete';
+    } else if (index === completedSteps) {
+      iconEl.className = 'step-icon active';
+      iconEl.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+      labelEl.className = 'step-label active';
+    } else {
+      iconEl.className = 'step-icon pending';
+      iconEl.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+      labelEl.className = 'step-label';
+    }
+  });
+
+  // If failed, show error state on all remaining steps
+  if (percent < 0) {
+    steps.forEach((step, index) => {
+      if (index >= completedSteps) {
+        const stepEl = document.getElementById(`step-${step}`);
+        if (!stepEl) return;
+        const iconEl = stepEl.querySelector('.step-icon') as HTMLElement;
+        const labelEl = stepEl.querySelector('.step-label') as HTMLElement;
+        iconEl.className = 'step-icon failed';
+        iconEl.innerHTML =
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        labelEl.className = 'step-label failed';
+      }
+    });
+  }
+}
+
+/**
+ * Close the update progress modal
+ */
+function closeUpdateProgressModal(): void {
+  const modal = document.getElementById('update-progress-modal');
+  if (modal) modal.remove();
+}
+
+/**
+ * Show update history modal (VAL-VERS-003)
+ */
+function showUpdateHistoryModal(
+  history: Array<{
+    fromVersion: string;
+    toVersion: string;
+    triggeredBy: string;
+    trigger: string;
+    status: string;
+    startedAt: string;
+    completedAt?: string;
+    errorMessage?: string;
+  }>,
+): void {
+  // Remove existing modal if any
+  const existingModal = document.getElementById('update-history-modal');
+  if (existingModal) existingModal.remove();
+
+  const historyRows =
+    history.length === 0
+      ? '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-tertiary);">No update history yet</td></tr>'
+      : history
+          .map(
+            (entry) => `
+        <tr>
+          <td class="mono">v${escapeHtml(entry.fromVersion)} → v${escapeHtml(entry.toVersion)}</td>
+          <td><span class="badge ${entry.status === 'success' ? 'badge-green' : entry.status === 'rolled_back' ? 'badge-amber' : 'badge-red'}">${entry.status}</span></td>
+          <td>${escapeHtml(entry.triggeredBy)}</td>
+          <td>${new Date(entry.startedAt).toLocaleDateString()}</td>
+        </tr>
+      `,
+          )
+          .join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'update-history-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-panel" style="max-width:600px;">
+      <div class="modal-header">
+        <h2>Update History</h2>
+        <button class="modal-close" id="close-history-modal" style="background:none;border:none;color:var(--text-primary);cursor:pointer;font-size:20px;padding:4px;">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height:400px;overflow-y:auto;">
+        <table class="settings-table" style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);">
+              <th style="text-align:left;padding:8px;">Version</th>
+              <th style="text-align:left;padding:8px;">Status</th>
+              <th style="text-align:left;padding:8px;">Type</th>
+              <th style="text-align:left;padding:8px;">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${historyRows}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Add close handler
+  document
+    .getElementById('close-history-modal')
+    ?.addEventListener('click', () => {
+      modal.remove();
+    });
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
 }

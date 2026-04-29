@@ -147,6 +147,9 @@ export function runMigrations(): void {
 
   // Security: Initialize rate limit database tables (VAL-SEC-010)
   initRateLimitDatabase();
+
+  // Update System: Initialize update history table (VAL-UPDT-003, VAL-VERS-003)
+  initUpdateHistoryTable();
 }
 
 // Session database tables for admin authentication
@@ -190,5 +193,27 @@ function initRateLimitDatabase(): void {
     `);
   } catch {
     /* tables may already exist */
+  }
+}
+
+// Update System: update history table (VAL-UPDT-003, VAL-VERS-003)
+function initUpdateHistoryTable(): void {
+  const db = getDb();
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS hal_update_history (
+        id TEXT PRIMARY KEY,
+        from_version TEXT NOT NULL,
+        to_version TEXT NOT NULL,
+        triggered_by TEXT NOT NULL,
+        trigger TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error_message TEXT,
+        started_at TEXT NOT NULL,
+        completed_at TEXT
+      )
+    `);
+  } catch {
+    /* table may already exist */
   }
 }
