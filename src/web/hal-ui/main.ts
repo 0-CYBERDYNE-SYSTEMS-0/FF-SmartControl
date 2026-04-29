@@ -15,6 +15,7 @@ import { showToast } from './components/Toast.js';
 import { renderDashboard } from './views/Dashboard.js';
 import { renderDevices } from './views/Devices.js';
 import { renderSensors } from './views/Sensors.js';
+import { renderSystemView } from './views/System.js';
 import { renderDecisions } from './views/Decisions.js';
 import { renderCameras } from './views/Cameras.js';
 import { renderTerminalView } from './views/Terminal.js';
@@ -38,7 +39,7 @@ const views: Record<ViewId, AsyncViewRenderer> = {
   decisions: renderDecisions,
   cameras: renderCameras,
   safety: renderSafety,
-  system: renderDashboard,
+  system: renderSystemView,
   terminal: renderTerminalView,
   calibration: renderCalibration,
   settings: renderSettings,

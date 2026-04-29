@@ -63,7 +63,7 @@
     formatSensorValue: () => formatSensorValue,
     formatTimeValue: () => formatTimeValue,
     getStore: () => getStore,
-    setStore: () => setStore,
+    setStore: () => setStore2,
     subscribe: () => subscribe,
     tempUnit: () => tempUnit,
     themeDefinitions: () => themeDefinitions,
@@ -72,7 +72,7 @@
   function getStore() {
     return state;
   }
-  function setStore(partial) {
+  function setStore2(partial) {
     state = { ...state, ...partial };
     listeners.forEach((l) => l());
   }
@@ -400,7 +400,7 @@
     toggle?.addEventListener("click", () => {
       const sidebar = document.getElementById("hal-sidebar");
       const collapsed = sidebar?.classList.toggle("collapsed");
-      setStore({ sidebarCollapsed: !!collapsed });
+      setStore2({ sidebarCollapsed: !!collapsed });
     });
     document.addEventListener("click", (e) => {
       const sidebar = document.getElementById("hal-sidebar");
@@ -8049,7 +8049,7 @@ ${result.failures.join("\n")}`
     unitToggle?.addEventListener("click", () => {
       const store = getStore();
       const newSystem = store.unitSystem === "metric" ? "imperial" : "metric";
-      setStore({ unitSystem: newSystem });
+      setStore2({ unitSystem: newSystem });
       unitToggle.textContent = newSystem === "metric" ? "\xB0C" : "\xB0F";
       void loadData(sensors);
     });
@@ -8057,7 +8057,7 @@ ${result.failures.join("\n")}`
     timeFormatToggle?.addEventListener("click", () => {
       const store = getStore();
       const newFormat = store.timeFormat === "24h" ? "12h" : "24h";
-      setStore({ timeFormat: newFormat });
+      setStore2({ timeFormat: newFormat });
       timeFormatToggle.textContent = newFormat === "24h" ? "24H" : "12H";
       void loadData(sensors);
     });
@@ -8137,7 +8137,7 @@ ${result.failures.join("\n")}`
       syncMetricPills();
       const zoneLayers = viewState.activeZone ? layers.filter((l) => l.zoneName === viewState.activeZone) : layers;
       viewState.decisions = decisions;
-      renderHeroChart2(zoneLayers, decisions, sequence);
+      renderHeroChart2(zoneLayers, decisions);
       renderDetailTable(zoneLayers);
       updatePillValues(zoneLayers);
       renderHorizonStrips(zoneLayers);
@@ -8277,7 +8277,7 @@ ${result.failures.join("\n")}`
   function escapeAttr2(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-  function renderHeroChart2(layers, _decisions = [], expectedSequence) {
+  function renderHeroChart2(layers, _decisions = []) {
     const container = document.getElementById("hero-chart");
     const legend = document.getElementById("hero-legend");
     if (!container) return;
@@ -8297,17 +8297,22 @@ ${result.failures.join("\n")}`
       list.push(layer);
       metricGroups.set(layer.metric.key, list);
     }
-    const lakeLayers = [];
+    const dualLayers = [];
     for (const [metricKey, metricLayers] of metricGroups) {
       if (metricLayers.length === 0) continue;
       const cfg = metricLayers[0].metric;
       let axisMin = cfg.minAxis;
       let axisMax = cfg.maxAxis;
-      if (metricKey === "temperature" && store.unitSystem === "imperial") {
-        axisMin = axisMin * 9 / 5 + 32;
-        axisMax = axisMax * 9 / 5 + 32;
+      let unit = cfg.fallbackUnit;
+      if (metricKey === "temperature") {
+        if (store.unitSystem === "imperial") {
+          axisMin = axisMin * 9 / 5 + 32;
+          axisMax = axisMax * 9 / 5 + 32;
+          unit = "\xB0F";
+        } else {
+          unit = "\xB0C";
+        }
       }
-      const vSpan = Math.max(1, axisMax - axisMin);
       const timeMap = /* @__PURE__ */ new Map();
       for (const l of metricLayers) {
         for (const d of l.data) {
@@ -8321,26 +8326,32 @@ ${result.failures.join("\n")}`
       }
       const merged = Array.from(timeMap.entries()).sort((a, b) => a[0] - b[0]).map(([t, vals]) => ({
         t,
-        // Normalize to 0-1 range for lake chart
-        v: Math.max(0, Math.min(1, (vals.reduce((a, b) => a + b, 0) / vals.length - axisMin) / vSpan))
+        v: vals.reduce((a, b) => a + b, 0) / vals.length
       }));
-      lakeLayers.push({
+      dualLayers.push({
         label: cfg.label,
         color: cfg.color,
+        minAxis: axisMin,
+        maxAxis: axisMax,
+        unit,
         data: merged
       });
     }
     try {
-      if (expectedSequence !== void 0 && expectedSequence !== loadSequence)
-        return;
-      renderLakeChart(lakeLayers, "hero-chart", { showLegend: true });
+      const title = dualLayers.map((l) => l.label).join(" + ") || "Sensor Data";
+      renderDualAxisCard(dualLayers, "hero-chart", {
+        title,
+        subtitle: viewState.range + " range",
+        showStats: true,
+        showGrid: true
+      });
     } catch (err) {
-      const container2 = document.getElementById("hero-chart");
-      if (container2) container2.innerHTML = `<div class="chart-empty">Chart error</div>`;
-      console.error("Lake chart render failed:", err);
+      const heroContainer = document.getElementById("hero-chart");
+      if (heroContainer) heroContainer.innerHTML = `<div class="chart-empty">Chart error</div>`;
+      console.error("Dual-axis chart render failed:", err);
     }
     if (legend) {
-      legend.innerHTML = lakeLayers.map((l) => `
+      legend.innerHTML = dualLayers.map((l) => `
         <span class="legend-item" style="--metric-color:${l.color}">
           <span class="legend-dot"></span>
           ${escapeHtml9(l.label)}
@@ -9296,6 +9307,209 @@ ${result.failures.join("\n")}`
         decisions: []
       };
       loadSequence = 0;
+    }
+  });
+
+  // src/web/hal-ui/views/System.ts
+  function getRangeBounds2(range) {
+    const now = /* @__PURE__ */ new Date();
+    const to = now.toISOString();
+    let from;
+    switch (range) {
+      case "1H":
+        from = new Date(now.getTime() - 60 * 60 * 1e3);
+        break;
+      case "6H":
+        from = new Date(now.getTime() - 6 * 60 * 60 * 1e3);
+        break;
+      case "24H":
+        from = new Date(now.getTime() - 24 * 60 * 60 * 1e3);
+        break;
+      case "7D":
+        from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1e3);
+        break;
+      case "30D":
+        from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1e3);
+        break;
+    }
+    return { from: from.toISOString(), to };
+  }
+  async function renderSystemView(container) {
+    const store = getStore();
+    const sensors = store.devices.filter((d) => d.type === "sensor");
+    container.innerHTML = `
+    <div class="sensors-hero">
+      <div class="sensors-hero-header">
+        <div class="sensors-hero-title">
+          <h1 class="page-title">System</h1>
+          <p class="page-subtitle">System overview</p>
+        </div>
+        <div class="sensors-hero-controls">
+          <div class="time-range-group" role="group">
+            ${["1H", "6H", "24H", "7D", "30D"].map(
+      (r) => `<button class="hal-range-btn ${r === systemViewRange ? "active" : ""}" data-range="${r}">${r}</button>`
+    ).join("")}
+          </div>
+          <button class="hal-range-btn" id="unit-toggle">${store.unitSystem === "metric" ? "\xB0C" : "\xB0F"}</button>
+        </div>
+      </div>
+
+      <div class="metric-bar" id="metric-bar">
+        ${systemMetrics.map((m) => `
+            <div class="metric-pill active" style="--metric-color:${m.color}">
+              <span class="pill-dot"></span>
+              <span class="pill-label">${m.shortLabel}</span>
+              <span class="pill-value" id="pill-${m.key}">--</span>
+            </div>
+          `).join("")}
+      </div>
+
+      <div class="hero-chart-wrap">
+        <div id="hero-chart" class="hero-chart">
+          <div class="chart-empty">Loading...</div>
+        </div>
+        <div class="hero-legend" id="hero-legend"></div>
+      </div>
+
+      <div class="sensor-detail-drawer">
+        <h3 class="section-title">Device Status</h3>
+        <div id="device-status-grid" class="device-mini-grid">
+          ${sensors.map((s) => `
+            <div class="device-mini-card ${s.online ? "online" : "offline"}">
+              <div class="device-mini-name">${s.name}</div>
+              <div class="device-mini-meta text-xs text-secondary">${s.protocol}</div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+    container.querySelectorAll(".hal-range-btn[data-range]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const range = btn.dataset.range;
+        if (range) {
+          systemViewRange = range;
+          container.querySelectorAll(".hal-range-btn[data-range]").forEach((b) => {
+            b.classList.toggle("active", b === btn);
+          });
+          void loadSystemData();
+        }
+      });
+    });
+    const unitToggle = document.getElementById("unit-toggle");
+    if (unitToggle) {
+      unitToggle.addEventListener("click", () => {
+        setStore({ unitSystem: store.unitSystem === "metric" ? "imperial" : "metric" });
+        unitToggle.textContent = store.unitSystem === "metric" ? "\xB0C" : "\xB0F";
+        void loadSystemData();
+      });
+    }
+    await loadSystemData();
+  }
+  async function loadSystemData() {
+    const store = getStore();
+    const sensors = store.devices.filter((d) => d.type === "sensor");
+    const { from, to } = getRangeBounds2(systemViewRange);
+    const heroChart = document.getElementById("hero-chart");
+    if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
+    try {
+      const layers = [];
+      await Promise.all(
+        sensors.flatMap(
+          (device) => systemMetrics.map(async (metric) => {
+            const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
+            if (data.length > 0) {
+              const timeMap = /* @__PURE__ */ new Map();
+              for (const d of data) {
+                const t = new Date(d.timestamp).getTime();
+                const bucket = Math.floor(t / 6e4) * 6e4;
+                const converted = formatSensorValue(d.value, metric.key, store.unitSystem).value;
+                const list = timeMap.get(bucket) || [];
+                list.push(converted);
+                timeMap.set(bucket, list);
+              }
+              const merged = Array.from(timeMap.entries()).sort((a, b) => a[0] - b[0]).map(([t, vals]) => ({
+                t,
+                v: vals.reduce((a, b) => a + b, 0) / vals.length
+              }));
+              layers.push({
+                label: `${device.name} ${metric.label}`,
+                color: metric.color,
+                data: merged
+              });
+              if (data.length > 0) {
+                const latest = data[data.length - 1];
+                const pill = document.getElementById(`pill-${metric.key}`);
+                if (pill) {
+                  const converted = formatSensorValue(latest.value, metric.key, store.unitSystem);
+                  pill.textContent = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
+                }
+              }
+            }
+          })
+        )
+      );
+      if (layers.length === 0) {
+        if (heroChart) heroChart.innerHTML = '<div class="chart-empty">No sensor data</div>';
+        return;
+      }
+      renderStackedAreaChart(layers, "hero-chart", { showLegend: true });
+    } catch (err) {
+      console.error("System view load failed:", err);
+      if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
+    }
+  }
+  function injectSystemStyles() {
+    if (document.getElementById("hal-system-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-system-styles";
+    style.textContent = `
+    .sensors-hero { padding: var(--space-md); }
+    .sensors-hero-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-md); }
+    .sensors-hero-title .page-title { margin: 0; font-size: 24px; }
+    .sensors-hero-title .page-subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
+    .sensors-hero-controls { display: flex; gap: var(--space-sm); align-items: center; }
+    .hero-chart-wrap { margin-bottom: var(--space-md); }
+    .hero-chart { min-height: 300px; background: var(--surface-secondary); border-radius: var(--radius-md); border: 1px solid var(--border); }
+    .hero-chart .chart-empty { min-height: 300px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
+    .hero-legend { display: flex; flex-wrap: wrap; gap: var(--space-sm); padding: var(--space-sm) 0; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--metric-color); }
+    .metric-bar { display: flex; gap: var(--space-sm); margin-bottom: var(--space-md); }
+    .metric-pill { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--surface-secondary); border: 1px solid var(--border); border-radius: var(--radius-pill); font-size: 12px; }
+    .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--metric-color); }
+    .pill-label { font-weight: 500; }
+    .pill-value { font-family: var(--font-mono); color: var(--text-primary); }
+    .sensor-detail-drawer { padding: var(--space-md); background: var(--surface-secondary); border-radius: var(--radius-md); border: 1px solid var(--border); }
+    .device-mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-sm); margin-top: var(--space-md); }
+    .device-mini-card { padding: var(--space-sm); background: var(--surface-tertiary); border-radius: var(--radius-sm); border: 1px solid var(--border); border-left: 3px solid var(--border); }
+    .device-mini-card.online { border-left-color: var(--accent); }
+    .device-mini-card.offline { border-left-color: var(--danger); }
+    .device-mini-name { font-size: 12px; font-weight: 500; }
+    .device-mini-meta { font-size: 10px; margin-top: 2px; }
+    @media (max-width: 768px) {
+      .sensors-hero-header { flex-direction: column; gap: var(--space-sm); }
+      .sensors-hero-controls { width: 100%; }
+      .metric-bar { overflow-x: auto; padding-bottom: var(--space-sm); }
+    }
+  `;
+    document.head.appendChild(style);
+  }
+  var systemMetrics, systemViewRange;
+  var init_System = __esm({
+    "src/web/hal-ui/views/System.ts"() {
+      "use strict";
+      init_store();
+      init_api();
+      init_ChartKit();
+      init_store();
+      systemMetrics = [
+        { key: "temperature", label: "Temperature", shortLabel: "Temp", fallbackUnit: "\xB0C", color: "#F59E0B", description: "Air / probe temperature", minAxis: 10, maxAxis: 40 },
+        { key: "humidity", label: "Humidity", shortLabel: "RH", fallbackUnit: "%", color: "#38BDF8", description: "Relative humidity", minAxis: 0, maxAxis: 100 },
+        { key: "co2", label: "CO\u2082", shortLabel: "CO\u2082", fallbackUnit: "ppm", color: "#22C55E", description: "Carbon dioxide", minAxis: 0, maxAxis: 2e3 }
+      ];
+      systemViewRange = "24H";
+      injectSystemStyles();
     }
   });
 
@@ -17792,12 +18006,12 @@ The service will restart after the update.`
     startUptimeCounter();
   }
   function handleThemeChange(theme) {
-    setStore({ theme });
+    setStore2({ theme });
     applyTheme(theme);
     showToast(`Theme: ${theme}`, "info", 2e3);
   }
   function handleLayoutChange(layout) {
-    setStore({ layout });
+    setStore2({ layout });
     showToast(`Layout: ${layout.toUpperCase()}`, "info", 2e3);
     render2();
   }
@@ -17815,7 +18029,7 @@ The service will restart after the update.`
       history.replaceState(null, "", newHash);
     }
     updateHeaderViewLabel("settings");
-    setStore({ activeView: "settings" });
+    setStore2({ activeView: "settings" });
     render2();
   }
   async function handleViewChange(viewId) {
@@ -17824,7 +18038,7 @@ The service will restart after the update.`
       history.replaceState(null, "", newHash);
     }
     updateHeaderViewLabel(viewId);
-    setStore({ activeView: viewId });
+    setStore2({ activeView: viewId });
     await render2();
   }
   function updateHeaderViewLabel(viewId) {
@@ -17864,7 +18078,7 @@ The service will restart after the update.`
       item.classList.toggle("active", item.getAttribute("data-view") === viewId);
     });
     updateHeaderViewLabel(viewId);
-    setStore({ activeView: viewId });
+    setStore2({ activeView: viewId });
     render2();
   }
   function getInitialView() {
@@ -17902,7 +18116,7 @@ The service will restart after the update.`
         })),
         halApi.getAutomationPending().catch(() => [])
       ]);
-      setStore({
+      setStore2({
         devices: halState.devices,
         sensors: halState.sensorSnapshots,
         cameras: halState.devices.filter((device) => device.type === "camera"),
@@ -17932,7 +18146,7 @@ The service will restart after the update.`
   function startUptimeCounter() {
     setInterval(() => {
       const uptime = Math.floor((Date.now() - pageLoadTime) / 1e3);
-      setStore({ uptime });
+      setStore2({ uptime });
       const uptimeEl = document.querySelector(
         "[data-dashboard-uptime]"
       );
@@ -17961,6 +18175,7 @@ The service will restart after the update.`
       init_Dashboard();
       init_Devices();
       init_Sensors();
+      init_System();
       init_Decisions();
       init_Cameras();
       init_Terminal2();
@@ -17978,7 +18193,7 @@ The service will restart after the update.`
         decisions: renderDecisions,
         cameras: renderCameras,
         safety: renderSafety,
-        system: renderDashboard,
+        system: renderSystemView,
         terminal: renderTerminalView,
         calibration: renderCalibration,
         settings: renderSettings

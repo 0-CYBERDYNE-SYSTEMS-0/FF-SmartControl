@@ -10,7 +10,7 @@ import {
   formatDateTimeValue,
 } from '../store.js';
 import { halApi, HalSensorReading, HalDecision } from '../api.js';
-import { renderLakeChart } from '../components/ChartKit.js';
+import { renderDualAxisCard, type DualAxisLayer } from '../components/ChartKit.js';
 
 type MetricKey =
   | 'temperature'
@@ -602,23 +602,24 @@ function renderHeroChart(
     metricGroups.set(layer.metric.key, list);
   }
 
-  // Build LakeLayer[] — one entry per metric, normalized to 0-1, averaged across devices
-  const lakeLayers: Array<{
-    label: string;
-    color: string;
-    data: Array<{ t: number; v: number }>;
-  }> = [];
+  // Build DualAxisLayer[] — one entry per metric with actual values and unit
+  const dualLayers: DualAxisLayer[] = [];
 
   for (const [metricKey, metricLayers] of metricGroups) {
     if (metricLayers.length === 0) continue;
     const cfg = metricLayers[0]!.metric;
     let axisMin = cfg.minAxis;
     let axisMax = cfg.maxAxis;
-    if (metricKey === 'temperature' && store.unitSystem === 'imperial') {
-      axisMin = (axisMin * 9) / 5 + 32;
-      axisMax = (axisMax * 9) / 5 + 32;
+    let unit = cfg.fallbackUnit;
+    if (metricKey === 'temperature') {
+      if (store.unitSystem === 'imperial') {
+        axisMin = (axisMin * 9) / 5 + 32;
+        axisMax = (axisMax * 9) / 5 + 32;
+        unit = '°F';
+      } else {
+        unit = '°C';
+      }
     }
-    const vSpan = Math.max(1, axisMax - axisMin);
 
     // Merge all device data for this metric into one series (average per timestamp)
     const timeMap = new Map<number, number[]>();
@@ -637,28 +638,36 @@ function renderHeroChart(
       .sort((a, b) => a[0] - b[0])
       .map(([t, vals]) => ({
         t,
-        // Normalize to 0-1 range for lake chart
-        v: Math.max(0, Math.min(1, (vals.reduce((a, b) => a + b, 0) / vals.length - axisMin) / vSpan)),
+        v: vals.reduce((a, b) => a + b, 0) / vals.length,
       }));
 
-    lakeLayers.push({
+    dualLayers.push({
       label: cfg.label,
       color: cfg.color,
+      minAxis: axisMin,
+      maxAxis: axisMax,
+      unit,
       data: merged,
     });
   }
 
   try {
-    renderLakeChart(lakeLayers, 'hero-chart', { showLegend: true });
+    const title = dualLayers.map((l) => l.label).join(' + ') || 'Sensor Data';
+    renderDualAxisCard(dualLayers, 'hero-chart', {
+      title,
+      subtitle: viewState.range + ' range',
+      showStats: true,
+      showGrid: true,
+    });
   } catch(err) {
-    const container = document.getElementById('hero-chart');
-    if (container) container.innerHTML = `<div class="chart-empty">Chart error</div>`;
-    console.error('Lake chart render failed:', err);
+    const heroContainer = document.getElementById('hero-chart');
+    if (heroContainer) heroContainer.innerHTML = `<div class="chart-empty">Chart error</div>`;
+    console.error('Dual-axis chart render failed:', err);
   }
 
   // Legend below chart
   if (legend) {
-    legend.innerHTML = lakeLayers
+    legend.innerHTML = dualLayers
       .map((l) => `
         <span class="legend-item" style="--metric-color:${l.color}">
           <span class="legend-dot"></span>
