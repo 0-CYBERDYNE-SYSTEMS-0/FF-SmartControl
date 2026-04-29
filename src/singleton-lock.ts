@@ -59,6 +59,20 @@ export function acquireSingletonLock(lockPath: string): void {
       }
 
       // Stale lock: remove and retry once.
+      // VAL-SVC-026: Stale lock cleaned on startup with log entry
+      logger.info(
+        {
+          lockPath,
+          stalePid: existingPid,
+          staleHostname: existing?.hostname,
+          staleStartedAt: existing?.startedAt,
+        },
+        'Removing stale singleton lock from previous crashed instance',
+      );
+      console.error(
+        `INFO: Removing stale singleton lock from previous crashed instance (pid=${existingPid}).\n` +
+          `Lock file: ${lockPath}\n`,
+      );
       try {
         fs.unlinkSync(lockPath);
       } catch {

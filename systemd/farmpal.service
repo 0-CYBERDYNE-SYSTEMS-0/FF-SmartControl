@@ -1,0 +1,51 @@
+[Unit]
+Description=FarmPal Smart Farm Controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=farmpal
+Group=farmpal
+WorkingDirectory=/opt/farmpal
+ExecStart=/usr/bin/env bash /opt/farmpal/scripts/start.sh start
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+# Hardening directives
+WatchdogSec=30
+ProtectSystem=strict
+NoNewPrivileges=true
+LimitNOFILE=65536
+EnvironmentFile=/opt/farmpal/farmpal.env
+
+# Security: prevent privilege escalation and restrict access
+ProtectHome=read-only
+PrivateTmp=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+MemoryDenyWriteExecute=true
+
+# Allow read-only access to /opt/farmpal only
+ReadOnlyPaths=/opt/farmpal
+ReadWritePaths=/opt/farmpal/data
+ReadWritePaths=/opt/farmpal/logs
+ReadWritePaths=/opt/farmpal/backups
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=farmpal
+
+# Notify systemd when ready
+NotifyAccess=main
+
+[Install]
+WantedBy=multi-user.target

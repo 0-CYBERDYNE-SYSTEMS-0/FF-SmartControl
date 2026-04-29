@@ -1,11 +1,13 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import { getDb } from '../hal/db.js';
 import { halRegistry } from '../hal/registry.js';
 import { halSensors } from '../hal/sensors.js';
 import { halDecisions } from '../hal/decisions.js';
 import { halRelays } from '../hal/relays.js';
+import { mqttSubscriber } from '../hal/mqtt.js';
 import type { MetricType } from '../hal/types.js';
 import { logger } from '../logger.js';
 import { getSimulator } from '../hal/simulator.js';
@@ -88,6 +90,44 @@ export async function startHalUiServer(
     const method = (req.method || 'GET').toUpperCase();
     const url = new URL(req.url || '/', `http://${host}`);
     const requestPath = decodeURIComponent(url.pathname || '/');
+
+    // GET /health — returns health status without requiring auth (VAL-SVC-008, VAL-SVC-009, VAL-SVC-010)
+    if (method === 'GET' && requestPath === '/health') {
+      const uptime_seconds = Math.floor(process.uptime());
+
+      // Check DB connectivity
+      let db = false;
+      try {
+        const database = getDb();
+        database.prepare('SELECT 1').get();
+        db = true;
+      } catch {
+        db = false;
+      }
+
+      // Check HAL registry accessibility
+      let hal = false;
+      try {
+        halRegistry.list();
+        hal = true;
+      } catch {
+        hal = false;
+      }
+
+      // Check MQTT connectivity
+      let mqtt = false;
+      try {
+        // mqttSubscriber.client is the mqtt MqttClient instance
+        mqtt = (mqttSubscriber as any).client?.connected === true;
+      } catch {
+        mqtt = false;
+      }
+
+      const ok = db && hal && mqtt;
+      const statusCode = ok ? 200 : 503;
+      sendJson(res, statusCode, { ok, hal, db, mqtt, uptime_seconds });
+      return;
+    }
 
     // HAL API routes
     if (requestPath.startsWith('/api/hal/')) {
@@ -176,6 +216,40 @@ export async function startHalUiServer(
           return;
         }
         try {
+          // VAL-AUTO-031: Manual override bypasses pending autonomous queue
+          // VAL-AUTO-033: Manual override wins over conflicting autonomous decision
+          // Find and mark any pending autonomous decisions for this device as overridden
+          const { skipPendingDecisionForDevice } =
+            await import('../automation/modes.js');
+          const overriddenIds = skipPendingDecisionForDevice(
+            deviceId,
+            action as 'on' | 'off',
+          );
+
+          // VAL-AUTO-032: Log manual override to safety audit with triggered_by: 'manual_ui'
+          // Capture sensor snapshot for audit entry
+          const { captureSensorSnapshot } =
+            await import('../safety/verifier.js');
+          const { createAuditEntry } = await import('../safety/audit-log.js');
+          const sensorSnapshot = captureSensorSnapshot();
+          // Map UI action ('on'/'off') to proposedAction format ('turn_on'/'turn_off')
+          const proposedAction = action === 'on' ? 'turn_on' : 'turn_off';
+          createAuditEntry({
+            deviceId,
+            proposedAction: proposedAction as 'turn_on' | 'turn_off',
+            verifierResult: 'APPROVED',
+            deniedReason: null,
+            conflictingRuleIds: null,
+            sensorSnapshot,
+            decisionId: null, // Manual action, not from decision loop
+            triggeredBy: 'manual_ui', // VAL-AUTO-032
+            executed: true,
+            executedState: action as 'on' | 'off',
+            interrupted: false,
+            interruptedAtStep: null,
+            revertedSteps: null,
+          });
+
           // In simulator mode, delegate to simulator instead of real hardware
           const sim = getSimulator();
           if (sim) {
@@ -195,7 +269,11 @@ export async function startHalUiServer(
               triggered_by: 'manual_ui', // VAL-DISC-073: manual toggle logged correctly
             });
           }
-          sendJson(res, 200, { ok: true });
+          sendJson(res, 200, {
+            ok: true,
+            overriddenDecisions:
+              overriddenIds.length > 0 ? overriddenIds : undefined,
+          });
         } catch (err: any) {
           sendJson(res, 500, { error: err.message });
         }
@@ -553,7 +631,7 @@ export async function startHalUiServer(
 
       // POST /api/hal/automation/approve — approve a pending decision
       if (apiPath === '/automation/approve' && method === 'POST') {
-        const { approveDecision, getPendingDecision } =
+        const { approveDecision, executePendingDecision } =
           await import('../automation/modes.js');
         let body = '';
         for await (const chunk of req) body += chunk;
@@ -573,7 +651,9 @@ export async function startHalUiServer(
           return;
         }
 
-        sendJson(res, 200, { ok: true, approved: true });
+        // Execute the hardware action after approval
+        const executed = await executePendingDecision(decisionId);
+        sendJson(res, 200, { ok: true, approved: true, executed });
         return;
       }
 
@@ -1315,7 +1395,7 @@ export async function startHalUiServer(
         const recentDenied = db
           .prepare(
             `
-            SELECT sa.*, d.name as device_name
+            SELECT sa.*, d.label as device_name
             FROM hal_safety_audit sa
             LEFT JOIN hal_devices d ON sa.device_id = d.id
             WHERE sa.verifier_result IN ('DENIED', 'DENIED_WITH_REASON')
@@ -2505,6 +2585,20 @@ export async function startHalUiServer(
     // Fallback to index.html for SPA routing
     sendFile(res, path.join(staticDir, 'index.html'), true);
   });
+
+  // Port conflict detection: check if port is already in use before binding
+  // This provides a human-readable error with PID and process name (VAL-SVC-012, VAL-SVC-013)
+  const { isPortAvailable, getPortInfo } = await import('./port-check.js');
+  if (!isPortAvailable(port, bindHost)) {
+    const portInfo = getPortInfo(port, bindHost);
+    const errorMsg = `Port ${port} is already in use by process ${portInfo.pid} (${portInfo.name}). Stop the other instance before starting FarmPal.`;
+    logger.error(
+      { port, pid: portInfo.pid, processName: portInfo.name },
+      errorMsg,
+    );
+    console.error(`FATAL: ${errorMsg}`);
+    process.exit(1);
+  }
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);

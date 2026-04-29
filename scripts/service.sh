@@ -2,8 +2,8 @@
 set -euo pipefail
 
 PROJECT_ROOT="${FFT_NANO_PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-SERVICE_NAME="${FFT_NANO_SERVICE_NAME:-fft-nano}"
-LAUNCHD_LABEL="${FFT_NANO_LAUNCHD_LABEL:-com.fft_nano}"
+SERVICE_NAME="${FFT_NANO_SERVICE_NAME:-farmpal}"
+LAUNCHD_LABEL="${FFT_NANO_LAUNCHD_LABEL:-com.farmpal}"
 LAUNCHD_PLIST="${HOME}/Library/LaunchAgents/${LAUNCHD_LABEL}.plist"
 SYSTEMD_UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 LOG_DIR="${PROJECT_ROOT}/logs"
@@ -191,9 +191,24 @@ linux_install() {
   local service_user
   service_user="${FFT_NANO_SERVICE_USER:-$(id -un)}"
 
-  local tmp_unit
-  tmp_unit="$(mktemp)"
-  cat >"${tmp_unit}" <<EOF
+  # Install from repo's systemd unit file if it exists (with hardening directives)
+  # Otherwise fall back to generating a basic inline unit
+  local repo_unit="${PROJECT_ROOT}/systemd/${SERVICE_NAME}.service"
+  if [[ -f "${repo_unit}" ]]; then
+    # Use the repo's hardened unit file
+    # Substitute the service user in the unit file
+    run_privileged sed -e "s/^User=farmpal$/User=${service_user}/" \
+                       -e "s/^Group=farmpal$/Group=$(id -gn)/" \
+                       -e "s|^WorkingDirectory=/opt/farmpal$|WorkingDirectory=${PROJECT_ROOT}|" \
+                       -e "s|^ExecStart=/usr/bin/env bash /opt/farmpal/scripts/start.sh start$|ExecStart=/usr/bin/env bash ${PROJECT_ROOT}/scripts/start.sh start|" \
+                       "${repo_unit}" > /tmp/farmpal_install_unit.$$.service
+    run_privileged install -m 0644 /tmp/farmpal_install_unit.$$.service "${SYSTEMD_UNIT_PATH}"
+    rm -f /tmp/farmpal_install_unit.$$.service
+  else
+    # Fallback: generate inline unit (no hardening directives)
+    local tmp_unit
+    tmp_unit="$(mktemp)"
+    cat >"${tmp_unit}" <<EOF
 [Unit]
 Description=FFT_nano
 After=network-online.target docker.service
@@ -211,9 +226,10 @@ Environment=NODE_ENV=production
 [Install]
 WantedBy=multi-user.target
 EOF
+    run_privileged install -m 0644 "${tmp_unit}" "${SYSTEMD_UNIT_PATH}"
+    rm -f "${tmp_unit}"
+  fi
 
-  run_privileged install -m 0644 "${tmp_unit}" "${SYSTEMD_UNIT_PATH}"
-  rm -f "${tmp_unit}"
   run_privileged systemctl daemon-reload
   run_privileged systemctl enable --now "${SERVICE_NAME}"
   say "Installed and started systemd service: ${SERVICE_NAME}"
