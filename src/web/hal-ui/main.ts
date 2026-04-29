@@ -47,6 +47,71 @@ const views: Record<ViewId, AsyncViewRenderer> = {
 // Uptime tracking
 let pageLoadTime = Date.now();
 
+// Check network access mode and show warning if LAN-bound without HTTPS (VAL-SEC-052)
+async function checkNetworkWarning(): Promise<void> {
+  try {
+    const response = await fetch('http://127.0.0.1:3392/api/settings/network');
+    if (response.ok) {
+      const data = await response.json();
+      if (data.lanWithoutHttps) {
+        const banner = document.getElementById('lan-warning-banner');
+        if (banner) {
+          banner.innerHTML = `
+            <div class="lan-warning-banner">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span>Warning: FarmPal is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
+              <a href="#settings" class="lan-warning-link">Configure</a>
+            </div>
+          `;
+          // Inject banner styles if not already present
+          injectLanWarningStyles();
+        }
+      }
+    }
+  } catch {
+    // Network settings check failed, ignore
+  }
+}
+
+function injectLanWarningStyles(): void {
+  if (document.getElementById('lan-warning-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'lan-warning-styles';
+  style.textContent = `
+    .lan-warning-banner {
+      background: color-mix(in srgb, var(--color-warning, #D29922) 15%, var(--bg-primary));
+      border-bottom: 1px solid var(--color-warning, #D29922);
+      color: var(--color-warning, #D29922);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .lan-warning-banner svg {
+      flex-shrink: 0;
+    }
+    .lan-warning-banner span {
+      flex: 1;
+    }
+    .lan-warning-link {
+      color: var(--color-warning, #D29922);
+      text-decoration: underline;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .lan-warning-link:hover {
+      opacity: 0.8;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 async function init(): Promise<void> {
   const app = document.getElementById('app');
   if (!app) throw new Error('#app element not found');
@@ -90,11 +155,17 @@ async function init(): Promise<void> {
     <div class="app-layout" id="app-layout">
       ${renderSidebar(initialView, store.sidebarCollapsed)}
       <div class="app-main">
+        <div id="lan-warning-banner"></div>
         <div id="hal-header"></div>
         <main class="main-content" id="view-container"></main>
       </div>
     </div>
   `;
+
+  // Check network access mode and show warning if LAN-bound without HTTPS (VAL-SEC-052)
+  checkNetworkWarning();
+
+  // Render header with initial view label
 
   // Render header with initial view label
   const headerEl = document.getElementById('hal-header')!;

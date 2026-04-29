@@ -23,6 +23,7 @@ import {
   authMiddleware,
   csrfMiddleware,
   parseSessionCookie,
+  validateSession,
   buildSetCookieHeader,
   buildClearSessionHeader,
   buildCsrfCookie,
@@ -30,6 +31,15 @@ import {
   isPasswordSet,
   checkRateLimit,
   getSecurityHeaders,
+  initApiRateLimitDatabase,
+  checkApiRateLimit,
+  recordApiRequest,
+  initSecurityAuditDatabase,
+  logLoginSuccess,
+  logLoginFailure,
+  logCsrfFailure,
+  logRateLimitHit,
+  logAdminAction,
 } from '../security/index.js';
 
 const MIME_TYPES: Record<string, string> = {
@@ -181,6 +191,10 @@ export async function startHalUiServer(
   const bindHost = process.env.HAL_UI_BIND_HOST || host;
   const staticDir = path.resolve(process.cwd(), 'src', 'web', 'hal-ui');
 
+  // Initialize rate limiting and security audit databases
+  initApiRateLimitDatabase();
+  initSecurityAuditDatabase();
+
   // Check if HTTPS is enabled
   const httpsEnabled = process.env.HAL_UI_HTTPS_ENABLED === 'true';
   let server: http.Server | https.Server;
@@ -247,9 +261,53 @@ export async function startHalUiServer(
       if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
         const csrfResult = csrfMiddleware(req);
         if (!csrfResult.valid) {
+          // Log CSRF failure to security audit (VAL-SEC-073)
+          const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+            || (req.headers['x-real-ip'] as string)
+            || req.socket.remoteAddress
+            || 'unknown';
+          logCsrfFailure(
+            authResult.authContext?.session?.id ?? null,
+            ipAddress,
+            req.headers['user-agent'],
+            requestPath,
+          );
           sendCsrfError(res);
           return;
         }
+      }
+
+      // API rate limiting: 100 requests/minute per session (VAL-SEC-061)
+      if (
+        authResult.authContext?.session?.id &&
+        requestPath.startsWith('/api/')
+      ) {
+        const rateLimitResult = checkApiRateLimit(authResult.authContext.session.id);
+        if (!rateLimitResult.allowed) {
+          // Log rate limit hit to security audit (VAL-SEC-074)
+          const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+            || (req.headers['x-real-ip'] as string)
+            || req.socket.remoteAddress
+            || 'unknown';
+          logRateLimitHit(
+            'api',
+            ipAddress,
+            authResult.authContext.session.id,
+            requestPath,
+            100,
+          );
+          res.writeHead(429, {
+            'Content-Type': 'application/json',
+            'Retry-After': String(rateLimitResult.retryAfterSeconds || 60),
+          });
+          res.end(JSON.stringify({
+            error: 'Too many requests. Please try again later.',
+            retryAfterSeconds: rateLimitResult.retryAfterSeconds || 60,
+          }));
+          return;
+        }
+        // Record the request
+        recordApiRequest(authResult.authContext.session.id, requestPath);
       }
     }
 
@@ -259,11 +317,24 @@ export async function startHalUiServer(
 
     // POST /api/auth/login — authenticate and create session (VAL-SEC-001, VAL-SEC-002, VAL-SEC-004, VAL-SEC-010)
     if (requestPath === '/api/auth/login' && method === 'POST') {
+      const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+        || (req.headers['x-real-ip'] as string)
+        || req.socket.remoteAddress
+        || 'unknown';
+      const userAgent = req.headers['user-agent'];
+
       let body = '';
       for await (const chunk of req) body += chunk;
       const parsed = body ? JSON.parse(body) : {};
       const result = await handleLogin(req, parsed);
       if (!result.success) {
+        // Log login failure to security audit (VAL-SEC-071)
+        logLoginFailure(
+          ipAddress,
+          userAgent,
+          parsed.username || 'unknown',
+          result.error || 'Authentication failed',
+        );
         res.writeHead(result.statusCode, {
           'Content-Type': 'application/json',
           ...(result.statusCode === 429 ? { 'Retry-After': '300' } : {}),
@@ -272,6 +343,13 @@ export async function startHalUiServer(
         return;
       }
       if (result.session) {
+        // Log login success to security audit (VAL-SEC-070)
+        logLoginSuccess(
+          result.session.value, // session token is the cookie value
+          'admin', // operator ID
+          ipAddress,
+          userAgent,
+        );
         const cookieHeader = buildSetCookieHeader(result.session);
         const csrfCookie = buildCsrfCookie(result.csrfToken!);
         res.writeHead(200, {
@@ -2843,6 +2921,117 @@ export async function startHalUiServer(
             llmEndpoint: settings['llm_endpoint'] || 'http://localhost:11434',
             llmApiKey: settings['llm_api_key'] || '',
             llmModel: settings['llm_model'] || '',
+          });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // GET /api/settings/network — get network access mode (VAL-SEC-051)
+      if (settingsPath === '/network' && method === 'GET') {
+        try {
+          const { getFarmPalEnvFile } = await import('../first-boot.js');
+          const envPath = getFarmPalEnvFile();
+          let accessMode = 'localhost';
+          let httpsEnabled = false;
+
+          if (fs.existsSync(envPath)) {
+            const envContent = fs.readFileSync(envPath, 'utf-8');
+            const accessModeMatch = envContent.match(/^FFT_NANO_WEB_ACCESS_MODE=(.+)$/m);
+            if (accessModeMatch) {
+              accessMode = accessModeMatch[1].trim();
+            }
+            const httpsMatch = envContent.match(/^HAL_UI_HTTPS_ENABLED=(.+)$/m);
+            if (httpsMatch) {
+              httpsEnabled = httpsMatch[1].trim() === 'true';
+            }
+          }
+
+          sendJson(res, 200, {
+            accessMode,
+            httpsEnabled,
+            // Show warning if LAN-bound without HTTPS
+            lanWithoutHttps: accessMode === 'lan' && !httpsEnabled,
+          });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // PUT /api/settings/network — update network access mode (VAL-SEC-051)
+      // Requires admin auth and CSRF token
+      if (settingsPath === '/network' && method === 'PUT') {
+        // Get session info for audit logging
+        const token = parseSessionCookie(req.headers.cookie);
+        const session = token ? validateSession(token) : null;
+        const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+          || (req.headers['x-real-ip'] as string)
+          || req.socket.remoteAddress
+          || 'unknown';
+        const operatorId = session?.operatorId || 'admin';
+        const sessionId = session?.id || 'unknown';
+
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        const { accessMode } = parsed;
+
+        // Validate accessMode
+        if (!accessMode || !['localhost', 'lan', 'remote'].includes(accessMode)) {
+          sendJson(res, 400, { error: 'accessMode must be localhost, lan, or remote' });
+          return;
+        }
+
+        // Remote (WAN) access requires HTTPS
+        if (accessMode === 'remote') {
+          const { getFarmPalEnvFile } = await import('../first-boot.js');
+          const envPath = getFarmPalEnvFile();
+          let httpsEnabled = false;
+          if (fs.existsSync(envPath)) {
+            const envContent = fs.readFileSync(envPath, 'utf-8');
+            const httpsMatch = envContent.match(/^HAL_UI_HTTPS_ENABLED=(.+)$/m);
+            if (httpsMatch) {
+              httpsEnabled = httpsMatch[1].trim() === 'true';
+            }
+          }
+          if (!httpsEnabled) {
+            sendJson(res, 400, {
+              error: 'WAN access requires HTTPS to be enabled. Enable HTTPS first.',
+            });
+            return;
+          }
+        }
+
+        try {
+          const { getFarmPalEnvFile } = await import('../first-boot.js');
+          const envPath = getFarmPalEnvFile();
+
+          if (fs.existsSync(envPath)) {
+            let envContent = fs.readFileSync(envPath, 'utf-8');
+            const regex = /^FFT_NANO_WEB_ACCESS_MODE=.*$/m;
+            if (regex.test(envContent)) {
+              envContent = envContent.replace(regex, `FFT_NANO_WEB_ACCESS_MODE=${accessMode}`);
+            } else {
+              envContent += `\nFFT_NANO_WEB_ACCESS_MODE=${accessMode}`;
+            }
+            fs.writeFileSync(envPath, envContent);
+          }
+
+          // Log admin action to security audit (VAL-SEC-075)
+          logAdminAction(
+            sessionId,
+            operatorId,
+            'NETWORK_ACCESS_MODE_CHANGE',
+            { oldAccessMode: 'localhost', newAccessMode: accessMode },
+            ipAddress,
+          );
+
+          sendJson(res, 200, {
+            ok: true,
+            accessMode,
+            message: 'Network access mode updated. Restart FarmPal for changes to take effect.',
           });
         } catch (err: any) {
           sendJson(res, 500, { error: err.message });

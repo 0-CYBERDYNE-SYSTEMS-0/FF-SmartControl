@@ -70,6 +70,12 @@ interface SettingsData {
   llmModel: string;
 }
 
+interface NetworkData {
+  accessMode: 'localhost' | 'lan' | 'remote';
+  httpsEnabled: boolean;
+  lanWithoutHttps: boolean;
+}
+
 let settingsData: SettingsData = {
   farmName: 'My Farm',
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -77,6 +83,12 @@ let settingsData: SettingsData = {
   llmEndpoint: 'http://localhost:11434',
   llmApiKey: '',
   llmModel: '',
+};
+
+let networkData: NetworkData = {
+  accessMode: 'localhost',
+  httpsEnabled: false,
+  lanWithoutHttps: false,
 };
 
 let isSaving = false;
@@ -89,7 +101,8 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     // Load LLM settings from halApi (persisted via PUT /api/settings/llm)
     const llmSettings = await halApi.getLlmSettings();
     settingsData.llmProvider = llmSettings.llmProvider || 'ollama';
-    settingsData.llmEndpoint = llmSettings.llmEndpoint || 'http://localhost:11434';
+    settingsData.llmEndpoint =
+      llmSettings.llmEndpoint || 'http://localhost:11434';
     settingsData.llmApiKey = llmSettings.llmApiKey || '';
     settingsData.llmModel = llmSettings.llmModel || '';
   } catch {
@@ -105,6 +118,19 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     // Only clobber llmProvider if halApi failed
     if (!settingsData.llmProvider || settingsData.llmProvider === 'ollama') {
       settingsData.llmProvider = status.llmProvider || 'ollama';
+    }
+  } catch {
+    // Use defaults
+  }
+
+  // Load network settings
+  try {
+    const networkRes = await fetch('http://127.0.0.1:3392/api/settings/network');
+    if (networkRes.ok) {
+      const net = await networkRes.json();
+      networkData.accessMode = net.accessMode || 'localhost';
+      networkData.httpsEnabled = net.httpsEnabled || false;
+      networkData.lanWithoutHttps = net.lanWithoutHttps || false;
     }
   } catch {
     // Use defaults
@@ -346,6 +372,76 @@ function renderSettingsPage(): string {
           </div>
         </section>
 
+        <!-- Network Section (VAL-SEC-050, VAL-SEC-051, VAL-SEC-052, VAL-SEC-053) -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            Network Access
+          </h2>
+          <div class="settings-card">
+            ${networkData.lanWithoutHttps ? `
+            <div class="settings-warning-banner">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span>Warning: FarmPal is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
+            </div>
+            ` : ''}
+            <div class="settings-field">
+              <p class="settings-label">Access Mode</p>
+              <div class="access-mode-grid">
+                <button type="button" class="access-mode-card ${networkData.accessMode === 'localhost' ? 'selected' : ''}" data-access-mode="localhost">
+                  <div class="access-mode-icon">🔒</div>
+                  <div class="access-mode-name">Local Only</div>
+                  <div class="access-mode-desc">Only accessible from this device (127.0.0.1)</div>
+                </button>
+                <button type="button" class="access-mode-card ${networkData.accessMode === 'lan' ? 'selected' : ''}" data-access-mode="lan">
+                  <div class="access-mode-icon">🌐</div>
+                  <div class="access-mode-name">Local Network</div>
+                  <div class="access-mode-desc">Accessible from devices on your LAN (0.0.0.0)</div>
+                </button>
+                <button type="button" class="access-mode-card ${networkData.accessMode === 'remote' ? 'selected' : ''}" data-access-mode="remote" ${!networkData.httpsEnabled ? 'disabled title="HTTPS required for remote access"' : ''}>
+                  <div class="access-mode-icon">🌍</div>
+                  <div class="access-mode-name">Remote Access</div>
+                  <div class="access-mode-desc">Accessible from anywhere (requires HTTPS)</div>
+                </button>
+              </div>
+            </div>
+            <div class="settings-field">
+              <p class="settings-label">HTTPS Status</p>
+              <p class="settings-value">
+                ${networkData.httpsEnabled
+                  ? '<span class="badge badge-green">Enabled</span>'
+                  : '<span class="badge badge-slate">Disabled</span>'}
+                ${!networkData.httpsEnabled && networkData.accessMode === 'remote' ? '<span class="settings-hint-error"> — HTTPS is required for remote access</span>' : ''}
+              </p>
+              <p class="settings-hint">HTTPS is required for remote (WAN) access. Local network access works with or without HTTPS.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Factory Reset Section -->
+        <section class="settings-section">
+          <h2 class="settings-section-title factory-reset-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            Factory Reset
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <p class="settings-label">Reset FarmPal</p>
+              <p class="settings-hint">Completely reset FarmPal to first-boot state. All data will be permanently deleted including sensor history, device configuration, automation rules, and admin password.</p>
+              <div class="settings-actions">
+                <button class="btn btn-danger" id="factory-reset-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                  Factory Reset
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
       </div>
 
       <!-- Save Button -->
@@ -381,6 +477,28 @@ function attachSettingsEvents(): void {
         if (endpointField) {
           endpointField.value = settingsData.llmEndpoint;
         }
+      });
+    });
+
+  // Network access mode selection
+  document
+    .querySelectorAll<HTMLButtonElement>('.access-mode-card')
+    .forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.accessMode as 'localhost' | 'lan' | 'remote';
+        if (!mode) return;
+
+        // Remote access requires HTTPS
+        if (mode === 'remote' && !networkData.httpsEnabled) {
+          showToast('Enable HTTPS first to allow remote access', 'warning', 3000);
+          return;
+        }
+
+        networkData.accessMode = mode;
+        // Update UI
+        document.querySelectorAll('.access-mode-card').forEach((b) => {
+          b.classList.toggle('selected', b.dataset.accessMode === mode);
+        });
       });
     });
 
@@ -475,7 +593,8 @@ function attachSettingsEvents(): void {
   backupBtn?.addEventListener('click', async () => {
     backupBtn.setAttribute('disabled', '');
     const originalText = backupBtn.innerHTML;
-    backupBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"/></svg> Backing up...';
+    backupBtn.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"/></svg> Backing up...';
 
     try {
       const result = await halApi.triggerBackup();
@@ -485,7 +604,11 @@ function attachSettingsEvents(): void {
         showToast('Backup failed', 'danger', 3000);
       }
     } catch (err: any) {
-      showToast('Backup failed: ' + (err.message || 'Unknown error'), 'danger', 3000);
+      showToast(
+        'Backup failed: ' + (err.message || 'Unknown error'),
+        'danger',
+        3000,
+      );
     } finally {
       backupBtn.innerHTML = originalText;
       backupBtn.removeAttribute('disabled');
@@ -496,6 +619,12 @@ function attachSettingsEvents(): void {
   const restoreBtn = document.getElementById('restore-btn');
   restoreBtn?.addEventListener('click', async () => {
     showToast('Restore feature coming soon', 'info', 2000);
+  });
+
+  // Factory Reset button
+  const factoryResetBtn = document.getElementById('factory-reset-btn');
+  factoryResetBtn?.addEventListener('click', () => {
+    showFactoryResetConfirmDialog();
   });
 
   // Load version info
@@ -519,6 +648,123 @@ async function loadLicenseInfo(): Promise<void> {
     // Placeholder - would come from license API
     statusEl.innerHTML = '<span class="badge badge-slate">Free Tier</span>';
   }
+}
+
+// Factory Reset confirmation dialog (VAL-SVC-023, VAL-SVC-024)
+function showFactoryResetConfirmDialog(): void {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-panel factory-reset-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">⚠️ Factory Reset</h3>
+      </div>
+      <div class="modal-body">
+        <p class="reset-warning">This will <strong>permanently delete</strong> all FarmPal data:</p>
+        <ul class="reset-list">
+          <li>All sensor readings and history</li>
+          <li>All device registrations and configuration</li>
+          <li>All automation and safety rules</li>
+          <li>Your admin password and sessions</li>
+          <li>Your .env configuration</li>
+        </ul>
+        <p class="reset-irreversible">This action <strong>cannot be undone</strong>.</p>
+        <div class="reset-confirm-field">
+          <label for="reset-confirm-input">Type <strong>FACTORY RESET</strong> to confirm:</label>
+          <input type="text" id="reset-confirm-input" class="form-input" placeholder="FACTORY RESET" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="reset-cancel-btn">Cancel</button>
+        <button class="btn btn-danger" id="reset-confirm-btn" disabled>Reset FarmPal</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const confirmInput = document.getElementById(
+    'reset-confirm-input',
+  ) as HTMLInputElement;
+  const confirmBtn = document.getElementById(
+    'reset-confirm-btn',
+  ) as HTMLButtonElement;
+  const cancelBtn = document.getElementById(
+    'reset-cancel-btn',
+  ) as HTMLButtonElement;
+
+  // Enable confirm button only when user types "FACTORY RESET"
+  confirmInput?.addEventListener('input', () => {
+    if (confirmBtn) {
+      confirmBtn.disabled =
+        confirmInput.value.trim().toUpperCase() !== 'FACTORY RESET';
+    }
+  });
+
+  // Cancel button closes dialog
+  cancelBtn?.addEventListener('click', () => {
+    document.body.removeChild(overlay);
+  });
+
+  // Close on overlay click
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      document.body.removeChild(overlay);
+    }
+  });
+
+  // Confirm button triggers factory reset
+  confirmBtn?.addEventListener('click', async () => {
+    if (confirmInput.value.trim().toUpperCase() !== 'FACTORY RESET') {
+      return;
+    }
+
+    confirmBtn.setAttribute('disabled', '');
+    confirmBtn.textContent = 'Resetting...';
+
+    try {
+      // Get operator ID from session storage (set during wizard completion)
+      const operatorId = sessionStorage.getItem('operatorId') || 'admin';
+
+      const response = await fetch(
+        'http://127.0.0.1:3392/api/admin/factory-reset',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operatorId }),
+        },
+      );
+
+      if (response.ok) {
+        showToast('Factory reset initiated. Restarting...', 'success', 3000);
+        document.body.removeChild(overlay);
+        // Redirect to provisioning after a delay
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
+      } else {
+        const data = await response.json();
+        showToast(
+          'Reset failed: ' + (data.error || 'Unknown error'),
+          'danger',
+          4000,
+        );
+        confirmBtn.removeAttribute('disabled');
+        confirmBtn.textContent = 'Reset FarmPal';
+      }
+    } catch (err: any) {
+      showToast(
+        'Reset failed: ' + (err.message || 'Network error'),
+        'danger',
+        4000,
+      );
+      confirmBtn.removeAttribute('disabled');
+      confirmBtn.textContent = 'Reset FarmPal';
+    }
+  });
+
+  // Focus the input
+  confirmInput?.focus();
 }
 
 function escapeHtml(str: string): string {
@@ -657,6 +903,179 @@ function injectSettingsStyles(): void {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+/* Danger button */
+.btn-danger {
+  background: var(--color-danger, #F85149);
+  color: #fff;
+  border: none;
+}
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger, #F85149) 85%, white);
+}
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Factory reset section */
+.factory-reset-title svg {
+  color: var(--color-danger, #F85149);
+}
+
+/* Factory reset modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  max-width: 480px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-header {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+.modal-body {
+  padding: var(--space-4);
+}
+.modal-footer {
+  padding: var(--space-4);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+}
+.reset-warning {
+  color: var(--text-primary);
+  margin: 0 0 var(--space-3) 0;
+}
+.reset-warning strong {
+  color: var(--color-danger, #F85149);
+}
+.reset-list {
+  margin: 0 0 var(--space-3) 0;
+  padding-left: var(--space-5);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.reset-list li {
+  margin-bottom: var(--space-1);
+}
+.reset-irreversible {
+  color: var(--color-danger, #F85149);
+  font-weight: 600;
+  margin: 0 0 var(--space-4) 0;
+}
+.reset-confirm-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.reset-confirm-field label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.reset-confirm-field strong {
+  color: var(--text-primary);
+  font-family: monospace;
+}
+
+/* Network access mode grid */
+.access-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+@media (max-width: 640px) {
+  .access-mode-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.access-mode-card {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+}
+.access-mode-card:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+}
+.access-mode-card.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, var(--bg-tertiary));
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.access-mode-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.access-mode-icon {
+  font-size: 24px;
+  margin-bottom: var(--space-2);
+}
+.access-mode-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+.access-mode-desc {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+.settings-warning-banner {
+  background: color-mix(in srgb, var(--color-warning, #D29922) 15%, var(--bg-secondary));
+  border: 1px solid var(--color-warning, #D29922);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--color-warning, #D29922);
+  font-size: 13px;
+}
+.settings-warning-banner svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.settings-warning-banner span {
+  flex: 1;
+}
+.settings-hint-error {
+  color: var(--color-danger, #F85149);
+  font-size: 12px;
+}
+.badge-green {
+  background: var(--color-success, #2EA043);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
 }
 `;
   document.head.appendChild(style);

@@ -54,7 +54,7 @@ export {
   type AuthContext,
 } from './auth.js';
 
-// Rate limiting
+// Rate limiting (auth endpoints)
 export {
   initRateLimitDatabase,
   recordFailedLogin,
@@ -65,6 +65,38 @@ export {
   clearAllRateLimits,
   type RateLimitResult,
 } from './rate-limit.js';
+
+// API rate limiting (100 req/min/session)
+export {
+  initApiRateLimitDatabase,
+  checkApiRateLimit,
+  recordApiRequest,
+  clearApiRateLimit,
+  getApiRateLimitStatus,
+  clearAllApiRateLimits,
+  type ApiRateLimitResult,
+} from './api-rate-limit.js';
+
+// Security audit log
+export {
+  initSecurityAuditDatabase,
+  logSecurityEvent,
+  logLoginSuccess,
+  logLoginFailure,
+  logAccountLockout,
+  logSessionCreated,
+  logSessionDestroyed,
+  logCsrfFailure,
+  logRateLimitHit,
+  logAdminAction,
+  getRecentSecurityAuditEntries,
+  getSecurityAuditEntriesByType,
+  getSecurityAuditEntriesByIp,
+  getSecurityAuditEntriesBySession,
+  exportSecurityAuditLog,
+  type SecurityEventType,
+  type SecurityAuditEntry,
+} from './security-audit.js';
 
 // Security headers
 export {
