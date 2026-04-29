@@ -385,7 +385,7 @@ async function loadData(
       : layers;
 
     viewState.decisions = decisions;
-    renderHeroChart(zoneLayers, decisions, sequence);
+    renderHeroChart(zoneLayers, decisions);
     renderDetailTable(zoneLayers);
     updatePillValues(zoneLayers);
     renderHorizonStrips(zoneLayers);
@@ -577,7 +577,6 @@ function escapeAttr(s: string): string {
 function renderHeroChart(
   layers: SeriesLayer[],
   _decisions: HalDecision[] = [],
-  expectedSequence?: number,
 ): void {
   const container = document.getElementById('hero-chart');
   const legend = document.getElementById('hero-legend');
@@ -650,8 +649,6 @@ function renderHeroChart(
   }
 
   try {
-    if (expectedSequence !== undefined && expectedSequence !== loadSequence)
-      return;
     renderLakeChart(lakeLayers, 'hero-chart', { showLegend: true });
   } catch(err) {
     const container = document.getElementById('hero-chart');
