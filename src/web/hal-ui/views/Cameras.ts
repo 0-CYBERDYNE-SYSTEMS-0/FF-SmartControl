@@ -131,11 +131,7 @@ function renderCameraGrid(cameras: HalDevice[]): string {
               ? '<span class="camera-status-online">· online</span>'
               : '<span class="camera-status-offline">· offline</span>'
           }
-          ${
-            isDemo
-              ? '<span class="camera-demo-label">· demo</span>'
-              : ''
-          }
+          ${isDemo ? '<span class="camera-demo-label">· demo</span>' : ''}
         </div>
       </div>
       <button class="hal-btn hal-btn-secondary camera-capture-btn" data-camera-id="${c.id}" ${c.online ? '' : 'disabled'}>
@@ -165,7 +161,9 @@ function attachCameraHandlers(cameras: HalDevice[]): void {
           setLastCaptureTime(cameraId, captureTime);
 
           // Update the timestamp display immediately
-          const timeEl = document.querySelector(`.camera-time[data-camera-id="${cameraId}"]`);
+          const timeEl = document.querySelector(
+            `.camera-time[data-camera-id="${cameraId}"]`,
+          );
           if (timeEl) {
             const date = new Date(captureTime);
             timeEl.textContent = date.toLocaleTimeString('en-US', {

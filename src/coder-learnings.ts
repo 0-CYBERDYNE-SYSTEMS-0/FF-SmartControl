@@ -38,7 +38,9 @@ const BULLET_RE = /^[-*]\s+/;
  * Returns entries in encounter order within the Coder Learnings section.
  * (The writer prepends newest entries, so parse naturally yields newest-first.)
  */
-export function parseCoderLearnings(memoryContent: string): CoderLearningsEntry[] {
+export function parseCoderLearnings(
+  memoryContent: string,
+): CoderLearningsEntry[] {
   if (!memoryContent || typeof memoryContent !== 'string') {
     return [];
   }
@@ -219,7 +221,10 @@ export async function getCoderLearningsForContext(
     return lines.join('\n').trimEnd();
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    logger.warn({ error, memoryPath }, 'Failed to read coder learnings for context');
+    logger.warn(
+      { error, memoryPath },
+      'Failed to read coder learnings for context',
+    );
     return '';
   }
 }
@@ -519,7 +524,9 @@ function parseReflectionResponse(
   const patterns: string[] = [];
 
   // Extract "What worked:" section
-  const whatWorkedMatch = response.match(/What worked:?\s*\n([\s\S]*?)(?=\n\s*\n|What didn't:|Patterns:|$)/i);
+  const whatWorkedMatch = response.match(
+    /What worked:?\s*\n([\s\S]*?)(?=\n\s*\n|What didn't:|Patterns:|$)/i,
+  );
   if (whatWorkedMatch) {
     const bullets = whatWorkedMatch[1].match(/^[-*]\s+(.+)$/gm);
     if (bullets) {
@@ -531,7 +538,9 @@ function parseReflectionResponse(
   }
 
   // Extract "What didn't:" section
-  const whatDidntMatch = response.match(/What didn't:?\s*\n([\s\S]*?)(?=\n\s*\n|Patterns:|$)/i);
+  const whatDidntMatch = response.match(
+    /What didn't:?\s*\n([\s\S]*?)(?=\n\s*\n|Patterns:|$)/i,
+  );
   if (whatDidntMatch) {
     const bullets = whatDidntMatch[1].match(/^[-*]\s+(.+)$/gm);
     if (bullets) {
@@ -555,7 +564,11 @@ function parseReflectionResponse(
   }
 
   // If we couldn't parse anything meaningful, provide sensible defaults
-  if (whatWorked.length === 0 && whatDidnt.length === 0 && patterns.length === 0) {
+  if (
+    whatWorked.length === 0 &&
+    whatDidnt.length === 0 &&
+    patterns.length === 0
+  ) {
     if (status === 'success') {
       whatWorked.push('Task completed successfully');
       patterns.push('Completed coding task as requested');
@@ -692,7 +705,8 @@ export async function writeCoderLearningsToMemory(
       content = fs.readFileSync(memoryPath, 'utf-8');
     } else {
       // Create minimal MEMORY.md structure if it doesn't exist
-      content = '# MEMORY\n\nDurable facts, decisions, and compaction summaries belong here.\n';
+      content =
+        '# MEMORY\n\nDurable facts, decisions, and compaction summaries belong here.\n';
     }
 
     // Parse existing learnings
@@ -702,23 +716,24 @@ export async function writeCoderLearningsToMemory(
     const updatedEntries = [entry, ...existingEntries];
 
     // Prune to max entries
-    const prunedEntries = pruneCoderLearnings(updatedEntries, MAX_CODER_LEARNINGS_ENTRIES);
+    const prunedEntries = pruneCoderLearnings(
+      updatedEntries,
+      MAX_CODER_LEARNINGS_ENTRIES,
+    );
 
     // Format the new entry
     const formattedEntry = formatCoderLearningsEntry(entry);
 
     // Rebuild the learnings section
-    const learningsSectionLines = [
-      LEARNINGS_SECTION_HEADER,
-      '',
-    ];
+    const learningsSectionLines = [LEARNINGS_SECTION_HEADER, ''];
 
     for (const e of prunedEntries) {
       learningsSectionLines.push(formatCoderLearningsEntry(e));
       learningsSectionLines.push('');
     }
 
-    const newLearningsSection = learningsSectionLines.join('\n').trimEnd() + '\n';
+    const newLearningsSection =
+      learningsSectionLines.join('\n').trimEnd() + '\n';
 
     // Find and replace or insert the Coder Learnings section
     const learningsSectionPattern = new RegExp(
@@ -729,7 +744,10 @@ export async function writeCoderLearningsToMemory(
     let newContent: string;
     if (learningsSectionPattern.test(content)) {
       // Replace existing section
-      newContent = content.replace(learningsSectionPattern, '\n' + newLearningsSection);
+      newContent = content.replace(
+        learningsSectionPattern,
+        '\n' + newLearningsSection,
+      );
     } else {
       // Append new section at the end
       newContent = content.trimEnd() + '\n\n' + newLearningsSection;
@@ -746,7 +764,10 @@ export async function writeCoderLearningsToMemory(
     return true;
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    logger.warn({ error, groupFolder }, 'Failed to write coder learnings to MEMORY.md');
+    logger.warn(
+      { error, groupFolder },
+      'Failed to write coder learnings to MEMORY.md',
+    );
     return false;
   }
 }
@@ -775,7 +796,8 @@ export function writeCoderLearningsToMemorySync(
       content = fs.readFileSync(memoryPath, 'utf-8');
     } else {
       // Create minimal MEMORY.md structure if it doesn't exist
-      content = '# MEMORY\n\nDurable facts, decisions, and compaction summaries belong here.\n';
+      content =
+        '# MEMORY\n\nDurable facts, decisions, and compaction summaries belong here.\n';
     }
 
     // Parse existing learnings
@@ -785,20 +807,21 @@ export function writeCoderLearningsToMemorySync(
     const updatedEntries = [entry, ...existingEntries];
 
     // Prune to max entries
-    const prunedEntries = pruneCoderLearnings(updatedEntries, MAX_CODER_LEARNINGS_ENTRIES);
+    const prunedEntries = pruneCoderLearnings(
+      updatedEntries,
+      MAX_CODER_LEARNINGS_ENTRIES,
+    );
 
     // Rebuild the learnings section
-    const learningsSectionLines = [
-      LEARNINGS_SECTION_HEADER,
-      '',
-    ];
+    const learningsSectionLines = [LEARNINGS_SECTION_HEADER, ''];
 
     for (const e of prunedEntries) {
       learningsSectionLines.push(formatCoderLearningsEntry(e));
       learningsSectionLines.push('');
     }
 
-    const newLearningsSection = learningsSectionLines.join('\n').trimEnd() + '\n';
+    const newLearningsSection =
+      learningsSectionLines.join('\n').trimEnd() + '\n';
 
     // Find and replace or insert the Coder Learnings section
     const learningsSectionPattern = new RegExp(
@@ -809,7 +832,10 @@ export function writeCoderLearningsToMemorySync(
     let newContent: string;
     if (learningsSectionPattern.test(content)) {
       // Replace existing section
-      newContent = content.replace(learningsSectionPattern, '\n' + newLearningsSection);
+      newContent = content.replace(
+        learningsSectionPattern,
+        '\n' + newLearningsSection,
+      );
     } else {
       // Append new section at the end
       newContent = content.trimEnd() + '\n\n' + newLearningsSection;

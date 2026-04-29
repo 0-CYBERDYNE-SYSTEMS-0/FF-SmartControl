@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+#
+# FarmPal Factory Reset
+#
+# WARNING: This completely wipes FarmPal and returns it to first-boot state.
+# All data including sensor history, device configuration, automation rules,
+# and admin credentials will be permanently deleted.
+#
+# Usage:
+#   ./scripts/farmpal-reset
+#
+# Requires typing "FACTORY RESET" to confirm.
+#
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+FFT_NANO_PROJECT_ROOT="${PROJECT_ROOT}"
+
+# Determine platform
+PLATFORM="$(uname -s)"
+
+# Determine operator ID
+if [[ "${PLATFORM}" == "Darwin" ]]; then
+  OPERATOR_ID="$(whoami)"
+else
+  OPERATOR_ID="${SUDO_USER:-$(whoami)}"
+fi
+
+say() { printf '%s\n' "$*"; }
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+# Load .env if present to get INSTALL_DIR and FARMPAL_DATA_DIR
+if [[ -f "${PROJECT_ROOT}/.env" ]]; then
+  #shellcheck disable=SC1091
+  . "${PROJECT_ROOT}/.env"
+fi
+
+# Resolve paths
+DATA_DIR="${FARMPAL_DATA_DIR:-${PROJECT_ROOT}/data}"
+INSTALL_DIR="${INSTALL_DIR:-${PROJECT_ROOT}}"
+ENV_FILE="${INSTALL_DIR}/.env"
+PROVISIONED_FLAG="${DATA_DIR}/provisioned"
+STATE_FILE="${DATA_DIR}/provisioning-state.json"
+DB_PATH="${DATA_DIR}/fft_nano.db"
+LOCK_FILE="${DATA_DIR}/farmpal.lock"
+WIZARD_SESSION="${DATA_DIR}/wizard-session.json"
+RESET_AUDIT_LOG="${DATA_DIR}/reset-audit.log"
+
+echo ""
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║              ⚠️  FACTORY RESET WARNING ⚠️                      ║"
+echo "╠══════════════════════════════════════════════════════════════╣"
+echo "║                                                              ║"
+echo "║  This will PERMANENTLY DELETE all FarmPal data:              ║"
+echo "║                                                              ║"
+echo "║  • All sensor readings and history                            ║"
+echo "║  • All device registrations and configuration                 ║"
+echo "║  • All automation rules and decisions                         ║"
+echo "║  • All safety rules and audit logs                            ║"
+echo "║  • Your .env configuration                                   ║"
+echo "║  • Admin password and session data                            ║"
+echo "║                                                              ║"
+echo "║  This action CANNOT be undone.                               ║"
+echo "║                                                              ║"
+echo "║  After reset, FarmPal will restart in first-boot mode.       ║"
+echo "║                                                              ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
+read -r -p 'Type "FACTORY RESET" exactly to confirm: ' CONFIRMATION
+
+if [[ "${CONFIRMATION^^}" != "FACTORY RESET" ]]; then
+  echo ""
+  echo "Confirmation rejected. Factory reset aborted."
+  echo ""
+  exit 1
+fi
+
+echo ""
+echo "Initiating factory reset..."
+echo ""
+
+# Write audit log BEFORE destructive operations
+write_audit_log() {
+  local timestamp
+  timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local entry
+  entry="{\"timestamp\":\"${timestamp}\",\"operatorId\":\"${OPERATOR_ID}\",\"action\":\"factory_reset\",\"source\":\"cli\",\"success\":${1},\"error\":${2}}"
+  mkdir -p "${DATA_DIR}"
+  printf '%s\n' "${entry}" >> "${RESET_AUDIT_LOG}"
+}
+
+write_audit_log "false" "\"initiating\""
+
+# Stop the FarmPal service first
+stop_service() {
+  echo "Stopping FarmPal service..."
+  if [[ "${PLATFORM}" == "Linux" ]]; then
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl stop farmpal 2>/dev/null || true
+    fi
+  elif [[ "${PLATFORM}" == "Darwin" ]]; then
+    if command -v launchctl >/dev/null 2>&1; then
+      launchctl bootout "gui/current/com.farmpal" 2>/dev/null || true
+    fi
+  fi
+  # Give it a moment to stop
+  sleep 2
+}
+
+# Delete database and related files
+delete_database() {
+  echo "Deleting database..."
+  if [[ -f "${DB_PATH}" ]]; then
+    rm -f "${DB_PATH}"
+  fi
+  # Also delete WAL and SHM files
+  rm -f "${DB_PATH}-wal" "${DB_PATH}-shm" 2>/dev/null || true
+  # Delete backup files
+  find "${DATA_DIR}" -name "fft_nano.db*.bak" -delete 2>/dev/null || true
+  find "${DATA_DIR}" -name "fft_nano.db*.backup" -delete 2>/dev/null || true
+}
+
+# Remove configuration files
+remove_config() {
+  echo "Removing configuration..."
+
+  # Remove .env
+  if [[ -f "${ENV_FILE}" ]]; then
+    rm -f "${ENV_FILE}"
+  fi
+
+  # Remove provisioning flag
+  if [[ -f "${PROVISIONED_FLAG}" ]]; then
+    rm -f "${PROVISIONED_FLAG}"
+  fi
+
+  # Remove provisioning state
+  if [[ -f "${STATE_FILE}" ]]; then
+    rm -f "${STATE_FILE}"
+  fi
+
+  # Remove wizard session
+  if [[ -f "${WIZARD_SESSION}" ]]; then
+    rm -f "${WIZARD_SESSION}"
+  fi
+
+  # Remove lock file
+  if [[ -f "${LOCK_FILE}" ]]; then
+    rm -f "${LOCK_FILE}"
+  fi
+}
+
+# Restart service
+restart_service() {
+  echo "Restarting FarmPal service..."
+
+  if [[ "${PLATFORM}" == "Linux" ]]; then
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl restart farmpal 2>/dev/null && echo "Service restarted via systemd." || {
+        echo "Warning: Could not restart service via systemd. Please restart manually."
+      }
+    else
+      echo "Warning: systemctl not found. Please restart FarmPal manually."
+    fi
+  elif [[ "${PLATFORM}" == "Darwin" ]]; then
+    if command -v launchctl >/dev/null 2>&1; then
+      # Unload then load to restart
+      launchctl bootout "gui/current/com.farmpal" 2>/dev/null || true
+      sleep 1
+      launchctl bootstrap "gui/current" "${HOME}/Library/LaunchAgents/com.farmpal.plist" 2>/dev/null && echo "Service restarted via launchctl." || {
+        echo "Warning: Could not restart service via launchctl. Please restart manually."
+      }
+    else
+      echo "Warning: launchctl not found. Please restart FarmPal manually."
+    fi
+  fi
+}
+
+# Execute reset steps
+stop_service
+delete_database
+remove_config
+
+# Write success audit log
+write_audit_log "true" "null"
+
+echo ""
+echo "Factory reset complete."
+echo ""
+echo "FarmPal will now restart in first-boot provisioning mode."
+echo ""
+echo "To complete setup:"
+echo "  1. Open http://farmpal.local:3392 in your browser"
+echo "  2. Follow the setup wizard"
+echo ""
+
+exit 0

@@ -32,7 +32,10 @@ export class GatewayClient {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly onEvent?: (event: GatewayEventFrame) => void;
   private readonly onClose?: (code: number, reason: string) => void;
-  private readonly onReconnecting?: (attempt: number, maxAttempts: number) => void;
+  private readonly onReconnecting?: (
+    attempt: number,
+    maxAttempts: number,
+  ) => void;
   private readonly onReconnected?: () => void;
   private readonly onReconnectFailed?: () => void;
   private reconnectAttempt = 0;
@@ -58,7 +61,10 @@ export class GatewayClient {
             resolve();
             return;
           }
-          if (this.ws.readyState === WebSocket.CLOSED || this.ws.readyState === WebSocket.CLOSING) {
+          if (
+            this.ws.readyState === WebSocket.CLOSED ||
+            this.ws.readyState === WebSocket.CLOSING
+          ) {
             resolve();
             return;
           }
@@ -74,7 +80,11 @@ export class GatewayClient {
       if (ready === WebSocket.CLOSED || ready === WebSocket.CLOSING) {
         this.ws = null;
       } else if (ready !== WebSocket.CONNECTING) {
-        try { this.ws.close(); } catch { /* ignore */ }
+        try {
+          this.ws.close();
+        } catch {
+          /* ignore */
+        }
         this.ws = null;
       }
     }

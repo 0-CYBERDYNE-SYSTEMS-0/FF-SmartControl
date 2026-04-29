@@ -2,16 +2,18 @@ import { EventEmitter } from 'events';
 import { ReadlineParser } from '@serialport/parser-readline';
 
 export interface SerialSensorConfig {
-  path: string;         // e.g. '/dev/ttyUSB0'
-  baudRate?: number;   // default 9600
+  path: string; // e.g. '/dev/ttyUSB0'
+  baudRate?: number; // default 9600
   protocol: 'bme280' | 'ds18b20' | 'atlas' | 'generic';
 }
 
 // BME280 I2C over USB adapter (returns T, H, P)
-function parseBME280(line: string): { temperature: number; humidity: number; pressure: number } | null {
+function parseBME280(
+  line: string,
+): { temperature: number; humidity: number; pressure: number } | null {
   // Format expected: "22.5,65.2,1013.25" (temp C, humidity %, pressure hPa)
   const parts = line.split(',').map(Number);
-  if (parts.length >= 3 && parts.every(p => !isNaN(p))) {
+  if (parts.length >= 3 && parts.every((p) => !isNaN(p))) {
     return { temperature: parts[0], humidity: parts[1], pressure: parts[2] };
   }
   return null;
@@ -31,7 +33,9 @@ export class SerialSensorReader extends EventEmitter {
   async open(config: SerialSensorConfig): Promise<void> {
     const { path, baudRate = 9600, protocol } = config;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const SerialPort = require('serialport') as { new(path: string, opts: object): any };
+    const SerialPort = require('serialport') as {
+      new (path: string, opts: object): any;
+    };
     const port = new SerialPort(path, {
       baudRate,
       autoOpen: false,
@@ -41,7 +45,10 @@ export class SerialSensorReader extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       port.open((err: Error | null | undefined) => {
-        if (err) { reject(err); return; }
+        if (err) {
+          reject(err);
+          return;
+        }
         console.log(`[HAL/Serial] Opened ${path} @ ${baudRate}`);
         this.ports.set(path, port);
 
@@ -61,13 +68,20 @@ export class SerialSensorReader extends EventEmitter {
           } catch {}
         });
 
-        port.on('error', (err: Error) => console.error(`[HAL/Serial] ${path} error:`, err.message));
+        port.on('error', (err: Error) =>
+          console.error(`[HAL/Serial] ${path} error:`, err.message),
+        );
         resolve();
       });
     });
   }
 
-  async read(deviceId: string, sensorId: string, metric: string, unit: string): Promise<number | null> {
+  async read(
+    deviceId: string,
+    sensorId: string,
+    metric: string,
+    unit: string,
+  ): Promise<number | null> {
     // For polled sensors (DS18B20 via 1-Wire file), read the w1_sys file
     if (sensorId.startsWith('w1_')) {
       return this.readDS18B20(sensorId);
@@ -79,7 +93,10 @@ export class SerialSensorReader extends EventEmitter {
     // 1-Wire DS18B20: /sys/bus/w1/devices/<sensor_id>/w1_slave
     try {
       const { readFileSync } = await import('fs');
-      const content = readFileSync(`/sys/bus/w1/devices/${sensorId}/w1_slave`, 'utf-8');
+      const content = readFileSync(
+        `/sys/bus/w1/devices/${sensorId}/w1_slave`,
+        'utf-8',
+      );
       const matches = content.match(/t=(-?\d+)/);
       if (matches) return parseInt(matches[1]) / 1000;
     } catch {}

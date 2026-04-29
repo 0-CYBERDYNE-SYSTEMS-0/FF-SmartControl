@@ -2,7 +2,11 @@
 
 let activeModal: HTMLElement | null = null;
 
-export function openModal(title: string, bodyContent: string, actions = ''): void {
+export function openModal(
+  title: string,
+  bodyContent: string,
+  actions = '',
+): void {
   closeModal();
 
   const overlay = document.createElement('div');
@@ -33,7 +37,9 @@ export function openModal(title: string, bodyContent: string, actions = ''): voi
   });
 
   // Close on × button
-  panel.querySelector('.hal-modal-close')?.addEventListener('click', closeModal);
+  panel
+    .querySelector('.hal-modal-close')
+    ?.addEventListener('click', closeModal);
 
   // Close on Escape
   document.addEventListener('keydown', handleEscape);

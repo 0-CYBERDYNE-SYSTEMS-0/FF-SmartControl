@@ -42,7 +42,11 @@ export function injectToggleStyles(): void {
   document.head.appendChild(style);
 }
 
-export function createToggle(id: string, initialState: boolean, onChange: (on: boolean) => void): HTMLElement {
+export function createToggle(
+  id: string,
+  initialState: boolean,
+  onChange: (on: boolean) => void,
+): HTMLElement {
   const btn = document.createElement('button');
   btn.className = 'hal-toggle' + (initialState ? ' active' : '');
   btn.id = id;

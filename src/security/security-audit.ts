@@ -352,7 +352,9 @@ export function getSecurityAuditEntriesBySession(
   return rows.map(parseSecurityAuditRow);
 }
 
-function parseSecurityAuditRow(row: Record<string, unknown>): SecurityAuditEntry {
+function parseSecurityAuditRow(
+  row: Record<string, unknown>,
+): SecurityAuditEntry {
   return {
     id: row.id as string,
     eventType: row.event_type as SecurityEventType,

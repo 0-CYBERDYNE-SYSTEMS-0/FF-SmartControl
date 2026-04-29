@@ -124,9 +124,7 @@ export function translateLegacyMessageToHostEvent(
   };
 }
 
-export type LegacyMessageDispatchResult =
-  | 'delivered'
-  | 'ignored_invalid';
+export type LegacyMessageDispatchResult = 'delivered' | 'ignored_invalid';
 
 export async function dispatchLegacyMessageEnvelope(
   envelope: BoundaryEnvelope<Record<string, unknown>>,

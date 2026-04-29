@@ -31,16 +31,67 @@ export const HERO_METRIC_KEYS = [
   'weight',
 ] as const;
 
-const metricConfig: Record<string, { label: string; color: string; unit: string; minAxis: number; maxAxis: number }> = {
-  temperature:  { label: 'Temperature',  color: '#F59E0B', unit: '°C',  minAxis: 10, maxAxis: 40 },
-  humidity:     { label: 'Humidity',     color: '#38BDF8', unit: '%',   minAxis: 0,  maxAxis: 100 },
-  soil_moisture:{ label: 'Soil Moisture',color: '#EF4444', unit: '%',   minAxis: 0,  maxAxis: 100 },
-  water_level:  { label: 'Water Level',  color: '#2563EB', unit: '%',   minAxis: 0,  maxAxis: 100 },
-  ph:           { label: 'pH',           color: '#A855F7', unit: '',    minAxis: 0,  maxAxis: 14 },
-  co2:          { label: 'CO₂',          color: '#22C55E', unit: 'ppm', minAxis: 0,  maxAxis: 2000 },
-  light:        { label: 'Light',        color: '#FACC15', unit: 'lux', minAxis: 0,  maxAxis: 100000 },
-  weight:       { label: 'Weight',       color: '#94A3B8', unit: 'kg',  minAxis: 0,  maxAxis: 100 },
-  vpd:          { label: 'VPD',          color: '#A855F7', unit: 'kPa', minAxis: 0,  maxAxis: 3 },
+const metricConfig: Record<
+  string,
+  {
+    label: string;
+    color: string;
+    unit: string;
+    minAxis: number;
+    maxAxis: number;
+  }
+> = {
+  temperature: {
+    label: 'Temperature',
+    color: '#F59E0B',
+    unit: '°C',
+    minAxis: 10,
+    maxAxis: 40,
+  },
+  humidity: {
+    label: 'Humidity',
+    color: '#38BDF8',
+    unit: '%',
+    minAxis: 0,
+    maxAxis: 100,
+  },
+  soil_moisture: {
+    label: 'Soil Moisture',
+    color: '#EF4444',
+    unit: '%',
+    minAxis: 0,
+    maxAxis: 100,
+  },
+  water_level: {
+    label: 'Water Level',
+    color: '#2563EB',
+    unit: '%',
+    minAxis: 0,
+    maxAxis: 100,
+  },
+  ph: { label: 'pH', color: '#A855F7', unit: '', minAxis: 0, maxAxis: 14 },
+  co2: {
+    label: 'CO₂',
+    color: '#22C55E',
+    unit: 'ppm',
+    minAxis: 0,
+    maxAxis: 2000,
+  },
+  light: {
+    label: 'Light',
+    color: '#FACC15',
+    unit: 'lux',
+    minAxis: 0,
+    maxAxis: 100000,
+  },
+  weight: {
+    label: 'Weight',
+    color: '#94A3B8',
+    unit: 'kg',
+    minAxis: 0,
+    maxAxis: 100,
+  },
+  vpd: { label: 'VPD', color: '#A855F7', unit: 'kPa', minAxis: 0, maxAxis: 3 },
 };
 
 function resolveZoneName(deviceId: string, deviceName: string): string {
@@ -51,9 +102,12 @@ function resolveZoneName(deviceId: string, deviceName: string): string {
   return 'Unzoned';
 }
 
-export async function loadHeroChartData(): Promise<{ layers: HeroChartLayer[]; decisions: HalDecision[] }> {
+export async function loadHeroChartData(): Promise<{
+  layers: HeroChartLayer[];
+  decisions: HalDecision[];
+}> {
   const store = (await import('../store.js')).getStore();
-  const sensors = store.devices.filter(d => d.type === 'sensor');
+  const sensors = store.devices.filter((d) => d.type === 'sensor');
   const to = new Date().toISOString();
   const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
@@ -61,8 +115,8 @@ export async function loadHeroChartData(): Promise<{ layers: HeroChartLayer[]; d
 
   const [decisions] = await Promise.all([
     halApi.getDecisions(50).catch(() => [] as HalDecision[]),
-    ...sensors.flatMap(s =>
-      HERO_METRIC_KEYS.map(async m => {
+    ...sensors.flatMap((s) =>
+      HERO_METRIC_KEYS.map(async (m) => {
         try {
           const data = await halApi.getSensorHistory(s.id, m, from, to);
           if (data.length > 0) {
@@ -76,18 +130,25 @@ export async function loadHeroChartData(): Promise<{ layers: HeroChartLayer[]; d
               data,
             });
           }
-        } catch { /* skip */ }
-      })
+        } catch {
+          /* skip */
+        }
+      }),
     ),
   ]);
 
   return { layers, decisions };
 }
 
-export function renderHeroChart(layers: HeroChartLayer[], containerId: string, decisions: HalDecision[] = []): void {
+export function renderHeroChart(
+  layers: HeroChartLayer[],
+  containerId: string,
+  decisions: HalDecision[] = [],
+): void {
   if (layers.length === 0) {
     const container = document.getElementById(containerId);
-    if (container) container.innerHTML = '<div class="chart-empty">No sensor data</div>';
+    if (container)
+      container.innerHTML = '<div class="chart-empty">No sensor data</div>';
     return;
   }
 
@@ -100,8 +161,14 @@ export function renderHeroChart(layers: HeroChartLayer[], containerId: string, d
   }
 
   // Convert HeroChartLayer[] to DualAxisLayer[] for ChartKit with shade variation
-  const dualLayers: DualAxisLayer[] = layers.map(l => {
-    const cfg = metricConfig[l.metric] || { label: l.metric, color: l.color, unit: '', minAxis: 0, maxAxis: 100 };
+  const dualLayers: DualAxisLayer[] = layers.map((l) => {
+    const cfg = metricConfig[l.metric] || {
+      label: l.metric,
+      color: l.color,
+      unit: '',
+      minAxis: 0,
+      maxAxis: 100,
+    };
     const group = colorGroups.get(l.color)!;
     let color = l.color;
     if (group.length > 1) {
@@ -115,12 +182,15 @@ export function renderHeroChart(layers: HeroChartLayer[], containerId: string, d
       minAxis: cfg.minAxis,
       maxAxis: cfg.maxAxis,
       unit: cfg.unit,
-      data: l.data.map(d => ({ t: new Date(d.timestamp).getTime(), v: d.value })),
+      data: l.data.map((d) => ({
+        t: new Date(d.timestamp).getTime(),
+        v: d.value,
+      })),
     };
   });
 
   // Build title from first layer
-  const title = dualLayers.map(l => l.label).join(' + ');
+  const title = dualLayers.map((l) => l.label).join(' + ');
   const firstDevice = layers[0]?.deviceName || '';
 
   renderDualAxisCard(dualLayers, containerId, {

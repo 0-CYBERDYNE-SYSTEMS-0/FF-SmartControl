@@ -19,9 +19,7 @@ import {
   PARITY_CONFIG,
   TIMEZONE,
 } from './config.js';
-import {
-  getEffectiveTimezone,
-} from './time-context.js';
+import { getEffectiveTimezone } from './time-context.js';
 import {
   assertValidGroupFolder,
   resolveGroupFolderPath,
@@ -305,7 +303,8 @@ function resolvePiRunLifecyclePolicy(params: {
     allowFreshSessionFallback: boolean;
   }) => ({
     hardTimeoutMs:
-      params.input.lifecyclePolicyOverride?.hardTimeoutMs ?? policy.hardTimeoutMs,
+      params.input.lifecyclePolicyOverride?.hardTimeoutMs ??
+      policy.hardTimeoutMs,
     staleAfterMs:
       params.input.lifecyclePolicyOverride?.staleAfterMs ?? policy.staleAfterMs,
     toolActiveStaleMs:
@@ -336,7 +335,10 @@ function resolvePiRunLifecyclePolicy(params: {
 
   const interactive = isInteractivePiRun(params);
   if (!interactive) {
-    const configuredTimeout = Math.max(params.groupTimeoutMs, CONTAINER_TIMEOUT);
+    const configuredTimeout = Math.max(
+      params.groupTimeoutMs,
+      CONTAINER_TIMEOUT,
+    );
     return applyOverride({
       hardTimeoutMs: Math.max(configuredTimeout, IDLE_TIMEOUT + 30_000),
       staleAfterMs: null,
@@ -364,13 +366,19 @@ function resolvePiRunLifecyclePolicy(params: {
   );
   const toolActiveStaleMs = parseRuntimeMs(
     process.env.FFT_NANO_INTERACTIVE_TOOL_STALE_MS,
-    Math.min(Math.max(100, hardTimeoutMs - 100), Math.max(staleAfterMs, 5 * 60 * 1000)),
+    Math.min(
+      Math.max(100, hardTimeoutMs - 100),
+      Math.max(staleAfterMs, 5 * 60 * 1000),
+    ),
     100,
     Math.max(100, hardTimeoutMs - 100),
   );
   const waitStateStaleMs = parseRuntimeMs(
     process.env.FFT_NANO_INTERACTIVE_WAIT_STALE_MS,
-    Math.min(Math.max(100, hardTimeoutMs - 100), Math.max(staleAfterMs, 3 * 60 * 1000)),
+    Math.min(
+      Math.max(100, hardTimeoutMs - 100),
+      Math.max(staleAfterMs, 3 * 60 * 1000),
+    ),
     100,
     Math.max(100, hardTimeoutMs - 100),
   );
@@ -602,7 +610,12 @@ function resolveExtensionPaths(): string[] {
   const found: string[] = [];
   for (const [, srcName, distName] of extensions) {
     const srcPath = path.resolve(process.cwd(), 'src', 'extensions', srcName);
-    const distPath = path.resolve(process.cwd(), 'dist', 'extensions', distName);
+    const distPath = path.resolve(
+      process.cwd(),
+      'dist',
+      'extensions',
+      distName,
+    );
     if (fs.existsSync(srcPath)) {
       found.push(srcPath);
     } else if (fs.existsSync(distPath)) {
@@ -723,15 +736,16 @@ function classifyRunError(stderr: string, code: number | null): RunErrorClass {
   }
 
   // Explicit rate limit
-  if (/429|rate\s*limit|too\s*many\s*requests/i.test(stderr)) return 'rate_limit';
+  if (/429|rate\s*limit|too\s*many\s*requests/i.test(stderr))
+    return 'rate_limit';
 
   // Timeout / failover codes
-  if (/408|502|503|504|ETIMEDOUT|ECONNRESET|ECONNABORTED/i.test(stderr)) return 'timeout';
+  if (/408|502|503|504|ETIMEDOUT|ECONNRESET|ECONNABORTED/i.test(stderr))
+    return 'timeout';
 
   // Hard failures — never retry
-  if (
-    /context\s*(length|size)\s*exceeded|overflow|token\s*limit/i.test(stderr)
-  ) return 'non_retryable';
+  if (/context\s*(length|size)\s*exceeded|overflow|token\s*limit/i.test(stderr))
+    return 'non_retryable';
   if (/401|403|invalid.*api.*key|auth|unauthorized/i.test(stderr))
     return 'non_retryable';
   if (/SIGKILL|killed/i.test(stderr)) return 'non_retryable';
@@ -1395,7 +1409,11 @@ export async function runContainerAgent(
         requestId: string,
         response: ExtensionUIResponse,
       ) => {
-        if (!child.stdin || child.stdin.destroyed || child.stdin.writableEnded) {
+        if (
+          !child.stdin ||
+          child.stdin.destroyed ||
+          child.stdin.writableEnded
+        ) {
           logger.warn(
             { requestId, group: group.name },
             'Cannot send extension UI response because pi stdin is unavailable',
@@ -1450,7 +1468,11 @@ export async function runContainerAgent(
 
         if (!onExtensionUIRequest) {
           logger.warn(
-            { requestId: request.id, method: request.method, group: group.name },
+            {
+              requestId: request.id,
+              method: request.method,
+              group: group.name,
+            },
             'No extension UI handler registered, auto-denying',
           );
           if (request.method === 'confirm') {
@@ -1466,7 +1488,12 @@ export async function runContainerAgent(
           sendExtensionUIResponse(request.id, response);
         } catch (err) {
           logger.error(
-            { requestId: request.id, method: request.method, err, group: group.name },
+            {
+              requestId: request.id,
+              method: request.method,
+              err,
+              group: group.name,
+            },
             'Extension UI handler failed, auto-denying',
           );
           if (request.method === 'confirm') {
@@ -1497,7 +1524,9 @@ export async function runContainerAgent(
             typeof parsed.id === 'string' &&
             typeof parsed.method === 'string'
           ) {
-            void handleExtensionUIRequest(parsed as unknown as ExtensionUIRequest);
+            void handleExtensionUIRequest(
+              parsed as unknown as ExtensionUIRequest,
+            );
             return;
           }
           if (
@@ -1681,7 +1710,8 @@ export async function runContainerAgent(
 
           // Hard fail — do not retry
           if (errClass === 'non_retryable') {
-            finalError = lastRes.stderr.trim() || `pi exited with code ${lastRes.code}`;
+            finalError =
+              lastRes.stderr.trim() || `pi exited with code ${lastRes.code}`;
             break;
           }
 
@@ -1700,21 +1730,24 @@ export async function runContainerAgent(
             });
             lastRes = await runPi(false);
             if (lastRes.code === 0) break;
-            finalError = lastRes.stderr.trim() || `pi exited with code ${lastRes.code}`;
+            finalError =
+              lastRes.stderr.trim() || `pi exited with code ${lastRes.code}`;
             break;
           }
 
           // If we already did a fresh retry, no more retries — exit
           if (didFreshRetry) {
             exhausted = true;
-            finalError = lastRes!.stderr.trim() || `pi exited with code ${lastRes!.code}`;
+            finalError =
+              lastRes!.stderr.trim() || `pi exited with code ${lastRes!.code}`;
             break;
           }
 
           attempt++;
           if (attempt >= FFT_NANO_MAX_RETRIES) {
             exhausted = true;
-            finalError = lastRes!.stderr.trim() || `pi exited with code ${lastRes!.code}`;
+            finalError =
+              lastRes!.stderr.trim() || `pi exited with code ${lastRes!.code}`;
             break;
           }
 
@@ -1741,10 +1774,7 @@ export async function runContainerAgent(
           FFT_NANO_PROVIDER_FALLBACK_ORDER.length > 0
         ) {
           const primaryProvider =
-            input.provider ||
-            secrets.PI_API ||
-            process.env.PI_API ||
-            '';
+            input.provider || secrets.PI_API || process.env.PI_API || '';
           const fallbackProviders = getProviderFallbackCandidates({
             primaryProvider,
             configuredOrder: FFT_NANO_PROVIDER_FALLBACK_ORDER,
@@ -1779,7 +1809,8 @@ export async function runContainerAgent(
 
             if (fallbackResult.status === 'success') {
               clearTimeout(timeoutHandle);
-              if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
+              if (abortSignal)
+                abortSignal.removeEventListener('abort', onAbort);
               if (settled) return;
               finish(fallbackResult);
               return;
@@ -1815,13 +1846,21 @@ export async function runContainerAgent(
           }
 
           logger.error(
-            { group: group.name, code: lastRes.code, duration, stderr: lastRes.stderr.slice(-500) },
+            {
+              group: group.name,
+              code: lastRes.code,
+              duration,
+              stderr: lastRes.stderr.slice(-500),
+            },
             'Pi exited with error',
           );
           finish({
             status: 'error',
             result: null,
-            error: finalError || lastRes.stderr.trim() || `pi exited with code ${lastRes.code}`,
+            error:
+              finalError ||
+              lastRes.stderr.trim() ||
+              `pi exited with code ${lastRes.code}`,
           });
           return;
         }
@@ -1834,7 +1873,11 @@ export async function runContainerAgent(
         });
         const result = isTelegramChatJid(input.chatJid)
           ? parsed.result
-          : appendToolVerboseSection(parsed.result, input.verboseMode, parsed.toolExecutions);
+          : appendToolVerboseSection(
+              parsed.result,
+              input.verboseMode,
+              parsed.toolExecutions,
+            );
 
         let finalResult: string | null = result;
         let finalStreamed = lastRes!.streamedDraft;

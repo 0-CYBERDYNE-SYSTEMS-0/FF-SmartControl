@@ -8,11 +8,15 @@ let toasts: HTMLElement[] = [];
 const borderColors: Record<ToastType, string> = {
   success: 'var(--success)',
   warning: 'var(--warning)',
-  danger:  'var(--danger)',
-  info:    'var(--info)',
+  danger: 'var(--danger)',
+  info: 'var(--info)',
 };
 
-export function showToast(message: string, type: ToastType = 'info', duration = 4000): void {
+export function showToast(
+  message: string,
+  type: ToastType = 'info',
+  duration = 4000,
+): void {
   const container = getOrCreateContainer();
   const toast = document.createElement('div');
   toast.className = `hal-toast hal-toast-${type}`;
@@ -44,7 +48,7 @@ function dismissToast(toast: HTMLElement): void {
   toast.classList.add('hal-toast-out');
   setTimeout(() => {
     toast.remove();
-    toasts = toasts.filter(t => t !== toast);
+    toasts = toasts.filter((t) => t !== toast);
   }, 200);
 }
 

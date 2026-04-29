@@ -15,6 +15,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { DatabaseCorruptionError } from '../src/hal/db.js';
 
 // We'll test the checkDbIntegrity logic directly with a fresh in-memory DB
 // Since hal/db.ts uses process.cwd() for the path, we test the pure logic
@@ -100,27 +101,6 @@ describe('Database Integrity Check', () => {
 
 describe('DatabaseCorruptionError', () => {
   it('should have correct name and properties', () => {
-    // Import the error class - this would need to be tested in integration
-    // Here we test the expected structure
-    class DatabaseCorruptionError extends Error {
-      public readonly dbPath: string;
-      public readonly integrityFailures: string[];
-
-      constructor(dbPath: string, integrityFailures: string[]) {
-        super(
-          `Database corruption detected at ${dbPath}. ` +
-            `Integrity check failed with ${integrityFailures.length} error(s). ` +
-            `Recovery options: ` +
-            `1) Restore from backup: farmpal-backup.timer or manual backup in /opt/farmpal/backups/, ` +
-            `2) Factory reset: farmpal-reset (irreversible - removes all data). ` +
-            `First error: ${integrityFailures[0] ?? 'unknown'}`,
-        );
-        this.name = 'DatabaseCorruptionError';
-        this.dbPath = dbPath;
-        this.integrityFailures = integrityFailures;
-      }
-    }
-
     const errors = ['error in table test_table', 'row missing index'];
     const err = new DatabaseCorruptionError('/path/to/db', errors);
 
@@ -134,25 +114,6 @@ describe('DatabaseCorruptionError', () => {
   });
 
   it('should handle empty failures array', () => {
-    class DatabaseCorruptionError extends Error {
-      public readonly dbPath: string;
-      public readonly integrityFailures: string[];
-
-      constructor(dbPath: string, integrityFailures: string[]) {
-        super(
-          `Database corruption detected at ${dbPath}. ` +
-            `Integrity check failed with ${integrityFailures.length} error(s). ` +
-            `Recovery options: ` +
-            `1) Restore from backup: farmpal-backup.timer or manual backup in /opt/farmpal/backups/, ` +
-            `2) Factory reset: farmpal-reset (irreversible - removes all data). ` +
-            `First error: ${integrityFailures[0] ?? 'unknown'}`,
-        );
-        this.name = 'DatabaseCorruptionError';
-        this.dbPath = dbPath;
-        this.integrityFailures = integrityFailures;
-      }
-    }
-
     const err = new DatabaseCorruptionError('/path/to/db', []);
 
     assert.strictEqual(err.integrityFailures.length, 0);

@@ -17,7 +17,12 @@ export function renderLatestDecision(): string {
     `;
   }
 
-  const statusColor = latest.status === 'success' ? 'var(--success)' : latest.status === 'failure' ? 'var(--danger)' : 'var(--warning)';
+  const statusColor =
+    latest.status === 'success'
+      ? 'var(--success)'
+      : latest.status === 'failure'
+        ? 'var(--danger)'
+        : 'var(--warning)';
 
   return `
     <div class="latest-decision hal-card">
@@ -44,11 +49,15 @@ export function renderLatestDecision(): string {
 function formatTime(iso: string): string {
   try {
     return new Date(iso).toLocaleString('en-US', {
-      month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
       hour12: false,
     });
-  } catch { return '--'; }
+  } catch {
+    return '--';
+  }
 }
 
 function confidenceColor(conf: number): string {

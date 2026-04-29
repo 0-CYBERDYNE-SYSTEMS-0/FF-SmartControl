@@ -66,7 +66,10 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { name: 'deliver', description: 'Set delivery mode (on/off)' },
   { name: 'gateway', description: 'Gateway service action (status|restart)' },
   { name: 'update', description: 'Pull, build, and restart host' },
-  { name: 'hal', description: 'HAL farm control (list|on|off|sensors|history|status)' },
+  {
+    name: 'hal',
+    description: 'HAL farm control (list|on|off|sensors|history|status)',
+  },
   { name: 'new', description: 'Reset session before next run' },
   { name: 'reset', description: 'Alias for /new' },
   { name: 'abort', description: 'Abort active run' },
@@ -292,9 +295,7 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
           timestamp?: string;
         };
         if (!alert) return;
-        chatLog.addSystem(
-          `🚨 HAL Alert: ${alert.message}`,
-        );
+        chatLog.addSystem(`🚨 HAL Alert: ${alert.message}`);
         tui.requestRender();
       }
     },
@@ -318,7 +319,9 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
     },
     onReconnectFailed: () => {
       connectionStatus = 'disconnected';
-      chatLog.addSystem('Connection lost. Press Enter to retry or Ctrl+C to exit.');
+      chatLog.addSystem(
+        'Connection lost. Press Enter to retry or Ctrl+C to exit.',
+      );
       updateFooter();
       tui.requestRender();
     },
@@ -381,9 +384,7 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
     const think = sessionPrefs.thinkLevel || 'off';
     const reasoning = sessionPrefs.reasoningLevel || 'off';
     const verbose = sessionPrefs.verboseMode || 'all';
-    const runIndicator = activeRunId
-      ? `run=${activeRunId.slice(0, 8)}`
-      : '';
+    const runIndicator = activeRunId ? `run=${activeRunId.slice(0, 8)}` : '';
     footer.setText(
       theme.dim(
         [
@@ -746,7 +747,8 @@ export async function runTuiClient(opts: CliOptions): Promise<void> {
         break;
 
       case 'hal': {
-        const sub = (args || '').trim().split(/\s+/)[0]?.toLowerCase() || 'list';
+        const sub =
+          (args || '').trim().split(/\s+/)[0]?.toLowerCase() || 'list';
         const restArgs = (args || '').trim().split(/\s+/).slice(1).join(' ');
         if (sub === 'list' || sub === 'devices') {
           const res = await client.request<{

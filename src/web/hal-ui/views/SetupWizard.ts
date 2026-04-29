@@ -1,7 +1,12 @@
 // Setup Wizard — 6-step first-boot provisioning UI
 // VAL-SETUP-001 through VAL-SETUP-035
 
-import { provisioningApi, type ProvisioningStatus, type WizardSession, type WizardCompleteRequest } from '../api-provisioning.js';
+import {
+  provisioningApi,
+  type ProvisioningStatus,
+  type WizardSession,
+  type WizardCompleteRequest,
+} from '../api-provisioning.js';
 import { halApi } from '../api.js';
 import bcrypt from 'bcryptjs';
 
@@ -77,7 +82,9 @@ export async function renderSetupWizard(container: HTMLElement): Promise<void> {
   try {
     status = await provisioningApi.getStatus();
   } catch {
-    container.innerHTML = renderError('Could not connect to FarmPal. Please refresh.');
+    container.innerHTML = renderError(
+      'Could not connect to FarmPal. Please refresh.',
+    );
     return;
   }
 
@@ -150,7 +157,7 @@ function render(container: HTMLElement): void {
             ${effectiveSteps.map((step, idx) => renderProgressStep(step, idx, currentIndex, effectiveSteps)).join('')}
           </div>
           <div class="wizard-progress-bar">
-            <div class="wizard-progress-fill" style="width: ${((currentIndex) / (effectiveSteps.length - 1)) * 100}%"></div>
+            <div class="wizard-progress-fill" style="width: ${(currentIndex / (effectiveSteps.length - 1)) * 100}%"></div>
           </div>
         </div>
 
@@ -173,7 +180,12 @@ function render(container: HTMLElement): void {
   attachWizardEvents(container, effectiveSteps, currentIndex);
 }
 
-function renderProgressStep(step: StepId, idx: number, currentIdx: number, effectiveSteps: StepId[]): string {
+function renderProgressStep(
+  step: StepId,
+  idx: number,
+  currentIdx: number,
+  effectiveSteps: StepId[],
+): string {
   const isComplete = idx < currentIdx;
   const isCurrent = idx === currentIdx;
   const label = hasEthernet && step === 4 ? 'WiFi (skip)' : STEP_LABELS[step];
@@ -188,13 +200,20 @@ function renderProgressStep(step: StepId, idx: number, currentIdx: number, effec
 
 function renderStepBody(step: StepId): string {
   switch (step) {
-    case 1: return renderPasswordStep();
-    case 2: return renderFarmNameStep();
-    case 3: return renderTimezoneStep();
-    case 4: return renderWifiStep();
-    case 5: return renderLlmStep();
-    case 6: return renderTelegramStep();
-    default: return '';
+    case 1:
+      return renderPasswordStep();
+    case 2:
+      return renderFarmNameStep();
+    case 3:
+      return renderTimezoneStep();
+    case 4:
+      return renderWifiStep();
+    case 5:
+      return renderLlmStep();
+    case 6:
+      return renderTelegramStep();
+    default:
+      return '';
   }
 }
 
@@ -314,7 +333,8 @@ const COMMON_TIMEZONES = [
 ];
 
 function renderTimezoneStep(): string {
-  const currentTz = wizardData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const currentTz =
+    wizardData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const currentRegion = currentTz.split('/')[0] || '';
 
   const regionGroups: Record<string, typeof COMMON_TIMEZONES> = {};
@@ -413,19 +433,38 @@ function renderWifiStep(): string {
 // Step 5: LLM Provider
 // ---------------------------------------------------------------------------
 const LLM_PROVIDERS = [
-  { id: 'ollama', name: 'Ollama (Local)', defaultEndpoint: 'http://localhost:11434', supportsModel: true },
+  {
+    id: 'ollama',
+    name: 'Ollama (Local)',
+    defaultEndpoint: 'http://localhost:11434',
+    supportsModel: true,
+  },
   { id: 'openai', name: 'OpenAI', supportsApiKey: true },
   { id: 'anthropic', name: 'Anthropic', supportsApiKey: true },
   { id: 'zai', name: 'ZAI', supportsApiKey: true },
   { id: 'minimax', name: 'MiniMax', supportsApiKey: true },
-  { id: 'lmstudio', name: 'LM Studio (Local)', defaultEndpoint: 'http://localhost:1234', supportsModel: true },
+  {
+    id: 'lmstudio',
+    name: 'LM Studio (Local)',
+    defaultEndpoint: 'http://localhost:1234',
+    supportsModel: true,
+  },
 ];
 
 function renderLlmStep(): string {
-  const selectedProvider = LLM_PROVIDERS.find((p) => p.id === wizardData.llmProvider) || LLM_PROVIDERS[0];
-  const showApiKey = selectedProvider && 'supportsApiKey' in selectedProvider && selectedProvider.supportsApiKey;
-  const showEndpoint = selectedProvider && 'defaultEndpoint' in selectedProvider;
-  const showModel = selectedProvider && 'supportsModel' in selectedProvider && selectedProvider.supportsModel;
+  const selectedProvider =
+    LLM_PROVIDERS.find((p) => p.id === wizardData.llmProvider) ||
+    LLM_PROVIDERS[0];
+  const showApiKey =
+    selectedProvider &&
+    'supportsApiKey' in selectedProvider &&
+    selectedProvider.supportsApiKey;
+  const showEndpoint =
+    selectedProvider && 'defaultEndpoint' in selectedProvider;
+  const showModel =
+    selectedProvider &&
+    'supportsModel' in selectedProvider &&
+    selectedProvider.supportsModel;
 
   return `
     <div class="wizard-step-content">
@@ -445,7 +484,9 @@ function renderLlmStep(): string {
         </div>
       </div>
 
-      ${showEndpoint ? `
+      ${
+        showEndpoint
+          ? `
       <div class="form-group">
         <label class="form-label" for="llm-endpoint">Endpoint URL</label>
         <input
@@ -457,9 +498,13 @@ function renderLlmStep(): string {
         />
         <div class="form-hint">${wizardData.llmProvider === 'ollama' ? 'Ollama must be running on your device.' : 'LM Studio server address.'}</div>
       </div>
-      ` : ''}
+      `
+          : ''
+      }
 
-      ${showApiKey ? `
+      ${
+        showApiKey
+          ? `
       <div class="form-group">
         <label class="form-label" for="llm-api-key">API Key</label>
         <div class="input-wrapper">
@@ -477,9 +522,13 @@ function renderLlmStep(): string {
         </div>
         <div class="form-hint">Your API key is stored securely in .env and never sent to our servers.</div>
       </div>
-      ` : ''}
+      `
+          : ''
+      }
 
-      ${showModel ? `
+      ${
+        showModel
+          ? `
       <div class="form-group">
         <label class="form-label" for="llm-model">Model</label>
         <input
@@ -492,7 +541,9 @@ function renderLlmStep(): string {
         />
         <div class="form-hint">Must match an installed model in your Ollama/LM Studio.</div>
       </div>
-      ` : ''}
+      `
+          : ''
+      }
     </div>
   `;
 }
@@ -564,7 +615,11 @@ function renderError(message: string): string {
 // ---------------------------------------------------------------------------
 // Event Handling
 // ---------------------------------------------------------------------------
-function attachWizardEvents(container: HTMLElement, effectiveSteps: StepId[], currentIndex: number): void {
+function attachWizardEvents(
+  container: HTMLElement,
+  effectiveSteps: StepId[],
+  currentIndex: number,
+): void {
   // Password visibility toggles
   setupPasswordToggle('toggle-password', 'password');
   setupPasswordToggle('toggle-password-confirm', 'password-confirm');
@@ -574,9 +629,13 @@ function attachWizardEvents(container: HTMLElement, effectiveSteps: StepId[], cu
 
   // Password strength meter
   const passwordInput = document.getElementById('password') as HTMLInputElement;
-  const passwordConfirm = document.getElementById('password-confirm') as HTMLInputElement;
+  const passwordConfirm = document.getElementById(
+    'password-confirm',
+  ) as HTMLInputElement;
   if (passwordInput) {
-    passwordInput.addEventListener('input', () => updatePasswordStrength(passwordInput.value));
+    passwordInput.addEventListener('input', () =>
+      updatePasswordStrength(passwordInput.value),
+    );
     passwordInput.addEventListener('blur', () => validatePasswordStep());
   }
   if (passwordConfirm) {
@@ -584,23 +643,27 @@ function attachWizardEvents(container: HTMLElement, effectiveSteps: StepId[], cu
   }
 
   // Provider selection
-  document.querySelectorAll<HTMLButtonElement>('.provider-card').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const provider = btn.dataset.provider!;
-      wizardData.llmProvider = provider;
-      const p = LLM_PROVIDERS.find((x) => x.id === provider);
-      if (p && 'defaultEndpoint' in p && p.defaultEndpoint) {
-        wizardData.llmEndpoint = p.defaultEndpoint;
-      }
-      // Re-render this step
-      const body = document.getElementById('wizard-body');
-      if (body) body.innerHTML = renderLlmStep();
-      attachWizardEvents(container, effectiveSteps, currentIndex);
+  document
+    .querySelectorAll<HTMLButtonElement>('.provider-card')
+    .forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const provider = btn.dataset.provider!;
+        wizardData.llmProvider = provider;
+        const p = LLM_PROVIDERS.find((x) => x.id === provider);
+        if (p && 'defaultEndpoint' in p && p.defaultEndpoint) {
+          wizardData.llmEndpoint = p.defaultEndpoint;
+        }
+        // Re-render this step
+        const body = document.getElementById('wizard-body');
+        if (body) body.innerHTML = renderLlmStep();
+        attachWizardEvents(container, effectiveSteps, currentIndex);
+      });
     });
-  });
 
   // Telegram toggle
-  const telegramToggle = document.getElementById('telegram-enabled') as HTMLInputElement;
+  const telegramToggle = document.getElementById(
+    'telegram-enabled',
+  ) as HTMLInputElement;
   const telegramFields = document.querySelector('.telegram-fields');
   if (telegramToggle && telegramFields) {
     telegramToggle.addEventListener('change', () => {
@@ -658,11 +721,15 @@ function attachWizardEvents(container: HTMLElement, effectiveSteps: StepId[], cu
   });
 }
 
-async function saveCurrentStep(currentIndex: number, step: StepId): Promise<void> {
+async function saveCurrentStep(
+  currentIndex: number,
+  step: StepId,
+): Promise<void> {
   // Gather data from current step UI
   switch (step) {
     case 1: {
-      const pwd = (document.getElementById('password') as HTMLInputElement)?.value || '';
+      const pwd =
+        (document.getElementById('password') as HTMLInputElement)?.value || '';
       wizardData.adminPassword = pwd;
       if (pwd && !wizardData.adminPasswordHash) {
         wizardData.adminPasswordHash = await bcrypt.hash(pwd, 10);
@@ -670,27 +737,41 @@ async function saveCurrentStep(currentIndex: number, step: StepId): Promise<void
       break;
     }
     case 2: {
-      wizardData.farmName = (document.getElementById('farm-name') as HTMLInputElement)?.value || 'My Farm';
+      wizardData.farmName =
+        (document.getElementById('farm-name') as HTMLInputElement)?.value ||
+        'My Farm';
       break;
     }
     case 3: {
-      wizardData.timezone = (document.getElementById('timezone') as HTMLSelectElement)?.value || wizardData.timezone;
+      wizardData.timezone =
+        (document.getElementById('timezone') as HTMLSelectElement)?.value ||
+        wizardData.timezone;
       break;
     }
     case 4: {
-      wizardData.wifiSsid = (document.getElementById('wifi-ssid') as HTMLInputElement)?.value || '';
-      wizardData.wifiPassword = (document.getElementById('wifi-password') as HTMLInputElement)?.value || '';
+      wizardData.wifiSsid =
+        (document.getElementById('wifi-ssid') as HTMLInputElement)?.value || '';
+      wizardData.wifiPassword =
+        (document.getElementById('wifi-password') as HTMLInputElement)?.value ||
+        '';
       wizardData.wifiConfigured = !!wizardData.wifiSsid;
       break;
     }
     case 5: {
-      wizardData.llmEndpoint = (document.getElementById('llm-endpoint') as HTMLInputElement)?.value || wizardData.llmEndpoint;
-      wizardData.llmApiKey = (document.getElementById('llm-api-key') as HTMLInputElement)?.value || '';
-      wizardData.llmModel = (document.getElementById('llm-model') as HTMLInputElement)?.value || '';
+      wizardData.llmEndpoint =
+        (document.getElementById('llm-endpoint') as HTMLInputElement)?.value ||
+        wizardData.llmEndpoint;
+      wizardData.llmApiKey =
+        (document.getElementById('llm-api-key') as HTMLInputElement)?.value ||
+        '';
+      wizardData.llmModel =
+        (document.getElementById('llm-model') as HTMLInputElement)?.value || '';
       break;
     }
     case 6: {
-      wizardData.telegramBotToken = (document.getElementById('telegram-token') as HTMLInputElement)?.value || '';
+      wizardData.telegramBotToken =
+        (document.getElementById('telegram-token') as HTMLInputElement)
+          ?.value || '';
       break;
     }
   }
@@ -711,19 +792,29 @@ function loadStepData(step: StepId): WizardData {
 
 function validateCurrentStep(step: StepId): boolean {
   switch (step) {
-    case 1: return validatePasswordStep();
-    case 2: return true; // farm name always valid
-    case 3: return true; // timezone always valid
-    case 4: return true; // wifi optional
-    case 5: return validateLlmStep();
-    case 6: return true; // telegram optional
-    default: return true;
+    case 1:
+      return validatePasswordStep();
+    case 2:
+      return true; // farm name always valid
+    case 3:
+      return true; // timezone always valid
+    case 4:
+      return true; // wifi optional
+    case 5:
+      return validateLlmStep();
+    case 6:
+      return true; // telegram optional
+    default:
+      return true;
   }
 }
 
 function validatePasswordStep(): boolean {
-  const pwd = (document.getElementById('password') as HTMLInputElement)?.value || '';
-  const pwdConfirm = (document.getElementById('password-confirm') as HTMLInputElement)?.value || '';
+  const pwd =
+    (document.getElementById('password') as HTMLInputElement)?.value || '';
+  const pwdConfirm =
+    (document.getElementById('password-confirm') as HTMLInputElement)?.value ||
+    '';
   const hint = document.getElementById('password-hint');
   const confirmHint = document.getElementById('password-confirm-hint');
 
@@ -761,8 +852,13 @@ function validateLlmStep(): boolean {
   const provider = wizardData.llmProvider;
   const selectedProvider = LLM_PROVIDERS.find((p) => p.id === provider);
 
-  if (selectedProvider && 'supportsApiKey' in selectedProvider && selectedProvider.supportsApiKey) {
-    const apiKey = (document.getElementById('llm-api-key') as HTMLInputElement)?.value || '';
+  if (
+    selectedProvider &&
+    'supportsApiKey' in selectedProvider &&
+    selectedProvider.supportsApiKey
+  ) {
+    const apiKey =
+      (document.getElementById('llm-api-key') as HTMLInputElement)?.value || '';
     if (!apiKey) {
       showStepError(5, 'API key is required for cloud providers.');
       return false;
@@ -785,18 +881,31 @@ function showStepError(step: StepId, message: string): void {
 
 async function completeWizard(container: HTMLElement): Promise<void> {
   // Gather final data
-  wizardData.farmName = (document.getElementById('farm-name') as HTMLInputElement)?.value || 'My Farm';
-  wizardData.timezone = (document.getElementById('timezone') as HTMLSelectElement)?.value || wizardData.timezone;
-  wizardData.wifiSsid = (document.getElementById('wifi-ssid') as HTMLInputElement)?.value || '';
-  wizardData.wifiPassword = (document.getElementById('wifi-password') as HTMLInputElement)?.value || '';
-  wizardData.llmEndpoint = (document.getElementById('llm-endpoint') as HTMLInputElement)?.value || wizardData.llmEndpoint;
-  wizardData.llmApiKey = (document.getElementById('llm-api-key') as HTMLInputElement)?.value || '';
-  wizardData.llmModel = (document.getElementById('llm-model') as HTMLInputElement)?.value || '';
-  wizardData.telegramBotToken = (document.getElementById('telegram-token') as HTMLInputElement)?.value || '';
+  wizardData.farmName =
+    (document.getElementById('farm-name') as HTMLInputElement)?.value ||
+    'My Farm';
+  wizardData.timezone =
+    (document.getElementById('timezone') as HTMLSelectElement)?.value ||
+    wizardData.timezone;
+  wizardData.wifiSsid =
+    (document.getElementById('wifi-ssid') as HTMLInputElement)?.value || '';
+  wizardData.wifiPassword =
+    (document.getElementById('wifi-password') as HTMLInputElement)?.value || '';
+  wizardData.llmEndpoint =
+    (document.getElementById('llm-endpoint') as HTMLInputElement)?.value ||
+    wizardData.llmEndpoint;
+  wizardData.llmApiKey =
+    (document.getElementById('llm-api-key') as HTMLInputElement)?.value || '';
+  wizardData.llmModel =
+    (document.getElementById('llm-model') as HTMLInputElement)?.value || '';
+  wizardData.telegramBotToken =
+    (document.getElementById('telegram-token') as HTMLInputElement)?.value ||
+    '';
 
   // Final password hash if not done
   if (!wizardData.adminPasswordHash) {
-    const pwd = (document.getElementById('password') as HTMLInputElement)?.value;
+    const pwd = (document.getElementById('password') as HTMLInputElement)
+      ?.value;
     if (pwd) wizardData.adminPasswordHash = await bcrypt.hash(pwd, 10);
   }
 
@@ -817,11 +926,16 @@ async function completeWizard(container: HTMLElement): Promise<void> {
 
   try {
     await provisioningApi.complete(completeData);
+    // Store operatorId in session for authenticated actions (factory reset, etc.)
+    sessionStorage.setItem('operatorId', 'admin');
     // Redirect to dashboard
     window.location.hash = '#dashboard';
     window.location.reload();
   } catch (err: any) {
-    showStepError(6, err.message || 'Setup could not be saved — please try again.');
+    showStepError(
+      6,
+      err.message || 'Setup could not be saved — please try again.',
+    );
   }
 }
 
@@ -843,11 +957,16 @@ function updatePasswordStrength(pwd: string): void {
   const colors = ['#F85149', '#F85149', '#D29922', '#2EA043'];
 
   bars.forEach((bar, i) => {
-    bar.style.background = i < score ? colors[Math.min(score - 1, 3)] : 'var(--border)';
+    bar.style.background =
+      i < score ? colors[Math.min(score - 1, 3)] : 'var(--border)';
   });
 
-  label.textContent = pwd.length === 0 ? 'Enter a password' : labels[Math.min(score - 1, 3)] || 'Too weak';
-  label.style.color = pwd.length === 0 ? 'var(--text-secondary)' : colors[Math.min(score - 1, 3)];
+  label.textContent =
+    pwd.length === 0
+      ? 'Enter a password'
+      : labels[Math.min(score - 1, 3)] || 'Too weak';
+  label.style.color =
+    pwd.length === 0 ? 'var(--text-secondary)' : colors[Math.min(score - 1, 3)];
 }
 
 // ---------------------------------------------------------------------------
@@ -861,7 +980,10 @@ function setupPasswordToggle(btnId: string, inputId: string): void {
   btn.addEventListener('click', () => {
     const isPassword = input.type === 'password';
     input.type = isPassword ? 'text' : 'password';
-    btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+    btn.setAttribute(
+      'aria-label',
+      isPassword ? 'Hide password' : 'Show password',
+    );
   });
 }
 

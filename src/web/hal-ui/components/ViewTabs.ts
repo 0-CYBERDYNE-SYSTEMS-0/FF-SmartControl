@@ -1,27 +1,37 @@
 // ViewTabs — 44px, 5 tabs with active underline in accent color
 
-export type ViewId = 'dashboard' | 'devices' | 'sensors' | 'decisions' | 'cameras';
+export type ViewId =
+  | 'dashboard'
+  | 'devices'
+  | 'sensors'
+  | 'decisions'
+  | 'cameras';
 
 const tabs: { id: ViewId; label: string }[] = [
-  { id: 'dashboard',  label: 'Dashboard' },
-  { id: 'devices',    label: 'Devices' },
-  { id: 'sensors',    label: 'Sensors' },
-  { id: 'decisions',  label: 'Decisions' },
-  { id: 'cameras',    label: 'Cameras' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'devices', label: 'Devices' },
+  { id: 'sensors', label: 'Sensors' },
+  { id: 'decisions', label: 'Decisions' },
+  { id: 'cameras', label: 'Cameras' },
 ];
 
 export function renderViewTabs(active: ViewId): string {
-  const items = tabs.map(t =>
-    `<button class="hal-tab ${t.id === active ? 'active' : ''}" data-view="${t.id}">${t.label}</button>`
-  ).join('');
+  const items = tabs
+    .map(
+      (t) =>
+        `<button class="hal-tab ${t.id === active ? 'active' : ''}" data-view="${t.id}">${t.label}</button>`,
+    )
+    .join('');
   return `<nav class="hal-tabs" aria-label="Main navigation">${items}</nav>`;
 }
 
 export function initViewTabs(onViewChange: (v: ViewId) => void): void {
   injectTabStyles();
-  document.querySelectorAll<HTMLButtonElement>('.hal-tab').forEach(tab => {
+  document.querySelectorAll<HTMLButtonElement>('.hal-tab').forEach((tab) => {
     tab.addEventListener('click', () => {
-      document.querySelectorAll('.hal-tab').forEach(t => t.classList.remove('active'));
+      document
+        .querySelectorAll('.hal-tab')
+        .forEach((t) => t.classList.remove('active'));
       tab.classList.add('active');
       onViewChange(tab.dataset.view as ViewId);
     });
@@ -29,7 +39,7 @@ export function initViewTabs(onViewChange: (v: ViewId) => void): void {
 }
 
 export function getTabIds(): ViewId[] {
-  return tabs.map(t => t.id);
+  return tabs.map((t) => t.id);
 }
 
 function injectTabStyles(): void {

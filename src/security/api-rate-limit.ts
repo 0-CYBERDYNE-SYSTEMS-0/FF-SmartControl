@@ -100,10 +100,7 @@ export function checkApiRateLimit(sessionId: string): ApiRateLimitResult {
 /**
  * Record an API request for rate limiting
  */
-export function recordApiRequest(
-  sessionId: string,
-  endpoint: string,
-): void {
+export function recordApiRequest(sessionId: string, endpoint: string): void {
   const db = getDb();
   const now = new Date().toISOString();
 
@@ -134,9 +131,10 @@ export function clearApiRateLimit(sessionId: string): void {
 /**
  * Get rate limit status for a session (for debugging/UI)
  */
-export function getApiRateLimitStatus(
-  sessionId: string,
-): { remainingRequests: number; resetInSeconds: number } {
+export function getApiRateLimitStatus(sessionId: string): {
+  remainingRequests: number;
+  resetInSeconds: number;
+} {
   const db = getDb();
   const windowStart = new Date(
     Date.now() - WINDOW_SECONDS * 1000,

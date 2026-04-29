@@ -1,9 +1,15 @@
 // Terminal view — live system log with monospace output
 
 import { getStore } from '../store.js';
-import { renderTerminal, buildLogEntries, injectTerminalStyles } from '../components/Terminal.js';
+import {
+  renderTerminal,
+  buildLogEntries,
+  injectTerminalStyles,
+} from '../components/Terminal.js';
 
-export async function renderTerminalView(container: HTMLElement): Promise<void> {
+export async function renderTerminalView(
+  container: HTMLElement,
+): Promise<void> {
   injectTerminalStyles();
 
   const store = getStore();

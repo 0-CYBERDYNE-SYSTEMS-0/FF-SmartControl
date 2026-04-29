@@ -10,15 +10,33 @@ import type {
 } from './types.js';
 
 const IMAGE_EXTENSIONS = new Set([
-  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.svg',
 ]);
 
 const VIDEO_EXTENSIONS = new Set([
-  '.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv',
+  '.mp4',
+  '.mov',
+  '.avi',
+  '.mkv',
+  '.webm',
+  '.flv',
+  '.wmv',
 ]);
 
 const AUDIO_EXTENSIONS = new Set([
-  '.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma',
+  '.mp3',
+  '.wav',
+  '.ogg',
+  '.flac',
+  '.aac',
+  '.m4a',
+  '.wma',
 ]);
 
 export function resolveFileKind(filePath: string): FileDeliveryKind {
@@ -80,7 +98,12 @@ export async function processFileDeliveryRequest(
   deps: FileDeliveryDeps,
 ): Promise<FileDeliveryResult> {
   const executedAt = new Date().toISOString();
-  const { filePath, caption, kind: kindHint, chatJid: targetChatJid } = request.params;
+  const {
+    filePath,
+    caption,
+    kind: kindHint,
+    chatJid: targetChatJid,
+  } = request.params;
 
   try {
     if (!filePath || typeof filePath !== 'string') {
@@ -109,7 +132,9 @@ export async function processFileDeliveryRequest(
       deps.registeredGroups[context.sourceGroup]?.name;
 
     if (!chatJid) {
-      throw new Error(`Could not resolve target chatJid for group: ${context.sourceGroup}`);
+      throw new Error(
+        `Could not resolve target chatJid for group: ${context.sourceGroup}`,
+      );
     }
 
     if (!deps.telegramBot) {
@@ -133,7 +158,12 @@ export async function processFileDeliveryRequest(
         break;
       case 'document':
       default:
-        await deps.telegramBot.sendDocument(chatJid, fileData, fileName, caption);
+        await deps.telegramBot.sendDocument(
+          chatJid,
+          fileData,
+          fileName,
+          caption,
+        );
         break;
     }
 
@@ -176,7 +206,12 @@ export async function deliverFileToChat(
     caption?: string;
     kind?: FileDeliveryKind;
   },
-): Promise<{ success: boolean; error?: string; kind?: FileDeliveryKind; sizeBytes?: number }> {
+): Promise<{
+  success: boolean;
+  error?: string;
+  kind?: FileDeliveryKind;
+  sizeBytes?: number;
+}> {
   const { filePath, chatJid, caption, kind: kindHint } = params;
 
   try {
@@ -204,7 +239,12 @@ export async function deliverFileToChat(
         break;
       case 'document':
       default:
-        await deps.telegramBot.sendDocument(chatJid, fileData, path.basename(filePath), caption);
+        await deps.telegramBot.sendDocument(
+          chatJid,
+          fileData,
+          path.basename(filePath),
+          caption,
+        );
         break;
     }
 

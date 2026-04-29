@@ -151,57 +151,80 @@ export async function activateEstop(
 
   // Apply safe state to all devices concurrently (Promise.all)
   const results = await Promise.all(
-    devices.map(async (device): Promise<{
-      deviceId: string;
-      safeState: 'on' | 'off' | 'unknown' | 'no_change';
-      failure: string | null;
-    }> => {
-      const safeState = safeStateMap.get(device.id);
-      const targetState = safeState?.safeState ?? 'off';
+    devices.map(
+      async (
+        device,
+      ): Promise<{
+        deviceId: string;
+        safeState: 'on' | 'off' | 'unknown' | 'no_change';
+        failure: string | null;
+      }> => {
+        const safeState = safeStateMap.get(device.id);
+        const targetState = safeState?.safeState ?? 'off';
 
-      if (targetState === 'no_change') {
-        return { deviceId: device.id, safeState: 'no_change', failure: null };
-      }
-
-      if (targetState === 'unknown') {
-        return { deviceId: device.id, safeState: 'unknown', failure: `${device.id}: safe state is unknown` };
-      }
-
-      try {
-        // Wait up to 5 seconds for ack
-        const ack = await applyDeviceSafeState(
-          device.id,
-          targetState === 'on',
-          safeState?.safeValue,
-        );
-        if (ack) {
-          halRelays.log({
-            device_id: device.id,
-            state: targetState,
-            reason: 'emergency_stop',
-            triggered_by: 'estop_system',
-          });
-          return { deviceId: device.id, safeState: targetState as 'on' | 'off', failure: null };
-        } else {
-          logger.warn(
-            { deviceId: device.id },
-            'E-Stop: device did not acknowledge safe state within 5s',
-          );
-          return { deviceId: device.id, safeState: 'unknown', failure: `${device.id}: no ack received within 5s` };
+        if (targetState === 'no_change') {
+          return { deviceId: device.id, safeState: 'no_change', failure: null };
         }
-      } catch (err: any) {
-        logger.error(
-          { deviceId: device.id, error: err.message },
-          'E-Stop: failed to apply safe state',
-        );
-        return { deviceId: device.id, safeState: 'unknown', failure: `${device.id}: ${err.message}` };
-      }
-    }),
+
+        if (targetState === 'unknown') {
+          return {
+            deviceId: device.id,
+            safeState: 'unknown',
+            failure: `${device.id}: safe state is unknown`,
+          };
+        }
+
+        try {
+          // Wait up to 5 seconds for ack
+          const ack = await applyDeviceSafeState(
+            device.id,
+            targetState === 'on',
+            safeState?.safeValue,
+          );
+          if (ack) {
+            halRelays.log({
+              device_id: device.id,
+              state: targetState,
+              reason: 'emergency_stop',
+              triggered_by: 'estop_system',
+            });
+            return {
+              deviceId: device.id,
+              safeState: targetState as 'on' | 'off',
+              failure: null,
+            };
+          } else {
+            logger.warn(
+              { deviceId: device.id },
+              'E-Stop: device did not acknowledge safe state within 5s',
+            );
+            return {
+              deviceId: device.id,
+              safeState: 'unknown',
+              failure: `${device.id}: no ack received within 5s`,
+            };
+          }
+        } catch (err: any) {
+          logger.error(
+            { deviceId: device.id, error: err.message },
+            'E-Stop: failed to apply safe state',
+          );
+          return {
+            deviceId: device.id,
+            safeState: 'unknown',
+            failure: `${device.id}: ${err.message}`,
+          };
+        }
+      },
+    ),
   );
 
   // Collect results
   for (const result of results) {
-    appliedSafeStates.push({ deviceId: result.deviceId, safeState: result.safeState });
+    appliedSafeStates.push({
+      deviceId: result.deviceId,
+      safeState: result.safeState,
+    });
     if (result.failure) {
       failures.push(result.failure);
     }

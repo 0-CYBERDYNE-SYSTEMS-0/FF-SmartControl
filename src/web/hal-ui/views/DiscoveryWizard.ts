@@ -659,11 +659,9 @@ function attachStep2Handlers(): void {
     });
 
   // Retry scan button (empty state)
-  overlay
-    .querySelector('#dw-retry-scan-btn')
-    ?.addEventListener('click', () => {
-      startScan();
-    });
+  overlay.querySelector('#dw-retry-scan-btn')?.addEventListener('click', () => {
+    startScan();
+  });
 
   // Add manually button (empty state)
   overlay

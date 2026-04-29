@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.farmpal</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{NODE_PATH}}</string>
+        <string>{{PROJECT_ROOT}}/dist/index.js</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_ROOT}}</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>{{HOME}}/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>{{HOME}}</string>
+        <key>FFT_NANO_TUI_ENABLED</key>
+        <string>1</string>
+        <key>FFT_NANO_TUI_PORT</key>
+        <string>3390</string>
+        <key>FFT_PROFILE</key>
+        <string>farm</string>
+        <key>FEATURE_FARM</key>
+        <string>1</string>
+        <key>FARMPAL_PRIMARY_AGENT</key>
+        <string>1</string>
+        <key>CONTAINER_RUNTIME</key>
+        <string>host</string>
+        <key>FFT_NANO_ALLOW_HOST_RUNTIME</key>
+        <string>1</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_ROOT}}/logs/farmpal.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_ROOT}}/logs/farmpal.error.log</string>
+</dict>
+</plist>

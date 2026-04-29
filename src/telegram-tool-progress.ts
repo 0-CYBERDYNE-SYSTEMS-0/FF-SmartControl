@@ -226,14 +226,13 @@ export function enqueueTelegramToolProgressMessage(params: {
 
       const text = buildTelegramToolProgressMessage(run.lines);
       if (!run.messageId) {
-        run.messageId = await params.bot.sendStreamMessage(params.chatJid, text);
+        run.messageId = await params.bot.sendStreamMessage(
+          params.chatJid,
+          text,
+        );
         return;
       }
-      await params.bot.editStreamMessage(
-        params.chatJid,
-        run.messageId,
-        text,
-      );
+      await params.bot.editStreamMessage(params.chatJid, run.messageId, text);
     })
     .catch(() => {
       run.pendingCount = Math.max(0, run.pendingCount - 1);

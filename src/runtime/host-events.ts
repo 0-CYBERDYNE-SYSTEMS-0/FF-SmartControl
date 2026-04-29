@@ -319,9 +319,7 @@ export function projectEventToGatewayFrame(
             ...(typeof event.delayMs === 'number'
               ? { delayMs: event.delayMs }
               : {}),
-            ...(event.fromProvider
-              ? { fromProvider: event.fromProvider }
-              : {}),
+            ...(event.fromProvider ? { fromProvider: event.fromProvider } : {}),
             ...(event.toProvider ? { toProvider: event.toProvider } : {}),
           },
         },

@@ -4833,7 +4833,9 @@ function createTuiGatewayAdapters(): TuiGatewayAdapters {
     halSensors: () => {
       const { halRegistry } = require('./hal/registry.js');
       const { halSensors } = require('./hal/sensors.js');
-      const devices = halRegistry.list().filter((d: any) => d.type === 'sensor');
+      const devices = halRegistry
+        .list()
+        .filter((d: any) => d.type === 'sensor');
       return devices.map((dev: any) => ({
         device: { id: dev.id, label: dev.label },
         temperature: halSensors.latest(dev.id, 'temperature'),
@@ -4989,7 +4991,9 @@ async function stopWebControlCenterService(): Promise<void> {
 }
 
 // HAL UI server state
-let halUiServer: Awaited<ReturnType<typeof import('./web/hal-ui-server.js').startHalUiServer>> | null = null;
+let halUiServer: Awaited<
+  ReturnType<typeof import('./web/hal-ui-server.js').startHalUiServer>
+> | null = null;
 
 async function startHalUiService(): Promise<void> {
   if (halUiServer) return;
@@ -5007,7 +5011,10 @@ async function startHalUiService(): Promise<void> {
     // Log Tailscale URL if available
     const tailscaleIp = process.env.TAILSCALE_IP;
     if (tailscaleIp) {
-      logger.info({ url: `http://${tailscaleIp}:${port}` }, 'HAL UI available on Tailscale');
+      logger.info(
+        { url: `http://${tailscaleIp}:${port}` },
+        'HAL UI available on Tailscale',
+      );
     }
 
     // Auto-open browser if enabled (default: 1)
@@ -5586,7 +5593,10 @@ async function processHostEvent(event: HostEvent): Promise<void> {
       if (!mainChatJid) return;
       const text = `🚨 Farm Alert: ${event.message}`;
       void sendMessage(mainChatJid, text).catch((err) => {
-        logger.warn({ err, alertId: event.alertId }, 'HAL alert delivery failed');
+        logger.warn(
+          { err, alertId: event.alertId },
+          'HAL alert delivery failed',
+        );
       });
       return;
     }

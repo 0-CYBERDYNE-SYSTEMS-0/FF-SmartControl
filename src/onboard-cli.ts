@@ -403,7 +403,10 @@ function renderSoul(operator: string, assistantName: string): string {
   ].join('\n');
 }
 
-function renderMissionControlTodo(operator: string, assistantName: string): string {
+function renderMissionControlTodo(
+  operator: string,
+  assistantName: string,
+): string {
   return [
     '# TODOS.md = MISSION CONTROL: Onboarding',
     '',
@@ -464,9 +467,7 @@ function shouldRewriteSoulFile(existingBody: string, force: boolean): boolean {
   ) {
     return true;
   }
-  if (
-    /You are FarmFriend: an agricultural assistant\./i.test(existingBody)
-  ) {
+  if (/You are FarmFriend: an agricultural assistant\./i.test(existingBody)) {
     return true;
   }
   return false;
@@ -691,9 +692,7 @@ async function resolveWizardSelections(
           await askText(
             rl,
             'Gateway/TUI port',
-            envMap.FFT_NANO_TUI_PORT ||
-              process.env.FFT_NANO_TUI_PORT ||
-              '3390',
+            envMap.FFT_NANO_TUI_PORT || process.env.FFT_NANO_TUI_PORT || '3390',
           ),
           10,
         ) || 3390;
@@ -861,8 +860,7 @@ export async function runOnboarding(
           ? String(wizard.gatewayPort)
           : undefined,
       CONTAINER_RUNTIME: wizard.runtime,
-      FFT_NANO_ALLOW_HOST_RUNTIME:
-        wizard.runtime === 'host' ? '1' : undefined,
+      FFT_NANO_ALLOW_HOST_RUNTIME: wizard.runtime === 'host' ? '1' : undefined,
     };
     ensureAdminSecret(updates, envMap);
 

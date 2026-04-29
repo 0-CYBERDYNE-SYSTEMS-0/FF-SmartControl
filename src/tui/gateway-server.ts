@@ -183,7 +183,10 @@ function asBoolean(input: unknown, fallback = false): boolean {
 
 const pendingFrames = new WeakMap<WebSocket, Array<string>>();
 
-function queueFrame(ws: WebSocket, frame: GatewayResponseFrame | GatewayEventFrame): void {
+function queueFrame(
+  ws: WebSocket,
+  frame: GatewayResponseFrame | GatewayEventFrame,
+): void {
   const serialized = JSON.stringify(frame);
   const queue = pendingFrames.get(ws) ?? [];
   queue.push(serialized);
@@ -520,7 +523,14 @@ export async function startTuiGatewayServer(
               deliver,
             })
             .then((result) => {
-              sendFrame(ws, response(frame.id, { ok: true, runId: result.runId || clientRunId, status: result.status }));
+              sendFrame(
+                ws,
+                response(frame.id, {
+                  ok: true,
+                  runId: result.runId || clientRunId,
+                  status: result.status,
+                }),
+              );
             })
             .catch((err) => {
               sendFrame(
@@ -637,10 +647,7 @@ export async function startTuiGatewayServer(
           const from = asText(params.from) || undefined;
           const to = asText(params.to) || undefined;
           if (!deviceId) {
-            sendFrame(
-              ws,
-              failure(frame.id, 'deviceId is required.'),
-            );
+            sendFrame(ws, failure(frame.id, 'deviceId is required.'));
             break;
           }
           const history = adapters.halHistory

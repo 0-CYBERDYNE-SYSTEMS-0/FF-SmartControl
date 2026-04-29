@@ -566,7 +566,10 @@ export async function startWebControlCenterServer(
           return;
         }
         if (!adapters.applyOnboardingConfig) {
-          sendJson(res, 404, { ok: false, error: 'Onboarding config API unavailable' });
+          sendJson(res, 404, {
+            ok: false,
+            error: 'Onboarding config API unavailable',
+          });
           return;
         }
         try {
@@ -879,7 +882,11 @@ export async function startWebControlCenterServer(
             humidity: halSensors.latest(dev.id, 'humidity'),
           };
         }
-        sendJson(res, 200, { devices, sensorSnapshots, recentDecisions: halDecisions.recent(10) });
+        sendJson(res, 200, {
+          devices,
+          sensorSnapshots,
+          recentDecisions: halDecisions.recent(10),
+        });
         return;
       }
 
@@ -896,7 +903,11 @@ export async function startWebControlCenterServer(
         const { halRelays } = await import('../hal/relays.js');
         const deviceId = path.split('/')[2];
         let body: any;
-        try { body = await readJsonBody(req); } catch { body = {}; }
+        try {
+          body = await readJsonBody(req);
+        } catch {
+          body = {};
+        }
         const action = body.action;
         if (action !== 'on' && action !== 'off') {
           sendJson(res, 400, { error: 'action must be "on" or "off"' });
@@ -904,7 +915,12 @@ export async function startWebControlCenterServer(
         }
         try {
           await halRegistry.control(deviceId, action);
-          halRelays.log({ device_id: deviceId, state: action, reason: 'manual', triggered_by: 'web-ui' });
+          halRelays.log({
+            device_id: deviceId,
+            state: action,
+            reason: 'manual',
+            triggered_by: 'web-ui',
+          });
           sendJson(res, 200, { ok: true });
         } catch (err: any) {
           sendJson(res, 500, { error: err.message });
@@ -914,9 +930,14 @@ export async function startWebControlCenterServer(
 
       // POST /api/hal/devices/discover — { subnet: string }
       if (path === '/devices/discover' && method === 'POST') {
-        const { discoverDevices, autoRegisterDiscovered } = await import('../hal/discovery.js');
+        const { discoverDevices, autoRegisterDiscovered } =
+          await import('../hal/discovery.js');
         let body: any;
-        try { body = await readJsonBody(req); } catch { body = {}; }
+        try {
+          body = await readJsonBody(req);
+        } catch {
+          body = {};
+        }
         const subnet = body.subnet || process.env.HAL_SUBNET || '192.168.1';
         try {
           const found = await discoverDevices({ subnet });
@@ -932,12 +953,15 @@ export async function startWebControlCenterServer(
       if (path === '/sensors/latest' && method === 'GET') {
         const { halRegistry } = await import('../hal/registry.js');
         const { halSensors } = await import('../hal/sensors.js');
-        const devices = halRegistry.list().filter((d: any) => d.type === 'sensor');
+        const devices = halRegistry
+          .list()
+          .filter((d: any) => d.type === 'sensor');
         const readings: any[] = [];
         for (const dev of devices) {
           const temp = halSensors.latest(dev.id, 'temperature');
           const hum = halSensors.latest(dev.id, 'humidity');
-          if (temp || hum) readings.push({ device: dev, temperature: temp, humidity: hum });
+          if (temp || hum)
+            readings.push({ device: dev, temperature: temp, humidity: hum });
         }
         sendJson(res, 200, readings);
         return;
@@ -949,7 +973,9 @@ export async function startWebControlCenterServer(
         const url = new URL(requestPath, 'http://localhost');
         const deviceId = url.searchParams.get('device');
         const metric = url.searchParams.get('metric') as any;
-        const from = url.searchParams.get('from') || new Date(Date.now() - 86400000).toISOString();
+        const from =
+          url.searchParams.get('from') ||
+          new Date(Date.now() - 86400000).toISOString();
         const to = url.searchParams.get('to') || new Date().toISOString();
         if (!deviceId || !metric) {
           sendJson(res, 400, { error: 'device and metric are required' });
@@ -974,7 +1000,11 @@ export async function startWebControlCenterServer(
         const { halDecisions } = await import('../hal/decisions.js');
         const decisionId = path.split('/')[2];
         let body: any;
-        try { body = await readJsonBody(req); } catch { body = {}; }
+        try {
+          body = await readJsonBody(req);
+        } catch {
+          body = {};
+        }
         try {
           halDecisions.complete(decisionId, body.outcome);
           sendJson(res, 200, { ok: true });
@@ -987,7 +1017,9 @@ export async function startWebControlCenterServer(
       // GET /api/hal/cameras — list camera devices
       if (path === '/cameras' && method === 'GET') {
         const { halRegistry } = await import('../hal/registry.js');
-        const cameras = halRegistry.list().filter((d: any) => d.type === 'camera');
+        const cameras = halRegistry
+          .list()
+          .filter((d: any) => d.type === 'camera');
         sendJson(res, 200, cameras);
         return;
       }
@@ -1008,7 +1040,11 @@ export async function startWebControlCenterServer(
           const filename = `/tmp/hal_cam_${deviceId}_${Date.now()}.jpg`;
           const { writeFileSync } = await import('fs');
           writeFileSync(filename, buf);
-          sendJson(res, 200, { ok: true, path: filename, size_bytes: buf.length });
+          sendJson(res, 200, {
+            ok: true,
+            path: filename,
+            size_bytes: buf.length,
+          });
         } catch (err: any) {
           sendJson(res, 500, { error: err.message });
         }
@@ -1030,9 +1066,10 @@ export async function startWebControlCenterServer(
     // HAL UI static files (src/web/hal-ui/)
     if (requestPath.startsWith('/hal-ui')) {
       const halUiDir = path.resolve(process.cwd(), 'src', 'web', 'hal-ui');
-      const halUiPath = requestPath === '/hal-ui' || requestPath === '/hal-ui/'
-        ? path.join(halUiDir, 'index.html')
-        : path.join(halUiDir, requestPath.replace('/hal-ui/', ''));
+      const halUiPath =
+        requestPath === '/hal-ui' || requestPath === '/hal-ui/'
+          ? path.join(halUiDir, 'index.html')
+          : path.join(halUiDir, requestPath.replace('/hal-ui/', ''));
       if (!halUiPath.startsWith(halUiDir)) {
         sendJson(res, 403, { ok: false, error: 'Forbidden' });
         return;

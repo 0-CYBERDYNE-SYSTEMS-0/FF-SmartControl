@@ -660,7 +660,8 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
 
     // Initialize HAL subsystem (hardware abstraction layer)
     try {
-      const { runMigrations: halRunMigrations, DatabaseCorruptionError } = await import('./hal/db.js');
+      const { runMigrations: halRunMigrations, DatabaseCorruptionError } =
+        await import('./hal/db.js');
       const { halRegistry: halReg } = await import('./hal/registry.js');
 
       // VAL-SVC-028: Run migrations AND integrity check

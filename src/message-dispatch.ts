@@ -1569,7 +1569,10 @@ export function createMessageDispatcher(deps: MessageDispatcherDeps): {
             );
           }
         } catch (err) {
-          deps.logger?.error?.({ err }, '[HAL] Auto mode decision cycle failed');
+          deps.logger?.error?.(
+            { err },
+            '[HAL] Auto mode decision cycle failed',
+          );
         }
       })();
     }

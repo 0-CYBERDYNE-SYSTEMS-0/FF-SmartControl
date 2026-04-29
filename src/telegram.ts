@@ -1362,7 +1362,10 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBot {
         if (loop) {
           clearInterval(loop.interval);
           typingLoops.delete(chatId);
-          logger.debug({ chatJid }, 'Telegram typing indicator auto-stopped after max duration');
+          logger.debug(
+            { chatJid },
+            'Telegram typing indicator auto-stopped after max duration',
+          );
         }
       }, TELEGRAM_TYPING_MAX_DURATION_MS),
     };

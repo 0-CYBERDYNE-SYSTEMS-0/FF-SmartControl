@@ -3,13 +3,40 @@
 
 import { getStore, formatSensorValue } from '../store.js';
 import { halApi, type HalSensorReading } from '../api.js';
-import { renderSystemStatus, injectSystemStatusStyles } from '../components/SystemStatus.js';
-import { renderLatestDecision, injectLatestDecisionStyles } from '../components/LatestDecision.js';
-import { renderKpiStrip, buildKpiData, injectKpiStyles } from '../components/KpiStrip.js';
-import { loadHeroChartData, renderHeroChart, injectHeroChartStyles, renderSparkline } from '../components/HeroChart.js';
-import { renderDashboardOverviewCards, type DashboardHeroMetric, type DashboardOverviewZoneCard, injectChartKitStyles } from '../components/ChartKit.js';
-import { renderOperatorPanels, injectOperatorPanelStyles } from '../components/OperatorPanels.js';
-import { renderTerminal, buildLogEntries, injectTerminalStyles } from '../components/Terminal.js';
+import {
+  renderSystemStatus,
+  injectSystemStatusStyles,
+} from '../components/SystemStatus.js';
+import {
+  renderLatestDecision,
+  injectLatestDecisionStyles,
+} from '../components/LatestDecision.js';
+import {
+  renderKpiStrip,
+  buildKpiData,
+  injectKpiStyles,
+} from '../components/KpiStrip.js';
+import {
+  loadHeroChartData,
+  renderHeroChart,
+  injectHeroChartStyles,
+  renderSparkline,
+} from '../components/HeroChart.js';
+import {
+  renderDashboardOverviewCards,
+  type DashboardHeroMetric,
+  type DashboardOverviewZoneCard,
+  injectChartKitStyles,
+} from '../components/ChartKit.js';
+import {
+  renderOperatorPanels,
+  injectOperatorPanelStyles,
+} from '../components/OperatorPanels.js';
+import {
+  renderTerminal,
+  buildLogEntries,
+  injectTerminalStyles,
+} from '../components/Terminal.js';
 
 export async function renderDashboard(container: HTMLElement): Promise<void> {
   const store = getStore();
@@ -44,7 +71,7 @@ async function renderCalmDashboard(container: HTMLElement): Promise<void> {
           <div class="calm-status-row">
             ${renderCalmKpi('Temperature', getLatestTemp(), '°C', '#F59E0B')}
             ${renderCalmKpi('Humidity', getLatestHum(), '%', '#38BDF8')}
-            ${renderCalmKpi('Devices', store.devices.filter(d => d.online).length, `/${store.devices.length}`, 'var(--accent)')}
+            ${renderCalmKpi('Devices', store.devices.filter((d) => d.online).length, `/${store.devices.length}`, 'var(--accent)')}
           </div>
         </div>
 
@@ -55,7 +82,7 @@ async function renderCalmDashboard(container: HTMLElement): Promise<void> {
         <div class="calm-devices">
           <h2 class="section-title mb-4">Active Devices</h2>
           <div class="calm-device-list">
-            ${renderCalmDeviceList(store.devices.filter(d => d.online))}
+            ${renderCalmDeviceList(store.devices.filter((d) => d.online))}
           </div>
         </div>
       </div>
@@ -71,7 +98,12 @@ async function renderCalmDashboard(container: HTMLElement): Promise<void> {
   await loadDashboardHeroCard();
 }
 
-function renderCalmKpi(label: string, value: number | string, unit: string, color: string): string {
+function renderCalmKpi(
+  label: string,
+  value: number | string,
+  unit: string,
+  color: string,
+): string {
   const val = typeof value === 'number' ? value.toFixed(1) : value;
   return `
     <div class="calm-kpi" style="--kpi-color: ${color}">
@@ -81,15 +113,23 @@ function renderCalmKpi(label: string, value: number | string, unit: string, colo
   `;
 }
 
-function renderCalmDeviceList(devices: ReturnType<typeof getStore>['devices']): string {
-  if (devices.length === 0) return '<p class="text-secondary text-sm">No active devices</p>';
-  return devices.slice(0, 6).map(d => `
+function renderCalmDeviceList(
+  devices: ReturnType<typeof getStore>['devices'],
+): string {
+  if (devices.length === 0)
+    return '<p class="text-secondary text-sm">No active devices</p>';
+  return devices
+    .slice(0, 6)
+    .map(
+      (d) => `
     <div class="calm-device-item ${d.online ? 'online' : 'offline'}">
       <span class="calm-device-dot"></span>
       <span class="calm-device-name">${escapeHtml(d.name)}</span>
       <span class="calm-device-type text-xs text-secondary">${d.type}</span>
     </div>
-  `).join('');
+  `,
+    )
+    .join('');
 }
 
 /* ═══════════════ OPERATOR MODE — Full controls, all data ═══════════════ */
@@ -100,7 +140,10 @@ let dashLoadSequence = 0;
 const OVERVIEW_METRIC_KEYS = ['temperature', 'humidity', 'co2'] as const;
 type OverviewMetricKey = (typeof OVERVIEW_METRIC_KEYS)[number];
 
-const DASH_METRIC_META: Record<string, { label: string; color: string; unit: string }> = {
+const DASH_METRIC_META: Record<
+  string,
+  { label: string; color: string; unit: string }
+> = {
   temperature: { label: 'Temperature', color: '#F59E0B', unit: '°C' },
   humidity: { label: 'Humidity', color: '#38BDF8', unit: '%' },
   co2: { label: 'CO₂', color: '#22C55E', unit: 'ppm' },
@@ -115,35 +158,56 @@ function sortZonesDeterministically(zones: string[]): string[] {
   return zones.slice().sort((a, b) => {
     if (a === 'Unzoned') return 1;
     if (b === 'Unzoned') return -1;
-    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    return a.localeCompare(b, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
   });
 }
 
 function aggregateZoneOverviewCards(
-  layers: Array<{ zoneName: string; metric: string; color: string; data: Array<{ timestamp: string; value: number }> }>,
+  layers: Array<{
+    zoneName: string;
+    metric: string;
+    color: string;
+    data: Array<{ timestamp: string; value: number }>;
+  }>,
   zones: string[],
-  unitSystem: ReturnType<typeof getStore>['unitSystem']
+  unitSystem: ReturnType<typeof getStore>['unitSystem'],
 ): DashboardOverviewZoneCard[] {
-  const zoneMetricBuckets = new Map<string, Map<OverviewMetricKey, Map<number, { sum: number; count: number }>>>();
+  const zoneMetricBuckets = new Map<
+    string,
+    Map<OverviewMetricKey, Map<number, { sum: number; count: number }>>
+  >();
   for (const zone of zones) {
-    zoneMetricBuckets.set(zone, new Map([
-      ['temperature', new Map<number, { sum: number; count: number }>()],
-      ['humidity', new Map<number, { sum: number; count: number }>()],
-      ['co2', new Map<number, { sum: number; count: number }>()],
-    ]));
+    zoneMetricBuckets.set(
+      zone,
+      new Map([
+        ['temperature', new Map<number, { sum: number; count: number }>()],
+        ['humidity', new Map<number, { sum: number; count: number }>()],
+        ['co2', new Map<number, { sum: number; count: number }>()],
+      ]),
+    );
   }
 
   for (const layer of layers) {
     if (!zoneMetricBuckets.has(layer.zoneName)) continue;
-    if (!OVERVIEW_METRIC_KEYS.includes(layer.metric as OverviewMetricKey)) continue;
+    if (!OVERVIEW_METRIC_KEYS.includes(layer.metric as OverviewMetricKey))
+      continue;
     const metricKey = layer.metric as OverviewMetricKey;
-    const metricBuckets = zoneMetricBuckets.get(layer.zoneName)!.get(metricKey)!;
+    const metricBuckets = zoneMetricBuckets
+      .get(layer.zoneName)!
+      .get(metricKey)!;
 
     for (const reading of layer.data) {
       const timestampMs = new Date(reading.timestamp).getTime();
       if (!Number.isFinite(timestampMs)) continue;
       const bucketTs = Math.floor(timestampMs / 60000) * 60000;
-      const converted = formatSensorValue(reading.value, metricKey, unitSystem).value;
+      const converted = formatSensorValue(
+        reading.value,
+        metricKey,
+        unitSystem,
+      ).value;
       const current = metricBuckets.get(bucketTs) ?? { sum: 0, count: 0 };
       current.sum += converted;
       current.count += 1;
@@ -151,9 +215,9 @@ function aggregateZoneOverviewCards(
     }
   }
 
-  return zones.map(zoneName => {
+  return zones.map((zoneName) => {
     const zoneBuckets = zoneMetricBuckets.get(zoneName);
-    const metrics: DashboardHeroMetric[] = OVERVIEW_METRIC_KEYS.map(key => {
+    const metrics: DashboardHeroMetric[] = OVERVIEW_METRIC_KEYS.map((key) => {
       const cfg = DASH_METRIC_META[key];
       const dynamicUnit = formatSensorValue(0, key, unitSystem).unit;
       const entries = Array.from((zoneBuckets?.get(key) ?? new Map()).entries())
@@ -216,11 +280,13 @@ async function loadDashboardHeroCard(): Promise<void> {
     const store = getStore();
 
     // Derive zones from explicit layer zone names
-    const zones = sortZonesDeterministically([...new Set(layers.map(l => l.zoneName).filter(Boolean))]);
+    const zones = sortZonesDeterministically([
+      ...new Set(layers.map((l) => l.zoneName).filter(Boolean)),
+    ]);
     // If no zones from data but we have sensors, infer Tent A/Tent B from ids.
     if (zones.length === 0) {
       const inferredZones = new Set<string>();
-      for (const device of store.devices.filter(d => d.type === 'sensor')) {
+      for (const device of store.devices.filter((d) => d.type === 'sensor')) {
         if (device.id.startsWith('tent_a_')) inferredZones.add('Tent A');
         if (device.id.startsWith('tent_b_')) inferredZones.add('Tent B');
       }
@@ -229,16 +295,22 @@ async function loadDashboardHeroCard(): Promise<void> {
       }
     }
 
-    const zoneCards = aggregateZoneOverviewCards(layers, zones, store.unitSystem);
+    const zoneCards = aggregateZoneOverviewCards(
+      layers,
+      zones,
+      store.unitSystem,
+    );
     const availableMetricKeys = new Set(
       zoneCards
-        .flatMap(zone => zone.metrics)
-        .filter(metric => metric.data.length > 0)
-        .map(metric => metric.key)
-        .filter((key): key is OverviewMetricKey => OVERVIEW_METRIC_KEYS.includes(key as OverviewMetricKey))
+        .flatMap((zone) => zone.metrics)
+        .filter((metric) => metric.data.length > 0)
+        .map((metric) => metric.key)
+        .filter((key): key is OverviewMetricKey =>
+          OVERVIEW_METRIC_KEYS.includes(key as OverviewMetricKey),
+        ),
     );
     const fallbackMetric =
-      OVERVIEW_METRIC_KEYS.find(key => availableMetricKeys.has(key)) ??
+      OVERVIEW_METRIC_KEYS.find((key) => availableMetricKeys.has(key)) ??
       Array.from(availableMetricKeys)[0];
 
     for (const key of Array.from(dashActiveMetrics)) {
@@ -256,7 +328,9 @@ async function loadDashboardHeroCard(): Promise<void> {
       activeKeys: new Set(dashActiveMetrics),
       onToggle: (key) => {
         if (!availableMetricKeys.has(key)) return;
-        const currentlyActive = Array.from(dashActiveMetrics).filter(metricKey => availableMetricKeys.has(metricKey));
+        const currentlyActive = Array.from(dashActiveMetrics).filter(
+          (metricKey) => availableMetricKeys.has(metricKey),
+        );
         if (dashActiveMetrics.has(key)) {
           // Never allow removing the last active metric; chart must always have at least one series.
           if (currentlyActive.length <= 1) return;
@@ -276,7 +350,9 @@ async function loadDashboardHeroCard(): Promise<void> {
 
 /* ═══════════════ DIAGNOSTIC MODE — Deep system metrics, raw data ═══════════════ */
 
-async function renderDiagnosticDashboard(container: HTMLElement): Promise<void> {
+async function renderDiagnosticDashboard(
+  container: HTMLElement,
+): Promise<void> {
   const store = getStore();
 
   container.innerHTML = `
@@ -340,69 +416,89 @@ function renderOverviewBrandChip(): string {
 
 function renderRawSnapshots(
   sensors: ReturnType<typeof getStore>['sensors'],
-  devices: ReturnType<typeof getStore>['devices']
+  devices: ReturnType<typeof getStore>['devices'],
 ): string {
   const entries = Object.entries(sensors);
   if (entries.length === 0) {
     return '<p class="text-secondary text-sm">No sensor snapshots available</p>';
   }
 
-  return entries.map(([deviceId, snap]) => {
-    const device = devices.find(d => d.id === deviceId);
-    const temp = snap.temperature;
-    const hum = snap.humidity;
-    return `
+  return entries
+    .map(([deviceId, snap]) => {
+      const device = devices.find((d) => d.id === deviceId);
+      const temp = snap.temperature;
+      const hum = snap.humidity;
+      return `
       <div class="diag-snapshot hal-card">
         <div class="diag-snapshot-header">
           <span class="text-sm font-semibold">${escapeHtml(device?.name || deviceId)}</span>
           <span class="text-xs text-secondary">${device?.protocol || 'unknown'}</span>
         </div>
         <div class="diag-snapshot-body">
-          ${temp ? `
+          ${
+            temp
+              ? `
             <div class="diag-snapshot-row">
               <span class="text-xs text-secondary">temperature</span>
               <span class="text-mono text-xs">${temp.value.toFixed(2)} °C @ ${new Date(temp.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}</span>
             </div>
-          ` : ''}
-          ${hum ? `
+          `
+              : ''
+          }
+          ${
+            hum
+              ? `
             <div class="diag-snapshot-row">
               <span class="text-xs text-secondary">humidity</span>
               <span class="text-mono text-xs">${hum.value.toFixed(2)} % @ ${new Date(hum.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}</span>
             </div>
-          ` : ''}
+          `
+              : ''
+          }
           ${!temp && !hum ? '<span class="text-xs text-secondary">No data</span>' : ''}
         </div>
       </div>
     `;
-  }).join('');
+    })
+    .join('');
 }
 
 function renderSparklineSidebar(): string {
   const store = getStore();
-  const sensors = store.devices.filter(d => d.type === 'sensor');
+  const sensors = store.devices.filter((d) => d.type === 'sensor');
   const metrics = ['temperature', 'humidity', 'co2'] as const;
   const metricColors: Record<string, string> = {
-    temperature: '#F59E0B', humidity: '#38BDF8', co2: '#22C55E',
+    temperature: '#F59E0B',
+    humidity: '#38BDF8',
+    co2: '#22C55E',
   };
 
-  const sparklines = metrics.map(m => {
-    // Build mini history from sensor snapshots (last 20 values if available)
-    const values: number[] = [];
-    for (const s of sensors) {
-      const snap = store.sensors[s.id];
-      if (snap?.[m]?.value != null) values.push(snap[m].value);
-    }
-    const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-    // Generate synthetic trend from avg
-    const trend = Array.from({ length: 20 }, (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1));
-    const spark = renderSparkline(trend, metricColors[m] || '#888', 120, 28);
-    const label = m.charAt(0).toUpperCase() + m.slice(1);
-    return `
+  const sparklines = metrics
+    .map((m) => {
+      // Build mini history from sensor snapshots (last 20 values if available)
+      const values: number[] = [];
+      for (const s of sensors) {
+        const snap = store.sensors[s.id];
+        if (snap?.[m]?.value != null) values.push(snap[m].value);
+      }
+      const avg =
+        values.length > 0
+          ? values.reduce((a, b) => a + b, 0) / values.length
+          : 0;
+      // Generate synthetic trend from avg
+      const trend = Array.from(
+        { length: 20 },
+        (_, i) => avg + Math.sin(i * 0.5) * (avg * 0.1),
+      );
+      const spark = renderSparkline(trend, metricColors[m] || '#888', 120, 28);
+      const label = m.charAt(0).toUpperCase() + m.slice(1);
+      return `
       <div class="sparkline-row">
         <span class="sparkline-label" style="color:${metricColors[m]}">${label}</span>
         <span class="sparkline-wrap">${spark}</span>
       </div>`;
-  }).join('');
+    })
+    .join('');
 
   return `
     <div class="sidebar-sparklines hal-card">
@@ -412,9 +508,11 @@ function renderSparklineSidebar(): string {
 }
 
 function renderDiagnosticExtras(store: ReturnType<typeof getStore>): string {
-  const sensors = store.devices.filter(d => d.type === 'sensor');
-  const relays = store.devices.filter(d => d.type === 'relay' || d.type === 'smart_plug');
-  const cameras = store.devices.filter(d => d.type === 'camera');
+  const sensors = store.devices.filter((d) => d.type === 'sensor');
+  const relays = store.devices.filter(
+    (d) => d.type === 'relay' || d.type === 'smart_plug',
+  );
+  const cameras = store.devices.filter((d) => d.type === 'camera');
 
   return `
     <div class="diag-extras hal-card">
@@ -468,33 +566,54 @@ async function loadDashboardChart(): Promise<void> {
   }
 }
 
-function buildLiveBar(layers: Array<{ metric: string; data: HalSensorReading[] }>): string {
+function buildLiveBar(
+  layers: Array<{ metric: string; data: HalSensorReading[] }>,
+): string {
   const store = getStore();
-  const latest: Record<string, { value: number; unit: string; color: string }> = {};
+  const latest: Record<string, { value: number; unit: string; color: string }> =
+    {};
   const metricColors: Record<string, string> = {
-    temperature: '#F59E0B', humidity: '#38BDF8', co2: '#22C55E',
-    light: '#FACC15', soil_moisture: '#EF4444', water_level: '#2563EB',
-    ph: '#A855F7', weight: '#94A3B8',
+    temperature: '#F59E0B',
+    humidity: '#38BDF8',
+    co2: '#22C55E',
+    light: '#FACC15',
+    soil_moisture: '#EF4444',
+    water_level: '#2563EB',
+    ph: '#A855F7',
+    weight: '#94A3B8',
   };
   for (const layer of layers) {
     if (!layer.data.length) continue;
     const last = layer.data[layer.data.length - 1];
-    const converted = formatSensorValue(last.value, layer.metric, store.unitSystem);
+    const converted = formatSensorValue(
+      last.value,
+      layer.metric,
+      store.unitSystem,
+    );
     const unit = converted.unit || getMetricUnit(layer.metric);
-    latest[layer.metric] = { value: converted.value, unit, color: metricColors[layer.metric] };
+    latest[layer.metric] = {
+      value: converted.value,
+      unit,
+      color: metricColors[layer.metric],
+    };
   }
   const items = Object.entries(latest).map(([metric, info]) => {
-    const label = metric.charAt(0).toUpperCase() + metric.slice(1).replace('_', ' ');
-    const precision = Math.abs(info.value) >= 100 ? 0 : info.value % 1 === 0 ? 0 : 1;
+    const label =
+      metric.charAt(0).toUpperCase() + metric.slice(1).replace('_', ' ');
+    const precision =
+      Math.abs(info.value) >= 100 ? 0 : info.value % 1 === 0 ? 0 : 1;
     return `<span class="live-item" style="--live-color:${info.color}"><span class="live-dot"></span><span class="live-label">${label}</span><span class="live-val text-mono">${info.value.toFixed(precision)}${info.unit}</span></span>`;
   });
-  return items.join('') || '<span class="text-secondary text-xs">No live data</span>';
+  return (
+    items.join('') || '<span class="text-secondary text-xs">No live data</span>'
+  );
 }
 
 function getLatestTemp(): number {
   const store = getStore();
-  let sum = 0, count = 0;
-  for (const s of store.devices.filter(d => d.type === 'sensor')) {
+  let sum = 0,
+    count = 0;
+  for (const s of store.devices.filter((d) => d.type === 'sensor')) {
     const snap = store.sensors[s.id];
     if (snap?.temperature?.value != null) {
       sum += snap.temperature.value;
@@ -506,8 +625,9 @@ function getLatestTemp(): number {
 
 function getLatestHum(): number {
   const store = getStore();
-  let sum = 0, count = 0;
-  for (const s of store.devices.filter(d => d.type === 'sensor')) {
+  let sum = 0,
+    count = 0;
+  for (const s of store.devices.filter((d) => d.type === 'sensor')) {
     const snap = store.sensors[s.id];
     if (snap?.humidity?.value != null) {
       sum += snap.humidity.value;
@@ -519,40 +639,62 @@ function getLatestHum(): number {
 
 function getMetricUnit(metric: string): string {
   switch (metric) {
-    case 'humidity': case 'soil_moisture': case 'water_level': return '%';
-    case 'co2': return 'ppm';
-    case 'light': return 'lux';
-    case 'ph': return '';
-    case 'weight': return 'kg';
-    default: return '';
+    case 'humidity':
+    case 'soil_moisture':
+    case 'water_level':
+      return '%';
+    case 'co2':
+      return 'ppm';
+    case 'light':
+      return 'lux';
+    case 'ph':
+      return '';
+    case 'weight':
+      return 'kg';
+    default:
+      return '';
   }
 }
 
-function renderDeviceGrid(devices: ReturnType<typeof getStore>['devices']): string {
+function renderDeviceGrid(
+  devices: ReturnType<typeof getStore>['devices'],
+): string {
   if (devices.length === 0) {
     return '<div class="empty-state"><p>No devices registered</p></div>';
   }
-  return devices.map(d => `
+  return devices
+    .map(
+      (d) => `
     <div class="device-mini-card ${d.online ? 'online' : 'offline'}" data-device-id="${d.id}">
       <div class="device-mini-icon">${deviceIcon(d.type)}</div>
       <div class="device-mini-info">
         <div class="device-mini-name">${escapeHtml(d.name)}</div>
         <div class="device-mini-meta text-xs text-secondary">${d.protocol} · ${d.online ? 'online' : 'offline'}</div>
       </div>
-      ${d.type === 'relay' || d.type === 'smart_plug' ? `
+      ${
+        d.type === 'relay' || d.type === 'smart_plug'
+          ? `
         <div class="device-mini-state ${d.state === 'on' ? 'on' : ''}">
           ${d.state === 'on' ? 'ON' : 'OFF'}
         </div>
-      ` : ''}
+      `
+          : ''
+      }
     </div>
-  `).join('');
+  `,
+    )
+    .join('');
 }
 
-function renderRecentDecisions(decisions: ReturnType<typeof getStore>['decisions']): string {
+function renderRecentDecisions(
+  decisions: ReturnType<typeof getStore>['decisions'],
+): string {
   if (decisions.length === 0) {
     return '<div class="empty-state"><p>No decisions yet</p></div>';
   }
-  return decisions.map(d => `
+  return decisions
+    .map(
+      (d) => `
     <div class="decision-row ${d.status || 'pending'}">
       <div class="decision-time text-mono text-xs text-secondary">${formatTime(d.timestamp)}</div>
       <div class="decision-trigger text-sm">${escapeHtml(d.trigger)}</div>
@@ -562,11 +704,13 @@ function renderRecentDecisions(decisions: ReturnType<typeof getStore>['decisions
         <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
       </div>
     </div>
-  `).join('');
+  `,
+    )
+    .join('');
 }
 
 function attachDashboardHandlers(): void {
-  document.querySelectorAll('.device-mini-card').forEach(card => {
+  document.querySelectorAll('.device-mini-card').forEach((card) => {
     card.addEventListener('click', () => {
       const id = (card as HTMLElement).dataset.deviceId;
       if (id) console.log('Device clicked:', id);
@@ -575,7 +719,7 @@ function attachDashboardHandlers(): void {
 }
 
 function attachOperatorPanelHandlers(): void {
-  document.querySelectorAll('.op-device-toggle').forEach(toggle => {
+  document.querySelectorAll('.op-device-toggle').forEach((toggle) => {
     toggle.addEventListener('click', () => {
       const id = (toggle as HTMLElement).dataset.deviceId;
       if (id) {
@@ -589,7 +733,9 @@ function attachOperatorPanelHandlers(): void {
 function formatTime(iso: string): string {
   try {
     return new Date(iso).toLocaleTimeString('en-US', { hour12: false });
-  } catch { return '--'; }
+  } catch {
+    return '--';
+  }
 }
 
 function formatUptime(seconds: number): string {
@@ -607,16 +753,21 @@ function confidenceColor(conf: number): string {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function deviceIcon(type: string): string {
   switch (type) {
-    case 'sensor': return 'SNS';
-    case 'camera': return 'CAM';
-    case 'relay':  return 'RLY';
-    case 'smart_plug': return 'PLG';
-    default:       return 'DEV';
+    case 'sensor':
+      return 'SNS';
+    case 'camera':
+      return 'CAM';
+    case 'relay':
+      return 'RLY';
+    case 'smart_plug':
+      return 'PLG';
+    default:
+      return 'DEV';
   }
 }
 

@@ -22,7 +22,11 @@ export function renderSystemStatus(): string {
   `;
 }
 
-function renderStatusRow(label: string, value: string, chipClass: string): string {
+function renderStatusRow(
+  label: string,
+  value: string,
+  chipClass: string,
+): string {
   return `
     <div class="sys-status-row">
       <span class="sys-status-label">${label}</span>
@@ -49,8 +53,6 @@ function statusChipClass(status: string): string {
       return 'status-chip--idle';
   }
 }
-
-
 
 function formatUptime(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;

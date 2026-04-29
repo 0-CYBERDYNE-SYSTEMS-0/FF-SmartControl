@@ -10,7 +10,11 @@ function ruleKey(deviceId: string, metric: MetricType): string {
   return `${deviceId}:${metric}`;
 }
 
-function evaluate(value: number, threshold: number, operator: 'gt' | 'lt' | 'eq'): boolean {
+function evaluate(
+  value: number,
+  threshold: number,
+  operator: 'gt' | 'lt' | 'eq',
+): boolean {
   if (operator === 'gt') return value > threshold;
   if (operator === 'lt') return value < threshold;
   return Math.abs(value - threshold) < 0.001;
@@ -44,7 +48,13 @@ export async function evaluateHalAlerts(): Promise<HalAlert[]> {
 
     const device = halRegistry.get(rule.deviceId);
     const label = device?.label || rule.deviceId;
-    const message = buildMessage(label, rule.metric, reading.value, rule.threshold, rule.operator);
+    const message = buildMessage(
+      label,
+      rule.metric,
+      reading.value,
+      rule.threshold,
+      rule.operator,
+    );
 
     const alert = halAlerts.logAlert({
       ruleId: rule.id,

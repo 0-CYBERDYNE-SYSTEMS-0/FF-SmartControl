@@ -4,9 +4,12 @@ export type CardState = 'online' | 'offline' | 'unknown';
 
 export function cardBorderStyle(state: CardState): string {
   switch (state) {
-    case 'online':  return 'var(--accent)';
-    case 'offline': return 'var(--danger)';
-    default:        return 'var(--slate)';
+    case 'online':
+      return 'var(--accent)';
+    case 'offline':
+      return 'var(--danger)';
+    default:
+      return 'var(--slate)';
   }
 }
 

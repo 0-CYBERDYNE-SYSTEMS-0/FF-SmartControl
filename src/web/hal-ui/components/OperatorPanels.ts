@@ -6,9 +6,11 @@ import { renderSparkline } from './HeroChart.js';
 
 export async function renderOperatorPanels(): Promise<string> {
   const store = getStore();
-  const sensors = store.devices.filter(d => d.type === 'sensor');
-  const relays = store.devices.filter(d => d.type === 'relay' || d.type === 'smart_plug');
-  const cameras = store.devices.filter(d => d.type === 'camera');
+  const sensors = store.devices.filter((d) => d.type === 'sensor');
+  const relays = store.devices.filter(
+    (d) => d.type === 'relay' || d.type === 'smart_plug',
+  );
+  const cameras = store.devices.filter((d) => d.type === 'camera');
 
   // Fetch power history for 24h sparkline
   const powerHistory = await fetchPowerHistory(relays);
@@ -24,7 +26,9 @@ export async function renderOperatorPanels(): Promise<string> {
   `;
 }
 
-function renderDeviceGridPanel(relays: ReturnType<typeof getStore>['devices']): string {
+function renderDeviceGridPanel(
+  relays: ReturnType<typeof getStore>['devices'],
+): string {
   if (relays.length === 0) {
     return `
       <div class="op-panel hal-card">
@@ -39,7 +43,9 @@ function renderDeviceGridPanel(relays: ReturnType<typeof getStore>['devices']): 
     `;
   }
 
-  const grid = relays.map(r => `
+  const grid = relays
+    .map(
+      (r) => `
     <div class="op-device-cell ${r.online ? 'online' : 'offline'}" data-device-id="${r.id}">
       <div class="op-device-icon">${r.type === 'relay' ? 'RLY' : 'PLG'}</div>
       <div class="op-device-info">
@@ -50,9 +56,11 @@ function renderDeviceGridPanel(relays: ReturnType<typeof getStore>['devices']): 
         <div class="op-toggle-thumb"></div>
       </div>
     </div>
-  `).join('');
+  `,
+    )
+    .join('');
 
-  const onCount = relays.filter(r => r.state === 'on').length;
+  const onCount = relays.filter((r) => r.state === 'on').length;
 
   return `
     <div class="op-panel hal-card">
@@ -70,19 +78,24 @@ function renderDeviceGridPanel(relays: ReturnType<typeof getStore>['devices']): 
 function renderAutomationStatsPanel(decisions: HalDecision[]): string {
   const now = Date.now();
   const oneHour = 60 * 60 * 1000;
-  const recent = decisions.filter(d => now - new Date(d.timestamp).getTime() < oneHour);
-  const successCount = recent.filter(d => d.status === 'success').length;
-  const successRate = recent.length > 0 ? (successCount / recent.length) * 100 : 0;
+  const recent = decisions.filter(
+    (d) => now - new Date(d.timestamp).getTime() < oneHour,
+  );
+  const successCount = recent.filter((d) => d.status === 'success').length;
+  const successRate =
+    recent.length > 0 ? (successCount / recent.length) * 100 : 0;
 
   // Hourly buckets for last 6h
   const buckets: number[] = [];
   for (let h = 5; h >= 0; h--) {
     const start = now - (h + 1) * oneHour;
     const end = now - h * oneHour;
-    buckets.push(decisions.filter(d => {
-      const t = new Date(d.timestamp).getTime();
-      return t >= start && t < end;
-    }).length);
+    buckets.push(
+      decisions.filter((d) => {
+        const t = new Date(d.timestamp).getTime();
+        return t >= start && t < end;
+      }).length,
+    );
   }
 
   return `
@@ -104,28 +117,46 @@ function renderAutomationStatsPanel(decisions: HalDecision[]): string {
           ${renderSparkline(buckets, 'var(--accent)', 180, 32)}
         </div>
         <div class="op-stat-xlabels">
-          ${['-5h','-4h','-3h','-2h','-1h','now'].map(l => `<span class="op-stat-xlabel">${l}</span>`).join('')}
+          ${['-5h', '-4h', '-3h', '-2h', '-1h', 'now'].map((l) => `<span class="op-stat-xlabel">${l}</span>`).join('')}
         </div>
       </div>
     </div>
   `;
 }
 
-function renderAlertsPanel(decisions: HalDecision[], sensors: ReturnType<typeof getStore>['devices']): string {
+function renderAlertsPanel(
+  decisions: HalDecision[],
+  sensors: ReturnType<typeof getStore>['devices'],
+): string {
   const now = Date.now();
-  const alerts: { level: 'critical' | 'warning'; text: string; time: string }[] = [];
+  const alerts: {
+    level: 'critical' | 'warning';
+    text: string;
+    time: string;
+  }[] = [];
 
   // Critical: offline sensors
   for (const s of sensors) {
     if (!s.online) {
-      alerts.push({ level: 'critical', text: `${s.name} offline`, time: 'now' });
+      alerts.push({
+        level: 'critical',
+        text: `${s.name} offline`,
+        time: 'now',
+      });
     }
   }
 
   // Warning: failed decisions
-  const failed = decisions.filter(d => d.status === 'failure' && now - new Date(d.timestamp).getTime() < 3600000);
+  const failed = decisions.filter(
+    (d) =>
+      d.status === 'failure' && now - new Date(d.timestamp).getTime() < 3600000,
+  );
   for (const d of failed.slice(0, 3)) {
-    alerts.push({ level: 'warning', text: d.decision.slice(0, 40), time: formatRelTime(d.timestamp) });
+    alerts.push({
+      level: 'warning',
+      text: d.decision.slice(0, 40),
+      time: formatRelTime(d.timestamp),
+    });
   }
 
   if (alerts.length === 0) {
@@ -142,7 +173,7 @@ function renderAlertsPanel(decisions: HalDecision[], sensors: ReturnType<typeof 
     `;
   }
 
-  const criticalCount = alerts.filter(a => a.level === 'critical').length;
+  const criticalCount = alerts.filter((a) => a.level === 'critical').length;
 
   return `
     <div class="op-panel hal-card">
@@ -151,19 +182,26 @@ function renderAlertsPanel(decisions: HalDecision[], sensors: ReturnType<typeof 
         ${criticalCount > 0 ? `<span class="status-chip status-chip--offline">${criticalCount} critical</span>` : `<span class="status-chip status-chip--online">Clear</span>`}
       </div>
       <div class="op-panel-body">
-        ${alerts.slice(0, 5).map(a => `
+        ${alerts
+          .slice(0, 5)
+          .map(
+            (a) => `
           <div class="op-alert ${a.level}">
             <span class="op-alert-dot"></span>
             <span class="op-alert-text">${escapeHtml(a.text)}</span>
             <span class="op-alert-time text-xs text-secondary">${a.time}</span>
           </div>
-        `).join('')}
+        `,
+          )
+          .join('')}
       </div>
     </div>
   `;
 }
 
-function renderCameraPanel(cameras: ReturnType<typeof getStore>['devices']): string {
+function renderCameraPanel(
+  cameras: ReturnType<typeof getStore>['devices'],
+): string {
   if (cameras.length === 0) {
     return `
       <div class="op-panel hal-card">
@@ -219,7 +257,12 @@ function renderSystemHealthPanel(): string {
 }
 
 function renderHealthBar(label: string, value: number, unit: string): string {
-  const color = value > 85 ? 'var(--danger)' : value > 60 ? 'var(--warning)' : 'var(--success)';
+  const color =
+    value > 85
+      ? 'var(--danger)'
+      : value > 60
+        ? 'var(--warning)'
+        : 'var(--success)';
   return `
     <div class="op-health-row">
       <div class="op-health-labels">
@@ -233,7 +276,9 @@ function renderHealthBar(label: string, value: number, unit: string): string {
   `;
 }
 
-async function fetchPowerHistory(relays: ReturnType<typeof getStore>['devices']): Promise<number[]> {
+async function fetchPowerHistory(
+  relays: ReturnType<typeof getStore>['devices'],
+): Promise<number[]> {
   // Placeholder — would fetch actual relay state history
   return relays.length > 0 ? [1, 2, 1, 3, 2, 4, 3, 2, 3, 4, 3, 2] : [];
 }

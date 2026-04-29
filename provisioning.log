@@ -1,0 +1,65 @@
+2026-04-28T07:31:51.055Z [warn] .env missing required variables - needs reprovisioning {"missing":["FARMPAL_DATA_DIR","FARMPAL_INSTALL_DIR","FARMPAL_PROVISIONED","FARMPAL_FARM_NAME","TZ","FARMPAL_LLM_PROVIDER","SESSION_SECRET","CSRF_SECRET","FFT_NANO_WEB_ACCESS_MODE","HAL_UI_ENABLED","HAL_UI_PORT","CONTAINER_RUNTIME"]}
+2026-04-28T07:31:51.058Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.060Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.061Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.061Z [info] .env file generated successfully
+2026-04-28T07:31:51.062Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.063Z [info] .env file generated successfully
+2026-04-28T07:31:51.064Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.064Z [info] .env file generated successfully
+2026-04-28T07:31:51.065Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.065Z [info] .env file generated successfully
+2026-04-28T07:31:51.066Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.066Z [info] .env file generated successfully
+2026-04-28T07:31:51.077Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.078Z [info] .env file generated successfully
+2026-04-28T07:31:51.079Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.079Z [info] Provisioning already in progress, continuing
+2026-04-28T07:31:51.079Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.080Z [info] Provisioning already in progress, continuing
+2026-04-28T07:31:51.080Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.080Z [info] Provisioning already in progress, continuing
+2026-04-28T07:31:51.081Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.081Z [info] Provisioning already in progress, continuing
+2026-04-28T07:31:51.081Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.081Z [info] Completing provisioning
+2026-04-28T07:31:51.081Z [info] Saved provisioning state {"state":"completed"}
+2026-04-28T07:31:51.081Z [info] Provisioning completed successfully
+2026-04-28T07:31:51.082Z [info] Loaded provisioning state {"state":"completed"}
+2026-04-28T07:31:51.082Z [info] Loaded provisioning state {"state":"completed"}
+2026-04-28T07:31:51.082Z [info] Provisioning already completed
+2026-04-28T07:31:51.083Z [info] Loaded provisioning state {"state":"completed"}
+2026-04-28T07:31:51.083Z [info] Saved provisioning state {"state":"failed"}
+2026-04-28T07:31:51.083Z [warn] Provisioning failed {"error":"Disk full"}
+2026-04-28T07:31:51.083Z [info] Loaded provisioning state {"state":"failed"}
+2026-04-28T07:31:51.084Z [info] Loaded provisioning state {"state":"failed"}
+2026-04-28T07:31:51.090Z [info] Provisioning state reset - ready for re-provisioning
+2026-04-28T07:31:51.092Z [info] Wizard session auto-saved {"step":3}
+2026-04-28T07:31:51.093Z [info] Wizard session auto-saved {"step":3}
+2026-04-28T07:31:51.093Z [info] Wizard session expired {"expiresAt":"2026-04-28T06:31:51.093Z"}
+2026-04-28T07:31:51.094Z [info] Wizard session auto-saved {"step":1}
+2026-04-28T07:31:51.095Z [info] Saved provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.095Z [info] Started provisioning {"retryCount":1}
+2026-04-28T07:31:51.095Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.095Z [info] Saved provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.096Z [info] Provisioning lock acquired {"pid":92896}
+2026-04-28T07:31:51.097Z [info] Provisioning lock acquired {"pid":92896}
+2026-04-28T07:31:51.097Z [info] Provisioning lock released {"pid":92896}
+2026-04-28T07:31:51.098Z [info] Provisioning lock acquired {"pid":92896}
+2026-04-28T07:31:51.098Z [info] Provisioning lock released {"pid":92896}
+2026-04-28T07:31:51.099Z [info] Decision cycle marked as interrupted {"cycleId":"cycle-123","activeRelays":["relay-1","relay-2"]}
+2026-04-28T07:31:51.100Z [info] Decision cycle marked as interrupted {"cycleId":"cycle-456","activeRelays":["relay-3"]}
+2026-04-28T07:31:51.101Z [info] Decision cycle marked as interrupted {"cycleId":"cycle-789","activeRelays":["relay-4"]}
+2026-04-28T07:31:51.101Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.101Z [info] Power loss detected during provisioning - will restart provisioning {"startedAt":"2026-04-28T07:31:51.095Z","lastStep":2}
+2026-04-28T07:31:51.101Z [info] Power loss detected during decision cycle - will re-issue safe states
+2026-04-28T07:31:51.185Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.187Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.187Z [info] Provisioning already in progress, continuing
+2026-04-28T07:31:51.187Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.187Z [info] .env file generated successfully
+2026-04-28T07:31:51.187Z [info] Loaded provisioning state {"state":"in_progress"}
+2026-04-28T07:31:51.187Z [info] Completing provisioning
+2026-04-28T07:31:51.188Z [info] Saved provisioning state {"state":"completed"}
+2026-04-28T07:31:51.188Z [info] Provisioning completed successfully
+2026-04-28T07:31:51.188Z [info] Loaded provisioning state {"state":"completed"}

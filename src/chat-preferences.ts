@@ -58,9 +58,16 @@ export function normalizeTelegramDeliveryMode(
   if (!key) return undefined;
   if (['off', 'final', 'final-only', 'quiet'].includes(key)) return 'off';
   if (
-    ['partial', 'progress', 'live', 'block', 'persistent', 'persist', 'transcript', 'append'].includes(
-      key,
-    )
+    [
+      'partial',
+      'progress',
+      'live',
+      'block',
+      'persistent',
+      'persist',
+      'transcript',
+      'append',
+    ].includes(key)
   ) {
     return 'partial';
   }

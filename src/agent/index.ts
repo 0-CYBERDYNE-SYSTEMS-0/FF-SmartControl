@@ -14,7 +14,11 @@ export type { GeneratorResult, GeneratorContext } from './generator.js';
 export { runVerifier, executeVerifiedAction } from './verifier.js';
 export type { VerifierResult, VerifierInput } from './verifier.js';
 
-export { runReflector, getPendingSuggestions, applySuggestion } from './reflector.js';
+export {
+  runReflector,
+  getPendingSuggestions,
+  applySuggestion,
+} from './reflector.js';
 export type { ReflectorSuggestion, ReflectorReport } from './reflector.js';
 
 export { runDiagnostic, formatDiagnosticReport } from './diagnostic.js';

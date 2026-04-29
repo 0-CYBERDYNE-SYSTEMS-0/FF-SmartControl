@@ -25,13 +25,17 @@ export function renderTerminal(entries: LogEntry[]): string {
     `;
   }
 
-  const lines = entries.map(e => `
+  const lines = entries
+    .map(
+      (e) => `
     <div class="terminal-line ${e.level}">
       <span class="terminal-time text-mono">${formatTime(e.timestamp)}</span>
       <span class="terminal-source">${escapeHtml(e.source)}</span>
       <span class="terminal-msg">${escapeHtml(e.message)}</span>
     </div>
-  `).join('');
+  `,
+    )
+    .join('');
 
   return `
     <div class="terminal-wrap hal-card">
@@ -78,22 +82,36 @@ export function buildLogEntries(decisions: HalDecision[]): LogEntry[] {
   for (const d of decisions.slice(0, 10)) {
     entries.push({
       timestamp: d.timestamp,
-      level: d.status === 'success' ? 'info' : d.status === 'failure' ? 'error' : 'warn',
+      level:
+        d.status === 'success'
+          ? 'info'
+          : d.status === 'failure'
+            ? 'error'
+            : 'warn',
       source: 'decision',
       message: `${d.decision} [${(d.confidence * 100).toFixed(0)}%]`,
     });
   }
 
   // Sort by timestamp descending
-  entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  entries.sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  );
 
   return entries;
 }
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  } catch { return '--:--:--'; }
+    return new Date(iso).toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return '--:--:--';
+  }
 }
 
 function escapeHtml(s: string): string {

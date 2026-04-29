@@ -4,9 +4,9 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 
 export interface CameraConfig {
-  device: string;   // e.g. '/dev/video0'
-  width?: number;   // default 640
-  height?: number;  // default 480
+  device: string; // e.g. '/dev/video0'
+  width?: number; // default 640
+  height?: number; // default 480
 }
 
 export class V4L2Camera {
@@ -20,14 +20,16 @@ export class V4L2Camera {
     try {
       execSync(
         `ffmpeg -y -f v4l2 -video_size ${width}x${height} -i ${device} -frames:v 1 -q:v 2 ${tmpPath}`,
-        { timeout: 10000 }
+        { timeout: 10000 },
       );
       const buf = readFileSync(tmpPath);
       return buf;
     } catch (err: any) {
       throw new Error(`Camera capture failed: ${err.message}`);
     } finally {
-      try { unlinkSync(tmpPath); } catch {}
+      try {
+        unlinkSync(tmpPath);
+      } catch {}
     }
   }
 
@@ -35,7 +37,9 @@ export class V4L2Camera {
   isAvailable(): boolean {
     try {
       const { device } = this.config;
-      execSync(`ffprobe -v error -select_streams v:0 -i ${device}`, { timeout: 3000 });
+      execSync(`ffprobe -v error -select_streams v:0 -i ${device}`, {
+        timeout: 3000,
+      });
       return true;
     } catch {
       return false;

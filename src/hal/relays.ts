@@ -18,22 +18,40 @@ export class HalRelayStore {
     const id = genId('rly');
     const now = new Date().toISOString();
     const switchedAt = data.switched_at ?? now;
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO hal_relays (id, device_id, state, reason, triggered_by, switched_at, stored_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.device_id, data.state, data.reason, data.triggered_by ?? null, switchedAt, now);
+    `,
+      )
+      .run(
+        id,
+        data.device_id,
+        data.state,
+        data.reason,
+        data.triggered_by ?? null,
+        switchedAt,
+        now,
+      );
     return this.get(id)!;
   }
 
   get(id: string): HalRelayToggle | undefined {
-    return this.db.prepare('SELECT * FROM hal_relays WHERE id = ?').get(id) as any;
+    return this.db
+      .prepare('SELECT * FROM hal_relays WHERE id = ?')
+      .get(id) as any;
   }
 
   // Get latest toggle for a device
   latest(deviceId: string): HalRelayToggle | undefined {
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       SELECT * FROM hal_relays WHERE device_id = ? ORDER BY switched_at DESC LIMIT 1
-    `).get(deviceId) as any;
+    `,
+      )
+      .get(deviceId) as any;
   }
 }
 
