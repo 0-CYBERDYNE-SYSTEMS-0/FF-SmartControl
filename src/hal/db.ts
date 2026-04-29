@@ -48,4 +48,23 @@ export function runMigrations(): void {
   } catch {
     /* column already exists */
   }
+
+  // Migration: add missing columns to hal_decision_log (VAL-AUTO-030)
+  try {
+    db.exec(`ALTER TABLE hal_decision_log ADD COLUMN pending_status TEXT`);
+  } catch {
+    /* column already exists */
+  }
+  try {
+    db.exec(
+      `ALTER TABLE hal_decision_log ADD COLUMN triggered_by TEXT DEFAULT 'agent'`,
+    );
+  } catch {
+    /* column already exists */
+  }
+  try {
+    db.exec(`ALTER TABLE hal_decision_log ADD COLUMN model TEXT`);
+  } catch {
+    /* column already exists */
+  }
 }

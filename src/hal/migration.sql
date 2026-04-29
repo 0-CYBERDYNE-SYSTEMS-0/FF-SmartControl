@@ -51,12 +51,7 @@ CREATE TABLE IF NOT EXISTS hal_decision_log (
   model           TEXT                 -- LLM model used for this decision (VAL-AUTO-042)
 );
 
--- Migration: add missing columns to hal_decision_log for existing databases
--- These use IF NOT EXISTS (SQLite 3.35+) so they are idempotent
-ALTER TABLE hal_decision_log ADD COLUMN IF NOT EXISTS pending_status TEXT;
-ALTER TABLE hal_decision_log ADD COLUMN IF NOT EXISTS triggered_by TEXT DEFAULT 'agent';
-ALTER TABLE hal_decision_log ADD COLUMN IF NOT EXISTS model TEXT;
-
+-- Note: pending_status, triggered_by, model columns added via db.ts try/catch for SQLite compatibility
 -- HAL Settings: key-value store for farm settings (VAL-AUTO-040)
 CREATE TABLE IF NOT EXISTS hal_settings (
   key             TEXT PRIMARY KEY,
