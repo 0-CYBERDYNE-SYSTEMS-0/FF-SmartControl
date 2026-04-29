@@ -8003,13 +8003,13 @@ ${result.failures.join("\n")}`
 
     <div class="viz-grid" id="viz-grid"></div>
 
-    <div class="sensor-detail-drawer collapsible-section" id="detail-drawer-section">
+    <div class="sensor-detail-drawer collapsible-section collapsed" id="detail-drawer-section" style="max-height:0;overflow:hidden">
       <div class="collapsible-header" data-target="detail-drawer">
         <div class="detail-header" style="margin:0">
           <h3 class="section-title">Readings</h3>
           <span class="text-xs text-secondary" id="detail-count">--</span>
         </div>
-        <button class="collapsible-toggle" aria-expanded="true">
+        <button class="collapsible-toggle" aria-expanded="false">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
       </div>
@@ -8810,11 +8810,12 @@ ${result.failures.join("\n")}`
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--space-3);
-  overflow: hidden;
+  overflow: visible;
 }
 .hero-chart {
   width: 100%;
-  min-height: 260px;
+  height: 300px;
+  min-height: 300px;
 }
 .hero-svg {
   display: block;
@@ -9138,11 +9139,14 @@ ${result.failures.join("\n")}`
 /* \u2500\u2500 Hero chart sizing \u2500\u2500 */
 #hero-chart {
   width: 100%;
+  height: 300px;
   min-height: 300px;
   position: relative;
+  overflow: visible;
 }
 #hero-chart .ck-chart {
   width: 100%;
+  height: 300px;
 }
 #hero-chart .hero-svg {
   width: 100%;
@@ -9156,6 +9160,12 @@ ${result.failures.join("\n")}`
 #hero-chart .stack-chart {
   width: 100%;
   height: 300px;
+  overflow: visible;
+}
+#hero-chart .lake-chart-inner {
+  width: 100%;
+  height: 300px;
+  overflow: visible;
 }
 #hero-chart .lake-chart-inner svg {
   width: 100%;
