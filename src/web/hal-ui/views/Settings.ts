@@ -517,6 +517,11 @@ function renderSettingsPage(): string {
           ${isSaving ? 'Saving...' : 'Save Settings'}
         </button>
       </div>
+
+      <!-- Version Footer (VAL-VERS-001) -->
+      <div class="settings-version-footer" id="settings-version-footer">
+        <span class="settings-version-text" id="settings-version-text">FarmPal v1.0.0</span>
+      </div>
     </div>
   `;
 }
@@ -930,10 +935,31 @@ function attachSettingsEvents(): void {
 }
 
 async function loadVersionInfo(): Promise<void> {
+  // Update current version in Updates section
   const versionEl = document.getElementById('current-version');
-  if (versionEl) {
-    // Try to get version from package.json or git
-    versionEl.textContent = '1.0.0'; // Placeholder - would come from API
+  // Update version in footer (VAL-VERS-001)
+  const versionFooterEl = document.getElementById('settings-version-text');
+
+  try {
+    // Fetch version from update status API
+    const response = await fetch('http://127.0.0.1:3392/api/update/status');
+    const data = await response.json();
+    const version = data.currentVersion || 'Unknown';
+
+    if (versionEl) {
+      versionEl.textContent = version;
+    }
+    if (versionFooterEl) {
+      versionFooterEl.textContent = `FarmPal v${version}`;
+    }
+  } catch {
+    // Fallback to placeholder
+    if (versionEl) {
+      versionEl.textContent = 'Unknown';
+    }
+    if (versionFooterEl) {
+      versionFooterEl.textContent = 'FarmPal vUnknown';
+    }
   }
 }
 
@@ -952,6 +978,7 @@ async function loadLicenseInfo(): Promise<void> {
     let badgeHtml = '';
     let badgeClass = 'badge-slate';
     let featuresHtml = '';
+    let bannerHtml = '';
 
     switch (status.status) {
       case 'LICENSED':
@@ -984,12 +1011,26 @@ async function loadLicenseInfo(): Promise<void> {
         break;
 
       case 'EXPIRED':
-        badgeClass = 'badge-amber';
-        badgeHtml = `<span class="badge ${badgeClass}">EXPIRED</span>`;
+        badgeClass = 'badge-red';
+        badgeHtml = `<span class="badge badge-red">EXPIRED</span>`;
         if (status.expiresAt) {
           const expiryDate = new Date(status.expiresAt).toLocaleDateString();
           badgeHtml += ` <span style="color: var(--text-secondary); font-size: 13px;">Expired ${expiryDate}</span>`;
         }
+        // Prominent EXPIRED banner
+        bannerHtml = `
+          <div class="license-expired-banner">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div>
+              <strong>License Expired</strong>
+              <p>Your license has expired. Cloud and remote features are disabled. Activate a license to restore full functionality.</p>
+            </div>
+          </div>
+        `;
         featuresHtml = `
           <li style="color: var(--text-secondary);">✗ Cloud features (license expired)</li>
           <li style="color: var(--text-secondary);">✗ Remote access (license expired)</li>
@@ -1013,10 +1054,36 @@ async function loadLicenseInfo(): Promise<void> {
         break;
     }
 
+    // Show offline cache expiry if running on cached offline license
+    if (status.isOffline && status.offlineExpiresAt) {
+      const offlineExpiryDate = new Date(
+        status.offlineExpiresAt,
+      ).toLocaleString();
+      bannerHtml += `
+        <div class="license-offline-banner">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="1" y1="1" x2="23" y2="23"/>
+            <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+            <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+            <path d="M10.71 5.05A16 16 0 0 1 22.58 9"/>
+            <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <line x1="12" y1="20" x2="12.01" y2="20"/>
+          </svg>
+          <span>Offline mode — license cache expires ${offlineExpiryDate}</span>
+        </div>
+      `;
+    }
+
     statusEl.innerHTML = badgeHtml;
 
     if (featuresEl) {
       featuresEl.innerHTML = featuresHtml;
+    }
+
+    // Insert banner(s) before the features element
+    if (bannerHtml && featuresEl) {
+      featuresEl.insertAdjacentHTML('beforebegin', bannerHtml);
     }
 
     // Add activate/deactivate button
@@ -1460,6 +1527,20 @@ function injectSettingsStyles(): void {
   display: flex;
   justify-content: flex-end;
 }
+
+/* Version Footer (VAL-VERS-001) */
+.settings-version-footer {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+}
+.settings-version-text {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-family: monospace;
+}
 .settings-loading {
   display: flex;
   align-items: center;
@@ -1667,6 +1748,54 @@ function injectSettingsStyles(): void {
 .settings-warning-banner span {
   flex: 1;
 }
+
+/* License banners */
+.license-expired-banner {
+  background: color-mix(in srgb, var(--color-danger, #F85149) 15%, var(--bg-secondary));
+  border: 1px solid var(--color-danger, #F85149);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.license-expired-banner svg {
+  flex-shrink: 0;
+  color: var(--color-danger, #F85149);
+  margin-top: 2px;
+}
+.license-expired-banner strong {
+  display: block;
+  color: var(--color-danger, #F85149);
+  font-size: 15px;
+  margin-bottom: var(--space-1);
+}
+.license-expired-banner p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.license-offline-banner {
+  background: color-mix(in srgb, var(--color-info, #388BFD) 15%, var(--bg-secondary));
+  border: 1px solid var(--color-info, #388BFD);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.license-offline-banner svg {
+  flex-shrink: 0;
+  color: var(--color-info, #388BFD);
+}
+
 .settings-hint-error {
   color: var(--color-danger, #F85149);
   font-size: 12px;

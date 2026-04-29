@@ -29,6 +29,13 @@ const HEALTH_CHECK_TIMEOUT_MS = parseInt(
 const HEALTH_CHECK_ENDPOINT = '/health';
 const MOCK_UPDATE_SERVER = !process.env.UPDATE_SERVER_URL;
 
+// Update in-progress marker file for power-loss recovery (VAL-UPDT-009)
+const UPDATE_IN_PROGRESS_FILE = path.join(
+  process.cwd(),
+  'data',
+  'update_in_progress.json',
+);
+
 // Progress callback type
 export type ProgressCallback = (progress: UpdateProgress) => void;
 
@@ -96,6 +103,132 @@ export function setInstalledVersion(version: string): void {
     logger.info({ version }, 'Updated installed version');
   } catch (err) {
     logger.error({ err, version }, 'Failed to update installed version');
+  }
+}
+
+// ============================================================
+// Power-Loss Recovery (VAL-UPDT-009)
+// ============================================================
+
+interface UpdateInProgressMarker {
+  operationId: string;
+  fromVersion: string;
+  toVersion: string;
+  startedAt: string;
+  step: string;
+}
+
+/**
+ * Mark update as in progress (for power-loss detection)
+ * VAL-UPDT-009: Creates marker file that indicates update was interrupted
+ */
+function markUpdateInProgress(marker: UpdateInProgressMarker): void {
+  try {
+    const dir = path.dirname(UPDATE_IN_PROGRESS_FILE);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      UPDATE_IN_PROGRESS_FILE,
+      JSON.stringify(marker, null, 2),
+      'utf-8',
+    );
+    logger.info(
+      { operationId: marker.operationId, toVersion: marker.toVersion },
+      'Update in-progress marker created',
+    );
+  } catch (err) {
+    logger.warn({ err }, 'Failed to create update in-progress marker');
+  }
+}
+
+/**
+ * Clear update in-progress marker (called when update completes or fails)
+ * VAL-UPDT-009
+ */
+function clearUpdateInProgress(): void {
+  try {
+    if (fs.existsSync(UPDATE_IN_PROGRESS_FILE)) {
+      fs.unlinkSync(UPDATE_IN_PROGRESS_FILE);
+      logger.info('Update in-progress marker cleared');
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to clear update in-progress marker');
+  }
+}
+
+/**
+ * Get update in-progress marker if exists
+ * VAL-UPDT-009
+ */
+function getUpdateInProgressMarker(): UpdateInProgressMarker | null {
+  try {
+    if (fs.existsSync(UPDATE_IN_PROGRESS_FILE)) {
+      const data = fs.readFileSync(UPDATE_IN_PROGRESS_FILE, 'utf-8');
+      return JSON.parse(data) as UpdateInProgressMarker;
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to read update in-progress marker');
+  }
+  return null;
+}
+
+/**
+ * Check for interrupted update on startup and trigger automatic rollback
+ * VAL-UPDT-009: Power-loss-mid-update recovery
+ * Called during app initialization to detect and recover from interrupted updates
+ */
+export async function checkForInterruptedUpdate(
+  onProgress: ProgressCallback,
+): Promise<{ recovered: boolean; error?: string }> {
+  const marker = getUpdateInProgressMarker();
+
+  if (!marker) {
+    return { recovered: false };
+  }
+
+  logger.warn(
+    {
+      operationId: marker.operationId,
+      fromVersion: marker.fromVersion,
+      toVersion: marker.toVersion,
+      startedAt: marker.startedAt,
+    },
+    'Detected interrupted update — running consistency check',
+  );
+
+  // Check if we have a snapshot to rollback to
+  if (!hasSnapshot()) {
+    logger.error('No snapshot found for interrupted update recovery');
+    clearUpdateInProgress();
+    return {
+      recovered: false,
+      error: 'Interrupted update detected but no backup found',
+    };
+  }
+
+  try {
+    // Trigger automatic rollback
+    logger.info(
+      { operationId: marker.operationId },
+      'Rolling back due to interrupted update',
+    );
+
+    const result = await performRollback(onProgress);
+
+    if (result.success) {
+      clearUpdateInProgress();
+      logger.info(
+        'Successfully recovered from interrupted update via rollback',
+      );
+      return { recovered: true };
+    } else {
+      clearUpdateInProgress();
+      return { recovered: false, error: result.error || 'Rollback failed' };
+    }
+  } catch (err) {
+    clearUpdateInProgress();
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    logger.error({ err }, 'Failed to recover from interrupted update');
+    return { recovered: false, error: errorMessage };
   }
 }
 
@@ -490,6 +623,15 @@ export async function installUpdate(
   let snapshotPath: string | null = null;
   let bundlePath: string | null = null;
 
+  // Mark update in progress for power-loss recovery (VAL-UPDT-009)
+  markUpdateInProgress({
+    operationId,
+    fromVersion: currentVersion,
+    toVersion: release.version,
+    startedAt: now,
+    step: 'starting',
+  });
+
   try {
     // Step 1: Create snapshot before anything else (VAL-UPDT-004)
     onProgress({
@@ -574,6 +716,9 @@ export async function installUpdate(
       'Update installation completed successfully',
     );
 
+    // Clear the update in-progress marker (VAL-UPDT-009)
+    clearUpdateInProgress();
+
     return { success: true };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -617,6 +762,9 @@ export async function installUpdate(
         logger.error({ err: rollbackErr }, 'Rollback also failed');
       }
     }
+
+    // Clear the update in-progress marker (VAL-UPDT-009)
+    clearUpdateInProgress();
 
     return { success: false, error: errorMessage };
   }

@@ -199,6 +199,17 @@ export async function startHalUiServer(
   const { initLicense } = await import('../license/index.js');
   initLicense();
 
+  // Check for interrupted update and recover if needed (VAL-UPDT-009)
+  const { checkForInterruptedUpdate } = await import('../update/installer.js');
+  // Dummy progress callback for recovery
+  const recoveryProgress: Parameters<
+    typeof checkForInterruptedUpdate
+  >[0] = () => {};
+  const recoveryResult = await checkForInterruptedUpdate(recoveryProgress);
+  if (recoveryResult.recovered) {
+    logger.warn('Recovered from interrupted update via automatic rollback');
+  }
+
   // Start periodic update checker (VAL-UPDT-001)
   const { startUpdateChecker } = await import('../update/checker.js');
   startUpdateChecker();

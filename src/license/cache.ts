@@ -109,7 +109,7 @@ export function isCacheValid(): boolean {
  */
 export function isOfflineCached(): boolean {
   const state = getCachedLicenseState();
-  return state?.cachedOffline === true && !isCacheValid();
+  return state?.cachedOffline === true && isCacheValid();
 }
 
 /**
