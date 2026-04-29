@@ -370,9 +370,9 @@
     <aside class="sidebar ${collapsed ? "collapsed" : ""}" id="hal-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-logo">
-          <img class="sidebar-logo-img" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
-          <span class="sidebar-brand sidebar-brand-long">FarmFriend_Smart_Control</span>
-          <span class="sidebar-brand sidebar-brand-short">FF_Smart_Control</span>
+          <img class="sidebar-logo-img" src="./ff_logo_svg.svg" alt="FarmPal logo" />
+          <span class="sidebar-brand sidebar-brand-long">FarmPal</span>
+          <span class="sidebar-brand sidebar-brand-short">FarmPal</span>
         </div>
         <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
           ${chevronIcon()}
@@ -1130,10 +1130,10 @@
         <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
-        <div class="hal-header-brand" title="FarmFriend_Smart_Control">
-          <img class="hal-header-brand-logo" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
-          <span class="hal-header-brand-text hal-header-brand-text-long">FarmFriend_Smart_Control</span>
-          <span class="hal-header-brand-text hal-header-brand-text-short">FF_Smart_Control</span>
+        <div class="hal-header-brand" title="FarmPal">
+          <img class="hal-header-brand-logo" src="./ff_logo_svg.svg" alt="FarmPal logo" />
+          <span class="hal-header-brand-text hal-header-brand-text-long">FarmPal</span>
+          <span class="hal-header-brand-text hal-header-brand-text-short">FarmPal</span>
         </div>
         <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
       </div>
@@ -5644,10 +5644,10 @@ ${result.failures.join("\n")}`
   }
   function renderOverviewBrandChip() {
     return `
-    <div class="dash-brand-chip" title="FarmFriend_Smart_Control">
-      <img class="dash-brand-logo" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
-      <span class="dash-brand-text dash-brand-text-long">FarmFriend_Smart_Control</span>
-      <span class="dash-brand-text dash-brand-text-short">FF_Smart_Control</span>
+    <div class="dash-brand-chip" title="FarmPal">
+      <img class="dash-brand-logo" src="./ff_logo_svg.svg" alt="FarmPal logo" />
+      <span class="dash-brand-text dash-brand-text-long">FarmPal</span>
+      <span class="dash-brand-text dash-brand-text-short">FarmPal</span>
     </div>
   `;
   }
@@ -7914,17 +7914,29 @@ ${result.failures.join("\n")}`
       </div>
     </div>
 
-    <div class="horizon-strips-section">
-      <h2 class="section-title mb-3">Metric Strips</h2>
-      <div class="horizon-strips-grid" id="horizon-strips"></div>
+    <div class="horizon-strips-section collapsible-section" id="strips-section">
+      <div class="collapsible-header" data-target="strips-content">
+        <h2 class="section-title">Metric Strips</h2>
+        <button class="collapsible-toggle" aria-expanded="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+      <div class="collapsible-content" id="strips-content">
+        <div class="horizon-strips-grid" id="horizon-strips"></div>
+      </div>
     </div>
 
     <div class="viz-grid" id="viz-grid"></div>
 
-    <div class="sensor-detail-drawer" id="detail-drawer">
-      <div class="detail-header">
-        <h3 class="section-title">Readings</h3>
-        <span class="text-xs text-secondary" id="detail-count">--</span>
+    <div class="sensor-detail-drawer collapsible-section" id="detail-drawer-section">
+      <div class="collapsible-header" data-target="detail-drawer">
+        <div class="detail-header" style="margin:0">
+          <h3 class="section-title">Readings</h3>
+          <span class="text-xs text-secondary" id="detail-count">--</span>
+        </div>
+        <button class="collapsible-toggle" aria-expanded="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
       </div>
       <div class="detail-table-wrap">
         <table class="hal-table compact">
@@ -7989,6 +8001,15 @@ ${result.failures.join("\n")}`
         }
         syncMetricPills();
         void loadData(sensors);
+      });
+    });
+    document.querySelectorAll(".collapsible-header").forEach((header) => {
+      header.addEventListener("click", () => {
+        const section = header.closest(".collapsible-section");
+        if (!section) return;
+        const isCollapsed = section.classList.toggle("collapsed");
+        const btn = header.querySelector(".collapsible-toggle");
+        if (btn) btn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
       });
     });
   }
@@ -8065,10 +8086,10 @@ ${result.failures.join("\n")}`
     });
     if (sortedZones.length > 0) {
       if (!viewState.zoneSelectionInitialized) {
-        viewState.activeZone = sortedZones[0];
+        viewState.activeZone = "";
         viewState.zoneSelectionInitialized = true;
       } else if (viewState.activeZone && !sortedZones.includes(viewState.activeZone)) {
-        viewState.activeZone = sortedZones[0];
+        viewState.activeZone = "";
       }
     } else {
       viewState.activeZone = "";
@@ -8195,57 +8216,62 @@ ${result.failures.join("\n")}`
       return;
     }
     const store = getStore();
-    const stackedLayers = layers.map((l) => {
-      const cfg = l.metric;
+    const metricGroups = /* @__PURE__ */ new Map();
+    for (const layer of layers) {
+      const list = metricGroups.get(layer.metric.key) || [];
+      list.push(layer);
+      metricGroups.set(layer.metric.key, list);
+    }
+    const dualLayers = [];
+    for (const [metricKey, metricLayers] of metricGroups) {
+      if (metricLayers.length === 0) continue;
+      const cfg = metricLayers[0].metric;
       let axisMin = cfg.minAxis;
       let axisMax = cfg.maxAxis;
-      if (cfg.key === "temperature" && store.unitSystem === "imperial") {
+      if (metricKey === "temperature" && store.unitSystem === "imperial") {
         axisMin = axisMin * 9 / 5 + 32;
         axisMax = axisMax * 9 / 5 + 32;
       }
-      const vSpan = Math.max(1, axisMax - axisMin);
-      return {
-        label: `${escapeHtml9(l.deviceName)} \u2014 ${cfg.label}`,
+      const timeMap = /* @__PURE__ */ new Map();
+      for (const l of metricLayers) {
+        for (const d of l.data) {
+          const t = new Date(d.timestamp).getTime();
+          const bucket = Math.floor(t / 6e4) * 6e4;
+          const converted = formatSensorValue(d.value, metricKey, store.unitSystem).value;
+          const list = timeMap.get(bucket) || [];
+          list.push(converted);
+          timeMap.set(bucket, list);
+        }
+      }
+      const merged = Array.from(timeMap.entries()).sort((a, b) => a[0] - b[0]).map(([t, vals]) => ({ t, v: vals.reduce((a, b) => a + b, 0) / vals.length }));
+      dualLayers.push({
+        label: cfg.label,
         color: cfg.color,
-        data: l.data.map((d) => ({
-          t: new Date(d.timestamp).getTime(),
-          v: (formatSensorValue(d.value, cfg.key, store.unitSystem).value - axisMin) / vSpan * 100
-        }))
-      };
-    });
+        minAxis: axisMin,
+        maxAxis: axisMax,
+        unit: metricKey === "temperature" ? `\xB0${store.unitSystem === "metric" ? "C" : "F"}` : cfg.fallbackUnit,
+        data: merged
+      });
+    }
     void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
       if (expectedSequence !== void 0 && expectedSequence !== loadSequence)
         return;
-      m.renderStackedAreaChart(stackedLayers, "hero-chart", { showLegend: true });
+      const title = dualLayers.map((l) => l.label).join(" + ") || "Sensor Data";
+      m.renderDualAxisCard(dualLayers, "hero-chart", {
+        title,
+        subtitle: `${viewState.range} range`,
+        showStats: true,
+        showGrid: true,
+        smooth: true
+      });
     });
     if (legend) {
-      const colorGroups = /* @__PURE__ */ new Map();
-      for (const l of layers) {
-        const list = colorGroups.get(l.metric.color) || [];
-        list.push(l);
-        colorGroups.set(l.metric.color, list);
-      }
-      void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
-        if (expectedSequence !== void 0 && expectedSequence !== loadSequence)
-          return;
-        const shades = /* @__PURE__ */ new Map();
-        for (const [color, group] of colorGroups) {
-          if (group.length > 1) {
-            shades.set(color, m.generateDeviceShades(color, group.length));
-          }
-        }
-        legend.innerHTML = layers.map((l) => {
-          const group = colorGroups.get(l.metric.color);
-          const idx = group.indexOf(l);
-          const shade = group.length > 1 ? shades.get(l.metric.color)[idx] : l.metric.color;
-          return `
-          <span class="legend-item" style="--metric-color:${shade}">
-            <span class="legend-dot"></span>
-            ${escapeHtml9(l.deviceName)} \u2014 ${escapeHtml9(l.metric.label)}
-          </span>
-        `;
-        }).join("");
-      });
+      legend.innerHTML = dualLayers.map((l) => `
+        <span class="legend-item" style="--metric-color:${l.color}">
+          <span class="legend-dot"></span>
+          ${escapeHtml9(l.label)}
+        </span>
+      `).join("");
     }
   }
   function renderDetailTable(layers) {
@@ -8991,6 +9017,69 @@ ${result.failures.join("\n")}`
 .qm-table tbody tr:last-child td { border-bottom: none; }
 .qm-table tbody tr:hover td { background: var(--bg-tertiary); }
 
+/* \u2500\u2500 Collapsible sections \u2500\u2500 */
+.collapsible-section {
+  margin-top: var(--space-4);
+}
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: var(--space-2) 0;
+  user-select: none;
+}
+.collapsible-header:hover .section-title {
+  color: var(--text-primary);
+}
+.collapsible-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--transition-fast);
+}
+.collapsible-toggle svg {
+  transition: transform var(--transition-fast);
+}
+.collapsible-section.collapsed .collapsible-toggle svg {
+  transform: rotate(-90deg);
+}
+.collapsible-content {
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  max-height: 2000px;
+  opacity: 1;
+}
+.collapsible-section.collapsed .collapsible-content {
+  max-height: 0;
+  opacity: 0;
+}
+
+/* \u2500\u2500 Hero chart sizing \u2500\u2500 */
+#hero-chart {
+  width: 100%;
+  min-height: 300px;
+  position: relative;
+}
+#hero-chart .ck-chart {
+  width: 100%;
+}
+#hero-chart .hero-svg {
+  width: 100%;
+  height: auto;
+  min-height: 280px;
+  display: block;
+}
+#hero-chart .chart-empty {
+  min-height: 280px;
+}
+
 @media (max-width: 1023px) {
   .viz-grid { grid-template-columns: repeat(2, 1fr); }
   .viz-card.wide { grid-column: span 2; }
@@ -9005,6 +9094,7 @@ ${result.failures.join("\n")}`
     width: 100%;
   }
   .hero-chart { min-height: 200px; }
+  #hero-chart .hero-svg { min-height: 200px; }
   .metric-bar { gap: var(--space-1); }
   .metric-pill { height: 32px; padding: 0 10px; font-size: 11px; }
   .viz-grid { grid-template-columns: 1fr; }
@@ -9108,6 +9198,7 @@ ${result.failures.join("\n")}`
         activeMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
         availableMetrics: /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]),
         activeZone: "",
+        // Empty = All Zones by default
         zoneSelectionInitialized: false,
         decisions: []
       };

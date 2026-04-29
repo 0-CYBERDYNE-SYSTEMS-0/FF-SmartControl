@@ -35,9 +35,9 @@ export function renderSidebar(activeView: ViewId, collapsed: boolean): string {
     <aside class="sidebar ${collapsed ? 'collapsed' : ''}" id="hal-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-logo">
-          <img class="sidebar-logo-img" src="./ff_logo_svg.svg" alt="FarmFriend_Smart_Control logo" />
-          <span class="sidebar-brand sidebar-brand-long">FarmFriend_Smart_Control</span>
-          <span class="sidebar-brand sidebar-brand-short">FF_Smart_Control</span>
+          <img class="sidebar-logo-img" src="./ff_logo_svg.svg" alt="FarmPal logo" />
+          <span class="sidebar-brand sidebar-brand-long">FarmPal</span>
+          <span class="sidebar-brand sidebar-brand-short">FarmPal</span>
         </div>
         <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
           ${chevronIcon()}
