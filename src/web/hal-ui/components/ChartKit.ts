@@ -1308,7 +1308,7 @@ export function renderStackedAreaChart(
           .join('')}</div>`
       : '';
 
-  container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
+  container.innerHTML = `<div class="stack-chart lake-chart-inner">${svg}</div>${legendHtml}`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1454,7 +1454,7 @@ export function renderLakeChart(
           .join('')}</div>`
       : '';
 
-  container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
+  container.innerHTML = `<div class="stack-chart lake-chart-inner">${svg}</div>${legendHtml}`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -3378,7 +3378,7 @@ ${result.failures.join("\n")}`
           <span class="legend-dot"></span>${escapeHtml3(l.label)}
         </span>`
     ).join("")}</div>` : "";
-    container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
+    container.innerHTML = `<div class="stack-chart lake-chart-inner">${svg}</div>${legendHtml}`;
   }
   function renderLakeChart(layers, containerId, opts = {}) {
     const container = document.getElementById(containerId);
@@ -3452,7 +3452,7 @@ ${result.failures.join("\n")}`
           <span class="legend-dot"></span>${escapeHtml3(l.label)}
         </span>`
     ).join("")}</div>` : "";
-    container.innerHTML = `<div class="stack-chart">${svg}</div>${legendHtml}`;
+    container.innerHTML = `<div class="stack-chart lake-chart-inner">${svg}</div>${legendHtml}`;
   }
   function renderAreaCard(data, metricKey, containerId, title) {
     const container = document.getElementById(containerId);
@@ -8330,11 +8330,15 @@ ${result.failures.join("\n")}`
         data: merged
       });
     }
-    void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
+    try {
       if (expectedSequence !== void 0 && expectedSequence !== loadSequence)
         return;
-      m.renderLakeChart(lakeLayers, "hero-chart", { showLegend: true });
-    });
+      renderLakeChart(lakeLayers, "hero-chart", { showLegend: true });
+    } catch (err) {
+      const container2 = document.getElementById("hero-chart");
+      if (container2) container2.innerHTML = `<div class="chart-empty">Chart error</div>`;
+      console.error("Lake chart render failed:", err);
+    }
     if (legend) {
       legend.innerHTML = lakeLayers.map((l) => `
         <span class="legend-item" style="--metric-color:${l.color}">
@@ -9142,12 +9146,20 @@ ${result.failures.join("\n")}`
 }
 #hero-chart .hero-svg {
   width: 100%;
-  height: auto;
-  min-height: 280px;
+  height: 300px;
+  min-height: 300px;
   display: block;
 }
 #hero-chart .chart-empty {
-  min-height: 280px;
+  min-height: 300px;
+}
+#hero-chart .stack-chart {
+  width: 100%;
+  height: 300px;
+}
+#hero-chart .lake-chart-inner svg {
+  width: 100%;
+  height: 300px;
 }
 
 @media (max-width: 1023px) {
@@ -9180,6 +9192,7 @@ ${result.failures.join("\n")}`
       "use strict";
       init_store();
       init_api();
+      init_ChartKit();
       metrics = [
         {
           key: "temperature",

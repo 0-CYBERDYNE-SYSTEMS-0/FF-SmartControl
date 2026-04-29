@@ -10,6 +10,7 @@ import {
   formatDateTimeValue,
 } from '../store.js';
 import { halApi, HalSensorReading, HalDecision } from '../api.js';
+import { renderLakeChart } from '../components/ChartKit.js';
 
 type MetricKey =
   | 'temperature'
@@ -648,11 +649,15 @@ function renderHeroChart(
     });
   }
 
-  void import('../components/ChartKit.js').then((m) => {
+  try {
     if (expectedSequence !== undefined && expectedSequence !== loadSequence)
       return;
-    m.renderLakeChart(lakeLayers, 'hero-chart', { showLegend: true });
-  });
+    renderLakeChart(lakeLayers, 'hero-chart', { showLegend: true });
+  } catch(err) {
+    const container = document.getElementById('hero-chart');
+    if (container) container.innerHTML = `<div class="chart-empty">Chart error</div>`;
+    console.error('Lake chart render failed:', err);
+  }
 
   // Legend below chart
   if (legend) {
@@ -1546,12 +1551,20 @@ function injectSensorStyles(): void {
 }
 #hero-chart .hero-svg {
   width: 100%;
-  height: auto;
-  min-height: 280px;
+  height: 300px;
+  min-height: 300px;
   display: block;
 }
 #hero-chart .chart-empty {
-  min-height: 280px;
+  min-height: 300px;
+}
+#hero-chart .stack-chart {
+  width: 100%;
+  height: 300px;
+}
+#hero-chart .lake-chart-inner svg {
+  width: 100%;
+  height: 300px;
 }
 
 @media (max-width: 1023px) {
