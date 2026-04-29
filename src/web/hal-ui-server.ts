@@ -108,6 +108,11 @@ function isProtectedRoute(requestPath: string): boolean {
     }
   }
 
+  // Development bypass: skip auth when HAL_UI_AUTH_BYPASS=1 env var is set
+  if (process.env.HAL_UI_AUTH_BYPASS === '1') {
+    return false;
+  }
+
   // API paths are protected
   if (requestPath.startsWith('/api/')) {
     return true;
