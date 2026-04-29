@@ -660,10 +660,31 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
 
     // Initialize HAL subsystem (hardware abstraction layer)
     try {
-      const { runMigrations: halRunMigrations } = await import('./hal/db.js');
+      const { runMigrations: halRunMigrations, DatabaseCorruptionError } = await import('./hal/db.js');
       const { halRegistry: halReg } = await import('./hal/registry.js');
-      halRunMigrations();
-      deps.logger.info?.('[HAL] Database migrated');
+
+      // VAL-SVC-028: Run migrations AND integrity check
+      // Throws DatabaseCorruptionError if PRAGMA integrity_check fails
+      try {
+        halRunMigrations();
+        deps.logger.info?.('[HAL] Database migrated and integrity verified');
+      } catch (err) {
+        if (err instanceof DatabaseCorruptionError) {
+          // Corrupt DB is fatal - log clear error and exit non-zero
+          deps.logger.fatal?.(
+            { dbPath: err.dbPath, failures: err.integrityFailures },
+            '[HAL] FATAL: Database corruption detected. ' +
+              'FarmPal cannot start with a corrupt database. ' +
+              'Recovery options: ' +
+              '1) Restore from backup in /opt/farmpal/backups/ ' +
+              '2) Run "farmpal-reset" for factory reset (irreversible)',
+          );
+          // Exit with non-zero code so systemd Restart=always does NOT retry
+          // (corruption needs manual intervention, not automated restart)
+          process.exit(1);
+        }
+        throw err; // Re-throw other errors
+      }
 
       if (process.env.HAL_SIM_MODE === '1') {
         // Digital Twin Runtime — live simulation, no real hardware
