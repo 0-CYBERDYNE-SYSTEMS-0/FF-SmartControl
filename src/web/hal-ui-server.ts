@@ -1,4 +1,5 @@
 import http from 'http';
+import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
@@ -11,6 +12,25 @@ import { mqttSubscriber } from '../hal/mqtt.js';
 import type { MetricType } from '../hal/types.js';
 import { logger } from '../logger.js';
 import { getSimulator } from '../hal/simulator.js';
+import {
+  generateSelfSignedCert,
+  getCertFingerprint,
+  getCertInfo,
+  getCertPaths,
+  hasCertificate,
+  handleLogin,
+  handleLogout,
+  authMiddleware,
+  csrfMiddleware,
+  parseSessionCookie,
+  buildSetCookieHeader,
+  buildClearSessionHeader,
+  buildCsrfCookie,
+  generateCsrfToken,
+  isPasswordSet,
+  checkRateLimit,
+  getSecurityHeaders,
+} from '../security/index.js';
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -44,6 +64,81 @@ function sendJson(
     'Content-Length': Buffer.byteLength(payload),
   });
   res.end(payload);
+}
+
+/**
+ * Apply security headers to all responses (VAL-SEC-015)
+ */
+function applySecurityHeaders(res: http.ServerResponse): void {
+  const headers = getSecurityHeaders({
+    hsts: !!process.env.HAL_UI_HTTPS_ENABLED,
+  });
+  for (const [name, value] of Object.entries(headers)) {
+    res.setHeader(name, value);
+  }
+}
+
+/**
+ * Check if request is for a protected route
+ */
+function isProtectedRoute(requestPath: string): boolean {
+  // Public paths that don't require authentication
+  const publicPaths = [
+    '/health',
+    '/api/provisioning',
+    '/api/auth/login',
+    '/_sim',
+    '/login',
+  ];
+
+  for (const p of publicPaths) {
+    if (requestPath.startsWith(p)) {
+      return false;
+    }
+  }
+
+  // API paths are protected
+  if (requestPath.startsWith('/api/')) {
+    return true;
+  }
+
+  // Static files - the index.html will handle auth redirect
+  return false;
+}
+
+/**
+ * Send authentication error response
+ */
+function sendAuthError(
+  res: http.ServerResponse,
+  statusCode: number,
+  error: string,
+  loginUrl?: string,
+): void {
+  const body = JSON.stringify({
+    error,
+    ...(loginUrl ? { loginUrl } : {}),
+  });
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
+/**
+ * Send CSRF error response
+ */
+function sendCsrfError(res: http.ServerResponse): void {
+  const body = JSON.stringify({
+    error:
+      'Invalid or missing CSRF token. Include X-CSRF-Token header matching the farmpal_csrf cookie.',
+  });
+  res.writeHead(403, {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(body),
+  });
+  res.end(body);
 }
 
 // Apply calibration offset to a sensor reading (VAL-DISC-060)
@@ -86,10 +181,187 @@ export async function startHalUiServer(
   const bindHost = process.env.HAL_UI_BIND_HOST || host;
   const staticDir = path.resolve(process.cwd(), 'src', 'web', 'hal-ui');
 
-  const server = http.createServer(async (req, res) => {
+  // Check if HTTPS is enabled
+  const httpsEnabled = process.env.HAL_UI_HTTPS_ENABLED === 'true';
+  let server: http.Server | https.Server;
+
+  if (httpsEnabled) {
+    // Generate or load certificate
+    generateSelfSignedCert();
+    const { cert, key } = getCertPaths();
+    if (!fs.existsSync(cert) || !fs.existsSync(key)) {
+      throw new Error('HTTPS enabled but certificate files not found');
+    }
+    const httpsOptions: https.ServerOptions = {
+      cert: fs.readFileSync(cert),
+      key: fs.readFileSync(key),
+    };
+    server = https.createServer(httpsOptions);
+    logger.info(
+      { port, bindHost, https: true },
+      'HAL UI server listening on https://{bindHost}:{port}',
+    );
+  } else {
+    server = http.createServer();
+    logger.info(
+      { port, bindHost, https: false },
+      'HAL UI server listening on http://{bindHost}:{port}',
+    );
+  }
+
+  server.on('request', async (req, res) => {
+    // Apply security headers to all responses (VAL-SEC-015)
+    applySecurityHeaders(res);
+
     const method = (req.method || 'GET').toUpperCase();
-    const url = new URL(req.url || '/', `http://${host}`);
+    const url = httpsEnabled
+      ? new URL(req.url || '/', `https://${host}`)
+      : new URL(req.url || '/', `http://${host}`);
     const requestPath = decodeURIComponent(url.pathname || '/');
+
+    // HTTP → HTTPS redirect if HTTPS is enabled (VAL-SEC-010)
+    if (
+      httpsEnabled &&
+      method === 'GET' &&
+      (req.socket as any).encrypted !== true
+    ) {
+      const redirectUrl = `https://${host}${requestPath}${url.search}`;
+      res.writeHead(301, { Location: redirectUrl });
+      res.end();
+      return;
+    }
+
+    // Auth check for protected routes
+    if (isProtectedRoute(requestPath)) {
+      const authResult = authMiddleware(req);
+      if (!authResult.authorized) {
+        sendAuthError(
+          res,
+          authResult.statusCode || 401,
+          authResult.error || 'Authentication required',
+          '/login',
+        );
+        return;
+      }
+      // Check CSRF for mutating requests
+      if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+        const csrfResult = csrfMiddleware(req);
+        if (!csrfResult.valid) {
+          sendCsrfError(res);
+          return;
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // AUTH API — Login, Logout, Session check
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // POST /api/auth/login — authenticate and create session (VAL-SEC-001, VAL-SEC-002, VAL-SEC-004, VAL-SEC-010)
+    if (requestPath === '/api/auth/login' && method === 'POST') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      const result = await handleLogin(req, parsed);
+      if (!result.success) {
+        res.writeHead(result.statusCode, {
+          'Content-Type': 'application/json',
+          ...(result.statusCode === 429 ? { 'Retry-After': '300' } : {}),
+        });
+        res.end(JSON.stringify({ error: result.error }));
+        return;
+      }
+      if (result.session) {
+        const cookieHeader = buildSetCookieHeader(result.session);
+        const csrfCookie = buildCsrfCookie(result.csrfToken!);
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Set-Cookie': [cookieHeader, csrfCookie],
+        });
+        res.end(JSON.stringify({ ok: true, csrfToken: result.csrfToken }));
+      } else {
+        res.writeHead(result.statusCode, {
+          'Content-Type': 'application/json',
+        });
+        res.end(JSON.stringify({ error: result.error }));
+      }
+      return;
+    }
+
+    // POST /api/auth/logout — invalidate session (VAL-SEC-004)
+    if (requestPath === '/api/auth/logout' && method === 'POST') {
+      const token = parseSessionCookie(req.headers.cookie);
+      const result = handleLogout(token || '');
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Set-Cookie': result.clearCookie,
+      });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // GET /api/auth/session — check if session is valid
+    if (requestPath === '/api/auth/session' && method === 'GET') {
+      const token = parseSessionCookie(req.headers.cookie);
+      if (!token) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ authenticated: false }));
+        return;
+      }
+      const { validateSession } = await import('../security/session.js');
+      const session = validateSession(token);
+      if (!session) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ authenticated: false }));
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Set-Cookie': buildCsrfCookie(generateCsrfToken()),
+      });
+      res.end(
+        JSON.stringify({
+          authenticated: true,
+          operatorId: session.operatorId,
+          expiresAt: session.expiresAt,
+        }),
+      );
+      return;
+    }
+
+    // GET /api/auth/rate-limit — check rate limit status
+    if (requestPath === '/api/auth/rate-limit' && method === 'GET') {
+      const ip = req.socket.remoteAddress || 'unknown';
+      const status = checkRateLimit(ip);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          attemptsRemaining: status.remainingAttempts,
+          locked: !status.allowed,
+          ...(status.retryAfterSeconds
+            ? { retryAfterSeconds: status.retryAfterSeconds }
+            : {}),
+        }),
+      );
+      return;
+    }
+
+    // GET /api/auth/cert — get certificate fingerprint for manual verification (VAL-SEC-013)
+    if (requestPath === '/api/auth/cert' && method === 'GET') {
+      const fingerprint = getCertFingerprint();
+      const certInfo = getCertInfo();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          fingerprint,
+          subject: certInfo?.subject,
+          issuer: certInfo?.issuer,
+          validFrom: certInfo?.validFrom,
+          validTo: certInfo?.validTo,
+        }),
+      );
+      return;
+    }
 
     // GET /health — returns health status without requiring auth (VAL-SVC-008, VAL-SVC-009, VAL-SVC-010)
     if (method === 'GET' && requestPath === '/health') {
@@ -2225,7 +2497,10 @@ export async function startHalUiServer(
       if (apiPath === '/backup' && method === 'POST') {
         const { execSync } = await import('child_process');
         const ROOT_DIR = process.cwd();
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const timestamp = new Date()
+          .toISOString()
+          .replace(/[:.]/g, '-')
+          .slice(0, 19);
         const backupDir = path.join(ROOT_DIR, 'backups');
         const archiveName = `farmpal-backup-${timestamp}.tar.gz`;
         const archivePath = path.join(backupDir, archiveName);
@@ -2261,7 +2536,7 @@ export async function startHalUiServer(
 
         // Create backup using tar
         try {
-          const tarCmd = `tar -czf "${archivePath}" ${filesToBackup.map(f => `-C "${ROOT_DIR}" "${f}"`).join(' ')}`;
+          const tarCmd = `tar -czf "${archivePath}" ${filesToBackup.map((f) => `-C "${ROOT_DIR}" "${f}"`).join(' ')}`;
           execSync(tarCmd, { stdio: 'pipe', cwd: ROOT_DIR });
         } catch (err: any) {
           sendJson(res, 500, { error: `Backup failed: ${err.message}` });

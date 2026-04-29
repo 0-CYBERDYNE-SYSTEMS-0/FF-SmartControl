@@ -64,9 +64,9 @@ export function _closeDbForTesting(): void {
 export function checkDbIntegrity(): string[] {
   const db = getDb();
   // PRAGMA integrity_check returns one row per error, or a single 'ok' row
-  const result = db
-    .prepare('PRAGMA integrity_check')
-    .get() as { integrity_check: string } | undefined;
+  const result = db.prepare('PRAGMA integrity_check').get() as
+    | { integrity_check: string }
+    | undefined;
 
   if (!result) {
     return ['Integrity check returned no result - database may be unreadable'];
@@ -77,7 +77,9 @@ export function checkDbIntegrity(): string[] {
   }
 
   // integrity_check returns a string with multiple lines, each containing an error
-  const lines = result.integrity_check.split('\n').filter((l) => l.trim().length > 0);
+  const lines = result.integrity_check
+    .split('\n')
+    .filter((l) => l.trim().length > 0);
   return lines.length > 0 ? lines : ['Unknown integrity check failure'];
 }
 
@@ -138,5 +140,55 @@ export function runMigrations(): void {
   const failures = checkDbIntegrity();
   if (failures.length > 0) {
     throw new DatabaseCorruptionError(dbPath, failures);
+  }
+
+  // Security: Initialize session database tables (VAL-SEC-001, VAL-SEC-004)
+  initSessionDatabase();
+
+  // Security: Initialize rate limit database tables (VAL-SEC-010)
+  initRateLimitDatabase();
+}
+
+// Session database tables for admin authentication
+function initSessionDatabase(): void {
+  const db = getDb();
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS admin_sessions (
+        id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL,
+        operator_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        last_activity_at TEXT NOT NULL,
+        ip_address TEXT,
+        user_agent TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sessions_token ON admin_sessions(token_hash);
+      CREATE INDEX IF NOT EXISTS idx_sessions_expires ON admin_sessions(expires_at);
+    `);
+  } catch {
+    /* tables may already exist */
+  }
+}
+
+// Rate limit database tables for login attempt tracking (VAL-SEC-010)
+function initRateLimitDatabase(): void {
+  const db = getDb();
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS login_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip_address TEXT NOT NULL,
+        attempted_at TEXT NOT NULL,
+        success INTEGER NOT NULL DEFAULT 0,
+        user_agent TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip_address, attempted_at);
+    `);
+  } catch {
+    /* tables may already exist */
   }
 }
