@@ -414,6 +414,75 @@ export function shouldAutoExecute(decisionId: string): boolean {
 }
 
 /**
+ * Skip/override a pending autonomous decision when operator manually controls a device.
+ * Called when user toggles a relay manually via UI.
+ * Marks the pending autonomous decision as 'overridden' so it won't execute.
+ * Returns the list of overridden decision IDs.
+ *
+ * VAL-AUTO-031: Manual override takes effect immediately and bypasses pending queue
+ * VAL-AUTO-033: Manual override wins over conflicting autonomous decision
+ */
+export function skipPendingDecisionForDevice(
+  deviceId: string,
+  manualAction: 'on' | 'off',
+): string[] {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  // Find all pending (non-executed) decisions for this device
+  const pendingDecisions = db
+    .prepare(
+      `SELECT p.id as pend_id, p.decision_id, d.decision, d.pending_status
+       FROM hal_automation_pending p
+       JOIN hal_decision_log d ON d.id = p.decision_id
+       WHERE d.device_id = ? AND p.executed = 0 AND p.vetoed = 0`,
+    )
+    .all(deviceId) as Array<{
+    pend_id: string;
+    decision_id: string;
+    decision: string;
+    pending_status: string | null;
+  }>;
+
+  const overriddenIds: string[] = [];
+
+  for (const pend of pendingDecisions) {
+    // Skip if already overridden or vetoed
+    if (
+      pend.pending_status === 'overridden' ||
+      pend.pending_status === 'vetoed'
+    ) {
+      continue;
+    }
+
+    // Mark the pending decision as overridden
+    db.prepare(
+      `UPDATE hal_automation_pending SET executed = 1 WHERE id = ?`,
+    ).run(pend.pend_id);
+
+    // Update decision log: mark as overridden
+    db.prepare(
+      `UPDATE hal_decision_log
+       SET pending_status = 'overridden', outcome = 'failure', completed_at = ?
+       WHERE id = ?`,
+    ).run(now, pend.decision_id);
+
+    overriddenIds.push(pend.decision_id);
+    logger.info(
+      {
+        deviceId,
+        manualAction,
+        decisionId: pend.decision_id,
+        originalDecision: pend.decision,
+      },
+      'Manual override: pending autonomous decision marked as overridden',
+    );
+  }
+
+  return overriddenIds;
+}
+
+/**
  * Delete expired pending decisions (cleanup)
  */
 export function cleanupExpiredPendingDecisions(): number {
@@ -517,6 +586,72 @@ export function handleDecisionBasedOnMode(
 }
 
 /**
+ * Execute a pending decision's hardware action.
+ * Retrieves decision details from hal_decision_log and calls halRegistry.control().
+ * Returns true if execution succeeded, false otherwise.
+ */
+export async function executePendingDecision(
+  decisionId: string,
+): Promise<boolean> {
+  const db = getDb();
+  const decisionRow = db
+    .prepare('SELECT * FROM hal_decision_log WHERE id = ?')
+    .get(decisionId) as Record<string, unknown> | undefined;
+
+  if (!decisionRow) {
+    logger.warn({ decisionId }, 'executePendingDecision: decision not found');
+    return false;
+  }
+
+  const deviceId = decisionRow.device_id as string | null;
+  const decision = decisionRow.decision as string;
+
+  // Only execute turn_on/turn_off decisions with a valid device
+  if (!deviceId || (decision !== 'turn_on' && decision !== 'turn_off')) {
+    logger.debug(
+      { decisionId, deviceId, decision },
+      'executePendingDecision: skipping non-control decision',
+    );
+    return false;
+  }
+
+  try {
+    const { halRegistry } = await import('../hal/registry.js');
+    const action = decision === 'turn_on' ? 'on' : 'off';
+    await halRegistry.control(deviceId, action);
+
+    // Mark as executed in pending table
+    db.prepare(
+      `UPDATE hal_automation_pending SET executed = 1 WHERE decision_id = ?`,
+    ).run(decisionId);
+
+    // Update decision log
+    db.prepare(
+      `UPDATE hal_decision_log SET pending_status = NULL, outcome = 'success' WHERE id = ?`,
+    ).run(decisionId);
+
+    logger.info(
+      { decisionId, deviceId, action },
+      'executePendingDecision: hardware action executed',
+    );
+    return true;
+  } catch (err) {
+    logger.error(
+      { decisionId, deviceId, error: err },
+      'executePendingDecision: hardware action failed',
+    );
+    // Mark as failure
+    db.prepare(
+      `UPDATE hal_automation_pending SET executed = 1 WHERE decision_id = ?`,
+    ).run(decisionId);
+    db.prepare(
+      `UPDATE hal_decision_log SET pending_status = NULL, outcome = 'failure' WHERE id = ?`,
+    ).run(decisionId);
+    return false;
+  }
+}
+
+/**
  * Process veto window expirations - called periodically by the heartbeat/decision loop
  * Auto-executes any ASSISTED decisions whose veto window has expired
  */
@@ -540,22 +675,15 @@ export async function processExpiredVetoWindows(): Promise<{
     ) {
       const deadline = new Date(p.veto_deadline).getTime();
       if (now >= deadline) {
-        // Veto window expired - mark as auto-executed (approved by timeout)
-        getDb()
-          .prepare(
-            `UPDATE hal_automation_pending SET executed = 1 WHERE id = ?`,
-          )
-          .run(p.id);
-        getDb()
-          .prepare(
-            `UPDATE hal_decision_log SET pending_status = NULL WHERE id = ?`,
-          )
-          .run(p.decision_id);
-        autoExecuted.push(p.decision_id);
-        logger.info(
-          { decisionId: p.decision_id },
-          'ASSISTED decision auto-executed after veto window expired',
-        );
+        // Execute the hardware action
+        const executed = await executePendingDecision(p.decision_id);
+        if (executed) {
+          autoExecuted.push(p.decision_id);
+          logger.info(
+            { decisionId: p.decision_id },
+            'ASSISTED decision auto-executed after veto window expired',
+          );
+        }
       }
     }
   }
