@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FarmPal ECharts Preview</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07110c;
+      --panel: #0e1a14;
+      --panel-2: #101f18;
+      --line: #274635;
+      --line-2: #355946;
+      --text: #e8fff2;
+      --muted: #9bb9a8;
+      --accent: #3fb950;
+      --accent-2: #7dd3fc;
+      --warn: #f59e0b;
+      --danger: #f85149;
+      --soil: #a78bfa;
+      --radius: 8px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(63, 185, 80, 0.16), transparent 34rem),
+        linear-gradient(180deg, #07110c 0%, #09130e 46%, #050907 100%);
+      color: var(--text);
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 18px 24px;
+      border-bottom: 1px solid rgba(63, 185, 80, 0.24);
+      background: rgba(7, 17, 12, 0.88);
+      backdrop-filter: blur(16px);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(22px, 3vw, 34px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    button {
+      border: 1px solid var(--line-2);
+      border-radius: 7px;
+      background: #11251a;
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 650;
+      padding: 9px 12px;
+      cursor: pointer;
+    }
+
+    button:hover,
+    button.active {
+      border-color: var(--accent);
+      background: #173620;
+    }
+
+    main {
+      padding: 24px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(270px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      min-height: 350px;
+      border: 1px solid rgba(63, 185, 80, 0.2);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(14, 26, 20, 0.96), rgba(8, 16, 12, 0.96));
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.26);
+      overflow: hidden;
+    }
+
+    .card-header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: start;
+      padding: 14px 14px 8px;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .card p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .rank {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 30px;
+      height: 24px;
+      border-radius: 999px;
+      border: 1px solid rgba(125, 211, 252, 0.36);
+      color: var(--accent-2);
+      font-size: 12px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .chart {
+      width: 100%;
+      height: 270px;
+    }
+
+    .wide {
+      grid-column: span 2;
+    }
+
+    .tall {
+      min-height: 500px;
+    }
+
+    .tall .chart {
+      height: 420px;
+    }
+
+    .note {
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 1320px) {
+      .grid { grid-template-columns: repeat(3, minmax(260px, 1fr)); }
+    }
+
+    @media (max-width: 980px) {
+      header { grid-template-columns: 1fr; }
+      .toolbar { justify-content: flex-start; }
+      .grid { grid-template-columns: repeat(2, minmax(240px, 1fr)); }
+      .wide { grid-column: span 2; }
+    }
+
+    @media (max-width: 640px) {
+      header,
+      main { padding: 16px; }
+      .grid { grid-template-columns: 1fr; }
+      .wide { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>FarmPal ECharts Candidates</h1>
+      <p class="subtitle">Sixteen chart patterns for HAL telemetry, digital twin simulation, automation, safety, and device health.</p>
+    </div>
+    <div class="toolbar" aria-label="Preview filters">
+      <button class="active" data-filter="all">All</button>
+      <button data-filter="telemetry">Telemetry</button>
+      <button data-filter="control">Control</button>
+      <button data-filter="ops">Operations</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="grid" id="chart-grid">
+      <article class="card wide" data-kind="telemetry">
+        <div class="card-header"><div><h2>1. Multi-Axis Environment Trend</h2><p>Primary Sensors view: temp, humidity, CO2, and VPD over time.</p></div><span class="rank">01</span></div>
+        <div class="chart" id="chart-01"></div>
+      </article>
+      <article class="card" data-kind="telemetry">
+        <div class="card-header"><div><h2>2. CO2 Threshold Area</h2><p>Operator-friendly CO2 inspection with target bands.</p></div><span class="rank">02</span></div>
+        <div class="chart" id="chart-02"></div>
+      </article>
+      <article class="card" data-kind="telemetry">
+        <div class="card-header"><div><h2>3. Soil Moisture Heatmap</h2><p>Probe-by-hour dryness pattern for irrigation decisions.</p></div><span class="rank">03</span></div>
+        <div class="chart" id="chart-03"></div>
+      </article>
+      <article class="card" data-kind="control">
+        <div class="card-header"><div><h2>4. Relay Runtime Bars</h2><p>Grow light, pump, fan, and exhaust on-time by day.</p></div><span class="rank">04</span></div>
+        <div class="chart" id="chart-04"></div>
+      </article>
+      <article class="card" data-kind="telemetry">
+        <div class="card-header"><div><h2>5. Reservoir Gauge</h2><p>Compact level readout for water and nutrient tanks.</p></div><span class="rank">05</span></div>
+        <div class="chart" id="chart-05"></div>
+      </article>
+      <article class="card" data-kind="telemetry">
+        <div class="card-header"><div><h2>6. pH Scatter With Safe Band</h2><p>Highlights calibration drift and outlier readings.</p></div><span class="rank">06</span></div>
+        <div class="chart" id="chart-06"></div>
+      </article>
+      <article class="card" data-kind="telemetry">
+        <div class="card-header"><div><h2>7. Plant Weight Curve</h2><p>Load-cell growth trend with smoothed daily gain.</p></div><span class="rank">07</span></div>
+        <div class="chart" id="chart-07"></div>
+      </article>
+      <article class="card" data-kind="ops">
+        <div class="card-header"><div><h2>8. Device Health Donut</h2><p>Online, stale, warning, and offline hardware summary.</p></div><span class="rank">08</span></div>
+        <div class="chart" id="chart-08"></div>
+      </article>
+      <article class="card" data-kind="control">
+        <div class="card-header"><div><h2>9. Decision Confidence Radar</h2><p>Automation quality signals by controller dimension.</p></div><span class="rank">09</span></div>
+        <div class="chart" id="chart-09"></div>
+      </article>
+      <article class="card wide" data-kind="control">
+        <div class="card-header"><div><h2>10. Actuator Timeline</h2><p>On/off state spans for relays and smart plugs.</p></div><span class="rank">10</span></div>
+        <div class="chart" id="chart-10"></div>
+      </article>
+      <article class="card" data-kind="telemetry">
+        <div class="card-header"><div><h2>11. Zone Comparison Stack</h2><p>Tent A vs Tent B sensor averages in one scan.</p></div><span class="rank">11</span></div>
+        <div class="chart" id="chart-11"></div>
+      </article>
+      <article class="card" data-kind="ops">
+        <div class="card-header"><div><h2>12. Sensor Freshness Calendar</h2><p>Missing telemetry and delayed packets over a month.</p></div><span class="rank">12</span></div>
+        <div class="chart" id="chart-12"></div>
+      </article>
+      <article class="card" data-kind="control">
+        <div class="card-header"><div><h2>13. Safety Rule Funnel</h2><p>Suggested, blocked, vetoed, and executed actions.</p></div><span class="rank">13</span></div>
+        <div class="chart" id="chart-13"></div>
+      </article>
+      <article class="card wide" data-kind="telemetry">
+        <div class="card-header"><div><h2>14. Forecast Band</h2><p>Digital twin projection with confidence interval.</p></div><span class="rank">14</span></div>
+        <div class="chart" id="chart-14"></div>
+      </article>
+      <article class="card" data-kind="ops">
+        <div class="card-header"><div><h2>15. Fault Mix Treemap</h2><p>Root-cause buckets from diagnostics and simulator faults.</p></div><span class="rank">15</span></div>
+        <div class="chart" id="chart-15"></div>
+      </article>
+      <article class="card" data-kind="ops">
+        <div class="card-header"><div><h2>16. Camera Coverage Sankey</h2><p>Camera views mapped to zones, alerts, and captures.</p></div><span class="rank">16</span></div>
+        <div class="chart" id="chart-16"></div>
+      </article>
+    </section>
+    <p class="note">Open DevTools only if the charts do not render; this file requires internet access for the ECharts CDN.</p>
+  </main>
+
+  <script>
+    const palette = {
+      text: '#e8fff2',
+      muted: '#9bb9a8',
+      grid: '#274635',
+      temp: '#fb923c',
+      humidity: '#38bdf8',
+      co2: '#22c55e',
+      soil: '#a78bfa',
+      water: '#2563eb',
+      ph: '#f59e0b',
+      danger: '#f85149',
+      accent: '#3fb950'
+    };
+
+    const charts = [];
+    const hours = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const dates = Array.from({ length: 30 }, (_, i) => `2026-04-${String(i + 1).padStart(2, '0')}`);
+
+    function baseOption() {
+      return {
+        backgroundColor: 'transparent',
+        textStyle: { color: palette.text, fontFamily: 'Inter, system-ui, sans-serif' },
+        tooltip: { trigger: 'axis', backgroundColor: '#0b1711', borderColor: '#315d42', textStyle: { color: palette.text } },
+        legend: { top: 0, textStyle: { color: palette.muted }, itemWidth: 10, itemHeight: 10 },
+        grid: { left: 44, right: 24, top: 46, bottom: 36 },
+        xAxis: { axisLine: { lineStyle: { color: palette.grid } }, axisLabel: { color: palette.muted }, splitLine: { show: false } },
+        yAxis: { axisLine: { lineStyle: { color: palette.grid } }, axisLabel: { color: palette.muted }, splitLine: { lineStyle: { color: 'rgba(39,70,53,.58)' } } }
+      };
+    }
+
+    function init(id, option) {
+      const chart = echarts.init(document.getElementById(id), null, { renderer: 'canvas' });
+      chart.setOption(option);
+      charts.push(chart);
+    }
+
+    function wave(base, amp, length, phase = 0, step = 1) {
+      return Array.from({ length }, (_, i) => Number((base + Math.sin((i + phase) / step) * amp + Math.cos(i / 3) * amp * 0.22).toFixed(1)));
+    }
+
+    init('chart-01', {
+      ...baseOption(),
+      legend: { ...baseOption().legend, data: ['Temp °F', 'Humidity %', 'CO2 ppm', 'VPD kPa'] },
+      xAxis: { ...baseOption().xAxis, type: 'category', data: hours },
+      yAxis: [
+        { type: 'value', name: 'Climate', nameTextStyle: { color: palette.muted }, axisLabel: { color: palette.muted }, splitLine: { lineStyle: { color: 'rgba(39,70,53,.58)' } } },
+        { type: 'value', name: 'CO2', nameTextStyle: { color: palette.muted }, axisLabel: { color: palette.muted }, splitLine: { show: false } }
+      ],
+      series: [
+        { name: 'Temp °F', type: 'line', smooth: true, data: wave(77, 5, 24, 1, 3), lineStyle: { width: 3, color: palette.temp }, areaStyle: { color: 'rgba(251,146,60,.14)' } },
+        { name: 'Humidity %', type: 'line', smooth: true, data: wave(61, 8, 24, 4, 4), lineStyle: { width: 3, color: palette.humidity } },
+        { name: 'CO2 ppm', type: 'line', yAxisIndex: 1, smooth: true, data: wave(790, 170, 24, 0, 2.8), lineStyle: { width: 3, color: palette.co2 } },
+        { name: 'VPD kPa', type: 'line', smooth: true, data: wave(1.2, .28, 24, 2, 3.4), lineStyle: { width: 2, color: '#facc15', type: 'dashed' } }
+      ]
+    });
+
+    init('chart-02', {
+      ...baseOption(),
+      xAxis: { ...baseOption().xAxis, type: 'category', data: hours },
+      yAxis: { ...baseOption().yAxis, type: 'value', min: 300, max: 1300 },
+      series: [{
+        name: 'CO2 ppm',
+        type: 'line',
+        smooth: true,
+        symbol: 'none',
+        data: wave(780, 230, 24, 2, 3),
+        markArea: { itemStyle: { color: 'rgba(34,197,94,.12)' }, data: [[{ yAxis: 650 }, { yAxis: 950 }]] },
+        markLine: { symbol: 'none', lineStyle: { color: palette.danger, type: 'dashed' }, data: [{ yAxis: 1200, name: 'High' }] },
+        areaStyle: { color: 'rgba(34,197,94,.24)' },
+        lineStyle: { color: palette.co2, width: 3 }
+      }]
+    });
+
+    const heatData = [];
+    days.forEach((day, y) => hours.forEach((hour, x) => heatData.push([x, y, Math.round(38 + Math.sin(x / 3 + y) * 22 + y * 2)])));
+    init('chart-03', {
+      backgroundColor: 'transparent',
+      tooltip: { position: 'top', backgroundColor: '#0b1711', borderColor: '#315d42', textStyle: { color: palette.text } },
+      grid: { left: 42, right: 18, top: 12, bottom: 36 },
+      xAxis: { type: 'category', data: hours, axisLabel: { color: palette.muted, interval: 5 }, axisLine: { lineStyle: { color: palette.grid } } },
+      yAxis: { type: 'category', data: days, axisLabel: { color: palette.muted }, axisLine: { lineStyle: { color: palette.grid } } },
+      visualMap: { min: 20, max: 80, orient: 'horizontal', left: 'center', bottom: 0, textStyle: { color: palette.muted }, inRange: { color: ['#3b1b1b', '#f59e0b', '#3fb950'] } },
+      series: [{ name: 'Soil %', type: 'heatmap', data: heatData, emphasis: { itemStyle: { borderColor: '#fff', borderWidth: 1 } } }]
+    });
+
+    init('chart-04', {
+      ...baseOption(),
+      tooltip: { ...baseOption().tooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
+      legend: { ...baseOption().legend, data: ['Light', 'Pump', 'Fan', 'Exhaust'] },
+      xAxis: { ...baseOption().xAxis, type: 'category', data: days },
+      yAxis: { ...baseOption().yAxis, type: 'value', name: 'Hours' },
+      series: [
+        { name: 'Light', type: 'bar', stack: 'runtime', data: [18, 18, 18, 17, 18, 18, 18], itemStyle: { color: '#facc15' } },
+        { name: 'Pump', type: 'bar', stack: 'runtime', data: [1.2, 1.4, 1.1, 2.1, 1.6, 1.2, 1.8], itemStyle: { color: palette.water } },
+        { name: 'Fan', type: 'bar', stack: 'runtime', data: [9, 11, 8, 10, 12, 8, 9], itemStyle: { color: palette.humidity } },
+        { name: 'Exhaust', type: 'bar', stack: 'runtime', data: [3, 4, 2, 6, 5, 2, 3], itemStyle: { color: palette.temp } }
+      ]
+    });
+
+    init('chart-05', {
+      backgroundColor: 'transparent',
+      series: [{
+        type: 'gauge',
+        min: 0,
+        max: 100,
+        progress: { show: true, width: 14, itemStyle: { color: palette.water } },
+        axisLine: { lineStyle: { width: 14, color: [[0.22, palette.danger], [0.45, palette.warn], [1, '#244f6f']] } },
+        axisLabel: { color: palette.muted },
+        splitLine: { lineStyle: { color: palette.grid } },
+        pointer: { itemStyle: { color: palette.text } },
+        detail: { valueAnimation: true, formatter: '{value}%', color: palette.text, fontSize: 30 },
+        title: { color: palette.muted, offsetCenter: [0, '70%'] },
+        data: [{ value: 64, name: 'Reservoir' }]
+      }]
+    });
+
+    init('chart-06', {
+      ...baseOption(),
+      xAxis: { ...baseOption().xAxis, type: 'category', data: hours },
+      yAxis: { ...baseOption().yAxis, type: 'value', min: 5.2, max: 7.4 },
+      series: [{
+        name: 'pH',
+        type: 'scatter',
+        symbolSize: 10,
+        data: wave(6.3, .42, 24, 1, 4),
+        itemStyle: { color: palette.ph },
+        markArea: { itemStyle: { color: 'rgba(63,185,80,.13)' }, data: [[{ yAxis: 5.8 }, { yAxis: 6.5 }]] }
+      }]
+    });
+
+    init('chart-07', {
+      ...baseOption(),
+      xAxis: { ...baseOption().xAxis, type: 'category', data: dates.filter((_, i) => i % 2 === 0) },
+      yAxis: { ...baseOption().yAxis, type: 'value', name: 'lb' },
+      series: [{
+        name: 'Canopy weight',
+        type: 'line',
+        smooth: true,
+        data: Array.from({ length: 15 }, (_, i) => Number((3.8 + i * .34 + Math.sin(i / 2) * .18).toFixed(2))),
+        areaStyle: { color: 'rgba(167,139,250,.22)' },
+        lineStyle: { color: palette.soil, width: 3 }
+      }]
+    });
+
+    init('chart-08', {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'item', backgroundColor: '#0b1711', borderColor: '#315d42', textStyle: { color: palette.text } },
+      legend: { bottom: 0, textStyle: { color: palette.muted } },
+      series: [{
+        type: 'pie',
+        radius: ['48%', '72%'],
+        center: ['50%', '44%'],
+        label: { color: palette.text },
+        data: [
+          { value: 19, name: 'Online', itemStyle: { color: palette.accent } },
+          { value: 3, name: 'Stale', itemStyle: { color: palette.warn } },
+          { value: 1, name: 'Warning', itemStyle: { color: palette.temp } },
+          { value: 1, name: 'Offline', itemStyle: { color: palette.danger } }
+        ]
+      }]
+    });
+
+    init('chart-09', {
+      backgroundColor: 'transparent',
+      tooltip: { backgroundColor: '#0b1711', borderColor: '#315d42', textStyle: { color: palette.text } },
+      radar: {
+        radius: '62%',
+        indicator: [
+          { name: 'Confidence', max: 100 },
+          { name: 'Evidence', max: 100 },
+          { name: 'Safety', max: 100 },
+          { name: 'Novelty', max: 100 },
+          { name: 'Latency', max: 100 },
+          { name: 'Outcome', max: 100 }
+        ],
+        axisName: { color: palette.muted },
+        splitLine: { lineStyle: { color: 'rgba(63,185,80,.18)' } },
+        splitArea: { areaStyle: { color: ['rgba(63,185,80,.04)', 'rgba(63,185,80,.08)'] } },
+        axisLine: { lineStyle: { color: palette.grid } }
+      },
+      series: [{
+        type: 'radar',
+        data: [
+          { value: [91, 78, 96, 42, 84, 88], name: 'Verified', areaStyle: { color: 'rgba(63,185,80,.22)' }, lineStyle: { color: palette.accent } },
+          { value: [70, 59, 82, 64, 73, 61], name: 'Unverified', areaStyle: { color: 'rgba(248,81,73,.13)' }, lineStyle: { color: palette.danger } }
+        ]
+      }]
+    });
+
+    const devices = ['Light', 'Pump', 'Fan', 'Exhaust'];
+    const timelineData = [
+      [0, 0, 6, '#facc15'], [0, 8, 18, '#facc15'], [1, 2, 3, palette.water], [1, 10, 11, palette.water], [1, 17, 18, palette.water],
+      [2, 0, 9, palette.humidity], [2, 12, 21, palette.humidity], [3, 4, 7, palette.temp], [3, 15, 19, palette.temp]
+    ];
+    init('chart-10', {
+      backgroundColor: 'transparent',
+      tooltip: { backgroundColor: '#0b1711', borderColor: '#315d42', textStyle: { color: palette.text }, formatter: p => `${devices[p.value[0]]}: ${p.value[1]}:00-${p.value[2]}:00` },
+      grid: { left: 70, right: 24, top: 18, bottom: 32 },
+      xAxis: { min: 0, max: 24, axisLabel: { color: palette.muted, formatter: '{value}:00' }, axisLine: { lineStyle: { color: palette.grid } }, splitLine: { lineStyle: { color: 'rgba(39,70,53,.58)' } } },
+      yAxis: { type: 'category', data: devices, axisLabel: { color: palette.muted }, axisLine: { lineStyle: { color: palette.grid } } },
+      series: [{
+        type: 'custom',
+        renderItem: (params, api) => {
+          const categoryIndex = api.value(0);
+          const start = api.coord([api.value(1), categoryIndex]);
+          const end = api.coord([api.value(2), categoryIndex]);
+          const height = api.size([0, 1])[1] * 0.42;
+          return { type: 'rect', shape: { x: start[0], y: start[1] - height / 2, width: end[0] - start[0], height }, style: { fill: api.value(3) } };
+        },
+        encode: { x: [1, 2], y: 0 },
+        data: timelineData
+      }]
+    });
+
+    init('chart-11', {
+      ...baseOption(),
+      legend: { ...baseOption().legend, data: ['Tent A', 'Tent B'] },
+      xAxis: { ...baseOption().xAxis, type: 'category', data: ['Temp', 'Humidity', 'CO2', 'Soil', 'Light'] },
+      yAxis: { ...baseOption().yAxis, type: 'value', name: 'Normalized' },
+      series: [
+        { name: 'Tent A', type: 'bar', data: [72, 61, 80, 58, 74], itemStyle: { color: palette.accent } },
+        { name: 'Tent B', type: 'bar', data: [68, 66, 73, 62, 70], itemStyle: { color: palette.accent-2 } }
+      ]
+    });
+
+    init('chart-12', {
+      backgroundColor: 'transparent',
+      tooltip: { backgroundColor: '#0b1711', borderColor: '#315d42', textStyle: { color: palette.text } },
+      visualMap: { min: 0, max: 100, show: false, inRange: { color: ['#3b1b1b', '#f59e0b', '#3fb950'] } },
+      calendar: { top: 28, left: 24, right: 24, cellSize: ['auto', 24], range: '2026-04', itemStyle: { color: '#0e1a14', borderColor: palette.grid }, dayLabel: { color: palette.muted }, monthLabel: { color: palette.text }, yearLabel: { show: false } },
+      series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: dates.map((d, i) => [d, Math.round(72 + Math.sin(i / 3) * 24 - (i === 18 ? 55 : 0))]) }]
+    });
+
+    init('chart-13', {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'item', backgroundColor: '#0b1711', borderColor: '#315d42', textStyle: { color: palette.text } },
+      series: [{
+        type: 'funnel',
+        left: '10%',
+        top: 22,
+        bottom: 10,
+        width: '80%',
+        label: { color: palette.text },
+        data: [
+          { value: 92, name: 'Suggested', itemStyle: { color: palette.accent-2 } },
+          { value: 77, name: 'Verified', itemStyle: { color: palette.accent } },
+          { value: 18, name: 'Blocked', itemStyle: { color: palette.warn } },
+          { value: 8, name: 'Vetoed', itemStyle: { color: palette.danger } },
+          { value: 51, name: 'Executed', itemStyle: { color: palette.soil } }
+        ]
+      }]
+    });
+
+    const forecastBase = wave(76, 3, 24, 0, 3);
+    init('chart-14', {
+      ...baseOption(),
+      legend: { ...baseOption().legend, data: ['Observed', 'Forecast', 'Confidence'] },
+      xAxis: { ...baseOption().xAxis, type: 'category', data: hours },
+      yAxis: { ...baseOption().yAxis, type: 'value', min: 66, max: 86 },
+      series: [
+        { name: 'Confidence', type: 'line', stack: 'band', symbol: 'none', data: forecastBase.map(v => v - 3), lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 } },
+        { name: 'Confidence', type: 'line', stack: 'band', symbol: 'none', data: forecastBase.map(() => 6), lineStyle: { opacity: 0 }, areaStyle: { color: 'rgba(125,211,252,.18)' } },
+        { name: 'Observed', type: 'line', smooth: true, data: forecastBase.slice(0, 13).concat(Array(11).fill(null)), lineStyle: { color: palette.temp, width: 3 } },
+        { name: 'Forecast', type: 'line', smooth: true, data: Array(12).fill(null).concat(forecastBase.slice(12).map(v => Number((v + 1.1).toFixed(1)))), lineStyle: { color: palette.accent-2, width: 3, type: 'dashed' } }
+      ]
+    });
+
+    init('chart-15', {
+      backgroundColor: 'transparent',
+      tooltip: { backgroundColor: '#0b1711', borderColor: '#315d42', textStyle: { color: palette.text } },
+      series: [{
+        type: 'treemap',
+        roam: false,
+        breadcrumb: { show: false },
+        label: { color: palette.text, fontWeight: 700 },
+        data: [
+          { name: 'Delayed telemetry', value: 18, itemStyle: { color: palette.warn } },
+          { name: 'Calibration drift', value: 12, itemStyle: { color: palette.soil } },
+          { name: 'Offline device', value: 7, itemStyle: { color: palette.danger } },
+          { name: 'Network flap', value: 9, itemStyle: { color: palette.humidity } },
+          { name: 'Sensor stuck', value: 5, itemStyle: { color: palette.temp } }
+        ]
+      }]
+    });
+
+    init('chart-16', {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'item', backgroundColor: '#0b1711', borderColor: '#315d42', textStyle: { color: palette.text } },
+      series: [{
+        type: 'sankey',
+        nodeAlign: 'justify',
+        lineStyle: { color: 'gradient', opacity: 0.38 },
+        label: { color: palette.text },
+        data: [
+          { name: 'Cam A' }, { name: 'Cam B' }, { name: 'Tent A' }, { name: 'Tent B' }, { name: 'Alerts' }, { name: 'Captures' }, { name: 'Timelapse' }
+        ],
+        links: [
+          { source: 'Cam A', target: 'Tent A', value: 8 },
+          { source: 'Cam B', target: 'Tent B', value: 7 },
+          { source: 'Tent A', target: 'Alerts', value: 3 },
+          { source: 'Tent A', target: 'Captures', value: 5 },
+          { source: 'Tent B', target: 'Alerts', value: 2 },
+          { source: 'Tent B', target: 'Timelapse', value: 5 }
+        ]
+      }]
+    });
+
+    document.querySelectorAll('[data-filter]').forEach(button => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('[data-filter]').forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+        const filter = button.dataset.filter;
+        document.querySelectorAll('.card').forEach(card => {
+          card.style.display = filter === 'all' || card.dataset.kind === filter ? '' : 'none';
+        });
+        setTimeout(() => charts.forEach(chart => chart.resize()), 40);
+      });
+    });
+
+    window.addEventListener('resize', () => charts.forEach(chart => chart.resize()));
+  </script>
+</body>
+</html>

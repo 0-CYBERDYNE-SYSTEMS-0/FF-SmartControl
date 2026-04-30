@@ -10,7 +10,7 @@ import {
   formatDateTimeValue,
 } from '../store.js';
 import { halApi, HalSensorReading, HalDecision } from '../api.js';
-import { renderFarmPalDualAxisChart } from '../components/FarmPalCharts.js';
+import { renderFarmPalSensorChart } from '../components/FarmPalCharts.js';
 
 type MetricKey =
   | 'temperature'
@@ -315,7 +315,8 @@ function attachHandlers(sensors: ReturnType<typeof getStore>['devices']): void {
       if (!section) return;
       const isCollapsed = section.classList.toggle('collapsed');
       const btn = header.querySelector('.collapsible-toggle');
-      if (btn) btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+      if (btn)
+        btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
     });
   });
 }
@@ -593,7 +594,7 @@ function renderHeroChart(
 
   const store = getStore();
 
-  // Group layers by metric to build dual-axis layers
+  // Group layers by metric and average matching timestamps across devices.
   const metricGroups = new Map<string, SeriesLayer[]>();
   for (const layer of layers) {
     const list = metricGroups.get(layer.metric.key) || [];
@@ -601,41 +602,77 @@ function renderHeroChart(
     metricGroups.set(layer.metric.key, list);
   }
 
-  // Build chart data for FarmPalDualAxisChart
-  // Merge all data into time-bucketed format
-  const timeMap = new Map<number, { temp?: number; humidity?: number }>();
-  const tempUnit = store.unitSystem === 'imperial' ? 'F' : 'C';
+  const bucketMap = new Map<
+    number,
+    Record<string, { sum: number; count: number }>
+  >();
+  const series = Array.from(metricGroups.entries()).map(
+    ([metricKey, metricLayers]) => {
+      const metric = metricLayers[0].metric;
+      const firstReading = metricLayers.flatMap((layer) => layer.data)[0];
+      const converted = firstReading
+        ? formatSensorValue(firstReading.value, metric.key, store.unitSystem)
+        : null;
+      return {
+        key: metricKey,
+        label: metric.label,
+        color: metric.color,
+        unit: converted?.unit || metric.fallbackUnit,
+      };
+    },
+  );
 
   for (const [metricKey, metricLayers] of metricGroups) {
     for (const l of metricLayers) {
       for (const d of l.data) {
         const t = new Date(d.timestamp).getTime();
+        if (!Number.isFinite(t)) continue;
         const bucket = Math.floor(t / 60000) * 60000;
-        const converted = formatSensorValue(d.value, metricKey as MetricKey, store.unitSystem).value;
-        const existing = timeMap.get(bucket) || {};
-        if (metricKey === 'temperature') existing.temp = converted;
-        else if (metricKey === 'humidity') existing.humidity = converted;
-        timeMap.set(bucket, existing);
+        const converted = formatSensorValue(
+          d.value,
+          metricKey as MetricKey,
+          store.unitSystem,
+        ).value;
+        const bucketValues = bucketMap.get(bucket) || {};
+        const current = bucketValues[metricKey] || { sum: 0, count: 0 };
+        current.sum += converted;
+        current.count += 1;
+        bucketValues[metricKey] = current;
+        bucketMap.set(bucket, bucketValues);
       }
     }
   }
 
-  const chartData = Array.from(timeMap.entries())
+  const chartData = Array.from(bucketMap.entries())
     .sort((a, b) => a[0] - b[0])
-    .map(([timestamp, values]) => ({
-      time: new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      temp: values.temp,
-      humidity: values.humidity,
-    }));
+    .map(([timestamp, values]) => {
+      const point: {
+        time: string;
+        [key: string]: string | number | undefined;
+      } = {
+        time: formatTimeValue(new Date(timestamp), store.timeFormat),
+      };
+      for (const [metricKey, aggregate] of Object.entries(values)) {
+        if (aggregate.count > 0) {
+          point[metricKey] = aggregate.sum / aggregate.count;
+        }
+      }
+      return point;
+    });
 
-  // Get first device name for subtitle
-  const deviceName = layers[0]?.deviceName || 'All Sensors';
+  const deviceName =
+    viewState.deviceId === 'all' ? 'All Sensors' : layers[0]?.deviceName;
+  const zoneName = viewState.activeZone || 'All Zones';
+  const subtitle = `${deviceName || 'Sensors'} · ${zoneName} · ${viewState.range}`;
 
   try {
-    renderFarmPalDualAxisChart('hero-chart', chartData, deviceName, { unit: tempUnit });
-  } catch(err) {
+    renderFarmPalSensorChart('hero-chart', chartData, series, {
+      subtitle,
+    });
+  } catch (err) {
     const heroContainer = document.getElementById('hero-chart');
-    if (heroContainer) heroContainer.innerHTML = `<div class="chart-empty">Chart error</div>`;
+    if (heroContainer)
+      heroContainer.innerHTML = `<div class="chart-empty">Chart error</div>`;
     console.error('FarmPal chart render failed:', err);
   }
 

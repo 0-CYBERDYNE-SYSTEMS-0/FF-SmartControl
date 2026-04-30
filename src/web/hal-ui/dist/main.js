@@ -7018,13 +7018,29 @@ ${result.failures.join("\n")}`
   // src/web/hal-ui/components/FarmPalCharts.ts
   function makeSvgChart(el, data, series, opts = {}) {
     const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+    const visibleSeries = series.filter(
+      (s) => data.some((d) => Number.isFinite(Number(d[s.key])))
+    );
+    if (!data.length || visibleSeries.length === 0) {
+      el.innerHTML = '<div class="chart-empty">No sensor data</div>';
+      return;
+    }
     const width = 800;
     const height = isMobile ? 280 : 360;
-    const pad = { top: 24, right: opts.dualAxis ? 56 : 20, bottom: 40, left: isMobile ? 44 : 56 };
+    const pad = {
+      top: 24,
+      right: opts.dualAxis ? 64 : 24,
+      bottom: 48,
+      left: isMobile ? 52 : 68
+    };
     const innerW = width - pad.left - pad.right;
     const innerH = height - pad.top - pad.bottom;
-    const leftValues = series.filter((s) => s.axis !== "right").flatMap((s) => data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v)));
-    const rightValues = series.filter((s) => s.axis === "right").flatMap((s) => data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v)));
+    const leftValues = visibleSeries.filter((s) => s.axis !== "right").flatMap(
+      (s) => data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v))
+    );
+    const rightValues = visibleSeries.filter((s) => s.axis === "right").flatMap(
+      (s) => data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v))
+    );
     const leftMin = opts.leftMin ?? (leftValues.length ? Math.min(...leftValues) : 0);
     const leftMax = opts.leftMax ?? (leftValues.length ? Math.max(...leftValues) : 100);
     const rightMin = opts.rightMin ?? (rightValues.length ? Math.min(...rightValues) : 0);
@@ -7032,16 +7048,25 @@ ${result.failures.join("\n")}`
     const x = (i) => pad.left + i / Math.max(1, data.length - 1) * innerW;
     const yLeft = (v) => pad.top + innerH - (v - leftMin) / Math.max(1, leftMax - leftMin) * innerH;
     const yRight = (v) => pad.top + innerH - (v - rightMin) / Math.max(1, rightMax - rightMin) * innerH;
-    const linePath = (s) => data.map((d, i) => {
-      const v = Number(d[s.key]);
-      if (!Number.isFinite(v)) return "";
-      const y = s.axis === "right" ? yRight(v) : yLeft(v);
-      return `${i === 0 ? "M" : "L"} ${x(i)} ${y}`;
-    }).join(" ");
+    const linePath = (s) => {
+      let started = false;
+      return data.map((d, i) => {
+        const v = Number(d[s.key]);
+        if (!Number.isFinite(v)) return "";
+        const y = s.axis === "right" ? yRight(v) : yLeft(v);
+        const command = started ? "L" : "M";
+        started = true;
+        return `${command} ${x(i)} ${y}`;
+      }).join(" ");
+    };
     const areaPath = (s) => {
+      const finiteIndexes = data.map((d, i) => Number.isFinite(Number(d[s.key])) ? i : -1).filter((i) => i >= 0);
+      if (finiteIndexes.length === 0) return "";
       const top = linePath(s);
       if (!top) return "";
-      return `${top} L ${x(data.length - 1)} ${pad.top + innerH} L ${x(0)} ${pad.top + innerH} Z`;
+      const first = finiteIndexes[0];
+      const last = finiteIndexes[finiteIndexes.length - 1];
+      return `${top} L ${x(last)} ${pad.top + innerH} L ${x(first)} ${pad.top + innerH} Z`;
     };
     const grid = Array.from({ length: 5 }, (_, i) => {
       const gy = pad.top + i / 4 * innerH;
@@ -7061,17 +7086,27 @@ ${result.failures.join("\n")}`
       const gy = pad.top + i / 4 * innerH;
       return `<text x="${width - pad.right + 12}" y="${gy + 4}" class="axis right">${value.toFixed(0)}${opts.dualAxis ? "%" : ""}</text>`;
     }).join("") : "";
-    const fills = series.filter((s) => s.fill).map((s) => `<path d="${areaPath(s)}" fill="${s.color}" opacity="0.35"></path>`).join("");
-    const lines = series.map((s) => `<path d="${linePath(s)}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>`).join("");
-    const legend = series.map((s) => `<span class="legend-item"><span style="background:${s.color};box-shadow:0 0 8px ${s.color}"></span>${s.label}</span>`).join("");
-    const statsHtml = opts.showStats && opts.stats ? `<div class="hal-stats-grid">${opts.stats.map((stat) => `
+    const leftAxisLabel = opts.leftAxisLabel ? `<text x="${-(pad.top + innerH / 2)}" y="16" class="axis-label" text-anchor="middle" transform="rotate(-90)">${opts.leftAxisLabel}</text>` : "";
+    const rightAxisLabel = opts.dualAxis && opts.rightAxisLabel ? `<text x="${pad.top + innerH / 2}" y="${width - 12}" class="axis-label right" text-anchor="middle" transform="rotate(90 ${width - 12} ${pad.top + innerH / 2})">${opts.rightAxisLabel}</text>` : "";
+    const fills = visibleSeries.filter((s) => s.fill).map(
+      (s) => `<path d="${areaPath(s)}" fill="${s.color}" opacity="0.35"></path>`
+    ).join("");
+    const lines = visibleSeries.map(
+      (s) => `<path d="${linePath(s)}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>`
+    ).join("");
+    const legend = visibleSeries.map(
+      (s) => `<span class="legend-item"><span style="background:${s.color};box-shadow:0 0 8px ${s.color}"></span>${s.label}</span>`
+    ).join("");
+    const statsHtml = opts.showStats && opts.stats ? `<div class="hal-stats-grid">${opts.stats.map(
+      (stat) => `
         <div class="hal-stat-section" style="--stat-color:${stat.color}">
           <div class="hal-stat-label">${stat.label}</div>
           <div class="hal-stat-row"><span>MIN</span><strong>${stat.min}</strong></div>
           <div class="hal-stat-row"><span>AVG</span><strong>${stat.avg}</strong></div>
           <div class="hal-stat-row"><span>MAX</span><strong>${stat.max}</strong></div>
         </div>
-      `).join("")}</div>` : "";
+      `
+    ).join("")}</div>` : "";
     el.innerHTML = `
     <style>
       .hal-chart-card {
@@ -7120,6 +7155,14 @@ ${result.failures.join("\n")}`
       .grid { stroke: #1e3a5f; stroke-dasharray: 3 6; opacity: 0.8; }
       .axis { fill: #94a3b8; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
       .axis.right { fill: #38bdf8; }
+      .axis-label {
+        fill: #7dd3fc;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+      .axis-label.right { fill: #38bdf8; }
       .legend {
         display: flex;
         flex-wrap: wrap;
@@ -7189,6 +7232,8 @@ ${result.failures.join("\n")}`
           ${xLabels}
           ${leftTicks}
           ${rightTicks}
+          ${leftAxisLabel}
+          ${rightAxisLabel}
           ${fills}
           ${lines}
         </svg>
@@ -7216,47 +7261,82 @@ ${result.failures.join("\n")}`
       el.innerHTML = '<div class="chart-empty">No data</div>';
       return;
     }
-    makeSvgChart(el, data, [
-      { key: "temp1", label: "Temperature #1", color: "#f97316", fill: true },
-      { key: "temp2", label: "Temperature #2", color: "#fb923c", fill: true },
-      { key: "soil", label: "Soil Probe", color: "#a78bfa", fill: true },
-      { key: "weight", label: "Weight", color: "#22d3ee", fill: true }
-    ], {
-      leftMin: 0,
-      leftMax: 180,
-      title: opts.title || "Temperature + Weight",
-      subtitle: opts.subtitle || "Multi-sensor overview"
-    });
+    makeSvgChart(
+      el,
+      data,
+      [
+        { key: "temp1", label: "Temperature #1", color: "#f97316", fill: true },
+        { key: "temp2", label: "Temperature #2", color: "#fb923c", fill: true },
+        { key: "soil", label: "Soil Probe", color: "#a78bfa", fill: true },
+        { key: "weight", label: "Weight", color: "#22d3ee", fill: true }
+      ],
+      {
+        leftMin: 0,
+        leftMax: 180,
+        title: opts.title || "Temperature + Weight",
+        subtitle: opts.subtitle || "Multi-sensor overview"
+      }
+    );
   }
-  function renderFarmPalDualAxisChart(containerId, data, deviceName, opts = {}) {
+  function renderFarmPalSensorChart(containerId, data, series, opts = {}) {
     const el = document.getElementById(containerId);
     if (!el) return;
-    if (!data.length) {
-      el.innerHTML = '<div class="chart-empty">No data</div>';
+    const activeSeries = series.filter(
+      (s) => data.some((d) => Number.isFinite(Number(d[s.key])))
+    );
+    if (!data.length || activeSeries.length === 0) {
+      el.innerHTML = '<div class="chart-empty">No sensor data</div>';
       return;
     }
-    const tempUnit2 = opts.unit === "F" ? "\xB0F" : "\xB0C";
-    const tempValues = data.map((d) => d.temp).filter((v) => v !== void 0);
-    const humValues = data.map((d) => d.humidity).filter((v) => v !== void 0);
-    const tempStats = calcStats(tempValues);
-    const humStats = calcStats(humValues);
-    makeSvgChart(el, data, [
-      { key: "temp", label: `Temperature (${tempUnit2})`, color: "#fb923c", axis: "left", fill: true },
-      { key: "humidity", label: "Humidity (%)", color: "#38bdf8", axis: "right", fill: true }
-    ], {
-      dualAxis: true,
-      leftMin: Math.floor(Math.min(...tempValues) / 10) * 10 - 5,
-      leftMax: Math.ceil(Math.max(...tempValues) / 10) * 10 + 5,
-      rightMin: 0,
-      rightMax: 100,
-      title: "Temperature + Humidity",
-      subtitle: deviceName,
-      showStats: true,
-      stats: [
-        { label: "Temperature", color: "#fb923c", min: tempStats.min + tempUnit2, avg: tempStats.avg + tempUnit2, max: tempStats.max + tempUnit2 },
-        { label: "Humidity", color: "#38bdf8", min: humStats.min + "%", avg: humStats.avg + "%", max: humStats.max + "%" }
-      ]
+    const extents = /* @__PURE__ */ new Map();
+    for (const s of activeSeries) {
+      const values = data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v));
+      extents.set(s.key, {
+        min: Math.min(...values),
+        max: Math.max(...values)
+      });
+    }
+    const normalizedData = data.map((row) => {
+      const normalized = { time: row.time };
+      for (const s of activeSeries) {
+        const value = Number(row[s.key]);
+        const extent = extents.get(s.key);
+        if (!Number.isFinite(value) || !extent) continue;
+        const { min, max } = extent;
+        normalized[s.key] = max === min ? 50 : (value - min) / (max - min) * 100;
+      }
+      return normalized;
     });
+    const stats = activeSeries.map((s) => {
+      const values = data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v));
+      const calculated = calcStats(values);
+      return {
+        label: s.label,
+        color: s.color,
+        min: `${calculated.min}${s.unit}`,
+        avg: `${calculated.avg}${s.unit}`,
+        max: `${calculated.max}${s.unit}`
+      };
+    });
+    makeSvgChart(
+      el,
+      normalizedData,
+      activeSeries.map((s) => ({
+        key: s.key,
+        label: s.unit ? `${s.label} (${s.unit})` : s.label,
+        color: s.color,
+        fill: true
+      })),
+      {
+        leftMin: 0,
+        leftMax: 100,
+        title: opts.title || "Telemetry Digital Twin",
+        subtitle: opts.subtitle,
+        leftAxisLabel: "Normalized range",
+        showStats: true,
+        stats
+      }
+    );
   }
   var init_FarmPalCharts = __esm({
     "src/web/hal-ui/components/FarmPalCharts.ts"() {
@@ -7416,7 +7496,8 @@ ${result.failures.join("\n")}`
         if (!section) return;
         const isCollapsed = section.classList.toggle("collapsed");
         const btn = header.querySelector(".collapsible-toggle");
-        if (btn) btn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+        if (btn)
+          btn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
       });
     });
   }
@@ -7627,32 +7708,62 @@ ${result.failures.join("\n")}`
       list.push(layer);
       metricGroups.set(layer.metric.key, list);
     }
-    const timeMap = /* @__PURE__ */ new Map();
-    const tempUnit2 = store.unitSystem === "imperial" ? "F" : "C";
+    const bucketMap = /* @__PURE__ */ new Map();
+    const series = Array.from(metricGroups.entries()).map(
+      ([metricKey, metricLayers]) => {
+        const metric = metricLayers[0].metric;
+        const firstReading = metricLayers.flatMap((layer) => layer.data)[0];
+        const converted = firstReading ? formatSensorValue(firstReading.value, metric.key, store.unitSystem) : null;
+        return {
+          key: metricKey,
+          label: metric.label,
+          color: metric.color,
+          unit: converted?.unit || metric.fallbackUnit
+        };
+      }
+    );
     for (const [metricKey, metricLayers] of metricGroups) {
       for (const l of metricLayers) {
         for (const d of l.data) {
           const t = new Date(d.timestamp).getTime();
+          if (!Number.isFinite(t)) continue;
           const bucket = Math.floor(t / 6e4) * 6e4;
-          const converted = formatSensorValue(d.value, metricKey, store.unitSystem).value;
-          const existing = timeMap.get(bucket) || {};
-          if (metricKey === "temperature") existing.temp = converted;
-          else if (metricKey === "humidity") existing.humidity = converted;
-          timeMap.set(bucket, existing);
+          const converted = formatSensorValue(
+            d.value,
+            metricKey,
+            store.unitSystem
+          ).value;
+          const bucketValues = bucketMap.get(bucket) || {};
+          const current = bucketValues[metricKey] || { sum: 0, count: 0 };
+          current.sum += converted;
+          current.count += 1;
+          bucketValues[metricKey] = current;
+          bucketMap.set(bucket, bucketValues);
         }
       }
     }
-    const chartData = Array.from(timeMap.entries()).sort((a, b) => a[0] - b[0]).map(([timestamp, values]) => ({
-      time: new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      temp: values.temp,
-      humidity: values.humidity
-    }));
-    const deviceName = layers[0]?.deviceName || "All Sensors";
+    const chartData = Array.from(bucketMap.entries()).sort((a, b) => a[0] - b[0]).map(([timestamp, values]) => {
+      const point = {
+        time: formatTimeValue(new Date(timestamp), store.timeFormat)
+      };
+      for (const [metricKey, aggregate] of Object.entries(values)) {
+        if (aggregate.count > 0) {
+          point[metricKey] = aggregate.sum / aggregate.count;
+        }
+      }
+      return point;
+    });
+    const deviceName = viewState.deviceId === "all" ? "All Sensors" : layers[0]?.deviceName;
+    const zoneName = viewState.activeZone || "All Zones";
+    const subtitle = `${deviceName || "Sensors"} \xB7 ${zoneName} \xB7 ${viewState.range}`;
     try {
-      renderFarmPalDualAxisChart("hero-chart", chartData, deviceName, { unit: tempUnit2 });
+      renderFarmPalSensorChart("hero-chart", chartData, series, {
+        subtitle
+      });
     } catch (err) {
       const heroContainer = document.getElementById("hero-chart");
-      if (heroContainer) heroContainer.innerHTML = `<div class="chart-empty">Chart error</div>`;
+      if (heroContainer)
+        heroContainer.innerHTML = `<div class="chart-empty">Chart error</div>`;
       console.error("FarmPal chart render failed:", err);
     }
     if (legend) legend.innerHTML = "";
