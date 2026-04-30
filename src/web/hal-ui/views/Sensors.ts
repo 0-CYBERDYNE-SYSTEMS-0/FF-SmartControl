@@ -203,7 +203,8 @@ export async function renderSensors(container: HTMLElement): Promise<void> {
       </div>
     </div>
 
-    <div class="horizon-strips-section collapsible-section" id="strips-section">
+    <!-- Metric Strips - hidden, using hero chart only -->
+    <div class="horizon-strips-section collapsible-section" id="strips-section" style="display:none">
       <div class="collapsible-header" data-target="strips-content">
         <h2 class="section-title">Metric Strips</h2>
         <button class="collapsible-toggle" aria-expanded="true">
@@ -215,7 +216,7 @@ export async function renderSensors(container: HTMLElement): Promise<void> {
       </div>
     </div>
 
-    <div class="viz-grid" id="viz-grid"></div>
+    <div class="viz-grid" id="viz-grid" style="display:none"></div>
 
     <div class="sensor-detail-drawer collapsible-section collapsed" id="detail-drawer-section" style="max-height:0;overflow:hidden">
       <div class="collapsible-header" data-target="detail-drawer">
@@ -388,8 +389,6 @@ async function loadData(
     renderHeroChart(zoneLayers, decisions);
     renderDetailTable(zoneLayers);
     updatePillValues(zoneLayers);
-    renderHorizonStrips(zoneLayers);
-    renderVizCards(zoneLayers, decisions);
   } catch (err: any) {
     console.error('Sensor load failed:', err);
     if (heroChart)
@@ -1185,14 +1184,18 @@ function injectSensorStyles(): void {
 .hero-chart-wrap {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: var(--space-3);
-  overflow: visible;
+  overflow: hidden;
+  position: relative;
+  min-height: 400px;
 }
 .hero-chart {
   width: 100%;
-  height: 300px;
-  min-height: 300px;
+  min-height: 380px;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
 }
 .hero-svg {
   display: block;
@@ -1516,37 +1519,38 @@ function injectSensorStyles(): void {
 /* ── Hero chart sizing ── */
 #hero-chart {
   width: 100%;
-  height: 300px;
-  min-height: 300px;
+  min-height: 380px;
+  height: 400px;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
-#hero-chart .ck-chart {
+#hero-chart .ck-chart,
+#hero-chart .hal-chart-card {
   width: 100%;
-  height: 300px;
+  height: 100%;
+  overflow: hidden;
 }
 #hero-chart .hero-svg {
   width: 100%;
-  height: 300px;
-  min-height: 300px;
+  height: 100%;
+  min-height: 380px;
   display: block;
 }
 #hero-chart .chart-empty {
-  min-height: 300px;
+  min-height: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-#hero-chart .stack-chart {
-  width: 100%;
-  height: 300px;
-  overflow: visible;
-}
+#hero-chart .stack-chart,
 #hero-chart .lake-chart-inner {
   width: 100%;
-  height: 300px;
-  overflow: visible;
+  height: 100%;
+  overflow: hidden;
 }
 #hero-chart .lake-chart-inner svg {
   width: 100%;
-  height: 300px;
+  height: 100%;
 }
 
 @media (max-width: 1023px) {

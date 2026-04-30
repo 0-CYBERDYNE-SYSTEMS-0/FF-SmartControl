@@ -242,6 +242,10 @@ async function handleViewChange(viewId: ViewId): Promise<void> {
   if (location.hash !== newHash) {
     history.replaceState(null, '', newHash);
   }
+  // Update sidebar active state
+  document.querySelectorAll('.sidebar-item').forEach((item) => {
+    item.classList.toggle('active', item.getAttribute('data-view') === viewId);
+  });
   // Update header view label reactively
   updateHeaderViewLabel(viewId);
   setStore({ activeView: viewId });

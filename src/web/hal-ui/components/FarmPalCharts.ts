@@ -34,9 +34,10 @@ type ChartOpts = {
 
 function makeSvgChart(el: HTMLElement, data: Point[], series: Series[], opts: ChartOpts = {}) {
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-  const width = opts.width ?? (isMobile ? 400 : 800);
-  const height = opts.height ?? (isMobile ? 240 : 340);
-  const pad = { top: 28, right: opts.dualAxis ? 58 : 24, bottom: 42, left: isMobile ? 48 : 58 };
+  // Fixed aspect ratio - SVG will scale to fill container
+  const width = 800;
+  const height = isMobile ? 280 : 360;
+  const pad = { top: 24, right: opts.dualAxis ? 56 : 20, bottom: 40, left: isMobile ? 44 : 56 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
 
@@ -103,15 +104,15 @@ function makeSvgChart(el: HTMLElement, data: Point[], series: Series[], opts: Ch
 
   const fills = series
     .filter(s => s.fill)
-    .map(s => `<path d="${areaPath(s)}" fill="${s.color}" opacity="0.22"></path>`)
+    .map(s => `<path d="${areaPath(s)}" fill="${s.color}" opacity="0.35"></path>`)
     .join('');
 
   const lines = series
-    .map(s => `<path d="${linePath(s)}" fill="none" stroke="${s.color}" stroke-width="2"></path>`)
+    .map(s => `<path d="${linePath(s)}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>`)
     .join('');
 
   const legend = series
-    .map(s => `<span class="legend-item"><span style="background:${s.color}"></span>${s.label}</span>`)
+    .map(s => `<span class="legend-item"><span style="background:${s.color};box-shadow:0 0 8px ${s.color}"></span>${s.label}</span>`)
     .join('');
 
   const statsHtml = opts.showStats && opts.stats
@@ -128,93 +129,102 @@ function makeSvgChart(el: HTMLElement, data: Point[], series: Series[], opts: Ch
   el.innerHTML = `
     <style>
       .hal-chart-card {
-        background: #07111f;
-        border: 1px solid #243653;
-        border-radius: 12px;
-        padding: 18px;
-        color: #dbe4f0;
+        background: linear-gradient(135deg, #0a1628 0%, #07111f 100%);
+        border: 1px solid #1e3a5f;
+        border-radius: 16px;
+        padding: 20px;
+        color: #f0f6fc;
         font-family: Inter, system-ui, sans-serif;
         width: 100%;
+        height: 100%;
         box-sizing: border-box;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.4);
       }
       .hal-chart-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 14px;
+        margin-bottom: 16px;
         flex-wrap: wrap;
         gap: 8px;
       }
       .hal-chart-title {
-        font-size: 14px;
-        font-weight: 600;
-        color: #38bdf8;
+        font-size: 16px;
+        font-weight: 700;
+        color: #6ee7b7;
+        text-shadow: 0 0 20px rgba(110,231,183,0.5);
       }
       .hal-chart-subtitle {
-        font-size: 11px;
-        color: #64748b;
-        margin-top: 2px;
+        font-size: 12px;
+        color: #7dd3fc;
+        margin-top: 4px;
+        text-shadow: 0 0 10px rgba(125,211,252,0.3);
       }
       .hal-chart-wrap {
         width: 100%;
+        height: 100%;
         overflow: hidden;
+        position: relative;
       }
       .hal-chart {
         width: 100%;
         height: auto;
         display: block;
       }
-      .grid { stroke: #334155; stroke-dasharray: 2 5; opacity: 0.75; }
-      .axis { fill: #7f8ea3; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .grid { stroke: #1e3a5f; stroke-dasharray: 3 6; opacity: 0.8; }
+      .axis { fill: #94a3b8; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
       .axis.right { fill: #38bdf8; }
       .legend {
         display: flex;
         flex-wrap: wrap;
-        gap: 14px;
-        margin-top: 10px;
-        color: #94a3b8;
+        gap: 16px;
+        margin-top: 14px;
+        color: #e2e8f0;
         font-size: 13px;
+        font-weight: 500;
       }
       .legend-item {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
       }
       .legend-item span {
-        width: 10px;
-        height: 10px;
+        width: 12px;
+        height: 12px;
         border-radius: 50%;
         display: inline-block;
+        box-shadow: 0 0 10px currentColor;
       }
       .hal-stats-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-        gap: 16px;
-        margin-top: 18px;
-        padding-top: 14px;
-        border-top: 1px solid #243653;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid #1e3a5f;
       }
       .hal-stat-section { }
       .hal-stat-label {
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 700;
-        color: var(--stat-color, #f59e0b);
-        margin-bottom: 6px;
+        color: var(--stat-color, #f97316);
+        margin-bottom: 8px;
+        text-shadow: 0 0 15px currentColor;
       }
       .hal-stat-row {
         display: flex;
         justify-content: space-between;
-        font-size: 12px;
-        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         color: #94a3b8;
-        padding: 2px 0;
+        padding: 4px 0;
       }
-      .hal-stat-row strong { color: #dbe4f0; }
+      .hal-stat-row strong { color: #f0f6fc; font-weight: 600; }
       @media (max-width: 480px) {
-        .hal-chart-card { padding: 12px; }
+        .hal-chart-card { padding: 14px; border-radius: 12px; }
         .hal-chart-header { flex-direction: column; }
-        .legend { gap: 10px; font-size: 12px; }
-        .hal-stats-grid { grid-template-columns: repeat(2, 1fr); }
+        .legend { gap: 12px; font-size: 12px; }
+        .hal-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
       }
     </style>
 
@@ -228,7 +238,7 @@ function makeSvgChart(el: HTMLElement, data: Point[], series: Series[], opts: Ch
         </div>
       ` : ''}
       <div class="hal-chart-wrap">
-        <svg class="hal-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Chart">
+        <svg class="hal-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Chart">
           ${grid}
           ${xLabels}
           ${leftTicks}
@@ -270,10 +280,10 @@ export function renderFarmPalAreaChart(
   }
 
   makeSvgChart(el, data, [
-    { key: 'temp1', label: 'Temperature #1', color: '#f59e0b', fill: true },
-    { key: 'temp2', label: 'Temperature #2', color: '#f97316', fill: true },
-    { key: 'soil', label: 'Soil Probe', color: '#a3a3a3', fill: true },
-    { key: 'weight', label: 'Weight', color: '#94a3b8', fill: true },
+    { key: 'temp1', label: 'Temperature #1', color: '#f97316', fill: true },
+    { key: 'temp2', label: 'Temperature #2', color: '#fb923c', fill: true },
+    { key: 'soil', label: 'Soil Probe', color: '#a78bfa', fill: true },
+    { key: 'weight', label: 'Weight', color: '#22d3ee', fill: true },
   ], {
     leftMin: 0,
     leftMax: 180,
@@ -304,7 +314,7 @@ export function renderFarmPalDualAxisChart(
   const humStats = calcStats(humValues);
 
   makeSvgChart(el, data, [
-    { key: 'temp', label: `Temperature (${tempUnit})`, color: '#f59e0b', axis: 'left', fill: true },
+    { key: 'temp', label: `Temperature (${tempUnit})`, color: '#fb923c', axis: 'left', fill: true },
     { key: 'humidity', label: 'Humidity (%)', color: '#38bdf8', axis: 'right', fill: true },
   ], {
     dualAxis: true,
@@ -316,7 +326,7 @@ export function renderFarmPalDualAxisChart(
     subtitle: deviceName,
     showStats: true,
     stats: [
-      { label: 'Temperature', color: '#f59e0b', min: tempStats.min + tempUnit, avg: tempStats.avg + tempUnit, max: tempStats.max + tempUnit },
+      { label: 'Temperature', color: '#fb923c', min: tempStats.min + tempUnit, avg: tempStats.avg + tempUnit, max: tempStats.max + tempUnit },
       { label: 'Humidity', color: '#38bdf8', min: humStats.min + '%', avg: humStats.avg + '%', max: humStats.max + '%' },
     ],
   });

@@ -2541,34 +2541,7 @@ ${result.failures.join("\n")}`
   });
 
   // src/web/hal-ui/components/ChartKit.ts
-  var ChartKit_exports = {};
-  __export(ChartKit_exports, {
-    generateDeviceShades: () => generateDeviceShades,
-    injectChartKitStyles: () => injectChartKitStyles,
-    monotoneCubicPath: () => monotoneCubicPath,
-    renderAreaCard: () => renderAreaCard,
-    renderBarCard: () => renderBarCard,
-    renderBoxPlot: () => renderBoxPlot,
-    renderBulletChart: () => renderBulletChart,
-    renderDashboardHeroCard: () => renderDashboardHeroCard,
-    renderDashboardOverviewCards: () => renderDashboardOverviewCards,
-    renderDecisionBarTrend: () => renderDecisionBarTrend,
-    renderDecisionMarkers: () => renderDecisionMarkers,
-    renderDualAxisCard: () => renderDualAxisCard,
-    renderHeatmap: () => renderHeatmap,
-    renderLakeChart: () => renderLakeChart,
-    renderLineCard: () => renderLineCard,
-    renderOriginalAreaChart: () => renderOriginalAreaChart,
-    renderSparkline: () => renderSparkline,
-    renderStackedAreaChart: () => renderStackedAreaChart,
-    renderStepChart: () => renderStepChart,
-    renderTinyAreaChart: () => renderTinyAreaChart,
-    renderTinyBarChart: () => renderTinyBarChart
-  });
   function escapeHtml3(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
-  function escapeAttr(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function hexToHsl(hex) {
@@ -2675,141 +2648,6 @@ ${result.failures.join("\n")}`
       );
     }
     return parts.join(" ");
-  }
-  function renderDualAxisCard(layers, containerId, opts = {}) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    if (layers.length === 0) {
-      container.innerHTML = '<div class="chart-empty">No data</div>';
-      return;
-    }
-    const width = opts.width ?? 900;
-    const height = opts.height ?? 320;
-    const pad = { top: 24, right: 36, bottom: 36, left: 36 };
-    const allTimes = layers.flatMap((l) => l.data.map((d) => d.t));
-    const tMin = Math.min(...allTimes);
-    const tMax = Math.max(...allTimes);
-    const tSpan = Math.max(1, tMax - tMin);
-    const tx = (t) => pad.left + (t - tMin) / tSpan * (width - pad.left - pad.right);
-    const layerPaths = layers.map((layer) => {
-      const axisMin = layer.minAxis;
-      const axisMax = layer.maxAxis;
-      const vSpan = Math.max(1, axisMax - axisMin);
-      const points = layer.data.map((d) => {
-        const x = tx(d.t);
-        const y = pad.top + (axisMax - d.v) / vSpan * (height - pad.top - pad.bottom);
-        return { x, y, v: d.v };
-      });
-      const lineFn = opts.smooth ? monotoneCubicPath : straightLinePath;
-      const line = lineFn(points.map((p) => ({ x: p.x, y: p.y })));
-      const area = line ? `${line} L${points[points.length - 1].x.toFixed(1)},${height - pad.bottom} L${points[0].x.toFixed(1)},${height - pad.bottom} Z` : "";
-      return { layer, points, line, area, axisMin, axisMax, vSpan };
-    });
-    let gridLines = "";
-    if (opts.showGrid !== false) {
-      gridLines = Array.from({ length: 6 }, (_, i) => {
-        const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
-        return `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid"/>`;
-      }).join("");
-    }
-    const timeSteps = 6;
-    const timeLabels = Array.from({ length: timeSteps + 1 }, (_, i) => {
-      const t = tMin + i / timeSteps * tSpan;
-      const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
-      return `<text x="${x.toFixed(1)}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`;
-    }).join("");
-    const primary = layerPaths[0];
-    const leftAxisLabels = Array.from({ length: 6 }, (_, i) => {
-      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
-      const v = primary.axisMax - i / 5 * primary.vSpan;
-      const prec = primary.layer.label === "CO\u2082" ? 0 : 1;
-      const unit = primary.layer.unit || "";
-      return `<text x="${pad.left - 6}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(prec)}${unit}</text>`;
-    }).join("");
-    let rightAxisLabels = "";
-    if (layerPaths.length > 1) {
-      const sec = layerPaths[1];
-      rightAxisLabels = Array.from({ length: 6 }, (_, i) => {
-        const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
-        const v = sec.axisMax - i / 5 * sec.vSpan;
-        const unit = sec.layer.unit || "";
-        return `<text x="${width - pad.right + 6}" y="${y + 4}" class="chart-label" style="fill:${sec.layer.color}">${v.toFixed(1)}${unit}</text>`;
-      }).join("");
-    }
-    const defs = layerPaths.map(
-      (lp, i) => `
-    <linearGradient id="ck-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.28"/>
-      <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.02"/>
-    </linearGradient>
-  `
-    ).join("");
-    const areas = layerPaths.map(
-      (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#ck-grad-${containerId}-${i})" stroke="none"/>` : ""
-    ).join("");
-    const lines = layerPaths.map(
-      (lp) => lp.line ? `<path d="${lp.line}" fill="none" stroke="${lp.layer.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : ""
-    ).join("");
-    const dots = layerPaths.map((lp) => {
-      const last = lp.points[lp.points.length - 1];
-      return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.color}" stroke="var(--bg-primary)" stroke-width="2"/>`;
-    }).join("");
-    const svg = `
-    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
-      <defs>${defs}</defs>
-      ${gridLines}${areas}${lines}${dots}${leftAxisLabels}${rightAxisLabels}${timeLabels}
-    </svg>
-  `;
-    const latestValues = layers.map((l) => {
-      const last = l.data[l.data.length - 1];
-      const prev = l.data[l.data.length - 2];
-      const delta = prev ? (last.v - prev.v) / Math.abs(prev.v) * 100 : 0;
-      const values = l.data.map((d) => d.v);
-      return {
-        ...l,
-        current: last.v,
-        delta,
-        min: Math.min(...values),
-        max: Math.max(...values),
-        avg: values.reduce((a, b) => a + b, 0) / values.length
-      };
-    });
-    const primaryMetric = latestValues[0];
-    const kpiVal = `${primaryMetric.current.toFixed(1)}${primaryMetric.unit}`;
-    const kpiDelta = `${primaryMetric.delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(primaryMetric.delta).toFixed(1)}%`;
-    let statsHtml = "";
-    if (opts.showStats !== false) {
-      statsHtml = `<div class="ck-stats">` + latestValues.map(
-        (l) => `
-        <div class="ck-stat-metric">
-          <span class="ck-stat-label" style="color:${l.color}">${escapeHtml3(l.label)}</span>
-          <span class="ck-stat-current" style="color:${l.color}">${l.current.toFixed(1)}${l.unit}</span>
-        </div>
-        <div class="ck-stat-row">
-          <div class="ck-stat-item"><label>Min</label><strong>${l.min.toFixed(1)}${l.unit}</strong></div>
-          <div class="ck-stat-item"><label>Avg</label><strong>${l.avg.toFixed(1)}${l.unit}</strong></div>
-          <div class="ck-stat-item"><label>Max</label><strong>${l.max.toFixed(1)}${l.unit}</strong></div>
-        </div>
-      `
-      ).join("") + `</div>`;
-    }
-    const titleHtml = opts.title ? `<div class="ck-head">
-         <div>
-           <div class="ck-title">${escapeHtml3(opts.title)}</div>
-           ${opts.subtitle ? `<div class="ck-subtitle">${escapeHtml3(opts.subtitle)}</div>` : ""}
-           ${opts.deviceName ? `<div class="ck-device">${escapeHtml3(opts.deviceName)}</div>` : ""}
-         </div>
-         <div class="ck-kpi">
-           <div class="ck-kpi-val" style="color:${primaryMetric.color}">${kpiVal}</div>
-           <div class="ck-kpi-delta">${kpiDelta}</div>
-         </div>
-       </div>` : "";
-    const footHtml = `<div class="ck-foot">${layers[0].data.length} readings</div>`;
-    container.innerHTML = `${titleHtml}<div class="ck-chart">${svg}</div>${statsHtml}${footHtml}`;
   }
   function renderOverviewZoneCard(zone, activeKeys) {
     const metricsByKey = new Map(
@@ -3007,584 +2845,6 @@ ${result.failures.join("\n")}`
       });
     }
   }
-  function renderDashboardHeroCard(metrics2, containerId, opts = {}) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    const metricsWithData = metrics2.filter((m) => m.data.length > 0);
-    if (metricsWithData.length === 0) {
-      container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
-      return;
-    }
-    const activeKeys = opts.activeKeys ?? new Set(metrics2.map((m) => m.key));
-    const normalizedActiveKeys = new Set(
-      Array.from(activeKeys).filter(
-        (key) => metricsWithData.some((metric) => metric.key === key)
-      )
-    );
-    if (normalizedActiveKeys.size === 0) {
-      const fallbackKey = ["temperature", "humidity", "co2"].find(
-        (key) => metricsWithData.some((metric) => metric.key === key)
-      ) ?? metricsWithData[0]?.key;
-      if (fallbackKey) normalizedActiveKeys.add(fallbackKey);
-    }
-    const activeMetrics = metricsWithData.filter(
-      (m) => normalizedActiveKeys.has(m.key)
-    );
-    const chartMetrics = activeMetrics.filter((m) => m.data.length > 0);
-    if (chartMetrics.length === 0) {
-      container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
-      return;
-    }
-    const store = getStore();
-    const w = 566;
-    const h = 220;
-    const pad = { l: 18, r: 16, t: 20, b: 24 };
-    const cw = w - pad.l - pad.r;
-    const ch = h - pad.t - pad.b;
-    const times = Array.from(
-      new Set(chartMetrics.flatMap((m) => m.data.map((d) => d.t)))
-    ).sort((a, b) => a - b);
-    if (times.length === 0) {
-      container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
-      return;
-    }
-    const xForIndex = (i, len) => len <= 1 ? pad.l + cw / 2 : pad.l + i / (len - 1) * cw;
-    const normalizedSeries = chartMetrics.map((metric) => {
-      const cfg = metricConfig[metric.key];
-      const rawValues = metric.data.map((d) => d.v);
-      let axisMin = cfg?.minAxis ?? Math.min(...rawValues);
-      let axisMax = cfg?.maxAxis ?? Math.max(...rawValues);
-      if (metric.key === "temperature" && store.unitSystem === "imperial") {
-        axisMin = axisMin * 9 / 5 + 32;
-        axisMax = axisMax * 9 / 5 + 32;
-      }
-      const vSpan = Math.max(1, axisMax - axisMin);
-      const exact = new Map(
-        metric.data.map((d) => [
-          d.t,
-          Math.max(0, Math.min(100, (d.v - axisMin) / vSpan * 100))
-        ])
-      );
-      const firstNorm = exact.size > 0 ? exact.get(metric.data[0].t) ?? 0 : 0;
-      let carry = firstNorm;
-      const values = times.map((t) => {
-        const found = exact.get(t);
-        if (typeof found === "number") carry = found;
-        return { t, v: carry };
-      });
-      return { metric, values };
-    });
-    const stackedByTime = times.map((t, idx) => {
-      let total = 0;
-      const segments = normalizedSeries.map((series) => {
-        const v = series.values[idx]?.v ?? 0;
-        const y1 = total;
-        total += v;
-        return { metric: series.metric, y0: total, y1 };
-      });
-      return { t, idx, total, segments };
-    });
-    const maxTotal = Math.max(1, ...stackedByTime.map((s) => s.total));
-    const y = (v) => pad.t + (maxTotal - v) / maxTotal * ch;
-    const layerPaths = normalizedSeries.map((series, layerIndex) => {
-      const topPts = [];
-      const botPts = [];
-      for (const s of stackedByTime) {
-        const seg = s.segments[layerIndex];
-        const px = xForIndex(s.idx, times.length);
-        topPts.push({ x: px, y: y(seg?.y0 ?? 0) });
-        botPts.push({ x: px, y: y(seg?.y1 ?? 0) });
-      }
-      const topPath = monotoneCubicPath(topPts);
-      const topLine = topPts.map(
-        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
-      ).join(" ");
-      const botLine = botPts.map(
-        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
-      ).join(" ");
-      const area = topLine ? `${topLine} L${botPts[botPts.length - 1]?.x.toFixed(1)},${botPts[botPts.length - 1]?.y.toFixed(1)} ${botPts.slice().reverse().map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")} Z` : "";
-      return { series, area, topPath, topPts };
-    });
-    const gridLines = [0, 0.25, 0.5, 0.75, 1].map((step) => {
-      const gy = pad.t + step * ch;
-      return `<line x1="${pad.l}" x2="${pad.l + cw}" y1="${gy}" y2="${gy}" class="dhc-grid"/>`;
-    }).join("");
-    const defs = layerPaths.map(
-      (lp, i) => `
-    <linearGradient id="dhc-lake-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="${lp.series.metric.color}" stop-opacity="0.56"/>
-      <stop offset="100%" stop-color="${lp.series.metric.color}" stop-opacity="0.08"/>
-    </linearGradient>
-  `
-    ).join("");
-    const areas = layerPaths.map(
-      (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#dhc-lake-grad-${containerId}-${i})" stroke="none"/>` : ""
-    ).join("");
-    const edges = layerPaths.map(
-      (lp) => lp.topPath ? `<path d="${lp.topPath}" fill="none" stroke="${lp.series.metric.color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>` : ""
-    ).join("");
-    const dots = layerPaths.map((lp) => {
-      const last = lp.topPts[lp.topPts.length - 1];
-      if (!last) return "";
-      return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3.8" fill="${lp.series.metric.color}" stroke="var(--bg-primary)" stroke-width="1.4"/>`;
-    }).join("");
-    const svg = `
-    <svg class="hero-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
-      <defs>${defs}</defs>
-      ${gridLines}
-      ${areas}
-      ${edges}
-      ${dots}
-    </svg>
-  `;
-    const statsHtml = activeMetrics.map((m) => {
-      if (m.data.length === 0) {
-        return `
-        <div class="dhc-stats-row">
-          <div class="dhc-stats-metric" style="color:${m.color}">${escapeHtml3(m.label)}</div>
-          <div class="dhc-stats-current" style="color:var(--text-secondary)">No data</div>
-        </div>
-      `;
-      }
-      const values = m.data.map((d) => d.v);
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const avg = values.reduce((a, b) => a + b, 0) / values.length;
-      const current = m.data[m.data.length - 1].v;
-      return `
-      <div class="dhc-stats-row">
-        <div class="dhc-stats-metric" style="color:${m.color}">${escapeHtml3(m.label)}</div>
-        <div class="dhc-stats-current">${current.toFixed(1)}${m.unit}</div>
-      </div>
-      <div class="dhc-stats-grid">
-        <div><div class="dhc-muted">Min</div><strong>${min.toFixed(1)}${m.unit}</strong></div>
-        <div><div class="dhc-muted">Avg</div><strong>${avg.toFixed(1)}${m.unit}</strong></div>
-        <div><div class="dhc-muted">Max</div><strong>${max.toFixed(1)}${m.unit}</strong></div>
-      </div>
-    `;
-    }).join("");
-    const primaryMetric = chartMetrics[0];
-    const primaryCurrent = primaryMetric.data[primaryMetric.data.length - 1].v;
-    const primaryPrev = primaryMetric.data[primaryMetric.data.length - 2]?.v ?? primaryCurrent;
-    const delta = primaryPrev ? (primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100 : 0;
-    const titleColors = activeMetrics.map(
-      (m) => `<span style="color:${m.color};opacity:${m.data.length ? 1 : 0.5}">${escapeHtml3(m.label)}</span>`
-    ).join(' <span style="color:var(--text-secondary)">+</span> ');
-    const zoneToggleHtml = opts.zoneToggles ? `<div class="dhc-zone-toggles">
-        <button class="dhc-zone-toggle ${opts.zoneToggles.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>
-        ${opts.zoneToggles.zones.map((z) => {
-      const isActive = z === opts.zoneToggles.activeZone;
-      return `<button class="dhc-zone-toggle ${isActive ? "active" : ""}" data-zone="${escapeAttr(z)}">${escapeHtml3(z)}</button>`;
-    }).join("")}
-      </div>` : "";
-    const overviewHealthHtml = opts.overviewHealth ? `<div class="dhc-overview-health ${opts.overviewHealth.state}">
-        <div class="dhc-overview-label">${escapeHtml3(opts.overviewHealth.zoneLabel)}</div>
-        <div class="dhc-overview-message">${escapeHtml3(opts.overviewHealth.message)}</div>
-      </div>` : "";
-    const seenKeys = /* @__PURE__ */ new Set();
-    const toggleMetrics = [];
-    for (const metric of metrics2) {
-      if (seenKeys.has(metric.key)) continue;
-      seenKeys.add(metric.key);
-      toggleMetrics.push(metric);
-    }
-    const toggleHtml = toggleMetrics.map((metric) => {
-      const isActive = normalizedActiveKeys.has(metric.key);
-      return `<button class="dhc-toggle ${isActive ? "active" : ""}" data-metric="${escapeAttr(metric.key)}" style="--toggle-color:${metric.color}">${escapeHtml3(metric.label)}</button>`;
-    }).join("");
-    container.innerHTML = `
-    <div class="dhc-card">
-      <div class="dhc-head">
-        <div>
-          <div class="dhc-title">${titleColors}</div>
-          ${opts.subtitle ? `<div class="dhc-subtitle">${escapeHtml3(opts.subtitle)}</div>` : ""}
-        </div>
-        <div class="dhc-kpi">
-          <div class="dhc-kpi-val" style="color:${primaryMetric.color}">${primaryCurrent.toFixed(1)}${primaryMetric.unit}</div>
-          <div class="dhc-kpi-delta">${delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(delta).toFixed(1)}%</div>
-        </div>
-      </div>
-      ${overviewHealthHtml}
-      ${zoneToggleHtml}
-      <div class="dhc-toggles">${toggleHtml}</div>
-      <div class="dhc-chart">${svg}</div>
-      <div class="dhc-stats">${statsHtml}</div>
-      <div class="dhc-foot">${times.length} samples \xB7 ${escapeHtml3(opts.subtitle || "")}</div>
-    </div>
-  `;
-    if (opts.zoneToggles) {
-      container.querySelectorAll(".dhc-zone-toggle").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const zone = btn.dataset.zone;
-          if (!zone) return;
-          opts.zoneToggles.onZoneChange(zone === "__all__" ? "" : zone);
-        });
-      });
-    }
-    if (opts.onToggle) {
-      container.querySelectorAll(".dhc-toggle").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const key = btn.dataset.metric;
-          if (key) opts.onToggle(key);
-        });
-      });
-    }
-  }
-  function straightLinePath(pts) {
-    if (pts.length < 2) return "";
-    return pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-  }
-  function renderOriginalAreaChart(data, containerId, opts = {}) {
-    const container = document.getElementById(containerId);
-    if (!container || data.length < 2) return;
-    const color = opts.color ?? "#6DFF9A";
-    const W = opts.width ?? (container.clientWidth || 900);
-    const H = opts.height ?? 240;
-    const p = { t: 24, r: 24, b: 34, l: 54 };
-    const vals = data.map((d) => d.value);
-    const min = Math.min(...vals);
-    const max = Math.max(...vals);
-    const span = max - min || 1;
-    const x = (i) => p.l + i / (vals.length - 1) * (W - p.l - p.r);
-    const y = (v) => p.t + (max - v) / span * (H - p.t - p.b);
-    const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-    const area = `${p.l},${H - p.b} ${pts} ${W - p.r},${H - p.b}`;
-    const grids = [0, 0.25, 0.5, 0.75, 1].map((s) => {
-      const gy = p.t + s * (H - p.t - p.b);
-      const lv = (max - s * span).toFixed(1);
-      return `<line x1="${p.l}" y1="${gy}" x2="${W - p.r}" y2="${gy}" class="chart-grid"/><text x="${p.l - 8}" y="${gy + 4}" class="chart-label" text-anchor="end">${lv}</text>`;
-    }).join("");
-    const lx = x(vals.length - 1).toFixed(1);
-    const ly = y(vals[vals.length - 1]).toFixed(1);
-    const t0 = new Date(data[0].ts).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-    const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-    container.innerHTML = `
-    <svg class="og-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
-      ${grids}
-      <polygon points="${area}" fill="color-mix(in srgb, ${color} 16%, transparent)"/>
-      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-      <circle cx="${lx}" cy="${ly}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="2"/>
-      <text x="${p.l}" y="${H - 10}" class="chart-label">${t0}</text>
-      <text x="${W - p.r}" y="${H - 10}" class="chart-label" text-anchor="end">${t1}</text>
-      <text x="${W - p.r}" y="22" fill="${color}" font-size="18" font-weight="700" font-family="var(--font-mono)" text-anchor="end">${vals[vals.length - 1].toFixed(2)}</text>
-    </svg>
-  `;
-  }
-  function renderStackedAreaChart(layers, containerId, opts = {}) {
-    const container = document.getElementById(containerId);
-    if (!container || layers.length === 0) {
-      if (container)
-        container.innerHTML = '<div class="chart-empty">No data</div>';
-      return;
-    }
-    const colorGroups = /* @__PURE__ */ new Map();
-    for (const layer of layers) {
-      const list = colorGroups.get(layer.color) || [];
-      list.push(layer);
-      colorGroups.set(layer.color, list);
-    }
-    const shadedLayers = layers.map((layer) => {
-      const group = colorGroups.get(layer.color);
-      if (group.length <= 1) return layer;
-      const idx = group.indexOf(layer);
-      const shades = generateDeviceShades(layer.color, group.length);
-      return { ...layer, color: shades[idx] };
-    });
-    const width = opts.width ?? 900;
-    const height = opts.height ?? 320;
-    const pad = { top: 24, right: 24, bottom: 40, left: 52 };
-    const allTimes = shadedLayers.flatMap((l) => l.data.map((d) => d.t));
-    const tMin = Math.min(...allTimes);
-    const tMax = Math.max(...allTimes);
-    const tSpan = Math.max(1, tMax - tMin);
-    const tx = (t) => pad.left + (t - tMin) / tSpan * (width - pad.left - pad.right);
-    const timeMap = /* @__PURE__ */ new Map();
-    for (const layer of shadedLayers) {
-      for (const d of layer.data) {
-        if (!timeMap.has(d.t)) timeMap.set(d.t, []);
-      }
-    }
-    const times = Array.from(timeMap.keys()).sort((a, b) => a - b);
-    const stacked = times.map((t) => {
-      const x = tx(t);
-      let y0 = 0;
-      const segs = [];
-      for (const layer of shadedLayers) {
-        const pt = layer.data.find((d) => d.t === t);
-        const v = pt?.v ?? 0;
-        y0 += v;
-        segs.push({ x, y0, y1: y0 - v, v });
-      }
-      return { t, x, segs, total: y0 };
-    });
-    const maxTotal = Math.max(...stacked.map((s) => s.total), 1);
-    const yScale = (v) => pad.top + (maxTotal - v) / maxTotal * (height - pad.top - pad.bottom);
-    const layerPaths = shadedLayers.map((layer, li) => {
-      const topPts = [];
-      const botPts = [];
-      for (const st of stacked) {
-        const seg = st.segs[li];
-        topPts.push({ x: seg.x, y: yScale(seg.y0) });
-        botPts.push({ x: seg.x, y: yScale(seg.y1) });
-      }
-      const topPath = straightLinePath(topPts);
-      const botPath = straightLinePath(botPts);
-      const area = topPath && botPath ? `${topPath} L${botPts[botPts.length - 1].x.toFixed(1)},${botPts[botPts.length - 1].y.toFixed(1)} ${botPts.slice().reverse().map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")} Z` : "";
-      return { layer, area, topPath };
-    });
-    const gridLines = Array.from({ length: 6 }, (_, i) => {
-      const y = pad.top + i / 5 * (height - pad.top - pad.bottom);
-      const v = maxTotal * (1 - i / 5);
-      return `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid"/><text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${v.toFixed(0)}</text>`;
-    }).join("");
-    const timeLabels = Array.from({ length: 7 }, (_, i) => {
-      const t = tMin + i / 6 * tSpan;
-      const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
-      return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
-    }).join("");
-    const defs = layerPaths.map(
-      (lp, i) => `
-    <linearGradient id="stack-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.55"/>
-      <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.08"/>
-    </linearGradient>
-  `
-    ).join("");
-    const areas = layerPaths.map(
-      (lp, i) => lp.area ? `<path d="${lp.area}" fill="url(#stack-grad-${containerId}-${i})" stroke="none"/>` : ""
-    ).join("");
-    const lines = layerPaths.map(
-      (lp) => lp.topPath ? `<path d="${lp.topPath}" fill="none" stroke="${lp.layer.color}" stroke-width="1.5" stroke-linejoin="round"/>` : ""
-    ).join("");
-    const svg = `
-    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
-      <defs>${defs}</defs>
-      ${gridLines}${areas}${lines}${timeLabels}
-    </svg>
-  `;
-    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${shadedLayers.map(
-      (l) => `
-        <span class="legend-item" style="--metric-color:${l.color}">
-          <span class="legend-dot"></span>${escapeHtml3(l.label)}
-        </span>`
-    ).join("")}</div>` : "";
-    container.innerHTML = `<div class="stack-chart lake-chart-inner">${svg}</div>${legendHtml}`;
-  }
-  function renderLakeChart(layers, containerId, opts = {}) {
-    const container = document.getElementById(containerId);
-    if (!container || layers.length === 0) {
-      if (container) container.innerHTML = '<div class="chart-empty">No data</div>';
-      return;
-    }
-    const width = opts.width ?? 900;
-    const height = opts.height ?? 300;
-    const pad = { top: 24, right: 24, bottom: 40, left: 52 };
-    const allTimes = layers.flatMap((l) => l.data.map((d) => d.t));
-    const tMin = Math.min(...allTimes);
-    const tMax = Math.max(...allTimes);
-    const tSpan = Math.max(1, tMax - tMin);
-    const tx = (t) => pad.left + (t - tMin) / tSpan * (width - pad.left - pad.right);
-    const yScale = (v) => pad.top + (1 - v) * (height - pad.top - pad.bottom);
-    const layerPaths = layers.map((layer) => {
-      const pts = layer.data.slice().sort((a, b) => a.t - b.t).map((d) => ({ x: tx(d.t), y: yScale(d.v) }));
-      if (pts.length < 2) return null;
-      const linePath = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-      const areaPath = `${linePath} L${pts[pts.length - 1].x.toFixed(1)},${height - pad.bottom} L${pts[0].x.toFixed(1)},${height - pad.bottom} Z`;
-      return { layer, pts, linePath, areaPath };
-    }).filter(Boolean);
-    if (layerPaths.length === 0) return;
-    const yLabels = [0, 0.25, 0.5, 0.75, 1].map((v) => {
-      const y = yScale(v);
-      const pct = Math.round(v * 100);
-      return `<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${pct}%</text>`;
-    }).join("");
-    const timeLabels = Array.from({ length: 7 }, (_, i) => {
-      const t = tMin + i / 6 * tSpan;
-      const x = tx(t);
-      const label = new Date(t).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
-      return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
-    }).join("");
-    const defs = layerPaths.map(
-      (lp, i) => `
-    <linearGradient id="lake-grad-${containerId}-${i}" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="${lp.layer.color}" stop-opacity="0.40"/>
-      <stop offset="100%" stop-color="${lp.layer.color}" stop-opacity="0.02"/>
-    </linearGradient>
-  `
-    ).join("");
-    const areas = layerPaths.map(
-      (lp, i) => `<path d="${lp.areaPath}" fill="url(#lake-grad-${containerId}-${i})" stroke="none" style="mix-blend-mode:screen"/>`
-    ).join("");
-    const lines = layerPaths.map(
-      (lp) => `<path d="${lp.linePath}" fill="none" stroke="${lp.layer.color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" opacity="0.95"/>`
-    ).join("");
-    const dots = layerPaths.map((lp) => {
-      const last = lp.pts[lp.pts.length - 1];
-      if (!last) return "";
-      return `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${lp.layer.color}" stroke="var(--bg-primary)" stroke-width="2"/>`;
-    }).join("");
-    const gridLines = Array.from({ length: 5 }, (_, i) => {
-      const y = pad.top + i / 4 * (height - pad.top - pad.bottom);
-      return `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="chart-grid" stroke-dasharray="2 3"/>`;
-    }).join("");
-    const svg = `
-    <svg class="hero-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
-      <defs>${defs}</defs>
-      ${gridLines}${areas}${lines}${dots}${yLabels}${timeLabels}
-    </svg>
-  `;
-    const legendHtml = opts.showLegend !== false ? `<div class="stack-legend">${layers.map(
-      (l) => `
-        <span class="legend-item" style="--metric-color:${l.color}">
-          <span class="legend-dot"></span>${escapeHtml3(l.label)}
-        </span>`
-    ).join("")}</div>` : "";
-    container.innerHTML = `<div class="stack-chart lake-chart-inner">${svg}</div>${legendHtml}`;
-  }
-  function renderAreaCard(data, metricKey, containerId, title) {
-    const container = document.getElementById(containerId);
-    if (!container || data.length < 2) return;
-    const store = getStore();
-    const cfg = metricConfig[metricKey] || {
-      label: metricKey,
-      color: "#888",
-      unit: "",
-      minAxis: 0,
-      maxAxis: 100
-    };
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metricKey,
-      store.unitSystem
-    );
-    const unit = latest.unit || cfg.unit;
-    const w = 340, h = 120;
-    const pad = { t: 8, r: 8, b: 20, l: 32 };
-    const times = data.map((d) => new Date(d.timestamp).getTime());
-    const tMin = Math.min(...times), tMax = Math.max(...times);
-    const tSpan = Math.max(1, tMax - tMin);
-    const tx = (t) => pad.l + (t - tMin) / tSpan * (w - pad.l - pad.r);
-    let axisMin = cfg.minAxis, axisMax = cfg.maxAxis;
-    if (metricKey === "temperature" && store.unitSystem === "imperial") {
-      axisMin = axisMin * 9 / 5 + 32;
-      axisMax = axisMax * 9 / 5 + 32;
-    }
-    const vSpan = Math.max(1, axisMax - axisMin);
-    const points = data.map((d) => {
-      const v = formatSensorValue(d.value, metricKey, store.unitSystem).value;
-      return {
-        x: tx(new Date(d.timestamp).getTime()),
-        y: pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b)
-      };
-    });
-    const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-    const area = `${line} L${points[points.length - 1].x.toFixed(1)},${h - pad.b} L${points[0].x.toFixed(1)},${h - pad.b} Z`;
-    container.innerHTML = `
-    <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml3(title)}</span>
-      <span class="viz-card-value text-mono" style="color:${cfg.color}">${latest.value.toFixed(1)}${unit}</span>
-    </div>
-    <svg viewBox="0 0 ${w} ${h}" class="viz-svg">
-      <defs><linearGradient id="area-grad-${metricKey}" x1="0" x2="0" y1="0" y2="1">
-        <stop offset="0%" stop-color="${cfg.color}" stop-opacity="0.25"/>
-        <stop offset="100%" stop-color="${cfg.color}" stop-opacity="0.02"/>
-      </linearGradient></defs>
-      <path d="${area}" fill="url(#area-grad-${metricKey})" stroke="none"/>
-      <path d="${line}" fill="none" stroke="${cfg.color}" stroke-width="1.5" stroke-linejoin="round"/>
-    </svg>
-  `;
-  }
-  function renderLineCard(data, metricKey, containerId, title) {
-    const container = document.getElementById(containerId);
-    if (!container || data.length < 2) return;
-    const store = getStore();
-    const cfg = metricConfig[metricKey] || {
-      label: metricKey,
-      color: "#888",
-      unit: "",
-      minAxis: 0,
-      maxAxis: 100
-    };
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metricKey,
-      store.unitSystem
-    );
-    const unit = latest.unit || cfg.unit;
-    const w = 340, h = 120;
-    const pad = { t: 8, r: 8, b: 20, l: 32 };
-    const times = data.map((d) => new Date(d.timestamp).getTime());
-    const tMin = Math.min(...times), tMax = Math.max(...times);
-    const tSpan = Math.max(1, tMax - tMin);
-    const tx = (t) => pad.l + (t - tMin) / tSpan * (w - pad.l - pad.r);
-    const axisMin = cfg.minAxis, axisMax = cfg.maxAxis;
-    const vSpan = Math.max(1, axisMax - axisMin);
-    const pts = data.map((d) => {
-      const v = formatSensorValue(d.value, metricKey, store.unitSystem).value;
-      return `${tx(new Date(d.timestamp).getTime()).toFixed(1)},${(pad.t + (axisMax - v) / vSpan * (h - pad.t - pad.b)).toFixed(1)}`;
-    }).join(" ");
-    container.innerHTML = `
-    <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml3(title)}</span>
-      <span class="viz-card-value text-mono" style="color:${cfg.color}">${latest.value.toFixed(0)}${unit}</span>
-    </div>
-    <svg viewBox="0 0 ${w} ${h}" class="viz-svg">
-      <polyline points="${pts}" fill="none" stroke="${cfg.color}" stroke-width="1.5" stroke-linejoin="round"/>
-    </svg>
-  `;
-  }
-  function renderBarCard(data, metricKey, containerId, title) {
-    const container = document.getElementById(containerId);
-    if (!container || data.length < 2) return;
-    const store = getStore();
-    const cfg = metricConfig[metricKey] || {
-      label: metricKey,
-      color: "#888",
-      unit: "",
-      minAxis: 0,
-      maxAxis: 100
-    };
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metricKey,
-      store.unitSystem
-    );
-    const unit = latest.unit || cfg.unit;
-    const w = 340, h = 120;
-    const pad = { t: 8, r: 8, b: 20, l: 32 };
-    const bars = Math.min(data.length, 24);
-    const step = (w - pad.l - pad.r) / bars;
-    const barW = step * 0.7;
-    const axisMin = cfg.minAxis, axisMax = cfg.maxAxis;
-    const vSpan = Math.max(1, axisMax - axisMin);
-    const rects = data.slice(-bars).map((d, i) => {
-      const v = formatSensorValue(d.value, metricKey, store.unitSystem).value;
-      const bh = (v - axisMin) / vSpan * (h - pad.t - pad.b);
-      const x = pad.l + i * step + (step - barW) / 2;
-      const y = h - pad.b - bh;
-      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${cfg.color}" opacity="0.7" rx="2"/>`;
-    }).join("");
-    container.innerHTML = `
-    <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml3(title)}</span>
-      <span class="viz-card-value text-mono" style="color:${cfg.color}">${latest.value.toFixed(0)}${unit}</span>
-    </div>
-    <svg viewBox="0 0 ${w} ${h}" class="viz-svg">${rects}</svg>
-  `;
-  }
   function renderDecisionBarTrend(points, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || points.length === 0) {
@@ -3666,25 +2926,6 @@ ${result.failures.join("\n")}`
     </svg>
   `;
   }
-  function renderTinyBarChart(data, color, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container || data.length < 2) return;
-    const w = 200, h = 40;
-    const pad = { t: 2, r: 2, b: 2, l: 2 };
-    const bars = Math.min(data.length, 20);
-    const step = (w - pad.l - pad.r) / bars;
-    const barW = step * 0.7;
-    const min = Math.min(...data);
-    const max = Math.max(...data);
-    const span = Math.max(1e-3, max - min);
-    const rects = data.slice(-bars).map((v, i) => {
-      const bh = (v - min) / span * (h - pad.t - pad.b);
-      const x = pad.l + i * step + (step - barW) / 2;
-      const y = h - pad.b - bh;
-      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${color}" opacity="0.7" rx="1"/>`;
-    }).join("");
-    container.innerHTML = `<svg viewBox="0 0 ${w} ${h}" class="tiny-chart-svg">${rects}</svg>`;
-  }
   function renderSparkline(data, color, width = 80, height = 24) {
     if (data.length < 2) return '<span class="text-xs text-secondary">--</span>';
     const min = Math.min(...data);
@@ -3701,93 +2942,6 @@ ${result.failures.join("\n")}`
     return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" class="sparkline-svg">
     <path d="${smoothPath}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
   </svg>`;
-  }
-  function renderStepChart(data, containerId, opts = {}) {
-    const container = document.getElementById(containerId);
-    if (!container || data.length < 2) return;
-    const color = opts.color ?? "#FACC15";
-    const W = opts.width ?? (container.clientWidth || 340);
-    const H = opts.height ?? 100;
-    const p = { t: 8, r: 8, b: 20, l: 32 };
-    const times = data.map((d) => new Date(d.ts).getTime());
-    const tMin = Math.min(...times), tMax = Math.max(...times);
-    const tSpan = Math.max(1, tMax - tMin);
-    const tx = (t) => p.l + (t - tMin) / tSpan * (W - p.l - p.r);
-    let path = "";
-    for (let i = 0; i < data.length; i++) {
-      const x = tx(new Date(data[i].ts).getTime());
-      const y = p.t + (1 - data[i].value) * (H - p.t - p.b);
-      if (i === 0) {
-        path = `M${x.toFixed(1)},${y.toFixed(1)}`;
-      } else {
-        const prevX = tx(new Date(data[i - 1].ts).getTime());
-        const prevY = p.t + (1 - data[i - 1].value) * (H - p.t - p.b);
-        path += ` L${x.toFixed(1)},${prevY.toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)}`;
-      }
-    }
-    container.innerHTML = `
-    <svg viewBox="0 0 ${W} ${H}" class="viz-svg">
-      <path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
-    </svg>
-  `;
-  }
-  function renderBulletChart(metrics2, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container || metrics2.length === 0) return;
-    const W = container.clientWidth || 340;
-    const H = metrics2.length * 40 + 20;
-    const trackH = 20;
-    const pad = { t: 10, r: 16, b: 10, l: 80 };
-    const rows = metrics2.map((m, i) => {
-      const y = pad.t + i * 40 + 10;
-      const pct = (v) => Math.max(0, Math.min(1, (v - m.min) / (m.max - m.min)));
-      const curPct = pct(m.current);
-      const tgtPct = pct(m.target);
-      const barW = W - pad.l - pad.r;
-      return `
-      <text x="${pad.l - 8}" y="${y + 14}" text-anchor="end" fill="#9CB8AA" font-size="11" font-family="var(--font-mono)">${escapeHtml3(m.label)}</text>
-      <rect x="${pad.l}" y="${y}" width="${barW}" height="${trackH}" fill="#182420" rx="3"/>
-      <rect x="${pad.l}" y="${y + 4}" width="${curPct * barW}" height="${trackH - 8}" fill="${m.color}" opacity="0.6" rx="2"/>
-      <line x1="${pad.l + tgtPct * barW}" y1="${y - 2}" x2="${pad.l + tgtPct * barW}" y2="${y + trackH + 2}" stroke="#F59E0B" stroke-width="3"/>
-      <text x="${pad.l + barW + 8}" y="${y + 14}" fill="#E8FFF2" font-size="11" font-family="var(--font-mono)">${m.current.toFixed(1)}${m.unit}</text>
-    `;
-    }).join("");
-    container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="viz-svg">${rows}</svg>`;
-  }
-  function renderBoxPlot(days, containerId, opts = {}) {
-    const container = document.getElementById(containerId);
-    if (!container || days.length === 0) return;
-    const color = opts.color ?? "#F59E0B";
-    const W = opts.width ?? (container.clientWidth || 600);
-    const H = opts.height ?? 180;
-    const pad = { t: 20, r: 16, b: 40, l: 40 };
-    const allValues = days.flatMap((d) => [d.min, d.max]);
-    const vMin = Math.min(...allValues);
-    const vMax = Math.max(...allValues);
-    const vSpan = Math.max(1e-3, vMax - vMin);
-    const barW = (W - pad.l - pad.r) / days.length * 0.6;
-    const step = (W - pad.l - pad.r) / days.length;
-    const vy = (v) => pad.t + (vMax - v) / vSpan * (H - pad.t - pad.b);
-    const elements = days.map((d, i) => {
-      const cx = pad.l + i * step + step / 2;
-      const yMin = vy(d.max);
-      const yMax = vy(d.min);
-      const yQ1 = vy(d.q3);
-      const yQ3 = vy(d.q1);
-      const yMed = vy(d.median);
-      return `
-      <line x1="${cx}" y1="${yMin}" x2="${cx}" y2="${yMax}" stroke="#9CB8AA" stroke-width="1"/>
-      <rect x="${cx - barW / 2}" y="${yQ1}" width="${barW}" height="${yQ3 - yQ1}" fill="${color}" opacity="0.55" rx="2"/>
-      <line x1="${cx - barW / 2}" y1="${yMed}" x2="${cx + barW / 2}" y2="${yMed}" stroke="#fff" stroke-width="2"/>
-      <text x="${cx}" y="${H - 10}" text-anchor="middle" fill="#9CB8AA" font-size="9" font-family="var(--font-mono)">${escapeHtml3(d.day)}</text>
-    `;
-    }).join("");
-    const grids = [0, 0.25, 0.5, 0.75, 1].map((s) => {
-      const y = pad.t + s * (H - pad.t - pad.b);
-      const v = (vMax - s * vSpan).toFixed(1);
-      return `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#182420" stroke-width="1"/><text x="${pad.l - 6}" y="${y + 3}" text-anchor="end" fill="#9CB8AA" font-size="9" font-family="var(--font-mono)">${v}</text>`;
-    }).join("");
-    container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="viz-svg">${grids}${elements}</svg>`;
   }
   function renderHeatmap(cells, containerId, opts = {}) {
     const container = document.getElementById(containerId);
@@ -3833,20 +2987,6 @@ ${result.failures.join("\n")}`
       return `<text x="26" y="${y}" text-anchor="end" fill="#9CB8AA" font-size="8">${d}</text>`;
     }).join("");
     container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="viz-svg">${rects}${hourLabels}${dayLabels}</svg>`;
-  }
-  function renderDecisionMarkers(decisions, tMin, tMax, tx, yTop, yBottom) {
-    if (!decisions.length) return "";
-    return decisions.filter((d) => {
-      const t = new Date(d.timestamp).getTime();
-      return t >= tMin && t <= tMax;
-    }).map((d) => {
-      const x = tx(new Date(d.timestamp).getTime()).toFixed(1);
-      const color = DECISION_COLORS[d.status || "pending"] ?? DECISION_COLORS.pending;
-      const opacity = (0.35 + (d.confidence ?? 0.5) * 0.65).toFixed(2);
-      const label = escapeAttr(d.decision.slice(0, 60));
-      const conf = ((d.confidence ?? 0) * 100).toFixed(0);
-      return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${yBottom}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="${opacity}"><title>${label} (${conf}%)</title></line><circle cx="${x}" cy="${yTop + 10}" r="4" fill="${color}" stroke="var(--bg-primary)" stroke-width="1.5" opacity="${opacity}"><title>${label}</title></circle>`;
-    }).join("");
   }
   function injectChartKitStyles() {
     if (document.getElementById("hal-chartkit-styles")) return;
@@ -4246,69 +3386,11 @@ ${result.failures.join("\n")}`
 `;
     document.head.appendChild(style);
   }
-  var metricConfig, DECISION_COLORS, overviewMetricOrder;
+  var overviewMetricOrder;
   var init_ChartKit = __esm({
     "src/web/hal-ui/components/ChartKit.ts"() {
       "use strict";
       init_store();
-      metricConfig = {
-        temperature: {
-          label: "Temperature",
-          color: "#F59E0B",
-          unit: "\xB0C",
-          minAxis: 10,
-          maxAxis: 40
-        },
-        humidity: {
-          label: "Humidity",
-          color: "#38BDF8",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
-        soil_moisture: {
-          label: "Soil Moisture",
-          color: "#EF4444",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
-        water_level: {
-          label: "Water Level",
-          color: "#2563EB",
-          unit: "%",
-          minAxis: 0,
-          maxAxis: 100
-        },
-        ph: { label: "pH", color: "#A855F7", unit: "", minAxis: 0, maxAxis: 14 },
-        co2: {
-          label: "CO\u2082",
-          color: "#22C55E",
-          unit: "ppm",
-          minAxis: 0,
-          maxAxis: 2e3
-        },
-        light: {
-          label: "Light",
-          color: "#FACC15",
-          unit: "lux",
-          minAxis: 0,
-          maxAxis: 1e5
-        },
-        weight: {
-          label: "Weight",
-          color: "#94A3B8",
-          unit: "kg",
-          minAxis: 0,
-          maxAxis: 100
-        },
-        vpd: { label: "VPD", color: "#A855F7", unit: "kPa", minAxis: 0, maxAxis: 3 }
-      };
-      DECISION_COLORS = {
-        success: "#6DFF9A",
-        failure: "#FF5C6C",
-        pending: "#FFC857"
-      };
       overviewMetricOrder = ["temperature", "humidity", "co2"];
     }
   });
@@ -4334,7 +3416,7 @@ ${result.failures.join("\n")}`
           try {
             const data = await halApi.getSensorHistory(s.id, m, from, to);
             if (data.length > 0) {
-              const cfg = metricConfig2[m];
+              const cfg = metricConfig[m];
               layers.push({
                 deviceId: s.id,
                 deviceName: s.name,
@@ -4379,7 +3461,7 @@ ${result.failures.join("\n")}`
 `;
     document.head.appendChild(style);
   }
-  var HERO_METRIC_KEYS, metricConfig2;
+  var HERO_METRIC_KEYS, metricConfig;
   var init_HeroChart = __esm({
     "src/web/hal-ui/components/HeroChart.ts"() {
       "use strict";
@@ -4395,7 +3477,7 @@ ${result.failures.join("\n")}`
         "ph",
         "weight"
       ];
-      metricConfig2 = {
+      metricConfig = {
         temperature: {
           label: "Temperature",
           color: "#F59E0B",
@@ -7936,9 +7018,9 @@ ${result.failures.join("\n")}`
   // src/web/hal-ui/components/FarmPalCharts.ts
   function makeSvgChart(el, data, series, opts = {}) {
     const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-    const width = opts.width ?? (isMobile ? 400 : 800);
-    const height = opts.height ?? (isMobile ? 240 : 340);
-    const pad = { top: 28, right: opts.dualAxis ? 58 : 24, bottom: 42, left: isMobile ? 48 : 58 };
+    const width = 800;
+    const height = isMobile ? 280 : 360;
+    const pad = { top: 24, right: opts.dualAxis ? 56 : 20, bottom: 40, left: isMobile ? 44 : 56 };
     const innerW = width - pad.left - pad.right;
     const innerH = height - pad.top - pad.bottom;
     const leftValues = series.filter((s) => s.axis !== "right").flatMap((s) => data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v)));
@@ -7979,9 +7061,9 @@ ${result.failures.join("\n")}`
       const gy = pad.top + i / 4 * innerH;
       return `<text x="${width - pad.right + 12}" y="${gy + 4}" class="axis right">${value.toFixed(0)}${opts.dualAxis ? "%" : ""}</text>`;
     }).join("") : "";
-    const fills = series.filter((s) => s.fill).map((s) => `<path d="${areaPath(s)}" fill="${s.color}" opacity="0.22"></path>`).join("");
-    const lines = series.map((s) => `<path d="${linePath(s)}" fill="none" stroke="${s.color}" stroke-width="2"></path>`).join("");
-    const legend = series.map((s) => `<span class="legend-item"><span style="background:${s.color}"></span>${s.label}</span>`).join("");
+    const fills = series.filter((s) => s.fill).map((s) => `<path d="${areaPath(s)}" fill="${s.color}" opacity="0.35"></path>`).join("");
+    const lines = series.map((s) => `<path d="${linePath(s)}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>`).join("");
+    const legend = series.map((s) => `<span class="legend-item"><span style="background:${s.color};box-shadow:0 0 8px ${s.color}"></span>${s.label}</span>`).join("");
     const statsHtml = opts.showStats && opts.stats ? `<div class="hal-stats-grid">${opts.stats.map((stat) => `
         <div class="hal-stat-section" style="--stat-color:${stat.color}">
           <div class="hal-stat-label">${stat.label}</div>
@@ -7993,93 +7075,102 @@ ${result.failures.join("\n")}`
     el.innerHTML = `
     <style>
       .hal-chart-card {
-        background: #07111f;
-        border: 1px solid #243653;
-        border-radius: 12px;
-        padding: 18px;
-        color: #dbe4f0;
+        background: linear-gradient(135deg, #0a1628 0%, #07111f 100%);
+        border: 1px solid #1e3a5f;
+        border-radius: 16px;
+        padding: 20px;
+        color: #f0f6fc;
         font-family: Inter, system-ui, sans-serif;
         width: 100%;
+        height: 100%;
         box-sizing: border-box;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.4);
       }
       .hal-chart-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 14px;
+        margin-bottom: 16px;
         flex-wrap: wrap;
         gap: 8px;
       }
       .hal-chart-title {
-        font-size: 14px;
-        font-weight: 600;
-        color: #38bdf8;
+        font-size: 16px;
+        font-weight: 700;
+        color: #6ee7b7;
+        text-shadow: 0 0 20px rgba(110,231,183,0.5);
       }
       .hal-chart-subtitle {
-        font-size: 11px;
-        color: #64748b;
-        margin-top: 2px;
+        font-size: 12px;
+        color: #7dd3fc;
+        margin-top: 4px;
+        text-shadow: 0 0 10px rgba(125,211,252,0.3);
       }
       .hal-chart-wrap {
         width: 100%;
+        height: 100%;
         overflow: hidden;
+        position: relative;
       }
       .hal-chart {
         width: 100%;
         height: auto;
         display: block;
       }
-      .grid { stroke: #334155; stroke-dasharray: 2 5; opacity: 0.75; }
-      .axis { fill: #7f8ea3; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .grid { stroke: #1e3a5f; stroke-dasharray: 3 6; opacity: 0.8; }
+      .axis { fill: #94a3b8; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
       .axis.right { fill: #38bdf8; }
       .legend {
         display: flex;
         flex-wrap: wrap;
-        gap: 14px;
-        margin-top: 10px;
-        color: #94a3b8;
+        gap: 16px;
+        margin-top: 14px;
+        color: #e2e8f0;
         font-size: 13px;
+        font-weight: 500;
       }
       .legend-item {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
       }
       .legend-item span {
-        width: 10px;
-        height: 10px;
+        width: 12px;
+        height: 12px;
         border-radius: 50%;
         display: inline-block;
+        box-shadow: 0 0 10px currentColor;
       }
       .hal-stats-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-        gap: 16px;
-        margin-top: 18px;
-        padding-top: 14px;
-        border-top: 1px solid #243653;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid #1e3a5f;
       }
       .hal-stat-section { }
       .hal-stat-label {
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 700;
-        color: var(--stat-color, #f59e0b);
-        margin-bottom: 6px;
+        color: var(--stat-color, #f97316);
+        margin-bottom: 8px;
+        text-shadow: 0 0 15px currentColor;
       }
       .hal-stat-row {
         display: flex;
         justify-content: space-between;
-        font-size: 12px;
-        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         color: #94a3b8;
-        padding: 2px 0;
+        padding: 4px 0;
       }
-      .hal-stat-row strong { color: #dbe4f0; }
+      .hal-stat-row strong { color: #f0f6fc; font-weight: 600; }
       @media (max-width: 480px) {
-        .hal-chart-card { padding: 12px; }
+        .hal-chart-card { padding: 14px; border-radius: 12px; }
         .hal-chart-header { flex-direction: column; }
-        .legend { gap: 10px; font-size: 12px; }
-        .hal-stats-grid { grid-template-columns: repeat(2, 1fr); }
+        .legend { gap: 12px; font-size: 12px; }
+        .hal-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
       }
     </style>
 
@@ -8093,7 +7184,7 @@ ${result.failures.join("\n")}`
         </div>
       ` : ""}
       <div class="hal-chart-wrap">
-        <svg class="hal-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Chart">
+        <svg class="hal-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Chart">
           ${grid}
           ${xLabels}
           ${leftTicks}
@@ -8126,10 +7217,10 @@ ${result.failures.join("\n")}`
       return;
     }
     makeSvgChart(el, data, [
-      { key: "temp1", label: "Temperature #1", color: "#f59e0b", fill: true },
-      { key: "temp2", label: "Temperature #2", color: "#f97316", fill: true },
-      { key: "soil", label: "Soil Probe", color: "#a3a3a3", fill: true },
-      { key: "weight", label: "Weight", color: "#94a3b8", fill: true }
+      { key: "temp1", label: "Temperature #1", color: "#f97316", fill: true },
+      { key: "temp2", label: "Temperature #2", color: "#fb923c", fill: true },
+      { key: "soil", label: "Soil Probe", color: "#a78bfa", fill: true },
+      { key: "weight", label: "Weight", color: "#22d3ee", fill: true }
     ], {
       leftMin: 0,
       leftMax: 180,
@@ -8150,7 +7241,7 @@ ${result.failures.join("\n")}`
     const tempStats = calcStats(tempValues);
     const humStats = calcStats(humValues);
     makeSvgChart(el, data, [
-      { key: "temp", label: `Temperature (${tempUnit2})`, color: "#f59e0b", axis: "left", fill: true },
+      { key: "temp", label: `Temperature (${tempUnit2})`, color: "#fb923c", axis: "left", fill: true },
       { key: "humidity", label: "Humidity (%)", color: "#38bdf8", axis: "right", fill: true }
     ], {
       dualAxis: true,
@@ -8162,7 +7253,7 @@ ${result.failures.join("\n")}`
       subtitle: deviceName,
       showStats: true,
       stats: [
-        { label: "Temperature", color: "#f59e0b", min: tempStats.min + tempUnit2, avg: tempStats.avg + tempUnit2, max: tempStats.max + tempUnit2 },
+        { label: "Temperature", color: "#fb923c", min: tempStats.min + tempUnit2, avg: tempStats.avg + tempUnit2, max: tempStats.max + tempUnit2 },
         { label: "Humidity", color: "#38bdf8", min: humStats.min + "%", avg: humStats.avg + "%", max: humStats.max + "%" }
       ]
     });
@@ -8229,7 +7320,8 @@ ${result.failures.join("\n")}`
       </div>
     </div>
 
-    <div class="horizon-strips-section collapsible-section" id="strips-section">
+    <!-- Metric Strips - hidden, using hero chart only -->
+    <div class="horizon-strips-section collapsible-section" id="strips-section" style="display:none">
       <div class="collapsible-header" data-target="strips-content">
         <h2 class="section-title">Metric Strips</h2>
         <button class="collapsible-toggle" aria-expanded="true">
@@ -8241,7 +7333,7 @@ ${result.failures.join("\n")}`
       </div>
     </div>
 
-    <div class="viz-grid" id="viz-grid"></div>
+    <div class="viz-grid" id="viz-grid" style="display:none"></div>
 
     <div class="sensor-detail-drawer collapsible-section collapsed" id="detail-drawer-section" style="max-height:0;overflow:hidden">
       <div class="collapsible-header" data-target="detail-drawer">
@@ -8380,8 +7472,6 @@ ${result.failures.join("\n")}`
       renderHeroChart2(zoneLayers, decisions);
       renderDetailTable(zoneLayers);
       updatePillValues(zoneLayers);
-      renderHorizonStrips(zoneLayers);
-      renderVizCards(zoneLayers, decisions);
     } catch (err) {
       console.error("Sensor load failed:", err);
       if (heroChart)
@@ -8418,7 +7508,7 @@ ${result.failures.join("\n")}`
       `<button class="zone-pill ${viewState.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>`,
       ...sortedZones.map((z) => {
         const isActive = z === viewState.activeZone;
-        return `<button class="zone-pill ${isActive ? "active" : ""}" data-zone="${escapeAttr2(z)}">${escapeHtml9(z)}</button>`;
+        return `<button class="zone-pill ${isActive ? "active" : ""}" data-zone="${escapeAttr(z)}">${escapeHtml9(z)}</button>`;
       })
     ].join("");
     container.querySelectorAll(".zone-pill").forEach((btn) => {
@@ -8514,7 +7604,7 @@ ${result.failures.join("\n")}`
       );
     });
   }
-  function escapeAttr2(s) {
+  function escapeAttr(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function renderHeroChart2(layers, _decisions = []) {
@@ -8624,253 +7714,6 @@ ${result.failures.join("\n")}`
         converted.unit || m.fallbackUnit
       );
     });
-  }
-  function renderHorizonStrips(allLayers) {
-    const container = document.getElementById("horizon-strips");
-    if (!container) return;
-    if (allLayers.length === 0) {
-      container.textContent = "";
-      return;
-    }
-    const store = getStore();
-    const byMetric = /* @__PURE__ */ new Map();
-    for (const layer of allLayers) {
-      if (!byMetric.has(layer.metric.key)) byMetric.set(layer.metric.key, layer);
-    }
-    const strips = Array.from(byMetric.values()).map((layer) => {
-      const { data, metric } = layer;
-      if (data.length < 2) return "";
-      const converted = formatSensorValue(
-        data[data.length - 1].value,
-        metric.key,
-        store.unitSystem
-      );
-      const latestLabel = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
-      const values = data.map(
-        (d) => formatSensorValue(d.value, metric.key, store.unitSystem).value
-      );
-      const vMin = Math.min(...values);
-      const vMax = Math.max(...values);
-      const vSpan = Math.max(1e-3, vMax - vMin);
-      const w = 420, h = 52;
-      const step = (w - 4) / Math.max(values.length - 1, 1);
-      const pts = values.map((v, i) => {
-        const x = 2 + i * step;
-        const y = 2 + (vMax - v) / vSpan * (h - 4);
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      }).join(" ");
-      const color = metric.color;
-      return `<div class="horizon-strip">
-      <div class="horizon-strip-header">
-        <span class="horizon-strip-label">${escapeHtml9(metric.shortLabel)}</span>
-        <span class="horizon-strip-value text-mono" style="color:${color}">${latestLabel}</span>
-      </div>
-      <svg viewBox="0 0 ${w} ${h}" class="horizon-strip-svg" preserveAspectRatio="none">
-        <defs><linearGradient id="hs-grad-${metric.key}" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.3"/><stop offset="100%" stop-color="${color}" stop-opacity="0.02"/></linearGradient></defs>
-        <path d="M2,${h - 2} ${pts} ${(2 + (values.length - 1) * step).toFixed(1)},${h - 2} Z" fill="url(#hs-grad-${metric.key})" stroke="none"/>
-        <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
-      </svg>
-    </div>`;
-    }).filter(Boolean);
-    container.innerHTML = strips.join("");
-  }
-  function renderVizCards(allLayers, decisions = []) {
-    const grid = document.getElementById("viz-grid");
-    if (!grid) return;
-    if (allLayers.length === 0) {
-      grid.textContent = "";
-      return;
-    }
-    const store = getStore();
-    const byMetric = /* @__PURE__ */ new Map();
-    for (const layer of allLayers) {
-      const list = byMetric.get(layer.metric.key) || [];
-      list.push(layer);
-      byMetric.set(layer.metric.key, list);
-    }
-    const cards = [];
-    const tempLayers = byMetric.get("temperature");
-    if (tempLayers)
-      cards.push(renderAreaCard2(tempLayers[0], "Temperature Trend"));
-    const humLayers = byMetric.get("humidity");
-    if (humLayers) cards.push(renderLineCard2(humLayers[0], "Humidity Trend"));
-    const co2Layers = byMetric.get("co2");
-    if (co2Layers) cards.push(renderBarCard2(co2Layers[0], "CO\u2082 Levels"));
-    const first = allLayers[0];
-    if (first) cards.push(renderGaugeCard(first, "Latest Reading"));
-    cards.push(renderQualityMatrix(allLayers, decisions));
-    grid.innerHTML = cards.join("");
-  }
-  function renderAreaCard2(layer, title) {
-    const { data, metric } = layer;
-    const store = getStore();
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metric.key,
-      store.unitSystem
-    );
-    const unit = latest.unit || metric.fallbackUnit;
-    const id = `area-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
-    setTimeout(() => {
-      void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
-        m.renderAreaCard(data, metric.key, id, title);
-      });
-    }, 0);
-    return `<div class="viz-card" id="${id}">
-    <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml9(title)}</span>
-      <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(1)}${unit}</span>
-    </div>
-    <div class="viz-chart-placeholder" style="height:100px;"></div>
-  </div>`;
-  }
-  function renderLineCard2(layer, title) {
-    const { data, metric } = layer;
-    const store = getStore();
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metric.key,
-      store.unitSystem
-    );
-    const unit = latest.unit || metric.fallbackUnit;
-    const id = `line-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
-    setTimeout(() => {
-      void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
-        m.renderLineCard(data, metric.key, id, title);
-      });
-    }, 0);
-    return `<div class="viz-card" id="${id}">
-    <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml9(title)}</span>
-      <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(0)}${unit}</span>
-    </div>
-    <div class="viz-chart-placeholder" style="height:100px;"></div>
-  </div>`;
-  }
-  function renderBarCard2(layer, title) {
-    const { data, metric } = layer;
-    const store = getStore();
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metric.key,
-      store.unitSystem
-    );
-    const unit = latest.unit || metric.fallbackUnit;
-    const id = `bar-${metric.key}-${Math.random().toString(36).slice(2, 7)}`;
-    setTimeout(() => {
-      void Promise.resolve().then(() => (init_ChartKit(), ChartKit_exports)).then((m) => {
-        m.renderBarCard(data, metric.key, id, title);
-      });
-    }, 0);
-    return `<div class="viz-card" id="${id}">
-    <div class="viz-card-header">
-      <span class="viz-card-title">${escapeHtml9(title)}</span>
-      <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(0)}${unit}</span>
-    </div>
-    <div class="viz-chart-placeholder" style="height:100px;"></div>
-  </div>`;
-  }
-  function renderGaugeCard(layer, title) {
-    const { data, metric } = layer;
-    const store = getStore();
-    const latest = formatSensorValue(
-      data[data.length - 1].value,
-      metric.key,
-      store.unitSystem
-    );
-    const unit = latest.unit || metric.fallbackUnit;
-    const pct = Math.max(
-      0,
-      Math.min(
-        1,
-        (latest.value - metric.minAxis) / (metric.maxAxis - metric.minAxis)
-      )
-    );
-    const r = 42, cx = 80, cy = 56;
-    const circ = 2 * Math.PI * r;
-    const dash = pct * circ;
-    return `
-    <div class="viz-card">
-      <div class="viz-card-header">
-        <span class="viz-card-title">${escapeHtml9(title)}</span>
-        <span class="viz-card-value text-mono" style="color:${metric.color}">${latest.value.toFixed(1)}${unit}</span>
-      </div>
-      <svg viewBox="0 0 160 100" class="viz-svg gauge-svg">
-        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--border)" stroke-width="8"/>
-        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${metric.color}" stroke-width="8" stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}" stroke-dashoffset="0" transform="rotate(-90 ${cx} ${cy})"/>
-        <text x="${cx}" y="${cy + 6}" text-anchor="middle" fill="${metric.color}" font-size="18" font-weight="600" font-family="var(--font-mono)">${(pct * 100).toFixed(0)}%</text>
-      </svg>
-    </div>`;
-  }
-  function renderQualityMatrix(layers, decisions) {
-    const now = Date.now();
-    const staleMs = 10 * 60 * 1e3;
-    const deviceMap = /* @__PURE__ */ new Map();
-    const metricSet = /* @__PURE__ */ new Set();
-    for (const l of layers) {
-      deviceMap.set(l.deviceId, l.deviceName);
-      metricSet.add(l.metric.key);
-    }
-    const deviceIds = Array.from(deviceMap.keys());
-    const metricKeys = Array.from(metricSet);
-    if (deviceIds.length === 0) return "";
-    const latestMap = /* @__PURE__ */ new Map();
-    for (const l of layers) {
-      if (l.data.length === 0) continue;
-      const last = l.data[l.data.length - 1];
-      latestMap.set(
-        `${l.deviceId}:${l.metric.key}`,
-        new Date(last.timestamp).getTime()
-      );
-    }
-    const qualityColor = (ageMs) => {
-      if (ageMs === void 0) return "#1A2822";
-      if (ageMs < staleMs) return "#6DFF9A";
-      if (ageMs < staleMs * 6) return "#FFC857";
-      return "#FF5C6C";
-    };
-    const qualityLabel = (ageMs) => {
-      if (ageMs === void 0) return "no data";
-      const mins = Math.floor(ageMs / 6e4);
-      return mins < 1 ? "just now" : `${mins}m ago`;
-    };
-    const headerCols = metricKeys.map((k) => {
-      const cfg = metrics.find((m) => m.key === k);
-      return `<th class="qm-th">${escapeHtml9(cfg?.shortLabel || k)}</th>`;
-    }).join("");
-    const rows = deviceIds.map((deviceId) => {
-      const name = deviceMap.get(deviceId) || deviceId;
-      const cells = metricKeys.map((metricKey) => {
-        const ts = latestMap.get(`${deviceId}:${metricKey}`);
-        const ageMs = ts !== void 0 ? now - ts : void 0;
-        const color = qualityColor(ageMs);
-        const label = qualityLabel(ageMs);
-        return `<td class="qm-cell" title="${escapeHtml9(name)} \xB7 ${metricKey} \xB7 ${label}"><span class="qm-dot" style="background:${color}"></span></td>`;
-      }).join("");
-      return `<tr><td class="qm-device">${escapeHtml9(name.length > 20 ? name.slice(0, 18) + "\u2026" : name)}</td>${cells}</tr>`;
-    }).join("");
-    const recentDecisionCount = decisions.filter(
-      (d) => now - new Date(d.timestamp).getTime() < 36e5
-    ).length;
-    return `
-    <div class="viz-card wide">
-      <div class="viz-card-header">
-        <span class="viz-card-title">Sensor Quality</span>
-        <span class="viz-card-value text-mono text-secondary">${recentDecisionCount} decisions / 1h</span>
-      </div>
-      <div class="qm-legend">
-        <span class="qm-legend-item"><span class="qm-dot" style="background:#6DFF9A"></span>Fresh</span>
-        <span class="qm-legend-item"><span class="qm-dot" style="background:#FFC857"></span>Stale</span>
-        <span class="qm-legend-item"><span class="qm-dot" style="background:#FF5C6C"></span>Old</span>
-        <span class="qm-legend-item"><span class="qm-dot" style="background:#1A2822"></span>Missing</span>
-      </div>
-      <div class="qm-table-wrap">
-        <table class="qm-table">
-          <thead><tr><th class="qm-th-device">Device</th>${headerCols}</tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
   }
   function formatValue(value, unit) {
     const precision = Math.abs(value) >= 100 ? 0 : value % 1 === 0 ? 0 : 1;
@@ -9027,14 +7870,18 @@ ${result.failures.join("\n")}`
 .hero-chart-wrap {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: var(--space-3);
-  overflow: visible;
+  overflow: hidden;
+  position: relative;
+  min-height: 400px;
 }
 .hero-chart {
   width: 100%;
-  height: 300px;
-  min-height: 300px;
+  min-height: 380px;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
 }
 .hero-svg {
   display: block;
@@ -9358,37 +8205,38 @@ ${result.failures.join("\n")}`
 /* \u2500\u2500 Hero chart sizing \u2500\u2500 */
 #hero-chart {
   width: 100%;
-  height: 300px;
-  min-height: 300px;
+  min-height: 380px;
+  height: 400px;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
-#hero-chart .ck-chart {
+#hero-chart .ck-chart,
+#hero-chart .hal-chart-card {
   width: 100%;
-  height: 300px;
+  height: 100%;
+  overflow: hidden;
 }
 #hero-chart .hero-svg {
   width: 100%;
-  height: 300px;
-  min-height: 300px;
+  height: 100%;
+  min-height: 380px;
   display: block;
 }
 #hero-chart .chart-empty {
-  min-height: 300px;
+  min-height: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-#hero-chart .stack-chart {
-  width: 100%;
-  height: 300px;
-  overflow: visible;
-}
+#hero-chart .stack-chart,
 #hero-chart .lake-chart-inner {
   width: 100%;
-  height: 300px;
-  overflow: visible;
+  height: 100%;
+  overflow: hidden;
 }
 #hero-chart .lake-chart-inner svg {
   width: 100%;
-  height: 300px;
+  height: 100%;
 }
 
 @media (max-width: 1023px) {
@@ -18250,6 +17098,9 @@ The service will restart after the update.`
     if (location.hash !== newHash) {
       history.replaceState(null, "", newHash);
     }
+    document.querySelectorAll(".sidebar-item").forEach((item) => {
+      item.classList.toggle("active", item.getAttribute("data-view") === viewId);
+    });
     updateHeaderViewLabel(viewId);
     setStore2({ activeView: viewId });
     await render2();
