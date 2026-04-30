@@ -2,7 +2,7 @@
 
 import { getStore } from '../store.js';
 import { halApi, type HalSensorReading } from '../api.js';
-import { renderStackedAreaChart, type StackedLayer } from '../components/ChartKit.js';
+import { renderFarmPalAreaChart } from '../components/FarmPalCharts.js';
 import { formatSensorValue } from '../store.js';
 
 type MetricKey = 'temperature' | 'humidity' | 'soil_moisture' | 'light' | 'co2' | 'water_level' | 'ph' | 'weight';
@@ -131,57 +131,62 @@ async function loadSystemData(): Promise<void> {
   if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
 
   try {
-    const layers: StackedLayer[] = [];
+    // Merge all data into time-bucketed format
+    const timeMap = new Map<number, { temp1?: number; temp2?: number; soil?: number; weight?: number }>();
 
     await Promise.all(
-      sensors.flatMap((device) =>
+      sensors.flatMap((device, deviceIdx) =>
         systemMetrics.map(async (metric) => {
           const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
           if (data.length > 0) {
-            // Merge into time buckets
-            const timeMap = new Map<number, number[]>();
             for (const d of data) {
               const t = new Date(d.timestamp).getTime();
               const bucket = Math.floor(t / 60000) * 60000;
               const converted = formatSensorValue(d.value, metric.key, store.unitSystem).value;
-              const list = timeMap.get(bucket) || [];
-              list.push(converted);
-              timeMap.set(bucket, list);
+              const existing = timeMap.get(bucket) || {};
+              // Assign to first available slot for this metric type
+              if (metric.key === 'temperature') {
+                if (existing.temp1 === undefined) existing.temp1 = converted;
+                else if (existing.temp2 === undefined) existing.temp2 = converted;
+              } else if (metric.key === 'soil_moisture') {
+                existing.soil = converted;
+              } else if (metric.key === 'weight') {
+                existing.weight = converted;
+              }
+              timeMap.set(bucket, existing);
             }
 
-            const merged = Array.from(timeMap.entries())
-              .sort((a, b) => a[0] - b[0])
-              .map(([t, vals]) => ({
-                t,
-                v: vals.reduce((a, b) => a + b, 0) / vals.length,
-              }));
-
-            layers.push({
-              label: `${device.name} ${metric.label}`,
-              color: metric.color,
-              data: merged,
-            });
-
             // Update pill with latest value
-            if (data.length > 0) {
-              const latest = data[data.length - 1];
-              const pill = document.getElementById(`pill-${metric.key}`);
-              if (pill) {
-                const converted = formatSensorValue(latest.value, metric.key, store.unitSystem);
-                pill.textContent = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
-              }
+            const latest = data[data.length - 1];
+            const pill = document.getElementById(`pill-${metric.key}`);
+            if (pill) {
+              const converted = formatSensorValue(latest.value, metric.key, store.unitSystem);
+              pill.textContent = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
             }
           }
         }),
       ),
     );
 
-    if (layers.length === 0) {
+    const chartData = Array.from(timeMap.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([timestamp, values]) => ({
+        time: new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        temp1: values.temp1,
+        temp2: values.temp2,
+        soil: values.soil,
+        weight: values.weight,
+      }));
+
+    if (chartData.length === 0) {
       if (heroChart) heroChart.innerHTML = '<div class="chart-empty">No sensor data</div>';
       return;
     }
 
-    renderStackedAreaChart(layers, 'hero-chart', { showLegend: true });
+    renderFarmPalAreaChart('hero-chart', chartData, {
+      title: 'Temperature + Weight',
+      subtitle: `${systemViewRange} range`,
+    });
   } catch (err) {
     console.error('System view load failed:', err);
     if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';

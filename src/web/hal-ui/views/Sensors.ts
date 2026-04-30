@@ -10,7 +10,7 @@ import {
   formatDateTimeValue,
 } from '../store.js';
 import { halApi, HalSensorReading, HalDecision } from '../api.js';
-import { renderDualAxisCard, type DualAxisLayer } from '../components/ChartKit.js';
+import { renderFarmPalDualAxisChart } from '../components/FarmPalCharts.js';
 
 type MetricKey =
   | 'temperature'
@@ -602,80 +602,46 @@ function renderHeroChart(
     metricGroups.set(layer.metric.key, list);
   }
 
-  // Build DualAxisLayer[] — one entry per metric with actual values and unit
-  const dualLayers: DualAxisLayer[] = [];
+  // Build chart data for FarmPalDualAxisChart
+  // Merge all data into time-bucketed format
+  const timeMap = new Map<number, { temp?: number; humidity?: number }>();
+  const tempUnit = store.unitSystem === 'imperial' ? 'F' : 'C';
 
   for (const [metricKey, metricLayers] of metricGroups) {
-    if (metricLayers.length === 0) continue;
-    const cfg = metricLayers[0]!.metric;
-    let axisMin = cfg.minAxis;
-    let axisMax = cfg.maxAxis;
-    let unit = cfg.fallbackUnit;
-    if (metricKey === 'temperature') {
-      if (store.unitSystem === 'imperial') {
-        axisMin = (axisMin * 9) / 5 + 32;
-        axisMax = (axisMax * 9) / 5 + 32;
-        unit = '°F';
-      } else {
-        unit = '°C';
-      }
-    }
-
-    // Merge all device data for this metric into one series (average per timestamp)
-    const timeMap = new Map<number, number[]>();
     for (const l of metricLayers) {
       for (const d of l.data) {
         const t = new Date(d.timestamp).getTime();
-        const bucket = Math.floor(t / 60000) * 60000; // 1-min buckets
+        const bucket = Math.floor(t / 60000) * 60000;
         const converted = formatSensorValue(d.value, metricKey as MetricKey, store.unitSystem).value;
-        const list = timeMap.get(bucket) || [];
-        list.push(converted);
-        timeMap.set(bucket, list);
+        const existing = timeMap.get(bucket) || {};
+        if (metricKey === 'temperature') existing.temp = converted;
+        else if (metricKey === 'humidity') existing.humidity = converted;
+        timeMap.set(bucket, existing);
       }
     }
-
-    const merged = Array.from(timeMap.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([t, vals]) => ({
-        t,
-        v: vals.reduce((a, b) => a + b, 0) / vals.length,
-      }));
-
-    dualLayers.push({
-      label: cfg.label,
-      color: cfg.color,
-      minAxis: axisMin,
-      maxAxis: axisMax,
-      unit,
-      data: merged,
-    });
   }
 
+  const chartData = Array.from(timeMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([timestamp, values]) => ({
+      time: new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      temp: values.temp,
+      humidity: values.humidity,
+    }));
+
+  // Get first device name for subtitle
+  const deviceName = layers[0]?.deviceName || 'All Sensors';
+
   try {
-    const title = dualLayers.map((l) => l.label).join(' + ') || 'Sensor Data';
-    renderDualAxisCard(dualLayers, 'hero-chart', {
-      title,
-      subtitle: viewState.range + ' range',
-      showStats: true,
-      showGrid: true,
-    });
+    renderFarmPalDualAxisChart('hero-chart', chartData, deviceName, { unit: tempUnit });
   } catch(err) {
     const heroContainer = document.getElementById('hero-chart');
     if (heroContainer) heroContainer.innerHTML = `<div class="chart-empty">Chart error</div>`;
-    console.error('Dual-axis chart render failed:', err);
+    console.error('FarmPal chart render failed:', err);
   }
 
-  // Legend below chart
-  if (legend) {
-    legend.innerHTML = dualLayers
-      .map((l) => `
-        <span class="legend-item" style="--metric-color:${l.color}">
-          <span class="legend-dot"></span>
-          ${escapeHtml(l.label)}
-        </span>
-      `)
-      .join('');
-  }
+  // Legend is handled internally by renderFarmPalDualAxisChart
+  if (legend) legend.innerHTML = '';
 }
 
 /* ─────────────── Detail table ─────────────── */

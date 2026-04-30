@@ -7933,6 +7933,246 @@ ${result.failures.join("\n")}`
     }
   });
 
+  // src/web/hal-ui/components/FarmPalCharts.ts
+  function makeSvgChart(el, data, series, opts = {}) {
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+    const width = opts.width ?? (isMobile ? 400 : 800);
+    const height = opts.height ?? (isMobile ? 240 : 340);
+    const pad = { top: 28, right: opts.dualAxis ? 58 : 24, bottom: 42, left: isMobile ? 48 : 58 };
+    const innerW = width - pad.left - pad.right;
+    const innerH = height - pad.top - pad.bottom;
+    const leftValues = series.filter((s) => s.axis !== "right").flatMap((s) => data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v)));
+    const rightValues = series.filter((s) => s.axis === "right").flatMap((s) => data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v)));
+    const leftMin = opts.leftMin ?? (leftValues.length ? Math.min(...leftValues) : 0);
+    const leftMax = opts.leftMax ?? (leftValues.length ? Math.max(...leftValues) : 100);
+    const rightMin = opts.rightMin ?? (rightValues.length ? Math.min(...rightValues) : 0);
+    const rightMax = opts.rightMax ?? (rightValues.length ? Math.max(...rightValues) : 100);
+    const x = (i) => pad.left + i / Math.max(1, data.length - 1) * innerW;
+    const yLeft = (v) => pad.top + innerH - (v - leftMin) / Math.max(1, leftMax - leftMin) * innerH;
+    const yRight = (v) => pad.top + innerH - (v - rightMin) / Math.max(1, rightMax - rightMin) * innerH;
+    const linePath = (s) => data.map((d, i) => {
+      const v = Number(d[s.key]);
+      if (!Number.isFinite(v)) return "";
+      const y = s.axis === "right" ? yRight(v) : yLeft(v);
+      return `${i === 0 ? "M" : "L"} ${x(i)} ${y}`;
+    }).join(" ");
+    const areaPath = (s) => {
+      const top = linePath(s);
+      if (!top) return "";
+      return `${top} L ${x(data.length - 1)} ${pad.top + innerH} L ${x(0)} ${pad.top + innerH} Z`;
+    };
+    const grid = Array.from({ length: 5 }, (_, i) => {
+      const gy = pad.top + i / 4 * innerH;
+      return `<line x1="${pad.left}" y1="${gy}" x2="${width - pad.right}" y2="${gy}" class="grid"/>`;
+    }).join("");
+    const step = Math.max(1, Math.ceil(data.length / (isMobile ? 4 : 6)));
+    const xLabels = data.map(
+      (d, i) => i % step === 0 ? `<text x="${x(i)}" y="${height - 14}" class="axis" text-anchor="middle">${d.time}</text>` : ""
+    ).join("");
+    const leftTicks = Array.from({ length: 5 }, (_, i) => {
+      const value = leftMax - (leftMax - leftMin) / 4 * i;
+      const gy = pad.top + i / 4 * innerH;
+      return `<text x="${pad.left - 12}" y="${gy + 4}" class="axis" text-anchor="end">${value.toFixed(0)}</text>`;
+    }).join("");
+    const rightTicks = opts.dualAxis ? Array.from({ length: 5 }, (_, i) => {
+      const value = rightMax - (rightMax - rightMin) / 4 * i;
+      const gy = pad.top + i / 4 * innerH;
+      return `<text x="${width - pad.right + 12}" y="${gy + 4}" class="axis right">${value.toFixed(0)}${opts.dualAxis ? "%" : ""}</text>`;
+    }).join("") : "";
+    const fills = series.filter((s) => s.fill).map((s) => `<path d="${areaPath(s)}" fill="${s.color}" opacity="0.22"></path>`).join("");
+    const lines = series.map((s) => `<path d="${linePath(s)}" fill="none" stroke="${s.color}" stroke-width="2"></path>`).join("");
+    const legend = series.map((s) => `<span class="legend-item"><span style="background:${s.color}"></span>${s.label}</span>`).join("");
+    const statsHtml = opts.showStats && opts.stats ? `<div class="hal-stats-grid">${opts.stats.map((stat) => `
+        <div class="hal-stat-section" style="--stat-color:${stat.color}">
+          <div class="hal-stat-label">${stat.label}</div>
+          <div class="hal-stat-row"><span>MIN</span><strong>${stat.min}</strong></div>
+          <div class="hal-stat-row"><span>AVG</span><strong>${stat.avg}</strong></div>
+          <div class="hal-stat-row"><span>MAX</span><strong>${stat.max}</strong></div>
+        </div>
+      `).join("")}</div>` : "";
+    el.innerHTML = `
+    <style>
+      .hal-chart-card {
+        background: #07111f;
+        border: 1px solid #243653;
+        border-radius: 12px;
+        padding: 18px;
+        color: #dbe4f0;
+        font-family: Inter, system-ui, sans-serif;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .hal-chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .hal-chart-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #38bdf8;
+      }
+      .hal-chart-subtitle {
+        font-size: 11px;
+        color: #64748b;
+        margin-top: 2px;
+      }
+      .hal-chart-wrap {
+        width: 100%;
+        overflow: hidden;
+      }
+      .hal-chart {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .grid { stroke: #334155; stroke-dasharray: 2 5; opacity: 0.75; }
+      .axis { fill: #7f8ea3; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .axis.right { fill: #38bdf8; }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 10px;
+        color: #94a3b8;
+        font-size: 13px;
+      }
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .legend-item span {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .hal-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        gap: 16px;
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid #243653;
+      }
+      .hal-stat-section { }
+      .hal-stat-label {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--stat-color, #f59e0b);
+        margin-bottom: 6px;
+      }
+      .hal-stat-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        font-family: ui-monospace, monospace;
+        color: #94a3b8;
+        padding: 2px 0;
+      }
+      .hal-stat-row strong { color: #dbe4f0; }
+      @media (max-width: 480px) {
+        .hal-chart-card { padding: 12px; }
+        .hal-chart-header { flex-direction: column; }
+        .legend { gap: 10px; font-size: 12px; }
+        .hal-stats-grid { grid-template-columns: repeat(2, 1fr); }
+      }
+    </style>
+
+    <div class="hal-chart-card">
+      ${opts.title ? `
+        <div class="hal-chart-header">
+          <div>
+            <div class="hal-chart-title">${opts.title}</div>
+            ${opts.subtitle ? `<div class="hal-chart-subtitle">${opts.subtitle}</div>` : ""}
+          </div>
+        </div>
+      ` : ""}
+      <div class="hal-chart-wrap">
+        <svg class="hal-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Chart">
+          ${grid}
+          ${xLabels}
+          ${leftTicks}
+          ${rightTicks}
+          ${fills}
+          ${lines}
+        </svg>
+      </div>
+      <div class="legend">${legend}</div>
+      ${statsHtml}
+    </div>
+  `;
+  }
+  function calcStats(values) {
+    if (!values.length) return { min: "--", avg: "--", max: "--" };
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    return {
+      min: min.toFixed(1),
+      avg: avg.toFixed(1),
+      max: max.toFixed(1)
+    };
+  }
+  function renderFarmPalAreaChart(containerId, data, opts = {}) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (!data.length) {
+      el.innerHTML = '<div class="chart-empty">No data</div>';
+      return;
+    }
+    makeSvgChart(el, data, [
+      { key: "temp1", label: "Temperature #1", color: "#f59e0b", fill: true },
+      { key: "temp2", label: "Temperature #2", color: "#f97316", fill: true },
+      { key: "soil", label: "Soil Probe", color: "#a3a3a3", fill: true },
+      { key: "weight", label: "Weight", color: "#94a3b8", fill: true }
+    ], {
+      leftMin: 0,
+      leftMax: 180,
+      title: opts.title || "Temperature + Weight",
+      subtitle: opts.subtitle || "Multi-sensor overview"
+    });
+  }
+  function renderFarmPalDualAxisChart(containerId, data, deviceName, opts = {}) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (!data.length) {
+      el.innerHTML = '<div class="chart-empty">No data</div>';
+      return;
+    }
+    const tempUnit2 = opts.unit === "F" ? "\xB0F" : "\xB0C";
+    const tempValues = data.map((d) => d.temp).filter((v) => v !== void 0);
+    const humValues = data.map((d) => d.humidity).filter((v) => v !== void 0);
+    const tempStats = calcStats(tempValues);
+    const humStats = calcStats(humValues);
+    makeSvgChart(el, data, [
+      { key: "temp", label: `Temperature (${tempUnit2})`, color: "#f59e0b", axis: "left", fill: true },
+      { key: "humidity", label: "Humidity (%)", color: "#38bdf8", axis: "right", fill: true }
+    ], {
+      dualAxis: true,
+      leftMin: Math.floor(Math.min(...tempValues) / 10) * 10 - 5,
+      leftMax: Math.ceil(Math.max(...tempValues) / 10) * 10 + 5,
+      rightMin: 0,
+      rightMax: 100,
+      title: "Temperature + Humidity",
+      subtitle: deviceName,
+      showStats: true,
+      stats: [
+        { label: "Temperature", color: "#f59e0b", min: tempStats.min + tempUnit2, avg: tempStats.avg + tempUnit2, max: tempStats.max + tempUnit2 },
+        { label: "Humidity", color: "#38bdf8", min: humStats.min + "%", avg: humStats.avg + "%", max: humStats.max + "%" }
+      ]
+    });
+  }
+  var init_FarmPalCharts = __esm({
+    "src/web/hal-ui/components/FarmPalCharts.ts"() {
+      "use strict";
+    }
+  });
+
   // src/web/hal-ui/views/Sensors.ts
   async function renderSensors(container) {
     const store = getStore();
@@ -8297,67 +8537,35 @@ ${result.failures.join("\n")}`
       list.push(layer);
       metricGroups.set(layer.metric.key, list);
     }
-    const dualLayers = [];
+    const timeMap = /* @__PURE__ */ new Map();
+    const tempUnit2 = store.unitSystem === "imperial" ? "F" : "C";
     for (const [metricKey, metricLayers] of metricGroups) {
-      if (metricLayers.length === 0) continue;
-      const cfg = metricLayers[0].metric;
-      let axisMin = cfg.minAxis;
-      let axisMax = cfg.maxAxis;
-      let unit = cfg.fallbackUnit;
-      if (metricKey === "temperature") {
-        if (store.unitSystem === "imperial") {
-          axisMin = axisMin * 9 / 5 + 32;
-          axisMax = axisMax * 9 / 5 + 32;
-          unit = "\xB0F";
-        } else {
-          unit = "\xB0C";
-        }
-      }
-      const timeMap = /* @__PURE__ */ new Map();
       for (const l of metricLayers) {
         for (const d of l.data) {
           const t = new Date(d.timestamp).getTime();
           const bucket = Math.floor(t / 6e4) * 6e4;
           const converted = formatSensorValue(d.value, metricKey, store.unitSystem).value;
-          const list = timeMap.get(bucket) || [];
-          list.push(converted);
-          timeMap.set(bucket, list);
+          const existing = timeMap.get(bucket) || {};
+          if (metricKey === "temperature") existing.temp = converted;
+          else if (metricKey === "humidity") existing.humidity = converted;
+          timeMap.set(bucket, existing);
         }
       }
-      const merged = Array.from(timeMap.entries()).sort((a, b) => a[0] - b[0]).map(([t, vals]) => ({
-        t,
-        v: vals.reduce((a, b) => a + b, 0) / vals.length
-      }));
-      dualLayers.push({
-        label: cfg.label,
-        color: cfg.color,
-        minAxis: axisMin,
-        maxAxis: axisMax,
-        unit,
-        data: merged
-      });
     }
+    const chartData = Array.from(timeMap.entries()).sort((a, b) => a[0] - b[0]).map(([timestamp, values]) => ({
+      time: new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      temp: values.temp,
+      humidity: values.humidity
+    }));
+    const deviceName = layers[0]?.deviceName || "All Sensors";
     try {
-      const title = dualLayers.map((l) => l.label).join(" + ") || "Sensor Data";
-      renderDualAxisCard(dualLayers, "hero-chart", {
-        title,
-        subtitle: viewState.range + " range",
-        showStats: true,
-        showGrid: true
-      });
+      renderFarmPalDualAxisChart("hero-chart", chartData, deviceName, { unit: tempUnit2 });
     } catch (err) {
       const heroContainer = document.getElementById("hero-chart");
       if (heroContainer) heroContainer.innerHTML = `<div class="chart-empty">Chart error</div>`;
-      console.error("Dual-axis chart render failed:", err);
+      console.error("FarmPal chart render failed:", err);
     }
-    if (legend) {
-      legend.innerHTML = dualLayers.map((l) => `
-        <span class="legend-item" style="--metric-color:${l.color}">
-          <span class="legend-dot"></span>
-          ${escapeHtml9(l.label)}
-        </span>
-      `).join("");
-    }
+    if (legend) legend.innerHTML = "";
   }
   function renderDetailTable(layers) {
     const tbody = document.getElementById("detail-body");
@@ -9213,7 +9421,7 @@ ${result.failures.join("\n")}`
       "use strict";
       init_store();
       init_api();
-      init_ChartKit();
+      init_FarmPalCharts();
       metrics = [
         {
           key: "temperature",
@@ -9413,47 +9621,52 @@ ${result.failures.join("\n")}`
     const heroChart = document.getElementById("hero-chart");
     if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
     try {
-      const layers = [];
+      const timeMap = /* @__PURE__ */ new Map();
       await Promise.all(
         sensors.flatMap(
-          (device) => systemMetrics.map(async (metric) => {
+          (device, deviceIdx) => systemMetrics.map(async (metric) => {
             const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
             if (data.length > 0) {
-              const timeMap = /* @__PURE__ */ new Map();
               for (const d of data) {
                 const t = new Date(d.timestamp).getTime();
                 const bucket = Math.floor(t / 6e4) * 6e4;
                 const converted = formatSensorValue(d.value, metric.key, store.unitSystem).value;
-                const list = timeMap.get(bucket) || [];
-                list.push(converted);
-                timeMap.set(bucket, list);
-              }
-              const merged = Array.from(timeMap.entries()).sort((a, b) => a[0] - b[0]).map(([t, vals]) => ({
-                t,
-                v: vals.reduce((a, b) => a + b, 0) / vals.length
-              }));
-              layers.push({
-                label: `${device.name} ${metric.label}`,
-                color: metric.color,
-                data: merged
-              });
-              if (data.length > 0) {
-                const latest = data[data.length - 1];
-                const pill = document.getElementById(`pill-${metric.key}`);
-                if (pill) {
-                  const converted = formatSensorValue(latest.value, metric.key, store.unitSystem);
-                  pill.textContent = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
+                const existing = timeMap.get(bucket) || {};
+                if (metric.key === "temperature") {
+                  if (existing.temp1 === void 0) existing.temp1 = converted;
+                  else if (existing.temp2 === void 0) existing.temp2 = converted;
+                } else if (metric.key === "soil_moisture") {
+                  existing.soil = converted;
+                } else if (metric.key === "weight") {
+                  existing.weight = converted;
                 }
+                timeMap.set(bucket, existing);
+              }
+              const latest = data[data.length - 1];
+              const pill = document.getElementById(`pill-${metric.key}`);
+              if (pill) {
+                const converted = formatSensorValue(latest.value, metric.key, store.unitSystem);
+                pill.textContent = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
               }
             }
           })
         )
       );
-      if (layers.length === 0) {
+      const chartData = Array.from(timeMap.entries()).sort((a, b) => a[0] - b[0]).map(([timestamp, values]) => ({
+        time: new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        temp1: values.temp1,
+        temp2: values.temp2,
+        soil: values.soil,
+        weight: values.weight
+      }));
+      if (chartData.length === 0) {
         if (heroChart) heroChart.innerHTML = '<div class="chart-empty">No sensor data</div>';
         return;
       }
-      renderStackedAreaChart(layers, "hero-chart", { showLegend: true });
+      renderFarmPalAreaChart("hero-chart", chartData, {
+        title: "Temperature + Weight",
+        subtitle: `${systemViewRange} range`
+      });
     } catch (err) {
       console.error("System view load failed:", err);
       if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
@@ -9501,7 +9714,7 @@ ${result.failures.join("\n")}`
       "use strict";
       init_store();
       init_api();
-      init_ChartKit();
+      init_FarmPalCharts();
       init_store();
       systemMetrics = [
         { key: "temperature", label: "Temperature", shortLabel: "Temp", fallbackUnit: "\xB0C", color: "#F59E0B", description: "Air / probe temperature", minAxis: 10, maxAxis: 40 },
