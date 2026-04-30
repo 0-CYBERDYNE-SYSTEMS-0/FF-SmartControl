@@ -79,15 +79,13 @@ function injectFarmPalChartsStyles(): void {
       }
       .hal-chart-wrap {
         width: 100%;
-        max-height: 400px;
-        overflow: hidden;
         position: relative;
       }
       .hal-chart {
         width: 100%;
         height: auto;
-        min-height: 280px;
-        max-height: 380px;
+        min-height: 220px;
+        max-height: 260px;
         display: block;
       }
       .grid { stroke: var(--border); stroke-dasharray: 3 6; opacity: 0.8; }
@@ -173,7 +171,7 @@ function makeSvgChart(
   }
   // Fixed aspect ratio - SVG will scale to fill container
   const width = 800;
-  const height = isMobile ? 280 : 360;
+  const height = isMobile ? 200 : 260;
   const pad = {
     top: 24,
     right: opts.dualAxis ? 64 : 24,

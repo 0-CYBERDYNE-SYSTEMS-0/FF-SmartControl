@@ -266,7 +266,6 @@ function injectSystemStyles(): void {
     .device-mini-meta { font-size: 10px; margin-top: 2px; }
     #system-hero-chart {
       width: 100%;
-      min-height: 380px;
     }
   `;
   document.head.appendChild(style);

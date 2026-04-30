@@ -1553,7 +1553,6 @@ function injectSensorStyles(): void {
 /* ── Hero chart sizing ── */
 #hero-chart {
   width: 100%;
-  min-height: 380px;
   position: relative;
 }
 #hero-chart .ck-chart,
@@ -1566,7 +1565,7 @@ function injectSensorStyles(): void {
   display: block;
 }
 #hero-chart .chart-empty {
-  min-height: 380px;
+  min-height: 260px;
   display: flex;
   align-items: center;
   justify-content: center;

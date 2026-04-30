@@ -7046,15 +7046,13 @@ ${result.failures.join("\n")}`
       }
       .hal-chart-wrap {
         width: 100%;
-        max-height: 400px;
-        overflow: hidden;
         position: relative;
       }
       .hal-chart {
         width: 100%;
         height: auto;
-        min-height: 280px;
-        max-height: 380px;
+        min-height: 220px;
+        max-height: 260px;
         display: block;
       }
       .grid { stroke: var(--border); stroke-dasharray: 3 6; opacity: 0.8; }
@@ -7133,7 +7131,7 @@ ${result.failures.join("\n")}`
       return;
     }
     const width = 800;
-    const height = isMobile ? 280 : 360;
+    const height = isMobile ? 200 : 260;
     const pad = {
       top: 24,
       right: opts.dualAxis ? 64 : 24,
@@ -8288,7 +8286,6 @@ ${result.failures.join("\n")}`
 /* \u2500\u2500 Hero chart sizing \u2500\u2500 */
 #hero-chart {
   width: 100%;
-  min-height: 380px;
   position: relative;
 }
 #hero-chart .ck-chart,
@@ -8301,7 +8298,7 @@ ${result.failures.join("\n")}`
   display: block;
 }
 #hero-chart .chart-empty {
-  min-height: 380px;
+  min-height: 260px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8648,7 +8645,6 @@ ${result.failures.join("\n")}`
     .device-mini-meta { font-size: 10px; margin-top: 2px; }
     #system-hero-chart {
       width: 100%;
-      min-height: 380px;
     }
   `;
     document.head.appendChild(style);
