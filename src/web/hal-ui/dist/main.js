@@ -63,7 +63,7 @@
     formatSensorValue: () => formatSensorValue,
     formatTimeValue: () => formatTimeValue,
     getStore: () => getStore,
-    setStore: () => setStore2,
+    setStore: () => setStore,
     subscribe: () => subscribe,
     tempUnit: () => tempUnit,
     themeDefinitions: () => themeDefinitions,
@@ -72,7 +72,7 @@
   function getStore() {
     return state;
   }
-  function setStore2(partial) {
+  function setStore(partial) {
     state = { ...state, ...partial };
     listeners.forEach((l) => l());
   }
@@ -400,7 +400,7 @@
     toggle?.addEventListener("click", () => {
       const sidebar = document.getElementById("hal-sidebar");
       const collapsed = sidebar?.classList.toggle("collapsed");
-      setStore2({ sidebarCollapsed: !!collapsed });
+      setStore({ sidebarCollapsed: !!collapsed });
     });
     document.addEventListener("click", (e) => {
       const sidebar = document.getElementById("hal-sidebar");
@@ -3444,7 +3444,6 @@ ${result.failures.join("\n")}`
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: var(--space-3);
-  overflow: hidden;
 }
 .hero-chart {
   width: 100%;
@@ -3597,7 +3596,7 @@ ${result.failures.join("\n")}`
       unit: "ON",
       precision: 0,
       status: activeRelays.length > 0 ? "good" : "warning",
-      sparklineData: generateTrendData(activeRelays.length, 12),
+      sparklineData: [],
       sparklineColor: "var(--accent)"
     });
     let tempSum = 0, tempCount = 0;
@@ -3622,7 +3621,7 @@ ${result.failures.join("\n")}`
       unit: formatSensorValue(0, "temperature", store.unitSystem).unit,
       precision: 1,
       status: hasTemp ? avgTemp >= 18 && avgTemp <= 28 ? "good" : avgTemp >= 15 && avgTemp <= 32 ? "warning" : "critical" : "good",
-      sparklineData: tempHistory.length > 1 ? tempHistory : hasTemp ? generateTrendData(avgTemp, 12, 3) : [],
+      sparklineData: tempHistory.length > 1 ? tempHistory : hasTemp ? [] : [],
       sparklineColor: hasTemp ? "#F59E0B" : "var(--text-tertiary)",
       comparison: tempComp
     });
@@ -3643,7 +3642,7 @@ ${result.failures.join("\n")}`
       unit: "%",
       precision: 0,
       status: hasHum ? avgHum >= 40 && avgHum <= 70 ? "good" : avgHum >= 30 && avgHum <= 80 ? "warning" : "critical" : "good",
-      sparklineData: humHistory.length > 1 ? humHistory : hasHum ? generateTrendData(avgHum, 12, 10) : [],
+      sparklineData: humHistory.length > 1 ? humHistory : hasHum ? [] : [],
       sparklineColor: hasHum ? "#38BDF8" : "var(--text-tertiary)",
       comparison: humComp
     });
@@ -3664,7 +3663,7 @@ ${result.failures.join("\n")}`
       unit: "%",
       precision: 0,
       status: hasSoil ? avgSoil >= 30 && avgSoil <= 70 ? "good" : avgSoil >= 20 && avgSoil <= 80 ? "warning" : "critical" : "good",
-      sparklineData: soilHistory.length > 1 ? soilHistory : hasSoil ? generateTrendData(avgSoil, 12, 5) : [],
+      sparklineData: soilHistory.length > 1 ? soilHistory : hasSoil ? [] : [],
       sparklineColor: hasSoil ? "#EF4444" : "var(--text-tertiary)",
       comparison: soilComp
     });
@@ -3685,7 +3684,7 @@ ${result.failures.join("\n")}`
       unit: "lux",
       precision: 0,
       status: hasLight ? avgLight >= 1e4 && avgLight <= 5e4 ? "good" : avgLight >= 5e3 && avgLight <= 7e4 ? "warning" : "critical" : "good",
-      sparklineData: lightHistory.length > 1 ? lightHistory : hasLight ? generateTrendData(avgLight / 1e3, 12, 2) : [],
+      sparklineData: lightHistory.length > 1 ? lightHistory : hasLight ? [] : [],
       sparklineColor: hasLight ? "#FACC15" : "var(--text-tertiary)",
       comparison: lightComp
     });
@@ -3706,7 +3705,7 @@ ${result.failures.join("\n")}`
       unit: "ppm",
       precision: 0,
       status: hasCo2 ? avgCo2 < 1e3 ? "good" : avgCo2 < 1500 ? "warning" : "critical" : "good",
-      sparklineData: co2History.length > 1 ? co2History : hasCo2 ? generateTrendData(avgCo2, 12, 200) : [],
+      sparklineData: co2History.length > 1 ? co2History : hasCo2 ? [] : [],
       sparklineColor: hasCo2 ? "#22C55E" : "var(--text-tertiary)",
       comparison: co2Comp
     });
@@ -3757,13 +3756,6 @@ ${result.failures.join("\n")}`
     if (prevAvg === 0) return void 0;
     const delta = (currAvg - prevAvg) / Math.abs(prevAvg) * 100;
     return { delta, label: "vs yesterday" };
-  }
-  function generateTrendData(base, count, variance = 5) {
-    const data = [];
-    for (let i = 0; i < count; i++) {
-      data.push(base + (Math.random() - 0.5) * variance * 2);
-    }
-    return data;
   }
   function injectKpiStyles() {
     if (document.getElementById("hal-kpi-styles")) return;
@@ -7016,6 +7008,121 @@ ${result.failures.join("\n")}`
   });
 
   // src/web/hal-ui/components/FarmPalCharts.ts
+  function injectFarmPalChartsStyles() {
+    if (document.getElementById("hal-farmpalcharts-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-farmpalcharts-styles";
+    style.textContent = `
+.hal-chart-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+        color: var(--text-primary);
+        font-family: var(--font-display);
+        width: 100%;
+        box-sizing: border-box;
+        box-shadow: var(--shadow-card);
+      }
+      .hal-chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .hal-chart-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--accent-bright);
+        
+      }
+      .hal-chart-subtitle {
+        font-size: 12px;
+        color: var(--info);
+        margin-top: 4px;
+        
+      }
+      .hal-chart-wrap {
+        width: 100%;
+        max-height: 400px;
+        overflow: hidden;
+        position: relative;
+      }
+      .hal-chart {
+        width: 100%;
+        height: auto;
+        min-height: 280px;
+        max-height: 380px;
+        display: block;
+      }
+      .grid { stroke: var(--border); stroke-dasharray: 3 6; opacity: 0.8; }
+      .axis { fill: var(--text-secondary); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .axis.right { fill: var(--info); }
+      .axis-label {
+        fill: var(--info);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+      .axis-label.right { fill: var(--info); }
+      .hal-fc-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-top: 14px;
+        color: var(--text-primary);
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .hal-fc-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .hal-fc-legend-item span {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        box-shadow: 0 0 10px currentColor;
+      }
+      .hal-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+      }
+      .hal-stat-section { }
+      .hal-stat-label {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--stat-color, var(--accent-bright));
+        margin-bottom: 8px;
+        text-shadow: 0 0 15px currentColor;
+      }
+      .hal-stat-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        font-family: var(--font-mono);
+        color: var(--text-secondary);
+        padding: 4px 0;
+      }
+      .hal-stat-row strong { color: var(--text-primary); font-weight: 600; }
+      @media (max-width: 480px) {
+        .hal-chart-card { padding: 14px; border-radius: var(--radius-md); }
+        .hal-chart-header { flex-direction: column; }
+        .hal-fc-legend { gap: 12px; font-size: 12px; }
+        .hal-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+      }
+  `;
+    document.head.appendChild(style);
+  }
   function makeSvgChart(el, data, series, opts = {}) {
     const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
     const visibleSeries = series.filter(
@@ -7095,7 +7202,7 @@ ${result.failures.join("\n")}`
       (s) => `<path d="${linePath(s)}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>`
     ).join("");
     const legend = visibleSeries.map(
-      (s) => `<span class="legend-item"><span style="background:${s.color};box-shadow:0 0 8px ${s.color}"></span>${s.label}</span>`
+      (s) => `<span class="hal-fc-legend-item"><span style="background:${s.color};box-shadow:0 0 8px ${s.color}"></span>${s.label}</span>`
     ).join("");
     const statsHtml = opts.showStats && opts.stats ? `<div class="hal-stats-grid">${opts.stats.map(
       (stat) => `
@@ -7107,116 +7214,8 @@ ${result.failures.join("\n")}`
         </div>
       `
     ).join("")}</div>` : "";
+    injectFarmPalChartsStyles();
     el.innerHTML = `
-    <style>
-      .hal-chart-card {
-        background: linear-gradient(135deg, #0a1628 0%, #07111f 100%);
-        border: 1px solid #1e3a5f;
-        border-radius: 16px;
-        padding: 20px;
-        color: #f0f6fc;
-        font-family: Inter, system-ui, sans-serif;
-        width: 100%;
-        height: 100%;
-        box-sizing: border-box;
-        box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-      }
-      .hal-chart-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 16px;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-      .hal-chart-title {
-        font-size: 16px;
-        font-weight: 700;
-        color: #6ee7b7;
-        text-shadow: 0 0 20px rgba(110,231,183,0.5);
-      }
-      .hal-chart-subtitle {
-        font-size: 12px;
-        color: #7dd3fc;
-        margin-top: 4px;
-        text-shadow: 0 0 10px rgba(125,211,252,0.3);
-      }
-      .hal-chart-wrap {
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        position: relative;
-      }
-      .hal-chart {
-        width: 100%;
-        height: auto;
-        display: block;
-      }
-      .grid { stroke: #1e3a5f; stroke-dasharray: 3 6; opacity: 0.8; }
-      .axis { fill: #94a3b8; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-      .axis.right { fill: #38bdf8; }
-      .axis-label {
-        fill: #7dd3fc;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0;
-        text-transform: uppercase;
-      }
-      .axis-label.right { fill: #38bdf8; }
-      .legend {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 16px;
-        margin-top: 14px;
-        color: #e2e8f0;
-        font-size: 13px;
-        font-weight: 500;
-      }
-      .legend-item {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .legend-item span {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
-        box-shadow: 0 0 10px currentColor;
-      }
-      .hal-stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-        gap: 20px;
-        margin-top: 20px;
-        padding-top: 16px;
-        border-top: 1px solid #1e3a5f;
-      }
-      .hal-stat-section { }
-      .hal-stat-label {
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--stat-color, #f97316);
-        margin-bottom: 8px;
-        text-shadow: 0 0 15px currentColor;
-      }
-      .hal-stat-row {
-        display: flex;
-        justify-content: space-between;
-        font-size: 13px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        color: #94a3b8;
-        padding: 4px 0;
-      }
-      .hal-stat-row strong { color: #f0f6fc; font-weight: 600; }
-      @media (max-width: 480px) {
-        .hal-chart-card { padding: 14px; border-radius: 12px; }
-        .hal-chart-header { flex-direction: column; }
-        .legend { gap: 12px; font-size: 12px; }
-        .hal-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
-      }
-    </style>
-
     <div class="hal-chart-card">
       ${opts.title ? `
         <div class="hal-chart-header">
@@ -7238,7 +7237,7 @@ ${result.failures.join("\n")}`
           ${lines}
         </svg>
       </div>
-      <div class="legend">${legend}</div>
+      <div class="hal-fc-legend">${legend}</div>
       ${statsHtml}
     </div>
   `;
@@ -7253,30 +7252,6 @@ ${result.failures.join("\n")}`
       avg: avg.toFixed(1),
       max: max.toFixed(1)
     };
-  }
-  function renderFarmPalAreaChart(containerId, data, opts = {}) {
-    const el = document.getElementById(containerId);
-    if (!el) return;
-    if (!data.length) {
-      el.innerHTML = '<div class="chart-empty">No data</div>';
-      return;
-    }
-    makeSvgChart(
-      el,
-      data,
-      [
-        { key: "temp1", label: "Temperature #1", color: "#f97316", fill: true },
-        { key: "temp2", label: "Temperature #2", color: "#fb923c", fill: true },
-        { key: "soil", label: "Soil Probe", color: "#a78bfa", fill: true },
-        { key: "weight", label: "Weight", color: "#22d3ee", fill: true }
-      ],
-      {
-        leftMin: 0,
-        leftMax: 180,
-        title: opts.title || "Temperature + Weight",
-        subtitle: opts.subtitle || "Multi-sensor overview"
-      }
-    );
   }
   function renderFarmPalSensorChart(containerId, data, series, opts = {}) {
     const el = document.getElementById(containerId);
@@ -7461,7 +7436,7 @@ ${result.failures.join("\n")}`
     unitToggle?.addEventListener("click", () => {
       const store = getStore();
       const newSystem = store.unitSystem === "metric" ? "imperial" : "metric";
-      setStore2({ unitSystem: newSystem });
+      setStore({ unitSystem: newSystem });
       unitToggle.textContent = newSystem === "metric" ? "\xB0C" : "\xB0F";
       void loadData(sensors);
     });
@@ -7469,7 +7444,7 @@ ${result.failures.join("\n")}`
     timeFormatToggle?.addEventListener("click", () => {
       const store = getStore();
       const newFormat = store.timeFormat === "24h" ? "12h" : "24h";
-      setStore2({ timeFormat: newFormat });
+      setStore({ timeFormat: newFormat });
       timeFormatToggle.textContent = newFormat === "24h" ? "24H" : "12H";
       void loadData(sensors);
     });
@@ -7983,16 +7958,13 @@ ${result.failures.join("\n")}`
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-3);
-  overflow: hidden;
   position: relative;
-  min-height: 400px;
 }
 .hero-chart {
   width: 100%;
   min-height: 380px;
-  height: 100%;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 .hero-svg {
   display: block;
@@ -8317,20 +8289,15 @@ ${result.failures.join("\n")}`
 #hero-chart {
   width: 100%;
   min-height: 380px;
-  height: 400px;
   position: relative;
-  overflow: hidden;
 }
 #hero-chart .ck-chart,
 #hero-chart .hal-chart-card {
   width: 100%;
-  height: 100%;
-  overflow: hidden;
 }
 #hero-chart .hero-svg {
   width: 100%;
-  height: 100%;
-  min-height: 380px;
+  height: auto;
   display: block;
 }
 #hero-chart .chart-empty {
@@ -8342,12 +8309,6 @@ ${result.failures.join("\n")}`
 #hero-chart .stack-chart,
 #hero-chart .lake-chart-inner {
   width: 100%;
-  height: 100%;
-  overflow: hidden;
-}
-#hero-chart .lake-chart-inner svg {
-  width: 100%;
-  height: 100%;
 }
 
 @media (max-width: 1023px) {
@@ -8364,7 +8325,6 @@ ${result.failures.join("\n")}`
     width: 100%;
   }
   .hero-chart { min-height: 200px; }
-  #hero-chart .hero-svg { min-height: 200px; }
   .metric-bar { gap: var(--space-1); }
   .metric-pill { height: 32px; padding: 0 10px; font-size: 11px; }
   .viz-grid { grid-template-columns: 1fr; }
@@ -8480,151 +8440,164 @@ ${result.failures.join("\n")}`
   // src/web/hal-ui/views/System.ts
   function getRangeBounds2(range) {
     const now = /* @__PURE__ */ new Date();
-    const to = now.toISOString();
-    let from;
-    switch (range) {
-      case "1H":
-        from = new Date(now.getTime() - 60 * 60 * 1e3);
-        break;
-      case "6H":
-        from = new Date(now.getTime() - 6 * 60 * 60 * 1e3);
-        break;
-      case "24H":
-        from = new Date(now.getTime() - 24 * 60 * 60 * 1e3);
-        break;
-      case "7D":
-        from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1e3);
-        break;
-      case "30D":
-        from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1e3);
-        break;
-    }
-    return { from: from.toISOString(), to };
+    const ms = {
+      "1H": 60 * 60 * 1e3,
+      "6H": 6 * 60 * 60 * 1e3,
+      "24H": 24 * 60 * 60 * 1e3,
+      "7D": 7 * 24 * 60 * 60 * 1e3,
+      "30D": 30 * 24 * 60 * 60 * 1e3
+    };
+    return {
+      from: new Date(now.getTime() - ms[range]).toISOString(),
+      to: now.toISOString()
+    };
   }
   async function renderSystemView(container) {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
-    container.innerHTML = `
-    <div class="sensors-hero">
-      <div class="sensors-hero-header">
-        <div class="sensors-hero-title">
-          <h1 class="page-title">System</h1>
-          <p class="page-subtitle">System overview</p>
-        </div>
-        <div class="sensors-hero-controls">
-          <div class="time-range-group" role="group">
-            ${["1H", "6H", "24H", "7D", "30D"].map(
-      (r) => `<button class="hal-range-btn ${r === systemViewRange ? "active" : ""}" data-range="${r}">${r}</button>`
-    ).join("")}
-          </div>
-          <button class="hal-range-btn" id="unit-toggle">${store.unitSystem === "metric" ? "\xB0C" : "\xB0F"}</button>
-        </div>
+    injectSystemStyles();
+    const root = document.createElement("div");
+    root.className = "system-view";
+    const header = document.createElement("div");
+    header.className = "sensors-hero-header";
+    header.innerHTML = `
+    <div class="sensors-hero-title">
+      <h1 class="page-title">System</h1>
+      <p class="page-subtitle">System overview</p>
+    </div>
+    <div class="sensors-hero-controls">
+      <div class="time-range-group" role="group">
+        ${["1H", "6H", "24H", "7D", "30D"].map((r) => `<button class="hal-range-btn ${r === systemViewRange ? "active" : ""}" data-range="${r}">${r}</button>`).join("")}
       </div>
-
-      <div class="metric-bar" id="metric-bar">
-        ${systemMetrics.map((m) => `
-            <div class="metric-pill active" style="--metric-color:${m.color}">
-              <span class="pill-dot"></span>
-              <span class="pill-label">${m.shortLabel}</span>
-              <span class="pill-value" id="pill-${m.key}">--</span>
-            </div>
-          `).join("")}
-      </div>
-
-      <div class="hero-chart-wrap">
-        <div id="hero-chart" class="hero-chart">
-          <div class="chart-empty">Loading...</div>
-        </div>
-        <div class="hero-legend" id="hero-legend"></div>
-      </div>
-
-      <div class="sensor-detail-drawer">
-        <h3 class="section-title">Device Status</h3>
-        <div id="device-status-grid" class="device-mini-grid">
-          ${sensors.map((s) => `
-            <div class="device-mini-card ${s.online ? "online" : "offline"}">
-              <div class="device-mini-name">${s.name}</div>
-              <div class="device-mini-meta text-xs text-secondary">${s.protocol}</div>
-            </div>
-          `).join("")}
-        </div>
-      </div>
+      <button class="hal-range-btn" id="sys-unit-toggle">${store.unitSystem === "metric" ? "\xB0C" : "\xB0F"}</button>
     </div>
   `;
-    container.querySelectorAll(".hal-range-btn[data-range]").forEach((btn) => {
+    root.appendChild(header);
+    const metricBar = document.createElement("div");
+    metricBar.className = "metric-bar";
+    metricBar.id = "sys-metric-bar";
+    for (const m of systemMetrics) {
+      const pill = document.createElement("div");
+      pill.className = "sys-metric-pill";
+      pill.style.setProperty("--metric-color", m.color);
+      pill.innerHTML = `<span class="pill-dot"></span><span class="pill-label">${m.shortLabel}</span><span class="pill-value text-mono" id="sys-pill-${m.key}">--</span>`;
+      metricBar.appendChild(pill);
+    }
+    root.appendChild(metricBar);
+    const chartWrap = document.createElement("div");
+    chartWrap.className = "hero-chart-wrap";
+    const chartEl = document.createElement("div");
+    chartEl.id = "system-hero-chart";
+    chartEl.className = "hero-chart";
+    chartEl.innerHTML = '<div class="chart-empty">Loading...</div>';
+    chartWrap.appendChild(chartEl);
+    root.appendChild(chartWrap);
+    const drawer = document.createElement("div");
+    drawer.className = "sensor-detail-drawer";
+    drawer.style.marginTop = "var(--space-4)";
+    const drawerTitle = document.createElement("h3");
+    drawerTitle.className = "section-title";
+    drawerTitle.textContent = "Device Status";
+    drawer.appendChild(drawerTitle);
+    const grid = document.createElement("div");
+    grid.id = "device-status-grid";
+    grid.className = "device-mini-grid";
+    for (const s of sensors) {
+      const card = document.createElement("div");
+      card.className = `device-mini-card ${s.online ? "online" : "offline"}`;
+      const name = document.createElement("div");
+      name.className = "device-mini-name";
+      name.textContent = s.name;
+      const meta = document.createElement("div");
+      meta.className = "device-mini-meta text-xs text-secondary";
+      meta.textContent = s.protocol;
+      card.appendChild(name);
+      card.appendChild(meta);
+      grid.appendChild(card);
+    }
+    drawer.appendChild(grid);
+    root.appendChild(drawer);
+    container.innerHTML = "";
+    container.appendChild(root);
+    root.querySelectorAll(".hal-range-btn[data-range]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const range = btn.dataset.range;
-        if (range) {
-          systemViewRange = range;
-          container.querySelectorAll(".hal-range-btn[data-range]").forEach((b) => {
-            b.classList.toggle("active", b === btn);
-          });
-          void loadSystemData();
-        }
-      });
-    });
-    const unitToggle = document.getElementById("unit-toggle");
-    if (unitToggle) {
-      unitToggle.addEventListener("click", () => {
-        setStore({ unitSystem: store.unitSystem === "metric" ? "imperial" : "metric" });
-        unitToggle.textContent = store.unitSystem === "metric" ? "\xB0C" : "\xB0F";
+        systemViewRange = btn.dataset.range;
+        root.querySelectorAll(".hal-range-btn[data-range]").forEach((b) => {
+          b.classList.toggle("active", b === btn);
+        });
         void loadSystemData();
       });
-    }
+    });
+    const unitToggle = document.getElementById("sys-unit-toggle");
+    unitToggle?.addEventListener("click", () => {
+      const s = getStore();
+      setStore({ unitSystem: s.unitSystem === "metric" ? "imperial" : "metric" });
+      unitToggle.textContent = getStore().unitSystem === "metric" ? "\xB0C" : "\xB0F";
+      void loadSystemData();
+    });
     await loadSystemData();
   }
   async function loadSystemData() {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
     const { from, to } = getRangeBounds2(systemViewRange);
-    const heroChart = document.getElementById("hero-chart");
-    if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
+    const heroChart = document.getElementById("system-hero-chart");
+    if (heroChart) {
+      heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
+    }
     try {
-      const timeMap = /* @__PURE__ */ new Map();
+      const bucketMap = /* @__PURE__ */ new Map();
       await Promise.all(
         sensors.flatMap(
-          (device, deviceIdx) => systemMetrics.map(async (metric) => {
+          (device) => systemMetrics.map(async (metric) => {
             const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
-            if (data.length > 0) {
-              for (const d of data) {
-                const t = new Date(d.timestamp).getTime();
-                const bucket = Math.floor(t / 6e4) * 6e4;
-                const converted = formatSensorValue(d.value, metric.key, store.unitSystem).value;
-                const existing = timeMap.get(bucket) || {};
-                if (metric.key === "temperature") {
-                  if (existing.temp1 === void 0) existing.temp1 = converted;
-                  else if (existing.temp2 === void 0) existing.temp2 = converted;
-                } else if (metric.key === "soil_moisture") {
-                  existing.soil = converted;
-                } else if (metric.key === "weight") {
-                  existing.weight = converted;
-                }
-                timeMap.set(bucket, existing);
-              }
-              const latest = data[data.length - 1];
-              const pill = document.getElementById(`pill-${metric.key}`);
-              if (pill) {
-                const converted = formatSensorValue(latest.value, metric.key, store.unitSystem);
-                pill.textContent = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
-              }
+            if (data.length === 0) return;
+            const latest = data[data.length - 1];
+            const pill = document.getElementById(`sys-pill-${metric.key}`);
+            if (pill) {
+              const cv = formatSensorValue(latest.value, metric.key, store.unitSystem);
+              pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
+            }
+            for (const d of data) {
+              const t = new Date(d.timestamp).getTime();
+              if (!Number.isFinite(t)) continue;
+              const bucket = Math.floor(t / 6e4) * 6e4;
+              const cv = formatSensorValue(d.value, metric.key, store.unitSystem).value;
+              const row = bucketMap.get(bucket) ?? {};
+              const acc = row[metric.key] ?? { sum: 0, count: 0 };
+              acc.sum += cv;
+              acc.count += 1;
+              row[metric.key] = acc;
+              bucketMap.set(bucket, row);
             }
           })
         )
       );
-      const chartData = Array.from(timeMap.entries()).sort((a, b) => a[0] - b[0]).map(([timestamp, values]) => ({
-        time: new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        temp1: values.temp1,
-        temp2: values.temp2,
-        soil: values.soil,
-        weight: values.weight
-      }));
+      const chartData = Array.from(bucketMap.entries()).sort((a, b) => a[0] - b[0]).map(([timestamp, values]) => {
+        const point = {
+          time: formatTimeValue(new Date(timestamp), store.timeFormat)
+        };
+        for (const [key, acc] of Object.entries(values)) {
+          if (acc.count > 0) point[key] = acc.sum / acc.count;
+        }
+        return point;
+      });
       if (chartData.length === 0) {
         if (heroChart) heroChart.innerHTML = '<div class="chart-empty">No sensor data</div>';
         return;
       }
-      renderFarmPalAreaChart("hero-chart", chartData, {
-        title: "Temperature + Weight",
-        subtitle: `${systemViewRange} range`
+      const activeSeries = systemMetrics.filter((m) => chartData.some((d) => Number.isFinite(Number(d[m.key])))).map((m) => {
+        const sample = chartData.find((d) => Number.isFinite(Number(d[m.key])));
+        const cv = sample ? formatSensorValue(Number(sample[m.key]), m.key, store.unitSystem) : null;
+        return {
+          key: m.key,
+          label: m.label,
+          color: m.color,
+          unit: cv?.unit || m.fallbackUnit
+        };
+      });
+      renderFarmPalSensorChart("system-hero-chart", chartData, activeSeries, {
+        subtitle: `${systemViewRange} \xB7 All sensors`
       });
     } catch (err) {
       console.error("System view load failed:", err);
@@ -8636,33 +8609,46 @@ ${result.failures.join("\n")}`
     const style = document.createElement("style");
     style.id = "hal-system-styles";
     style.textContent = `
-    .sensors-hero { padding: var(--space-md); }
-    .sensors-hero-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-md); }
-    .sensors-hero-title .page-title { margin: 0; font-size: 24px; }
-    .sensors-hero-title .page-subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
-    .sensors-hero-controls { display: flex; gap: var(--space-sm); align-items: center; }
-    .hero-chart-wrap { margin-bottom: var(--space-md); }
-    .hero-chart { min-height: 300px; background: var(--surface-secondary); border-radius: var(--radius-md); border: 1px solid var(--border); }
-    .hero-chart .chart-empty { min-height: 300px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
-    .hero-legend { display: flex; flex-wrap: wrap; gap: var(--space-sm); padding: var(--space-sm) 0; }
-    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-    .legend-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--metric-color); }
-    .metric-bar { display: flex; gap: var(--space-sm); margin-bottom: var(--space-md); }
-    .metric-pill { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--surface-secondary); border: 1px solid var(--border); border-radius: var(--radius-pill); font-size: 12px; }
-    .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--metric-color); }
-    .pill-label { font-weight: 500; }
-    .pill-value { font-family: var(--font-mono); color: var(--text-primary); }
-    .sensor-detail-drawer { padding: var(--space-md); background: var(--surface-secondary); border-radius: var(--radius-md); border: 1px solid var(--border); }
-    .device-mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-sm); margin-top: var(--space-md); }
-    .device-mini-card { padding: var(--space-sm); background: var(--surface-tertiary); border-radius: var(--radius-sm); border: 1px solid var(--border); border-left: 3px solid var(--border); }
+    .system-view {
+      padding: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+    .sys-metric-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 12px;
+      border-radius: var(--radius-pill);
+      border: 1px solid color-mix(in srgb, var(--metric-color) 30%, var(--border));
+      background: color-mix(in srgb, var(--metric-color) 8%, var(--bg-secondary));
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      user-select: none;
+    }
+    .device-mini-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+    .device-mini-card {
+      padding: var(--space-2) var(--space-3);
+      background: var(--bg-secondary);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--border);
+    }
     .device-mini-card.online { border-left-color: var(--accent); }
     .device-mini-card.offline { border-left-color: var(--danger); }
     .device-mini-name { font-size: 12px; font-weight: 500; }
     .device-mini-meta { font-size: 10px; margin-top: 2px; }
-    @media (max-width: 768px) {
-      .sensors-hero-header { flex-direction: column; gap: var(--space-sm); }
-      .sensors-hero-controls { width: 100%; }
-      .metric-bar { overflow-x: auto; padding-bottom: var(--space-sm); }
+    #system-hero-chart {
+      width: 100%;
+      min-height: 380px;
     }
   `;
     document.head.appendChild(style);
@@ -8674,14 +8660,12 @@ ${result.failures.join("\n")}`
       init_store();
       init_api();
       init_FarmPalCharts();
-      init_store();
       systemMetrics = [
-        { key: "temperature", label: "Temperature", shortLabel: "Temp", fallbackUnit: "\xB0C", color: "#F59E0B", description: "Air / probe temperature", minAxis: 10, maxAxis: 40 },
-        { key: "humidity", label: "Humidity", shortLabel: "RH", fallbackUnit: "%", color: "#38BDF8", description: "Relative humidity", minAxis: 0, maxAxis: 100 },
-        { key: "co2", label: "CO\u2082", shortLabel: "CO\u2082", fallbackUnit: "ppm", color: "#22C55E", description: "Carbon dioxide", minAxis: 0, maxAxis: 2e3 }
+        { key: "temperature", label: "Temperature", shortLabel: "Temp", fallbackUnit: "\xB0C", color: "#F59E0B", minAxis: 10, maxAxis: 40 },
+        { key: "humidity", label: "Humidity", shortLabel: "RH", fallbackUnit: "%", color: "#38BDF8", minAxis: 0, maxAxis: 100 },
+        { key: "co2", label: "CO\u2082", shortLabel: "CO\u2082", fallbackUnit: "ppm", color: "#22C55E", minAxis: 0, maxAxis: 2e3 }
       ];
       systemViewRange = "24H";
-      injectSystemStyles();
     }
   });
 
@@ -17143,6 +17127,7 @@ The service will restart after the update.`
       return;
     }
     const initialView = getInitialView();
+    setStore({ activeView: initialView });
     const store = getStore();
     applyTheme(store.theme);
     if (!location.hash) {
@@ -17178,12 +17163,12 @@ The service will restart after the update.`
     startUptimeCounter();
   }
   function handleThemeChange(theme) {
-    setStore2({ theme });
+    setStore({ theme });
     applyTheme(theme);
     showToast(`Theme: ${theme}`, "info", 2e3);
   }
   function handleLayoutChange(layout) {
-    setStore2({ layout });
+    setStore({ layout });
     showToast(`Layout: ${layout.toUpperCase()}`, "info", 2e3);
     render2();
   }
@@ -17201,7 +17186,7 @@ The service will restart after the update.`
       history.replaceState(null, "", newHash);
     }
     updateHeaderViewLabel("settings");
-    setStore2({ activeView: "settings" });
+    setStore({ activeView: "settings" });
     render2();
   }
   async function handleViewChange(viewId) {
@@ -17213,7 +17198,7 @@ The service will restart after the update.`
       item.classList.toggle("active", item.getAttribute("data-view") === viewId);
     });
     updateHeaderViewLabel(viewId);
-    setStore2({ activeView: viewId });
+    setStore({ activeView: viewId });
     await render2();
   }
   function updateHeaderViewLabel(viewId) {
@@ -17253,7 +17238,7 @@ The service will restart after the update.`
       item.classList.toggle("active", item.getAttribute("data-view") === viewId);
     });
     updateHeaderViewLabel(viewId);
-    setStore2({ activeView: viewId });
+    setStore({ activeView: viewId });
     render2();
   }
   function getInitialView() {
@@ -17291,7 +17276,7 @@ The service will restart after the update.`
         })),
         halApi.getAutomationPending().catch(() => [])
       ]);
-      setStore2({
+      setStore({
         devices: halState.devices,
         sensors: halState.sensorSnapshots,
         cameras: halState.devices.filter((device) => device.type === "camera"),
@@ -17321,7 +17306,7 @@ The service will restart after the update.`
   function startUptimeCounter() {
     setInterval(() => {
       const uptime = Math.floor((Date.now() - pageLoadTime) / 1e3);
-      setStore2({ uptime });
+      setStore({ uptime });
       const uptimeEl = document.querySelector(
         "[data-dashboard-uptime]"
       );

@@ -40,6 +40,123 @@ type ChartOpts = {
   rightAxisLabel?: string;
 };
 
+
+function injectFarmPalChartsStyles(): void {
+  if (document.getElementById('hal-farmpalcharts-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'hal-farmpalcharts-styles';
+  style.textContent = `
+.hal-chart-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+        color: var(--text-primary);
+        font-family: var(--font-display);
+        width: 100%;
+        box-sizing: border-box;
+        box-shadow: var(--shadow-card);
+      }
+      .hal-chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .hal-chart-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--accent-bright);
+        
+      }
+      .hal-chart-subtitle {
+        font-size: 12px;
+        color: var(--info);
+        margin-top: 4px;
+        
+      }
+      .hal-chart-wrap {
+        width: 100%;
+        max-height: 400px;
+        overflow: hidden;
+        position: relative;
+      }
+      .hal-chart {
+        width: 100%;
+        height: auto;
+        min-height: 280px;
+        max-height: 380px;
+        display: block;
+      }
+      .grid { stroke: var(--border); stroke-dasharray: 3 6; opacity: 0.8; }
+      .axis { fill: var(--text-secondary); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .axis.right { fill: var(--info); }
+      .axis-label {
+        fill: var(--info);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+      .axis-label.right { fill: var(--info); }
+      .hal-fc-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-top: 14px;
+        color: var(--text-primary);
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .hal-fc-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .hal-fc-legend-item span {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        box-shadow: 0 0 10px currentColor;
+      }
+      .hal-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+      }
+      .hal-stat-section { }
+      .hal-stat-label {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--stat-color, var(--accent-bright));
+        margin-bottom: 8px;
+        text-shadow: 0 0 15px currentColor;
+      }
+      .hal-stat-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        font-family: var(--font-mono);
+        color: var(--text-secondary);
+        padding: 4px 0;
+      }
+      .hal-stat-row strong { color: var(--text-primary); font-weight: 600; }
+      @media (max-width: 480px) {
+        .hal-chart-card { padding: 14px; border-radius: var(--radius-md); }
+        .hal-chart-header { flex-direction: column; }
+        .hal-fc-legend { gap: 12px; font-size: 12px; }
+        .hal-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+      }
+  `;
+  document.head.appendChild(style);
+}
+
 function makeSvgChart(
   el: HTMLElement,
   data: Point[],
@@ -178,7 +295,7 @@ function makeSvgChart(
   const legend = visibleSeries
     .map(
       (s) =>
-        `<span class="legend-item"><span style="background:${s.color};box-shadow:0 0 8px ${s.color}"></span>${s.label}</span>`,
+        `<span class="hal-fc-legend-item"><span style="background:${s.color};box-shadow:0 0 8px ${s.color}"></span>${s.label}</span>`,
     )
     .join('');
 
@@ -198,116 +315,8 @@ function makeSvgChart(
           .join('')}</div>`
       : '';
 
+  injectFarmPalChartsStyles();
   el.innerHTML = `
-    <style>
-      .hal-chart-card {
-        background: linear-gradient(135deg, #0a1628 0%, #07111f 100%);
-        border: 1px solid #1e3a5f;
-        border-radius: 16px;
-        padding: 20px;
-        color: #f0f6fc;
-        font-family: Inter, system-ui, sans-serif;
-        width: 100%;
-        height: 100%;
-        box-sizing: border-box;
-        box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-      }
-      .hal-chart-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 16px;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-      .hal-chart-title {
-        font-size: 16px;
-        font-weight: 700;
-        color: #6ee7b7;
-        text-shadow: 0 0 20px rgba(110,231,183,0.5);
-      }
-      .hal-chart-subtitle {
-        font-size: 12px;
-        color: #7dd3fc;
-        margin-top: 4px;
-        text-shadow: 0 0 10px rgba(125,211,252,0.3);
-      }
-      .hal-chart-wrap {
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        position: relative;
-      }
-      .hal-chart {
-        width: 100%;
-        height: auto;
-        display: block;
-      }
-      .grid { stroke: #1e3a5f; stroke-dasharray: 3 6; opacity: 0.8; }
-      .axis { fill: #94a3b8; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-      .axis.right { fill: #38bdf8; }
-      .axis-label {
-        fill: #7dd3fc;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0;
-        text-transform: uppercase;
-      }
-      .axis-label.right { fill: #38bdf8; }
-      .legend {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 16px;
-        margin-top: 14px;
-        color: #e2e8f0;
-        font-size: 13px;
-        font-weight: 500;
-      }
-      .legend-item {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .legend-item span {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
-        box-shadow: 0 0 10px currentColor;
-      }
-      .hal-stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-        gap: 20px;
-        margin-top: 20px;
-        padding-top: 16px;
-        border-top: 1px solid #1e3a5f;
-      }
-      .hal-stat-section { }
-      .hal-stat-label {
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--stat-color, #f97316);
-        margin-bottom: 8px;
-        text-shadow: 0 0 15px currentColor;
-      }
-      .hal-stat-row {
-        display: flex;
-        justify-content: space-between;
-        font-size: 13px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        color: #94a3b8;
-        padding: 4px 0;
-      }
-      .hal-stat-row strong { color: #f0f6fc; font-weight: 600; }
-      @media (max-width: 480px) {
-        .hal-chart-card { padding: 14px; border-radius: 12px; }
-        .hal-chart-header { flex-direction: column; }
-        .legend { gap: 12px; font-size: 12px; }
-        .hal-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
-      }
-    </style>
-
     <div class="hal-chart-card">
       ${
         opts.title
@@ -333,7 +342,7 @@ function makeSvgChart(
           ${lines}
         </svg>
       </div>
-      <div class="legend">${legend}</div>
+      <div class="hal-fc-legend">${legend}</div>
       ${statsHtml}
     </div>
   `;
@@ -385,98 +394,12 @@ export function renderFarmPalAreaChart(
       { key: 'weight', label: 'Weight', color: '#22d3ee', fill: true },
     ],
     {
-      leftMin: 0,
-      leftMax: 180,
-      title: opts.title || 'Temperature + Weight',
-      subtitle: opts.subtitle || 'Multi-sensor overview',
+      title: opts.title || 'Multi-sensor Overview',
+      subtitle: opts.subtitle || '',
     },
   );
 }
 
-// ── Sensors Tab Chart (dual-axis) ──────────────────────────────────
-export function renderFarmPalDualAxisChart(
-  containerId: string,
-  data: Array<{ time: string; temp?: number; humidity?: number }>,
-  deviceName: string,
-  opts: { unit?: 'C' | 'F' } = {},
-): void {
-  const el = document.getElementById(containerId);
-  if (!el) return;
-  if (!data.length) {
-    el.innerHTML = '<div class="chart-empty">No data</div>';
-    return;
-  }
-
-  const tempUnit = opts.unit === 'F' ? '°F' : '°C';
-  const tempValues = data
-    .map((d) => d.temp)
-    .filter((v): v is number => v !== undefined);
-  const humValues = data
-    .map((d) => d.humidity)
-    .filter((v): v is number => v !== undefined);
-  if (tempValues.length === 0 && humValues.length === 0) {
-    el.innerHTML = '<div class="chart-empty">No sensor data</div>';
-    return;
-  }
-
-  const tempStats = calcStats(tempValues);
-  const humStats = calcStats(humValues);
-  const tempMin = tempValues.length
-    ? Math.floor(Math.min(...tempValues) / 10) * 10 - 5
-    : 0;
-  const tempMax = tempValues.length
-    ? Math.ceil(Math.max(...tempValues) / 10) * 10 + 5
-    : 100;
-
-  makeSvgChart(
-    el,
-    data,
-    [
-      {
-        key: 'temp',
-        label: `Temperature (${tempUnit})`,
-        color: '#fb923c',
-        axis: 'left',
-        fill: true,
-      },
-      {
-        key: 'humidity',
-        label: 'Humidity (%)',
-        color: '#38bdf8',
-        axis: 'right',
-        fill: true,
-      },
-    ],
-    {
-      dualAxis: true,
-      leftMin: tempMin,
-      leftMax: tempMax,
-      rightMin: 0,
-      rightMax: 100,
-      title: 'Temperature + Humidity',
-      subtitle: deviceName,
-      leftAxisLabel: tempUnit,
-      rightAxisLabel: '% RH',
-      showStats: true,
-      stats: [
-        {
-          label: 'Temperature',
-          color: '#fb923c',
-          min: tempStats.min + tempUnit,
-          avg: tempStats.avg + tempUnit,
-          max: tempStats.max + tempUnit,
-        },
-        {
-          label: 'Humidity',
-          color: '#38bdf8',
-          min: humStats.min + '%',
-          avg: humStats.avg + '%',
-          max: humStats.max + '%',
-        },
-      ],
-    },
-  );
-}
 
 export type FarmPalSensorSeries = {
   key: string;

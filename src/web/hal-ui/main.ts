@@ -144,6 +144,7 @@ async function init(): Promise<void> {
 
   // Normal HAL UI shell - use initial view from URL hash
   const initialView = getInitialView();
+  setStore({ activeView: initialView });
   const store = getStore();
   applyTheme(store.theme);
 

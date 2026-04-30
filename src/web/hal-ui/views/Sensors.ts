@@ -1223,16 +1223,13 @@ function injectSensorStyles(): void {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-3);
-  overflow: hidden;
   position: relative;
-  min-height: 400px;
 }
 .hero-chart {
   width: 100%;
   min-height: 380px;
-  height: 100%;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 .hero-svg {
   display: block;
@@ -1557,20 +1554,15 @@ function injectSensorStyles(): void {
 #hero-chart {
   width: 100%;
   min-height: 380px;
-  height: 400px;
   position: relative;
-  overflow: hidden;
 }
 #hero-chart .ck-chart,
 #hero-chart .hal-chart-card {
   width: 100%;
-  height: 100%;
-  overflow: hidden;
 }
 #hero-chart .hero-svg {
   width: 100%;
-  height: 100%;
-  min-height: 380px;
+  height: auto;
   display: block;
 }
 #hero-chart .chart-empty {
@@ -1582,12 +1574,6 @@ function injectSensorStyles(): void {
 #hero-chart .stack-chart,
 #hero-chart .lake-chart-inner {
   width: 100%;
-  height: 100%;
-  overflow: hidden;
-}
-#hero-chart .lake-chart-inner svg {
-  width: 100%;
-  height: 100%;
 }
 
 @media (max-width: 1023px) {
@@ -1604,7 +1590,6 @@ function injectSensorStyles(): void {
     width: 100%;
   }
   .hero-chart { min-height: 200px; }
-  #hero-chart .hero-svg { min-height: 200px; }
   .metric-bar { gap: var(--space-1); }
   .metric-pill { height: 32px; padding: 0 10px; font-size: 11px; }
   .viz-grid { grid-template-columns: 1fr; }

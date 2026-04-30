@@ -216,7 +216,6 @@ export function injectHeroChartStyles(): void {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: var(--space-3);
-  overflow: hidden;
 }
 .hero-chart {
   width: 100%;

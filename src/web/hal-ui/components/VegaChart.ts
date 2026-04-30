@@ -449,18 +449,21 @@ function embedVega(
   el: HTMLElement,
   spec: Record<string, unknown>,
   id: string,
+  attempt = 0,
 ): void {
   const embedId = `vega-${id}`;
   el.id = embedId;
 
-  // Wait for Vega libraries to load
   if (
     typeof (window as unknown as Record<string, unknown>).vegaEmbed ===
     'undefined'
   ) {
-    el.innerHTML = '<div class="chart-empty">Loading chart library...</div>';
-    // Retry after 500ms
-    setTimeout(() => embedVega(el, spec, id), 500);
+    if (attempt >= 10) {
+      el.textContent = 'Chart library unavailable';
+      return;
+    }
+    el.textContent = 'Loading chart library...';
+    setTimeout(() => embedVega(el, spec, id, attempt + 1), 500);
     return;
   }
 
@@ -477,7 +480,7 @@ function embedVega(
     logLevel: 0,
   }).catch((err: Error) => {
     console.error('Vega embed failed:', err);
-    el.innerHTML = '<div class="chart-empty">Chart failed to render</div>';
+    el.textContent = 'Chart failed to render';
   });
 }
 

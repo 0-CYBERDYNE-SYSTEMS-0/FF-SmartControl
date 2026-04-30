@@ -109,7 +109,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
     unit: 'ON',
     precision: 0,
     status: activeRelays.length > 0 ? 'good' : 'warning',
-    sparklineData: generateTrendData(activeRelays.length, 12),
+    sparklineData: [],
     sparklineColor: 'var(--accent)',
   });
 
@@ -147,7 +147,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
       tempHistory.length > 1
         ? tempHistory
         : hasTemp
-          ? generateTrendData(avgTemp, 12, 3)
+          ? []
           : [],
     sparklineColor: hasTemp ? '#F59E0B' : 'var(--text-tertiary)',
     comparison: tempComp,
@@ -182,7 +182,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
       humHistory.length > 1
         ? humHistory
         : hasHum
-          ? generateTrendData(avgHum, 12, 10)
+          ? []
           : [],
     sparklineColor: hasHum ? '#38BDF8' : 'var(--text-tertiary)',
     comparison: humComp,
@@ -217,7 +217,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
       soilHistory.length > 1
         ? soilHistory
         : hasSoil
-          ? generateTrendData(avgSoil, 12, 5)
+          ? []
           : [],
     sparklineColor: hasSoil ? '#EF4444' : 'var(--text-tertiary)',
     comparison: soilComp,
@@ -252,7 +252,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
       lightHistory.length > 1
         ? lightHistory
         : hasLight
-          ? generateTrendData(avgLight / 1000, 12, 2)
+          ? []
           : [],
     sparklineColor: hasLight ? '#FACC15' : 'var(--text-tertiary)',
     comparison: lightComp,
@@ -287,7 +287,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
       co2History.length > 1
         ? co2History
         : hasCo2
-          ? generateTrendData(avgCo2, 12, 200)
+          ? []
           : [],
     sparklineColor: hasCo2 ? '#22C55E' : 'var(--text-tertiary)',
     comparison: co2Comp,
@@ -360,17 +360,6 @@ function computeComparison(
   return { delta, label: 'vs yesterday' };
 }
 
-function generateTrendData(
-  base: number,
-  count: number,
-  variance = 5,
-): number[] {
-  const data: number[] = [];
-  for (let i = 0; i < count; i++) {
-    data.push(base + (Math.random() - 0.5) * variance * 2);
-  }
-  return data;
-}
 
 export function injectKpiStyles(): void {
   if (document.getElementById('hal-kpi-styles')) return;

@@ -1,9 +1,8 @@
-// System view — stacked area chart for multi-sensor overview
+// System view — multi-metric overview using the same chart pipeline as Sensors
 
-import { getStore } from '../store.js';
-import { halApi, type HalSensorReading } from '../api.js';
-import { renderFarmPalAreaChart } from '../components/FarmPalCharts.js';
-import { formatSensorValue } from '../store.js';
+import { getStore, setStore, formatSensorValue, formatTimeValue } from '../store.js';
+import { halApi } from '../api.js';
+import { renderFarmPalSensorChart } from '../components/FarmPalCharts.js';
 
 type MetricKey = 'temperature' | 'humidity' | 'soil_moisture' | 'light' | 'co2' | 'water_level' | 'ph' | 'weight';
 
@@ -13,112 +12,132 @@ interface SystemMetricConfig {
   shortLabel: string;
   fallbackUnit: string;
   color: string;
-  description: string;
   minAxis: number;
   maxAxis: number;
 }
 
 const systemMetrics: SystemMetricConfig[] = [
-  { key: 'temperature', label: 'Temperature', shortLabel: 'Temp', fallbackUnit: '°C', color: '#F59E0B', description: 'Air / probe temperature', minAxis: 10, maxAxis: 40 },
-  { key: 'humidity', label: 'Humidity', shortLabel: 'RH', fallbackUnit: '%', color: '#38BDF8', description: 'Relative humidity', minAxis: 0, maxAxis: 100 },
-  { key: 'co2', label: 'CO₂', shortLabel: 'CO₂', fallbackUnit: 'ppm', color: '#22C55E', description: 'Carbon dioxide', minAxis: 0, maxAxis: 2000 },
+  { key: 'temperature', label: 'Temperature', shortLabel: 'Temp', fallbackUnit: '°C', color: '#F59E0B', minAxis: 10, maxAxis: 40 },
+  { key: 'humidity', label: 'Humidity', shortLabel: 'RH', fallbackUnit: '%', color: '#38BDF8', minAxis: 0, maxAxis: 100 },
+  { key: 'co2', label: 'CO₂', shortLabel: 'CO₂', fallbackUnit: 'ppm', color: '#22C55E', minAxis: 0, maxAxis: 2000 },
 ];
 
 let systemViewRange: '1H' | '6H' | '24H' | '7D' | '30D' = '24H';
 
 function getRangeBounds(range: typeof systemViewRange): { from: string; to: string } {
   const now = new Date();
-  const to = now.toISOString();
-  let from: Date;
-  switch (range) {
-    case '1H': from = new Date(now.getTime() - 60 * 60 * 1000); break;
-    case '6H': from = new Date(now.getTime() - 6 * 60 * 60 * 1000); break;
-    case '24H': from = new Date(now.getTime() - 24 * 60 * 60 * 1000); break;
-    case '7D': from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
-    case '30D': from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); break;
-  }
-  return { from: from.toISOString(), to };
+  const ms: Record<typeof systemViewRange, number> = {
+    '1H': 60 * 60 * 1000,
+    '6H': 6 * 60 * 60 * 1000,
+    '24H': 24 * 60 * 60 * 1000,
+    '7D': 7 * 24 * 60 * 60 * 1000,
+    '30D': 30 * 24 * 60 * 60 * 1000,
+  };
+  return {
+    from: new Date(now.getTime() - ms[range]).toISOString(),
+    to: now.toISOString(),
+  };
 }
 
 export async function renderSystemView(container: HTMLElement): Promise<void> {
   const store = getStore();
   const sensors = store.devices.filter((d) => d.type === 'sensor');
 
-  container.innerHTML = `
-    <div class="sensors-hero">
-      <div class="sensors-hero-header">
-        <div class="sensors-hero-title">
-          <h1 class="page-title">System</h1>
-          <p class="page-subtitle">System overview</p>
-        </div>
-        <div class="sensors-hero-controls">
-          <div class="time-range-group" role="group">
-            ${(['1H', '6H', '24H', '7D', '30D'] as const)
-              .map(
-                (r) =>
-                  `<button class="hal-range-btn ${r === systemViewRange ? 'active' : ''}" data-range="${r}">${r}</button>`,
-              )
-              .join('')}
-          </div>
-          <button class="hal-range-btn" id="unit-toggle">${store.unitSystem === 'metric' ? '°C' : '°F'}</button>
-        </div>
-      </div>
+  injectSystemStyles();
 
-      <div class="metric-bar" id="metric-bar">
-        ${systemMetrics
-          .map((m) => `
-            <div class="metric-pill active" style="--metric-color:${m.color}">
-              <span class="pill-dot"></span>
-              <span class="pill-label">${m.shortLabel}</span>
-              <span class="pill-value" id="pill-${m.key}">--</span>
-            </div>
-          `)
+  const root = document.createElement('div');
+  root.className = 'system-view';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'sensors-hero-header';
+  header.innerHTML = `
+    <div class="sensors-hero-title">
+      <h1 class="page-title">System</h1>
+      <p class="page-subtitle">System overview</p>
+    </div>
+    <div class="sensors-hero-controls">
+      <div class="time-range-group" role="group">
+        ${(['1H', '6H', '24H', '7D', '30D'] as const)
+          .map((r) => `<button class="hal-range-btn ${r === systemViewRange ? 'active' : ''}" data-range="${r}">${r}</button>`)
           .join('')}
       </div>
-
-      <div class="hero-chart-wrap">
-        <div id="hero-chart" class="hero-chart">
-          <div class="chart-empty">Loading...</div>
-        </div>
-        <div class="hero-legend" id="hero-legend"></div>
-      </div>
-
-      <div class="sensor-detail-drawer">
-        <h3 class="section-title">Device Status</h3>
-        <div id="device-status-grid" class="device-mini-grid">
-          ${sensors.map((s) => `
-            <div class="device-mini-card ${s.online ? 'online' : 'offline'}">
-              <div class="device-mini-name">${s.name}</div>
-              <div class="device-mini-meta text-xs text-secondary">${s.protocol}</div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
+      <button class="hal-range-btn" id="sys-unit-toggle">${store.unitSystem === 'metric' ? '°C' : '°F'}</button>
     </div>
   `;
+  root.appendChild(header);
 
-  // Event listeners
-  container.querySelectorAll('.hal-range-btn[data-range]').forEach((btn) => {
+  // Metric pills (display-only, not interactive)
+  const metricBar = document.createElement('div');
+  metricBar.className = 'metric-bar';
+  metricBar.id = 'sys-metric-bar';
+  for (const m of systemMetrics) {
+    const pill = document.createElement('div');
+    pill.className = 'sys-metric-pill';
+    pill.style.setProperty('--metric-color', m.color);
+    pill.innerHTML = `<span class="pill-dot"></span><span class="pill-label">${m.shortLabel}</span><span class="pill-value text-mono" id="sys-pill-${m.key}">--</span>`;
+    metricBar.appendChild(pill);
+  }
+  root.appendChild(metricBar);
+
+  // Hero chart
+  const chartWrap = document.createElement('div');
+  chartWrap.className = 'hero-chart-wrap';
+  const chartEl = document.createElement('div');
+  chartEl.id = 'system-hero-chart';
+  chartEl.className = 'hero-chart';
+  chartEl.innerHTML = '<div class="chart-empty">Loading...</div>';
+  chartWrap.appendChild(chartEl);
+  root.appendChild(chartWrap);
+
+  // Device status
+  const drawer = document.createElement('div');
+  drawer.className = 'sensor-detail-drawer';
+  drawer.style.marginTop = 'var(--space-4)';
+  const drawerTitle = document.createElement('h3');
+  drawerTitle.className = 'section-title';
+  drawerTitle.textContent = 'Device Status';
+  drawer.appendChild(drawerTitle);
+  const grid = document.createElement('div');
+  grid.id = 'device-status-grid';
+  grid.className = 'device-mini-grid';
+  for (const s of sensors) {
+    const card = document.createElement('div');
+    card.className = `device-mini-card ${s.online ? 'online' : 'offline'}`;
+    const name = document.createElement('div');
+    name.className = 'device-mini-name';
+    name.textContent = s.name;
+    const meta = document.createElement('div');
+    meta.className = 'device-mini-meta text-xs text-secondary';
+    meta.textContent = s.protocol;
+    card.appendChild(name);
+    card.appendChild(meta);
+    grid.appendChild(card);
+  }
+  drawer.appendChild(grid);
+  root.appendChild(drawer);
+
+  container.innerHTML = '';
+  container.appendChild(root);
+
+  // Wire up range buttons
+  root.querySelectorAll<HTMLButtonElement>('.hal-range-btn[data-range]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const range = (btn as HTMLElement).dataset.range as typeof systemViewRange;
-      if (range) {
-        systemViewRange = range;
-        container.querySelectorAll('.hal-range-btn[data-range]').forEach((b) => {
-          b.classList.toggle('active', b === btn);
-        });
-        void loadSystemData();
-      }
+      systemViewRange = btn.dataset.range as typeof systemViewRange;
+      root.querySelectorAll('.hal-range-btn[data-range]').forEach((b) => {
+        b.classList.toggle('active', b === btn);
+      });
+      void loadSystemData();
     });
   });
 
-  const unitToggle = document.getElementById('unit-toggle');
-  if (unitToggle) {
-    unitToggle.addEventListener('click', () => {
-      setStore({ unitSystem: store.unitSystem === 'metric' ? 'imperial' : 'metric' });
-      unitToggle.textContent = store.unitSystem === 'metric' ? '°C' : '°F';
-      void loadSystemData();
-    });
-  }
+  const unitToggle = document.getElementById('sys-unit-toggle');
+  unitToggle?.addEventListener('click', () => {
+    const s = getStore();
+    setStore({ unitSystem: s.unitSystem === 'metric' ? 'imperial' : 'metric' });
+    unitToggle.textContent = getStore().unitSystem === 'metric' ? '°C' : '°F';
+    void loadSystemData();
+  });
 
   await loadSystemData();
 }
@@ -127,65 +146,75 @@ async function loadSystemData(): Promise<void> {
   const store = getStore();
   const sensors = store.devices.filter((d) => d.type === 'sensor');
   const { from, to } = getRangeBounds(systemViewRange);
-  const heroChart = document.getElementById('hero-chart');
-  if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
+  const heroChart = document.getElementById('system-hero-chart');
+  if (heroChart) {
+    heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
+  }
 
   try {
-    // Merge all data into time-bucketed format
-    const timeMap = new Map<number, { temp1?: number; temp2?: number; soil?: number; weight?: number }>();
+    const bucketMap = new Map<number, Record<string, { sum: number; count: number }>>();
 
     await Promise.all(
-      sensors.flatMap((device, deviceIdx) =>
+      sensors.flatMap((device) =>
         systemMetrics.map(async (metric) => {
           const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
-          if (data.length > 0) {
-            for (const d of data) {
-              const t = new Date(d.timestamp).getTime();
-              const bucket = Math.floor(t / 60000) * 60000;
-              const converted = formatSensorValue(d.value, metric.key, store.unitSystem).value;
-              const existing = timeMap.get(bucket) || {};
-              // Assign to first available slot for this metric type
-              if (metric.key === 'temperature') {
-                if (existing.temp1 === undefined) existing.temp1 = converted;
-                else if (existing.temp2 === undefined) existing.temp2 = converted;
-              } else if (metric.key === 'soil_moisture') {
-                existing.soil = converted;
-              } else if (metric.key === 'weight') {
-                existing.weight = converted;
-              }
-              timeMap.set(bucket, existing);
-            }
+          if (data.length === 0) return;
 
-            // Update pill with latest value
-            const latest = data[data.length - 1];
-            const pill = document.getElementById(`pill-${metric.key}`);
-            if (pill) {
-              const converted = formatSensorValue(latest.value, metric.key, store.unitSystem);
-              pill.textContent = `${converted.value.toFixed(1)}${converted.unit || metric.fallbackUnit}`;
-            }
+          const latest = data[data.length - 1];
+          const pill = document.getElementById(`sys-pill-${metric.key}`);
+          if (pill) {
+            const cv = formatSensorValue(latest.value, metric.key, store.unitSystem);
+            pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
+          }
+
+          for (const d of data) {
+            const t = new Date(d.timestamp).getTime();
+            if (!Number.isFinite(t)) continue;
+            const bucket = Math.floor(t / 60000) * 60000;
+            const cv = formatSensorValue(d.value, metric.key, store.unitSystem).value;
+            const row = bucketMap.get(bucket) ?? {};
+            const acc = row[metric.key] ?? { sum: 0, count: 0 };
+            acc.sum += cv;
+            acc.count += 1;
+            row[metric.key] = acc;
+            bucketMap.set(bucket, row);
           }
         }),
       ),
     );
 
-    const chartData = Array.from(timeMap.entries())
+    const chartData = Array.from(bucketMap.entries())
       .sort((a, b) => a[0] - b[0])
-      .map(([timestamp, values]) => ({
-        time: new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        temp1: values.temp1,
-        temp2: values.temp2,
-        soil: values.soil,
-        weight: values.weight,
-      }));
+      .map(([timestamp, values]) => {
+        const point: { time: string; [key: string]: string | number | undefined } = {
+          time: formatTimeValue(new Date(timestamp), store.timeFormat),
+        };
+        for (const [key, acc] of Object.entries(values)) {
+          if (acc.count > 0) point[key] = acc.sum / acc.count;
+        }
+        return point;
+      });
 
     if (chartData.length === 0) {
       if (heroChart) heroChart.innerHTML = '<div class="chart-empty">No sensor data</div>';
       return;
     }
 
-    renderFarmPalAreaChart('hero-chart', chartData, {
-      title: 'Temperature + Weight',
-      subtitle: `${systemViewRange} range`,
+    const activeSeries = systemMetrics
+      .filter((m) => chartData.some((d) => Number.isFinite(Number(d[m.key]))))
+      .map((m) => {
+        const sample = chartData.find((d) => Number.isFinite(Number(d[m.key])));
+        const cv = sample ? formatSensorValue(Number(sample[m.key]), m.key, store.unitSystem) : null;
+        return {
+          key: m.key,
+          label: m.label,
+          color: m.color,
+          unit: cv?.unit || m.fallbackUnit,
+        };
+      });
+
+    renderFarmPalSensorChart('system-hero-chart', chartData, activeSeries, {
+      subtitle: `${systemViewRange} · All sensors`,
     });
   } catch (err) {
     console.error('System view load failed:', err);
@@ -198,37 +227,47 @@ function injectSystemStyles(): void {
   const style = document.createElement('style');
   style.id = 'hal-system-styles';
   style.textContent = `
-    .sensors-hero { padding: var(--space-md); }
-    .sensors-hero-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-md); }
-    .sensors-hero-title .page-title { margin: 0; font-size: 24px; }
-    .sensors-hero-title .page-subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
-    .sensors-hero-controls { display: flex; gap: var(--space-sm); align-items: center; }
-    .hero-chart-wrap { margin-bottom: var(--space-md); }
-    .hero-chart { min-height: 300px; background: var(--surface-secondary); border-radius: var(--radius-md); border: 1px solid var(--border); }
-    .hero-chart .chart-empty { min-height: 300px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
-    .hero-legend { display: flex; flex-wrap: wrap; gap: var(--space-sm); padding: var(--space-sm) 0; }
-    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-    .legend-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--metric-color); }
-    .metric-bar { display: flex; gap: var(--space-sm); margin-bottom: var(--space-md); }
-    .metric-pill { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--surface-secondary); border: 1px solid var(--border); border-radius: var(--radius-pill); font-size: 12px; }
-    .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--metric-color); }
-    .pill-label { font-weight: 500; }
-    .pill-value { font-family: var(--font-mono); color: var(--text-primary); }
-    .sensor-detail-drawer { padding: var(--space-md); background: var(--surface-secondary); border-radius: var(--radius-md); border: 1px solid var(--border); }
-    .device-mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-sm); margin-top: var(--space-md); }
-    .device-mini-card { padding: var(--space-sm); background: var(--surface-tertiary); border-radius: var(--radius-sm); border: 1px solid var(--border); border-left: 3px solid var(--border); }
+    .system-view {
+      padding: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+    .sys-metric-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 12px;
+      border-radius: var(--radius-pill);
+      border: 1px solid color-mix(in srgb, var(--metric-color) 30%, var(--border));
+      background: color-mix(in srgb, var(--metric-color) 8%, var(--bg-secondary));
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      user-select: none;
+    }
+    .device-mini-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+    .device-mini-card {
+      padding: var(--space-2) var(--space-3);
+      background: var(--bg-secondary);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--border);
+    }
     .device-mini-card.online { border-left-color: var(--accent); }
     .device-mini-card.offline { border-left-color: var(--danger); }
     .device-mini-name { font-size: 12px; font-weight: 500; }
     .device-mini-meta { font-size: 10px; margin-top: 2px; }
-    @media (max-width: 768px) {
-      .sensors-hero-header { flex-direction: column; gap: var(--space-sm); }
-      .sensors-hero-controls { width: 100%; }
-      .metric-bar { overflow-x: auto; padding-bottom: var(--space-sm); }
+    #system-hero-chart {
+      width: 100%;
+      min-height: 380px;
     }
   `;
   document.head.appendChild(style);
 }
-
-// Auto-inject styles when module loads
-injectSystemStyles();
