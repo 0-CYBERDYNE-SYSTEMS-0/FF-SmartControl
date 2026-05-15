@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'fs';
+import { mkdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -34,6 +34,7 @@ export class DatabaseCorruptionError extends Error {
 export function getDb(): Database.Database {
   if (!_db) {
     const dbPath = join(process.cwd(), 'data', 'fft_nano.db');
+    mkdirSync(dirname(dbPath), { recursive: true });
     _db = new Database(dbPath);
     _db.pragma('journal_mode = WAL');
     _db.pragma('foreign_keys = ON');
