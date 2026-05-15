@@ -1,17 +1,17 @@
 2026-04-28T07:31:51.055Z [warn] .env missing required variables - needs reprovisioning {"missing":["FARMPAL_DATA_DIR","FARMPAL_INSTALL_DIR","FARMPAL_PROVISIONED","FARMPAL_FARM_NAME","TZ","FARMPAL_LLM_PROVIDER","SESSION_SECRET","CSRF_SECRET","FFT_NANO_WEB_ACCESS_MODE","HAL_UI_ENABLED","HAL_UI_PORT","CONTAINER_RUNTIME"]}
 2026-04-28T07:31:51.058Z [info] Loaded provisioning state {"state":"in_progress"}
 2026-04-28T07:31:51.060Z [info] Loaded provisioning state {"state":"in_progress"}
-2026-04-28T07:31:51.061Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.061Z [info] Generating .env file {"path":"<install-dir>/.env","requiredVars":13}
 2026-04-28T07:31:51.061Z [info] .env file generated successfully
-2026-04-28T07:31:51.062Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.062Z [info] Generating .env file {"path":"<install-dir>/.env","requiredVars":13}
 2026-04-28T07:31:51.063Z [info] .env file generated successfully
-2026-04-28T07:31:51.064Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.064Z [info] Generating .env file {"path":"<install-dir>/.env","requiredVars":13}
 2026-04-28T07:31:51.064Z [info] .env file generated successfully
-2026-04-28T07:31:51.065Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.065Z [info] Generating .env file {"path":"<install-dir>/.env","requiredVars":13}
 2026-04-28T07:31:51.065Z [info] .env file generated successfully
-2026-04-28T07:31:51.066Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.066Z [info] Generating .env file {"path":"<install-dir>/.env","requiredVars":13}
 2026-04-28T07:31:51.066Z [info] .env file generated successfully
-2026-04-28T07:31:51.077Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.077Z [info] Generating .env file {"path":"<install-dir>/.env","requiredVars":13}
 2026-04-28T07:31:51.078Z [info] .env file generated successfully
 2026-04-28T07:31:51.079Z [info] Loaded provisioning state {"state":"in_progress"}
 2026-04-28T07:31:51.079Z [info] Provisioning already in progress, continuing
@@ -56,7 +56,7 @@
 2026-04-28T07:31:51.185Z [info] Loaded provisioning state {"state":"in_progress"}
 2026-04-28T07:31:51.187Z [info] Loaded provisioning state {"state":"in_progress"}
 2026-04-28T07:31:51.187Z [info] Provisioning already in progress, continuing
-2026-04-28T07:31:51.187Z [info] Generating .env file {"path":"/Users/scrimwiggins/farmpal/.env","requiredVars":13}
+2026-04-28T07:31:51.187Z [info] Generating .env file {"path":"<install-dir>/.env","requiredVars":13}
 2026-04-28T07:31:51.187Z [info] .env file generated successfully
 2026-04-28T07:31:51.187Z [info] Loaded provisioning state {"state":"in_progress"}
 2026-04-28T07:31:51.187Z [info] Completing provisioning
