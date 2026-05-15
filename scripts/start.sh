@@ -86,8 +86,8 @@ export FFT_NANO_WEB_ACCESS_MODE="${FFT_NANO_WEB_ACCESS_MODE:-localhost}"
 export FFT_NANO_WEB_HOST="${FFT_NANO_WEB_HOST:-127.0.0.1}"
 export FFT_NANO_WEB_PORT="${FFT_NANO_WEB_PORT:-3393}"
 
-# Prefer TELEGRAM_BOT_TOKEN from .env/exports; fall back to macOS Keychain.
-if [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] && [[ "$(uname -s)" == "Darwin" ]] && command -v security >/dev/null 2>&1; then
+# Prefer TELEGRAM_BOT_TOKEN from .env/exports; fall back to macOS Keychain unless disabled.
+if [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] && [[ "${FFT_NANO_TELEGRAM_KEYCHAIN_FALLBACK:-1}" != "0" ]] && [[ "$(uname -s)" == "Darwin" ]] && command -v security >/dev/null 2>&1; then
   ACCOUNT="$(id -un 2>/dev/null || true)"
   if [[ -z "${ACCOUNT}" ]]; then
     ACCOUNT="$(whoami 2>/dev/null || true)"

@@ -50,8 +50,8 @@ if [[ -z "${NODE_BIN}" ]]; then
   exit 1
 fi
 
-# Prefer TELEGRAM_BOT_TOKEN from .env, else fall back to macOS Keychain.
-if [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+# Prefer TELEGRAM_BOT_TOKEN from .env, else fall back to macOS Keychain unless disabled.
+if [[ -z "${TELEGRAM_BOT_TOKEN:-}" && "${FFT_NANO_TELEGRAM_KEYCHAIN_FALLBACK:-1}" != "0" ]]; then
   ACCOUNT="$(id -un 2>/dev/null || true)"
   if [[ -z "${ACCOUNT}" ]]; then
     ACCOUNT="${USER:-local-user}"
