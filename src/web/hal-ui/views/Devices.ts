@@ -13,6 +13,11 @@ import {
   renderTinyBarChart,
   generateDeviceShades,
 } from '../components/ChartKit.js';
+import {
+  renderDeviceForceGraphSvg,
+  type ForceNode,
+  type ForceEdge,
+} from '../components/EnvironmentCharts.js';
 
 export async function renderDevices(container: HTMLElement): Promise<void> {
   const store = getStore();
@@ -41,9 +46,14 @@ export async function renderDevices(container: HTMLElement): Promise<void> {
         <h1 class="page-title">Devices</h1>
         <p class="page-subtitle">Manage farm hardware</p>
       </div>
-      <button class="hal-btn-primary" id="dw-add-device-btn">
-        <span>+ Add Device</span>
-      </button>
+      <div class="page-header-right">
+        <button class="hal-btn-secondary" id="dw-graph-toggle-btn">
+          <span>Graph</span>
+        </button>
+        <button class="hal-btn-primary" id="dw-add-device-btn">
+          <span>+ Add Device</span>
+        </button>
+      </div>
     </div>
 
     <div class="devices-toolbar mb-4">
@@ -65,6 +75,7 @@ export async function renderDevices(container: HTMLElement): Promise<void> {
       </select>
     </div>
 
+    <div id="devices-graph-container" style="display:none" class="mb-4"></div>
     <div id="devices-grid" class="grid-3">
       ${renderDeviceCards(store.devices)}
     </div>
@@ -196,6 +207,73 @@ function attachDevicesHandlers(): void {
     ?.addEventListener('click', () => {
       openDiscoveryWizard();
     });
+
+  // Graph toggle
+  let graphVisible = false;
+  const graphBtn = document.getElementById('dw-graph-toggle-btn');
+  const graphContainer = document.getElementById('devices-graph-container');
+  const gridContainer = document.getElementById('devices-grid');
+
+  graphBtn?.addEventListener('click', () => {
+    graphVisible = !graphVisible;
+    if (graphVisible) {
+      graphBtn.classList.add('active');
+      graphContainer!.style.display = '';
+      gridContainer!.style.display = 'none';
+      renderForceGraph();
+    } else {
+      graphBtn.classList.remove('active');
+      graphContainer!.style.display = 'none';
+      gridContainer!.style.display = '';
+    }
+  });
+
+  function renderForceGraph(): void {
+    if (!graphContainer) return;
+    const store = getStore();
+    const nodes: ForceNode[] = store.devices.map((d) => ({
+      id: d.id,
+      label: d.name,
+      type: d.type,
+      online: d.online,
+      zone: d.zone,
+    }));
+
+    // Zone edges: connect all devices in same zone
+    const edges: ForceEdge[] = [];
+    const zoneGroups = new Map<string, string[]>();
+    for (const d of store.devices) {
+      const z = d.zone || '';
+      const list = zoneGroups.get(z) ?? [];
+      list.push(d.id);
+      zoneGroups.set(z, list);
+    }
+    for (const [, ids] of zoneGroups) {
+      for (let i = 0; i < ids.length - 1; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          edges.push({ source: ids[i], target: ids[j], kind: 'zone' });
+        }
+      }
+    }
+
+    renderDeviceForceGraphSvg(nodes, edges, 'devices-graph-container', (nodeId) => {
+      // Clicking a node highlights the corresponding card and scrolls to it
+      gridContainer!.style.display = '';
+      graphBtn!.classList.remove('active');
+      graphContainer!.style.display = 'none';
+      graphVisible = false;
+      const card = document.querySelector<HTMLElement>(
+        `.device-card[data-device-id="${CSS.escape(nodeId)}"]`,
+      );
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.style.outline = `2px solid var(--accent)`;
+        setTimeout(() => {
+          card.style.outline = '';
+        }, 2000);
+      }
+    });
+  }
 
   function applyFilter(): void {
     const q = filterInput?.value.toLowerCase() || '';
@@ -414,6 +492,7 @@ function injectDevicesStyles(): void {
   margin-bottom: var(--space-4);
 }
 .page-header-left { flex: 1; }
+.page-header-right { display: flex; gap: var(--space-2); flex-shrink: 0; }
 .hal-btn-primary {
   background: var(--accent);
   color: var(--text-primary);
@@ -428,6 +507,21 @@ function injectDevicesStyles(): void {
   transition: opacity 150ms;
 }
 .hal-btn-primary:hover { opacity: 0.85; }
+.hal-btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 var(--space-4);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 150ms;
+}
+.hal-btn-secondary:hover { border-color: var(--accent); color: var(--text-primary); }
+.hal-btn-secondary.active { background: var(--accent); color: var(--text-primary); border-color: var(--accent); }
 .devices-toolbar {
   display: flex;
   gap: var(--space-2);

@@ -3,7 +3,8 @@ set -euo pipefail
 
 PROJECT_ROOT="${FFT_NANO_PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SERVICE_NAME="${FFT_NANO_SERVICE_NAME:-farmpal}"
-LAUNCHD_LABEL="${FFT_NANO_LAUNCHD_LABEL:-com.farmpal}"
+LAUNCHD_LABEL_EXPLICIT="${FFT_NANO_LAUNCHD_LABEL:-}"
+LAUNCHD_LABEL="${LAUNCHD_LABEL_EXPLICIT:-com.farmpal}"
 LAUNCHD_PLIST="${HOME}/Library/LaunchAgents/${LAUNCHD_LABEL}.plist"
 SYSTEMD_UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 LOG_DIR="${PROJECT_ROOT}/logs"
@@ -53,6 +54,20 @@ mac_target() {
 
 mac_service_ref() {
   printf '%s/%s' "$(mac_target)" "${LAUNCHD_LABEL}"
+}
+
+mac_select_existing_launchd() {
+  if [[ -n "${LAUNCHD_LABEL_EXPLICIT}" || -f "${LAUNCHD_PLIST}" ]]; then
+    return
+  fi
+
+  local legacy_label="com.fft_nano"
+  local legacy_plist="${HOME}/Library/LaunchAgents/${legacy_label}.plist"
+  if [[ -f "${legacy_plist}" ]]; then
+    LAUNCHD_LABEL="${legacy_label}"
+    LAUNCHD_PLIST="${legacy_plist}"
+    say "Using existing launchd service ${LAUNCHD_LABEL} (${LAUNCHD_PLIST}). Set FFT_NANO_LAUNCHD_LABEL=com.farmpal or run install to create the FarmPal service." >&2
+  fi
 }
 
 mac_is_loaded() {
@@ -142,6 +157,7 @@ mac_uninstall() {
 }
 
 mac_start() {
+  mac_select_existing_launchd
   [[ -f "${LAUNCHD_PLIST}" ]] || fail "Missing ${LAUNCHD_PLIST}. Run install first."
   local target
   target="$(mac_target)"
@@ -150,11 +166,13 @@ mac_start() {
 }
 
 mac_stop() {
+  mac_select_existing_launchd
   mac_bootout_loaded_job
 }
 
 mac_restart() {
   local target
+  mac_select_existing_launchd
   target="$(mac_target)"
   if launchctl print "${target}/${LAUNCHD_LABEL}" >/dev/null 2>&1; then
     launchctl kickstart -k "${target}/${LAUNCHD_LABEL}"
@@ -165,11 +183,13 @@ mac_restart() {
 
 mac_status() {
   local target
+  mac_select_existing_launchd
   target="$(mac_target)"
   launchctl print "${target}/${LAUNCHD_LABEL}"
 }
 
 mac_logs() {
+  mac_select_existing_launchd
   mkdir -p "${LOG_DIR}"
   local files=()
   [[ -f "${LOG_DIR}/fft_nano.log" ]] && files+=("${LOG_DIR}/fft_nano.log")

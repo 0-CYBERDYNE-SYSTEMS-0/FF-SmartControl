@@ -9,6 +9,10 @@ import { getStore, formatSensorValue } from '../store.js';
 import { halApi, HalDevice, HalSensorReading } from '../api.js';
 import { showToast } from '../components/Toast.js';
 import { injectChartKitStyles } from '../components/ChartKit.js';
+import {
+  renderCalibrationBeeswarmSvg,
+  type BeeswarmPoint,
+} from '../components/EnvironmentCharts.js';
 
 interface CalibrationDevice {
   device: HalDevice;
@@ -100,6 +104,19 @@ export async function renderCalibration(container: HTMLElement): Promise<void> {
 
     <div class="cal-grid" id="cal-grid">
       ${calibrationData.map((cd) => renderCalibrationCard(cd)).join('')}
+    </div>
+
+    <div class="cal-distribution-section" id="cal-distribution">
+      <div class="cal-section-header">
+        <div>
+          <h2 class="cal-section-title">Distribution</h2>
+          <p class="cal-section-desc">Calibration offset distribution across all sensors — hover dots for device details</p>
+        </div>
+        <button class="hal-btn-secondary" id="cal-distribution-toggle">
+          <span>Show</span>
+        </button>
+      </div>
+      <div id="cal-beeswarm-container" style="display:none"></div>
     </div>
   `;
 
@@ -269,6 +286,40 @@ function attachCalibrationHandlers(calibrationData: CalibrationDevice[]): void {
       }
     });
   });
+
+  // Distribution / beeswarm toggle
+  let distributionVisible = false;
+  const distToggle = document.getElementById('cal-distribution-toggle');
+  const beeswarmContainer = document.getElementById('cal-beeswarm-container');
+
+  distToggle?.addEventListener('click', () => {
+    distributionVisible = !distributionVisible;
+    if (distributionVisible) {
+      distToggle.classList.add('active');
+      distToggle.querySelector('span')!.textContent = 'Hide';
+      beeswarmContainer!.style.display = '';
+      renderBeeswarm(calibrationData);
+    } else {
+      distToggle.classList.remove('active');
+      distToggle.querySelector('span')!.textContent = 'Show';
+      beeswarmContainer!.style.display = 'none';
+    }
+  });
+}
+
+function renderBeeswarm(calibrationData: CalibrationDevice[]): void {
+  const beeswarmContainer = document.getElementById('cal-beeswarm-container');
+  if (!beeswarmContainer) return;
+
+  const points: BeeswarmPoint[] = calibrationData.map((cd) => ({
+    deviceId: cd.device.id,
+    deviceName: cd.device.name,
+    metric: cd.metric,
+    offset: cd.offset,
+    unit: cd.unit,
+  }));
+
+  renderCalibrationBeeswarmSvg(points, 'cal-beeswarm-container');
 }
 
 function getDeviceIcon(device: HalDevice): string {
@@ -608,6 +659,50 @@ function injectCalibrationStyles(): void {
   cursor: not-allowed;
 }
 
+.cal-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: var(--space-6) 0 var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.cal-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+.cal-section-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.cal-distribution-section {
+  margin-top: var(--space-4);
+}
+.hal-btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 var(--space-4);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 150ms;
+}
+.hal-btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.hal-btn-secondary.active {
+  background: var(--accent);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
 @media (max-width: 768px) {
   .cal-grid {
     grid-template-columns: 1fr;

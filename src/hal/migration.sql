@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS hal_sensors (
   stored_at   TEXT NOT NULL        -- ISO timestamp when row was inserted
 );
 
+CREATE INDEX IF NOT EXISTS idx_hal_sensors_latest
+  ON hal_sensors(device_id, metric, read_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_hal_sensors_history
+  ON hal_sensors(device_id, metric, read_at ASC);
+
 -- HAL Relays: toggle log for relay/switch devices
 CREATE TABLE IF NOT EXISTS hal_relays (
   id          TEXT PRIMARY KEY,

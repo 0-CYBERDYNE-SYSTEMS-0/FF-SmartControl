@@ -12,6 +12,9 @@ async function halGet<T>(
     url += '?' + qs;
   }
   const res = await fetch(url);
+  if (res.status === 401) {
+    redirectToLogin();
+  }
   if (!res.ok)
     throw new Error(`HAL API ${url} failed: ${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
@@ -23,6 +26,9 @@ async function halPost<T>(path: string, body?: object): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401) {
+    redirectToLogin();
+  }
   if (!res.ok)
     throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
@@ -34,6 +40,9 @@ async function halPut<T>(path: string, body?: object): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401) {
+    redirectToLogin();
+  }
   if (!res.ok)
     throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
@@ -43,11 +52,20 @@ const SETTINGS_BASE = '/api/settings';
 
 async function settingsGet<T>(path: string): Promise<T> {
   const res = await fetch(SETTINGS_BASE + path);
+  if (res.status === 401) {
+    redirectToLogin();
+  }
   if (!res.ok)
     throw new Error(
       `Settings API ${path} failed: ${res.status} ${res.statusText}`,
     );
   return res.json() as Promise<T>;
+}
+
+function redirectToLogin(): void {
+  if (typeof window === 'undefined') return;
+  if (window.location.pathname === '/login') return;
+  window.location.href = '/login';
 }
 
 // Types
@@ -108,6 +126,11 @@ export interface HalState {
   devices: HalDevice[];
   sensorSnapshots: Record<string, SensorMetricSnapshot>;
   recentDecisions: HalDecision[];
+}
+
+export interface HalStateStreamEvent {
+  emittedAt: string;
+  state: HalState;
 }
 
 type RawHalDevice = Partial<HalDevice> & {
@@ -251,6 +274,30 @@ export const halApi = {
   // GET /api/hal/state
   async getState(): Promise<HalState> {
     return normalizeState(await halGet<HalState>('/state'));
+  },
+
+  openStateStream(
+    onState: (state: HalState, event: HalStateStreamEvent) => void,
+    onError?: (error: Event) => void,
+  ): EventSource | null {
+    if (typeof EventSource === 'undefined') return null;
+    const source = new EventSource(`${BASE}/stream`);
+    source.addEventListener('state', (event) => {
+      const parsed = JSON.parse((event as MessageEvent<string>).data) as
+        | HalStateStreamEvent
+        | HalState;
+      const state =
+        'state' in parsed
+          ? normalizeState(parsed.state)
+          : normalizeState(parsed as HalState);
+      const streamEvent =
+        'state' in parsed
+          ? { ...parsed, state }
+          : { emittedAt: new Date().toISOString(), state };
+      onState(state, streamEvent);
+    });
+    source.onerror = (error) => onError?.(error);
+    return source;
   },
 
   // GET /api/hal/devices

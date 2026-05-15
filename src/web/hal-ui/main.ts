@@ -12,9 +12,12 @@ import { injectToggleStyles } from './components/Toggle.js';
 import { injectModalStyles } from './components/Modal.js';
 import { showToast } from './components/Toast.js';
 
-import { renderDashboard } from './views/Dashboard.js';
+import {
+  renderDashboard,
+  refreshDashboardLiveData,
+} from './views/Dashboard.js';
 import { renderDevices } from './views/Devices.js';
-import { renderSensors } from './views/Sensors.js';
+import { renderSensors, refreshSensorsLiveData } from './views/Sensors.js';
 import { renderSystemView } from './views/System.js';
 import { renderDecisions } from './views/Decisions.js';
 import { renderCameras } from './views/Cameras.js';
@@ -31,6 +34,7 @@ import { getStore, setStore, applyTheme, type HalStore } from './store.js';
 import type { ThemeName, ViewId, DashboardLayout } from './store.js';
 
 type AsyncViewRenderer = (container: HTMLElement) => Promise<void>;
+type AuthSessionResponse = { authenticated: boolean; operatorId?: string };
 
 const views: Record<ViewId, AsyncViewRenderer> = {
   dashboard: renderDashboard,
@@ -142,6 +146,9 @@ async function init(): Promise<void> {
     return;
   }
 
+  const authenticated = await ensureAuthenticated(app);
+  if (!authenticated) return;
+
   // Normal HAL UI shell - use initial view from URL hash
   const initialView = getInitialView();
   setStore({ activeView: initialView });
@@ -188,17 +195,188 @@ async function init(): Promise<void> {
   // Listen for hash changes (browser back/forward, direct URL navigation)
   window.addEventListener('hashchange', handleHashChange);
 
-  // Initial data fetch
-  await refreshHALData();
+  // Initial data fetch. The first route render below will consume this state,
+  // so avoid queueing a second live update before the shell is painted.
+  await refreshHALData({ scheduleRender: false });
 
   // Render initial view
   await render();
 
-  // Start polling
+  // Prefer the live SSE stream; polling stays as fallback and metadata refresh.
+  startLiveDataStream();
   startPolling();
 
   // Start uptime counter
   startUptimeCounter();
+}
+
+async function ensureAuthenticated(app: HTMLElement): Promise<boolean> {
+  try {
+    const response = await fetch('/api/auth/session', {
+      credentials: 'same-origin',
+    });
+    if (response.ok) {
+      const data = (await response.json()) as AuthSessionResponse;
+      if (data.authenticated) return true;
+    }
+  } catch {
+    // Render login below.
+  }
+
+  renderLogin(app);
+  return false;
+}
+
+function renderLogin(app: HTMLElement): void {
+  injectLoginStyles();
+  app.innerHTML = `
+    <main class="login-shell">
+      <section class="login-panel" aria-labelledby="login-title">
+        <div class="login-brand">
+          <img src="./ff_logo_svg.svg" alt="FarmPal" />
+          <span>FarmPal HAL</span>
+        </div>
+        <h1 id="login-title">Operator Sign In</h1>
+        <form id="hal-login-form" class="login-form">
+          <label>
+            <span>Username</span>
+            <input name="username" value="admin" autocomplete="username" required />
+          </label>
+          <label>
+            <span>Password</span>
+            <input name="password" type="password" autocomplete="current-password" required autofocus />
+          </label>
+          <button type="submit">Sign In</button>
+          <p id="login-error" class="login-error" role="alert"></p>
+        </form>
+      </section>
+    </main>
+  `;
+
+  const form = document.getElementById('hal-login-form') as HTMLFormElement;
+  const errorEl = document.getElementById('login-error') as HTMLElement;
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    errorEl.textContent = '';
+    const data = new FormData(form);
+    const submit = form.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    );
+    if (submit) submit.disabled = true;
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: String(data.get('username') || ''),
+          password: String(data.get('password') || ''),
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'Sign in failed');
+      }
+      history.replaceState(null, '', '#dashboard');
+      await init();
+    } catch (err: any) {
+      errorEl.textContent = err.message || 'Sign in failed';
+      if (submit) submit.disabled = false;
+    }
+  });
+}
+
+function injectLoginStyles(): void {
+  if (document.getElementById('hal-login-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'hal-login-styles';
+  style.textContent = `
+    .login-shell {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        linear-gradient(135deg, rgba(35,134,54,0.18), transparent 38%),
+        radial-gradient(circle at 82% 18%, rgba(56,139,253,0.18), transparent 28%),
+        var(--bg-primary);
+    }
+    .login-panel {
+      width: min(100%, 380px);
+      border: 1px solid color-mix(in srgb, var(--accent-bright) 28%, var(--border));
+      border-radius: var(--radius-lg);
+      background: var(--bg-secondary);
+      box-shadow: var(--shadow-card-lg);
+      padding: 24px;
+    }
+    .login-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .login-brand img {
+      width: 26px;
+      height: 26px;
+    }
+    .login-panel h1 {
+      margin: 18px 0 20px;
+      color: var(--text-primary);
+      font-size: 24px;
+      line-height: 1.1;
+    }
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .login-form label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .login-form input {
+      height: 40px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      padding: 0 12px;
+      font: inherit;
+    }
+    .login-form input:focus {
+      outline: 2px solid color-mix(in srgb, var(--accent-bright) 50%, transparent);
+      border-color: var(--accent-bright);
+    }
+    .login-form button {
+      height: 40px;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-md);
+      background: var(--accent);
+      color: var(--on-accent);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .login-form button:disabled {
+      cursor: wait;
+      opacity: 0.7;
+    }
+    .login-error {
+      min-height: 18px;
+      color: var(--danger);
+      font-size: 12px;
+      margin: 0;
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 function handleThemeChange(theme: ThemeName): void {
@@ -323,18 +501,56 @@ function getInitialView(): ViewId {
   return validViews.includes(hash as ViewId) ? (hash as ViewId) : 'dashboard';
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (ch) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[ch] || ch,
+  );
+}
+
 async function render(): Promise<void> {
+  if (renderInProgress) {
+    renderAgainRequested = true;
+    return;
+  }
+
   const store = getStore();
   const container = document.getElementById('view-container');
   if (!container) return;
 
   const renderer = views[store.activeView];
   if (renderer) {
-    await renderer(container);
+    renderInProgress = true;
+    try {
+      await renderer(container);
+    } catch (err: any) {
+      console.error(`Failed to render ${store.activeView}:`, err);
+      container.innerHTML = `
+        <div class="hal-card" style="padding:16px">
+          <div class="text-sm font-semibold">View failed to load</div>
+          <div class="text-xs text-secondary">${escapeHtml(err?.message || 'Unknown render error')}</div>
+        </div>
+      `;
+    } finally {
+      renderInProgress = false;
+      if (renderAgainRequested) {
+        renderAgainRequested = false;
+        void render();
+      }
+    }
   }
 }
 
-export async function refreshHALData(): Promise<void> {
+export async function refreshHALData(
+  opts: { scheduleRender?: boolean } = {},
+): Promise<void> {
   try {
     const [halState, modeData, pendingData] = await Promise.all([
       halApi.getState(),
@@ -344,19 +560,54 @@ export async function refreshHALData(): Promise<void> {
       })),
       halApi.getAutomationPending().catch(() => []),
     ]);
+    applyHalState(
+      halState,
+      {
+        automationMode: modeData.mode as HalStore['automationMode'],
+        automationModeColor: modeData.color,
+        pendingDecisions: pendingData as HalStore['pendingDecisions'],
+      },
+      opts.scheduleRender ?? true,
+    );
+  } catch (err: any) {
+    console.error('HAL data refresh failed:', err);
+  }
+}
+
+async function refreshAutomationData(): Promise<void> {
+  try {
+    const [modeData, pendingData] = await Promise.all([
+      halApi.getAutomationMode().catch(() => ({
+        mode: getStore().automationMode,
+        color: getStore().automationModeColor,
+      })),
+      halApi.getAutomationPending().catch(() => getStore().pendingDecisions),
+    ]);
     setStore({
-      devices: halState.devices,
-      sensors: halState.sensorSnapshots,
-      cameras: halState.devices.filter((device) => device.type === 'camera'),
-      decisions: halState.recentDecisions,
-      decisionsToday: countTodayDecisions(halState.recentDecisions),
       automationMode: modeData.mode as HalStore['automationMode'],
       automationModeColor: modeData.color,
       pendingDecisions: pendingData as HalStore['pendingDecisions'],
     });
+    scheduleLiveRender();
   } catch (err: any) {
-    console.error('HAL data refresh failed:', err);
+    console.error('HAL automation refresh failed:', err);
   }
+}
+
+function applyHalState(
+  halState: HalState,
+  extra: Partial<HalStore> = {},
+  scheduleRender = true,
+): void {
+  setStore({
+    devices: halState.devices,
+    sensors: halState.sensorSnapshots,
+    cameras: halState.devices.filter((device) => device.type === 'camera'),
+    decisions: halState.recentDecisions,
+    decisionsToday: countTodayDecisions(halState.recentDecisions),
+    ...extra,
+  });
+  if (scheduleRender) scheduleLiveRender();
 }
 
 function countTodayDecisions(
@@ -373,10 +624,93 @@ function countTodayDecisions(
 }
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
+let liveStateStream: EventSource | null = null;
+let liveStreamActive = false;
+let liveRenderQueued = false;
+let lastLiveRenderAt = 0;
+let renderInProgress = false;
+let renderAgainRequested = false;
+let liveRefreshInProgress = false;
+let liveRefreshAgainRequested = false;
+
+function startLiveDataStream(): void {
+  liveStateStream?.close();
+  liveStateStream = halApi.openStateStream(
+    (halState) => {
+      liveStreamActive = true;
+      applyHalState(halState);
+    },
+    () => {
+      liveStreamActive = false;
+    },
+  );
+}
 
 function startPolling(): void {
-  // Refresh HAL data every 10 seconds
-  pollInterval = setInterval(refreshHALData, 10000);
+  // Refresh HAL data every 10 seconds when streaming is unavailable.
+  // When streaming is active, keep slower automation metadata fresh.
+  pollInterval = setInterval(() => {
+    if (liveStreamActive) {
+      void refreshAutomationData();
+    } else {
+      void refreshHALData();
+      if (
+        !liveStateStream ||
+        liveStateStream.readyState === EventSource.CLOSED
+      ) {
+        startLiveDataStream();
+      }
+    }
+  }, 10000);
+}
+
+function scheduleLiveRender(): void {
+  const activeView = getStore().activeView;
+  if (activeView === 'settings' || activeView === 'terminal') return;
+  if (liveRenderQueued) return;
+
+  const now = Date.now();
+  const delay = Math.max(0, 3000 - (now - lastLiveRenderAt));
+  liveRenderQueued = true;
+  window.setTimeout(() => {
+    liveRenderQueued = false;
+    lastLiveRenderAt = Date.now();
+    void runLiveRefresh();
+  }, delay);
+}
+
+async function runLiveRefresh(): Promise<void> {
+  if (liveRefreshInProgress) {
+    liveRefreshAgainRequested = true;
+    return;
+  }
+
+  liveRefreshInProgress = true;
+  try {
+    await refreshLiveView();
+  } finally {
+    liveRefreshInProgress = false;
+    if (liveRefreshAgainRequested) {
+      liveRefreshAgainRequested = false;
+      void runLiveRefresh();
+    }
+  }
+}
+
+async function refreshLiveView(): Promise<void> {
+  switch (getStore().activeView) {
+    case 'dashboard':
+      await refreshDashboardLiveData();
+      break;
+    case 'sensors':
+      await refreshSensorsLiveData();
+      break;
+    default:
+      // Avoid remounting route views on background HAL state pushes. Full view
+      // renders reset forms, charts, and scroll position; route changes and
+      // explicit actions still render through the normal path.
+      break;
+  }
 }
 
 function startUptimeCounter(): void {

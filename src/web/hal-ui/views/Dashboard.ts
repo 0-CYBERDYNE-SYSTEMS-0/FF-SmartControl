@@ -23,11 +23,11 @@ import {
   renderSparkline,
 } from '../components/HeroChart.js';
 import {
-  renderDashboardOverviewCards,
   type DashboardHeroMetric,
   type DashboardOverviewZoneCard,
   injectChartKitStyles,
 } from '../components/ChartKit.js';
+import { renderOverviewEnvironmentHero } from '../components/EnvironmentCharts.js';
 import {
   renderOperatorPanels,
   injectOperatorPanelStyles,
@@ -56,6 +56,38 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
   } else {
     await renderDiagnosticDashboard(container);
   }
+}
+
+export async function refreshDashboardLiveData(): Promise<void> {
+  const store = getStore();
+
+  if (store.layout === 'operator') {
+    const kpiStrip = document.querySelector<HTMLElement>('.kpi-strip');
+    if (kpiStrip) {
+      kpiStrip.outerHTML = renderKpiStrip(await buildKpiData());
+    }
+
+    const operatorPanels =
+      document.querySelector<HTMLElement>('.operator-panels');
+    if (operatorPanels) {
+      operatorPanels.outerHTML = await renderOperatorPanels();
+      attachOperatorPanelHandlers();
+    }
+  }
+
+  const statusPanel =
+    document.querySelector<HTMLElement>('.sys-status-panel');
+  if (statusPanel) {
+    statusPanel.outerHTML = renderSystemStatus();
+  }
+
+  const latestDecision =
+    document.querySelector<HTMLElement>('.latest-decision');
+  if (latestDecision) {
+    latestDecision.outerHTML = renderLatestDecision();
+  }
+
+  await loadDashboardHeroCard();
 }
 
 /* ═══════════════ CALM MODE — Essential info only ═══════════════ */
@@ -136,6 +168,7 @@ function renderCalmDeviceList(
 
 // Dashboard active metrics state (persisted in session)
 const dashActiveMetrics = new Set<string>(['temperature', 'humidity', 'co2']);
+let dashActiveZone = '';
 let dashLoadSequence = 0;
 const OVERVIEW_METRIC_KEYS = ['temperature', 'humidity', 'co2'] as const;
 type OverviewMetricKey = (typeof OVERVIEW_METRIC_KEYS)[number];
@@ -300,6 +333,12 @@ async function loadDashboardHeroCard(): Promise<void> {
       zones,
       store.unitSystem,
     );
+    if (
+      dashActiveZone &&
+      !zoneCards.some((z) => z.zoneName === dashActiveZone)
+    ) {
+      dashActiveZone = '';
+    }
     const availableMetricKeys = new Set(
       zoneCards
         .flatMap((zone) => zone.metrics)
@@ -324,9 +363,10 @@ async function loadDashboardHeroCard(): Promise<void> {
 
     if (sequence !== dashLoadSequence) return;
 
-    renderDashboardOverviewCards(zoneCards, 'dash-hero-card', {
+    renderOverviewEnvironmentHero(zoneCards, 'dash-hero-card', {
       activeKeys: new Set(dashActiveMetrics),
-      onToggle: (key) => {
+      activeZone: dashActiveZone,
+      onMetricToggle: (key) => {
         if (!availableMetricKeys.has(key)) return;
         const currentlyActive = Array.from(dashActiveMetrics).filter(
           (metricKey) => availableMetricKeys.has(metricKey),
@@ -338,6 +378,10 @@ async function loadDashboardHeroCard(): Promise<void> {
         } else {
           dashActiveMetrics.add(key);
         }
+        void loadDashboardHeroCard();
+      },
+      onZoneSelect: (zoneName) => {
+        dashActiveZone = zoneName;
         void loadDashboardHeroCard();
       },
     });

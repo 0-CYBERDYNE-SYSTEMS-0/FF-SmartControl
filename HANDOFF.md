@@ -1,7 +1,7 @@
 # FarmPal — Development Handoff
 
-**Last updated:** 2026-04-25  
-**Status:** FarmPal service installed from `~/farmpal`; Control Center moved off 3391
+**Last updated:** 2026-05-01  
+**Status:** FarmPal service installed from `~/farmpal` as `com.farmpal`; HAL UI live-data/auth/performance incident in progress
 
 ---
 
@@ -27,9 +27,10 @@ TUI gateway: `ws://127.0.0.1:3390`
 |---|---|---|---|
 | ff-terminal-parity | `~/ff-terminal-parity/` | `com.ff_terminal_parity` | 28989 (TUI), 28990 (web) |
 | fft_nano | `~/fft_nano/` | `com.fft_nano` | 28989 (TUI), 28990 (web) — **its own** |
-| **FarmPal** | `~/farmpal/` | `com.fft_nano` | 3390 (TUI), 3393 (web), 3392 (HAL UI) |
+| **FarmPal** | `~/farmpal/` | `com.farmpal` | 3390 (TUI), 3393 (web), 3392 (HAL UI) |
 
 > FarmPal must not bind, probe, or document 3391 as an active local service port.
+> Older `com.fft_nano` LaunchAgents may still exist and point at `~/fft_nano`; do not assume that label owns this checkout.
 
 ---
 
@@ -37,45 +38,65 @@ TUI gateway: `ws://127.0.0.1:3390`
 
 - **Dashboard:** `http://127.0.0.1:3392/`
 - **Control Center:** `http://127.0.0.1:3393/`
-- Root `/` redirects to `/hal-ui/` (code change already in source, needs rebuild per Step 3)
-- Built UI files are at: `src/web/hal-ui/dist/main.js` + `main.css` (esbuild output, already compiled)
+- Built UI files are at: `src/web/hal-ui/dist/main.js` + `main.css` (esbuild output)
 - The standalone HAL UI is served by `src/web/hal-ui-server.ts` on 3392.
+- HAL UI APIs are protected by admin session auth. If charts show no data, verify `/api/auth/session` before assuming telemetry is missing.
+- Live HAL UI state uses `GET /api/hal/stream` with polling fallback to `GET /api/hal/state`.
 
 ---
 
-## What Was Already Done This Session
+## 2026-05-01 Incident Notes
 
-- `src/web/control-center-server.ts` — added `302` redirect: `GET /` → `/hal-ui/` (in source, needs `npm run build`)
-- `src/web/hal-ui/dist/main.js` + `main.css` — already built (esbuild)
-- `farmpal/dist/index.js` — compiled with Control Center defaulted to 3393
+Symptoms observed:
+
+- HAL UI initially showed **No data** even though the DB had sensor rows.
+- After login, Dashboard/Sensors/System/Safety/Settings could appear briefly, then blank or stall.
+- Local HTTP ports could listen while requests took seconds or appeared hung.
+
+Root causes found:
+
+- **Auth/session UI gap:** HAL APIs returned `401` without a proper frontend login/session gate, leaving the store empty.
+- **Missing SQLite indexes:** `hal_sensors` had no index for `WHERE device_id = ? AND metric = ? ORDER BY read_at DESC LIMIT 1`. `/api/hal/state`, `/api/hal/sensors/latest`, and chart history calls repeatedly scanned the full sensor table.
+- **Slow session validation:** `admin_sessions.token_hash` used bcrypt. Every authenticated request scanned active sessions and ran bcrypt comparisons instead of doing an indexed lookup.
+- **Runtime mismatch earlier:** launchd initially used Homebrew Node 25, which did not match the `better-sqlite3` native module ABI. `scripts/run-launchd.sh` now prefers the packaged Pocket Server Node binary when available.
+
+Remedies applied/in progress:
+
+- HAL UI login/session gate added.
+- `GET /api/hal/stream` SSE live state endpoint added and frontend wired.
+- Live DB has indexes created manually:
+  - `idx_hal_sensors_latest ON hal_sensors(device_id, metric, read_at DESC)`
+  - `idx_hal_sensors_history ON hal_sensors(device_id, metric, read_at ASC)`
+- Source and dist migration SQL updated so future restarts recreate those indexes.
+- `src/security/session.ts` updated to use deterministic `sha256:` token hashes with legacy bcrypt fallback/upgrade.
+
+After changes, run:
+
+```bash
+npm run hal:ui:build
+npm run build
+./scripts/service.sh restart
+```
+
+Then verify:
+
+```bash
+curl -i http://127.0.0.1:3392/
+curl -i http://127.0.0.1:3392/api/auth/session
+```
 
 ---
 
 ## better-sqlite3 ABI — Status
 
-The ABI mismatch issue from the previous handoff appears resolved — both repos have the same `.node` file (1913424 bytes, Mar 13). If you hit `Error: ... compiled against ABI ...` on startup:
+The ABI mismatch issue can return if launchd runs Homebrew Node 25. Current service startup should use the packaged Pocket Server Node binary via `scripts/run-launchd.sh`. If you hit `Error: ... compiled against ABI ...` on startup, first confirm the Node binary in launchd logs/status before rebuilding native modules.
+
+FarmPal service commands:
 
 ```bash
-cp ~/ff-terminal-parity/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
-   ~/farmpal/node_modules/better-sqlite3/build/Release/
-```
-
----
-
-## FarmPal as a Persistent Service (optional, after verifying startup)
-
-The plist templates are in `~/farmpal/launchd/`. Install with:
-
-```bash
-# Instantiate the template
-sed \
-  -e "s|{{NODE_PATH}}|$(node -e 'process.stdout.write(process.execPath)')|g" \
-  -e "s|{{PROJECT_ROOT}}|$HOME/farmpal|g" \
-  -e "s|{{HOME}}|$HOME|g" \
-  ~/farmpal/launchd/com.nanoclaw.plist \
-  > ~/Library/LaunchAgents/com.nanoclaw.plist
-
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nanoclaw.plist
+./scripts/service.sh status
+./scripts/service.sh logs
+./scripts/service.sh restart
 ```
 
 ---

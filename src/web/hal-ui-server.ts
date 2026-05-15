@@ -77,6 +77,89 @@ function sendJson(
   res.end(payload);
 }
 
+const HAL_SENSOR_METRICS: MetricType[] = [
+  'temperature',
+  'humidity',
+  'co2',
+  'light',
+  'soil_moisture',
+  'water_level',
+  'ph',
+  'weight',
+];
+
+function buildHalStateSnapshot(): {
+  devices: ReturnType<typeof halRegistry.list>;
+  sensorSnapshots: Record<string, Record<string, unknown>>;
+  recentDecisions: ReturnType<typeof halDecisions.recent>;
+} {
+  const devices = halRegistry.list();
+  const sensorSnapshots: Record<string, Record<string, unknown>> = {};
+
+  for (const dev of devices.filter((d: any) => d.type === 'sensor')) {
+    sensorSnapshots[dev.id] = {};
+    const calibrationOffset = dev.calibration_offset ?? 0;
+    for (const metric of HAL_SENSOR_METRICS) {
+      const reading = halSensors.latest(dev.id, metric) as
+        | { value: number; unit?: string }
+        | undefined;
+      if (reading) {
+        // Apply calibration: calibrated_value = raw + offset (VAL-DISC-060)
+        sensorSnapshots[dev.id][metric] = {
+          ...reading,
+          value: reading.value + calibrationOffset,
+        };
+      }
+    }
+  }
+
+  return {
+    devices,
+    sensorSnapshots,
+    recentDecisions: halDecisions.recent(10),
+  };
+}
+
+function sendHalStateStream(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): void {
+  const intervalMs = Math.max(
+    1000,
+    parseInt(process.env.HAL_UI_STREAM_INTERVAL_MS || '2000', 10),
+  );
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write(': connected\n\n');
+
+  const writeSnapshot = () => {
+    try {
+      res.write(
+        `event: state\ndata: ${JSON.stringify({
+          emittedAt: new Date().toISOString(),
+          state: buildHalStateSnapshot(),
+        })}\n\n`,
+      );
+    } catch {
+      clearInterval(timer);
+    }
+  };
+
+  const timer = setInterval(writeSnapshot, intervalMs);
+  timer.unref?.();
+  writeSnapshot();
+
+  req.on('close', () => {
+    clearInterval(timer);
+    res.end();
+  });
+}
+
 /**
  * Apply security headers to all responses (VAL-SEC-015)
  */
@@ -693,60 +776,12 @@ export async function startHalUiServer(
       const apiPath = requestPath.slice('/api/hal'.length);
 
       if (apiPath === '/state' && method === 'GET') {
-        const devices = halRegistry.list();
-        const sensorSnapshots: Record<string, Record<string, unknown>> = {};
-        const allMetrics: Array<{
-          metric: MetricType;
-          fn: (id: string) => unknown;
-        }> = [
-          {
-            metric: 'temperature',
-            fn: (id: string) => halSensors.latest(id, 'temperature'),
-          },
-          {
-            metric: 'humidity',
-            fn: (id: string) => halSensors.latest(id, 'humidity'),
-          },
-          { metric: 'co2', fn: (id: string) => halSensors.latest(id, 'co2') },
-          {
-            metric: 'light',
-            fn: (id: string) => halSensors.latest(id, 'light'),
-          },
-          {
-            metric: 'soil_moisture',
-            fn: (id: string) => halSensors.latest(id, 'soil_moisture'),
-          },
-          {
-            metric: 'water_level',
-            fn: (id: string) => halSensors.latest(id, 'water_level'),
-          },
-          { metric: 'ph', fn: (id: string) => halSensors.latest(id, 'ph') },
-          {
-            metric: 'weight',
-            fn: (id: string) => halSensors.latest(id, 'weight'),
-          },
-        ];
-        for (const dev of devices.filter((d: any) => d.type === 'sensor')) {
-          sensorSnapshots[dev.id] = {};
-          const calibrationOffset = dev.calibration_offset ?? 0;
-          for (const { metric, fn } of allMetrics) {
-            const reading = fn(dev.id) as
-              | { value: number; unit?: string }
-              | undefined;
-            if (reading) {
-              // Apply calibration: calibrated_value = raw + offset (VAL-DISC-060)
-              sensorSnapshots[dev.id][metric] = {
-                ...reading,
-                value: reading.value + calibrationOffset,
-              };
-            }
-          }
-        }
-        sendJson(res, 200, {
-          devices,
-          sensorSnapshots,
-          recentDecisions: halDecisions.recent(10),
-        });
+        sendJson(res, 200, buildHalStateSnapshot());
+        return;
+      }
+
+      if (apiPath === '/stream' && method === 'GET') {
+        sendHalStateStream(req, res);
         return;
       }
 
@@ -844,35 +879,13 @@ export async function startHalUiServer(
         const devices = halRegistry
           .list()
           .filter((d: any) => d.type === 'sensor');
-        const allMetrics: Array<{
-          metric: MetricType;
-          fn: (id: string) => { value: number; unit?: string } | undefined;
-        }> = [
-          {
-            metric: 'temperature',
-            fn: (id) => halSensors.latest(id, 'temperature'),
-          },
-          { metric: 'humidity', fn: (id) => halSensors.latest(id, 'humidity') },
-          { metric: 'co2', fn: (id) => halSensors.latest(id, 'co2') },
-          { metric: 'light', fn: (id) => halSensors.latest(id, 'light') },
-          {
-            metric: 'soil_moisture',
-            fn: (id) => halSensors.latest(id, 'soil_moisture'),
-          },
-          {
-            metric: 'water_level',
-            fn: (id) => halSensors.latest(id, 'water_level'),
-          },
-          { metric: 'ph', fn: (id) => halSensors.latest(id, 'ph') },
-          { metric: 'weight', fn: (id) => halSensors.latest(id, 'weight') },
-        ];
         const readings = [];
         for (const dev of devices) {
           const calibrationOffset = dev.calibration_offset ?? 0;
           const snapshot: Record<string, { value: number; unit?: string }> = {};
           let hasAny = false;
-          for (const { metric, fn } of allMetrics) {
-            const reading = fn(dev.id);
+          for (const metric of HAL_SENSOR_METRICS) {
+            const reading = halSensors.latest(dev.id, metric);
             if (reading) {
               snapshot[metric] = {
                 ...reading,

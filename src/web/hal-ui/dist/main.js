@@ -665,6 +665,9 @@
       url += "?" + qs;
     }
     const res = await fetch(url);
+    if (res.status === 401) {
+      redirectToLogin();
+    }
     if (!res.ok)
       throw new Error(`HAL API ${url} failed: ${res.status} ${res.statusText}`);
     return res.json();
@@ -675,6 +678,9 @@
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : void 0
     });
+    if (res.status === 401) {
+      redirectToLogin();
+    }
     if (!res.ok)
       throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
     return res.json();
@@ -685,17 +691,28 @@
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : void 0
     });
+    if (res.status === 401) {
+      redirectToLogin();
+    }
     if (!res.ok)
       throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
     return res.json();
   }
   async function settingsGet(path) {
     const res = await fetch(SETTINGS_BASE + path);
+    if (res.status === 401) {
+      redirectToLogin();
+    }
     if (!res.ok)
       throw new Error(
         `Settings API ${path} failed: ${res.status} ${res.statusText}`
       );
     return res.json();
+  }
+  function redirectToLogin() {
+    if (typeof window === "undefined") return;
+    if (window.location.pathname === "/login") return;
+    window.location.href = "/login";
   }
   function normalizeDevice(device) {
     const rawState = device.state ?? device.last_state ?? "unknown";
@@ -789,6 +806,18 @@
         // GET /api/hal/state
         async getState() {
           return normalizeState(await halGet("/state"));
+        },
+        openStateStream(onState, onError) {
+          if (typeof EventSource === "undefined") return null;
+          const source = new EventSource(`${BASE}/stream`);
+          source.addEventListener("state", (event) => {
+            const parsed = JSON.parse(event.data);
+            const state2 = "state" in parsed ? normalizeState(parsed.state) : normalizeState(parsed);
+            const streamEvent = "state" in parsed ? { ...parsed, state: state2 } : { emittedAt: (/* @__PURE__ */ new Date()).toISOString(), state: state2 };
+            onState(state2, streamEvent);
+          });
+          source.onerror = (error) => onError?.(error);
+          return source;
         },
         // GET /api/hal/devices
         async getDevices() {
@@ -2649,202 +2678,6 @@ ${result.failures.join("\n")}`
     }
     return parts.join(" ");
   }
-  function renderOverviewZoneCard(zone, activeKeys) {
-    const metricsByKey = new Map(
-      zone.metrics.map((metric) => [metric.key, metric])
-    );
-    const activeMetrics = overviewMetricOrder.filter((key) => activeKeys.has(key)).map((key) => metricsByKey.get(key)).filter((metric) => Boolean(metric));
-    const chartMetrics = activeMetrics.filter((metric) => metric.data.length > 0);
-    const titleHtml = activeMetrics.length > 0 ? activeMetrics.map(
-      (metric) => `<span style="color:${metric.color}">${escapeHtml3(metric.label)}</span>`
-    ).join(' <span style="color:var(--text-secondary)">+ </span>') : '<span style="color:var(--text-secondary)">No active metrics</span>';
-    if (chartMetrics.length === 0) {
-      return `
-      <article class="dhc-card">
-        <div class="dhc-head">
-          <div>
-            <div class="dhc-title">${titleHtml}</div>
-            <div class="dhc-subtitle">${escapeHtml3(zone.zoneName)}</div>
-          </div>
-          <div class="dhc-kpi">
-            <div class="dhc-kpi-val" style="color:var(--text-secondary)">--</div>
-            <div class="dhc-kpi-delta">No trend</div>
-          </div>
-        </div>
-        <div class="chart-empty">No data for selected metrics</div>
-      </article>
-    `;
-    }
-    const w = 566;
-    const h = 210;
-    const pad = { l: 48, r: 48, t: 24, b: 36 };
-    const cw = w - pad.l - pad.r;
-    const ch = h - pad.t - pad.b;
-    const times = Array.from(
-      new Set(
-        chartMetrics.flatMap((metric) => metric.data.map((point) => point.t))
-      )
-    ).sort((a, b) => a - b);
-    const x = (i, len) => len <= 1 ? pad.l + cw / 2 : pad.l + i / (len - 1) * cw;
-    const xForTs = new Map(times.map((t, i) => [t, x(i, times.length)]));
-    const gradientPrefix = (zone.zoneName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "zone").slice(0, 40);
-    const series = chartMetrics.map((metric) => {
-      const exact = new Map(metric.data.map((point) => [point.t, point.v]));
-      let carry = metric.data[0]?.v ?? 0;
-      const values = times.map((t) => {
-        const found = exact.get(t);
-        if (typeof found === "number") carry = found;
-        return carry;
-      });
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const span = Math.max(1e-4, max - min);
-      const y = (v) => pad.t + (max - v) / span * ch;
-      const path = values.map(
-        (value, idx) => `${idx ? "L" : "M"}${x(idx, times.length)},${y(value)}`
-      ).join(" ");
-      const areaPath = path ? `${path} L${x(times.length - 1, times.length)},${pad.t + ch} L${x(0, times.length)},${pad.t + ch} Z` : "";
-      return { metric, values, min, max, span, y, path, areaPath };
-    });
-    const primary = series[0];
-    const primaryGrid = [
-      primary.max,
-      primary.min + primary.span / 2,
-      primary.min
-    ];
-    const primaryUnit = activeMetrics[0]?.unit || "";
-    const gridLines = primaryGrid.map((value, i) => {
-      const y = primary.y(value);
-      return `
-      <line x1="${pad.l - 4}" x2="${pad.l}" y1="${y}" y2="${y}" stroke="var(--text-tertiary)"/>
-      <line x1="${pad.l}" x2="${pad.l + cw}" y1="${y}" y2="${y}" stroke="color-mix(in srgb, var(--text-tertiary) 15%, var(--border))"/>
-    `;
-    }).join("");
-    const defs = series.map(
-      (entry) => `
-    <linearGradient id="${gradientPrefix}-${entry.metric.key}-grad" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="${entry.metric.color}" stop-opacity="0.18"/>
-      <stop offset="100%" stop-color="${entry.metric.color}" stop-opacity="0.01"/>
-    </linearGradient>
-  `
-    ).join("");
-    const shade = series.map(
-      (entry) => entry.areaPath ? `<path d="${entry.areaPath}" fill="url(#${gradientPrefix}-${entry.metric.key}-grad)" style="mix-blend-mode:screen"/>` : ""
-    ).join("");
-    const lines = series.map(
-      (entry, index) => `<path d="${entry.path}" stroke="${entry.metric.color}" fill="none" stroke-width="${index === 0 ? "2.5" : "2"}"/>`
-    ).join("");
-    const dots = series.map((entry) => {
-      const lastTs = times[times.length - 1];
-      const lastVal = entry.values[entry.values.length - 1];
-      if (lastTs == null || lastVal == null) return "";
-      return `<circle cx="${xForTs.get(lastTs)}" cy="${entry.y(lastVal)}" r="4" fill="${entry.metric.color}"/>`;
-    }).join("");
-    const svg = `
-    <svg class="hero-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
-      <defs>${defs}</defs>
-      ${gridLines}
-      ${shade}
-      ${lines}
-      ${dots}
-    </svg>
-  `;
-    const primaryCurrent = primary.values[primary.values.length - 1] ?? 0;
-    const primaryPrev = primary.values[primary.values.length - 2] ?? primaryCurrent;
-    const delta = primaryPrev ? (primaryCurrent - primaryPrev) / Math.abs(primaryPrev) * 100 : 0;
-    const statsHtml = activeMetrics.map((metric) => {
-      if (metric.data.length === 0) {
-        return `
-        <div class="dhc-stats-row">
-          <div class="dhc-stats-metric" style="color:${metric.color}">${escapeHtml3(metric.label)}</div>
-          <div class="dhc-stats-current" style="color:var(--text-secondary)">No data</div>
-        </div>
-      `;
-      }
-      const values = metric.data.map((point) => point.v);
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
-      const current = values[values.length - 1] ?? 0;
-      const precision = metric.key === "co2" ? 0 : 1;
-      return `
-      <div class="dhc-stats-row">
-        <div class="dhc-stats-metric" style="color:${metric.color}">${escapeHtml3(metric.label)}</div>
-        <div class="dhc-stats-current">${current.toFixed(precision)}${metric.unit}</div>
-      </div>
-      <div class="dhc-stats-grid">
-        <div><div class="dhc-muted">Min</div><strong>${min.toFixed(precision)}${metric.unit}</strong></div>
-        <div><div class="dhc-muted">Avg</div><strong>${avg.toFixed(precision)}${metric.unit}</strong></div>
-        <div><div class="dhc-muted">Max</div><strong>${max.toFixed(precision)}${metric.unit}</strong></div>
-      </div>
-    `;
-    }).join("");
-    return `
-    <article class="dhc-card">
-      <div class="dhc-head">
-        <div>
-          <div class="dhc-title">${titleHtml}</div>
-          <div class="dhc-subtitle">${escapeHtml3(zone.zoneName)}</div>
-        </div>
-        <div class="dhc-kpi">
-          <div class="dhc-kpi-val" style="color:${primary.metric.color}">${primaryCurrent.toFixed(primary.metric.key === "co2" ? 0 : 1)}${primary.metric.unit}</div>
-          <div class="dhc-kpi-delta">${delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(delta).toFixed(1)}%</div>
-        </div>
-      </div>
-      <div class="dhc-chart">${svg}</div>
-      <div class="dhc-stats">${statsHtml}</div>
-      <div class="dhc-foot">${times.length} readings \xB7 zone average</div>
-    </article>
-  `;
-  }
-  function renderDashboardOverviewCards(zoneCards, containerId, opts = {}) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    if (zoneCards.length === 0) {
-      container.innerHTML = '<div class="chart-empty">No sensor data</div>';
-      return;
-    }
-    const availableKeys = new Set(
-      zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key)
-    );
-    const activeFromState = opts.activeKeys ?? new Set(overviewMetricOrder);
-    const activeKeys = new Set(
-      overviewMetricOrder.filter(
-        (key) => activeFromState.has(key) && (availableKeys.has(key) || availableKeys.size === 0)
-      )
-    );
-    if (activeKeys.size === 0) {
-      const fallback = overviewMetricOrder.find((key) => availableKeys.has(key)) ?? overviewMetricOrder[0];
-      activeKeys.add(fallback);
-    }
-    const metricMeta = new Map(
-      zoneCards.flatMap((zone) => zone.metrics).map((metric) => [metric.key, metric])
-    );
-    const togglesHtml = overviewMetricOrder.map((key) => {
-      const meta = metricMeta.get(key);
-      const label = meta?.label ?? key.toUpperCase();
-      const color = meta?.color ?? "#94A3B8";
-      const active = activeKeys.has(key);
-      const disabled = !availableKeys.has(key);
-      return `<button class="dhc-overview-toggle ${active ? "active" : ""}" ${disabled ? "disabled" : ""} data-metric="${key}" style="--toggle-color:${color}">${escapeHtml3(label)}</button>`;
-    }).join("");
-    const cardsHtml = zoneCards.map((zone) => renderOverviewZoneCard(zone, activeKeys)).join("");
-    container.innerHTML = `
-    <div class="dhc-overview-wrap">
-      <div class="dhc-overview-toggles">${togglesHtml}</div>
-      <div class="dhc-zone-grid">${cardsHtml}</div>
-    </div>
-  `;
-    if (opts.onToggle) {
-      container.querySelectorAll(".dhc-overview-toggle").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const key = btn.dataset.metric;
-          if (!key) return;
-          opts.onToggle(key);
-        });
-      });
-    }
-  }
   function renderDecisionBarTrend(points, containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container || points.length === 0) {
@@ -3386,12 +3219,10 @@ ${result.failures.join("\n")}`
 `;
     document.head.appendChild(style);
   }
-  var overviewMetricOrder;
   var init_ChartKit = __esm({
     "src/web/hal-ui/components/ChartKit.ts"() {
       "use strict";
       init_store();
-      overviewMetricOrder = ["temperature", "humidity", "co2"];
     }
   });
 
@@ -3860,6 +3691,1698 @@ ${result.failures.join("\n")}`
     }
   });
 
+  // src/web/hal-ui/components/EnvironmentCharts.ts
+  function escapeHtml4(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function escapeAttr(s) {
+    return escapeHtml4(s);
+  }
+  function metricMeta(key) {
+    return METRIC_META[key] ?? {
+      key,
+      label: key,
+      shortLabel: key,
+      color: "#94A3B8",
+      unit: "",
+      minAxis: 0,
+      maxAxis: 100
+    };
+  }
+  function isDrawableValue(value) {
+    return Number.isFinite(value) && value !== 0;
+  }
+  function cleanData(data) {
+    return data.filter((point) => Number.isFinite(point.t) && isDrawableValue(point.v)).sort((a, b) => a.t - b.t);
+  }
+  function formatMetricValue(metric, value) {
+    const precision = metric.key === "co2" || Math.abs(value) >= 100 ? 0 : 1;
+    return `${value.toFixed(precision)}${metric.unit}`;
+  }
+  function normalizeValue(metric, value) {
+    const meta = metricMeta(metric.key);
+    const span = Math.max(1, meta.maxAxis - meta.minAxis);
+    return Math.max(0, Math.min(1, (value - meta.minAxis) / span));
+  }
+  function monotonePath(points) {
+    if (points.length < 2) return "";
+    if (points.length === 2) {
+      return `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)} L${points[1].x.toFixed(1)},${points[1].y.toFixed(1)}`;
+    }
+    let path = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const current = points[i];
+      const next = points[i + 1];
+      const midX = (current.x + next.x) / 2;
+      path += ` C${midX.toFixed(1)},${current.y.toFixed(1)} ${midX.toFixed(1)},${next.y.toFixed(1)} ${next.x.toFixed(1)},${next.y.toFixed(1)}`;
+    }
+    return path;
+  }
+  function aggregateZones(zones2) {
+    const metricKeys = Array.from(
+      new Set(zones2.flatMap((zone) => zone.metrics.map((metric) => metric.key)))
+    );
+    const metrics2 = metricKeys.map((key) => {
+      const meta = metricMeta(key);
+      const buckets = /* @__PURE__ */ new Map();
+      for (const zone of zones2) {
+        const metric = zone.metrics.find((candidate) => candidate.key === key);
+        if (!metric) continue;
+        for (const point of cleanData(metric.data)) {
+          const bucket = buckets.get(point.t) ?? { sum: 0, count: 0 };
+          bucket.sum += point.v;
+          bucket.count++;
+          buckets.set(point.t, bucket);
+        }
+      }
+      return {
+        key,
+        label: meta.label,
+        color: meta.color,
+        unit: meta.unit,
+        data: Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]).map(([t, bucket]) => ({
+          t,
+          v: bucket.count > 0 ? bucket.sum / bucket.count : 0
+        })).filter((point) => isDrawableValue(point.v))
+      };
+    });
+    return { zoneName: "All Zones", metrics: metrics2 };
+  }
+  function getActiveMetrics(zone, activeKeys) {
+    return DEFAULT_OVERVIEW_METRICS.map(
+      (key) => zone.metrics.find((metric) => metric.key === key)
+    ).filter((metric) => Boolean(metric)).filter((metric) => activeKeys.has(metric.key)).map((metric) => ({ ...metric, data: cleanData(metric.data) })).filter((metric) => metric.data.length > 0);
+  }
+  function latestValue(metric) {
+    const data = cleanData(metric.data);
+    return data.length > 0 ? data[data.length - 1].v : null;
+  }
+  function renderPrecisionSvg(metrics2) {
+    const width = 920;
+    const height = 300;
+    const pad = { l: 42, r: 32, t: 24, b: 34 };
+    const chartW = width - pad.l - pad.r;
+    const chartH = height - pad.t - pad.b;
+    const allTimes = metrics2.flatMap(
+      (metric) => metric.data.map((point) => point.t)
+    );
+    const minT = Math.min(...allTimes);
+    const maxT = Math.max(...allTimes);
+    const tSpan = Math.max(1, maxT - minT);
+    const x = (t) => pad.l + (t - minT) / tSpan * chartW;
+    const y = (norm) => pad.t + (1 - norm) * chartH;
+    const grid = [0, 0.25, 0.5, 0.75, 1].map((step) => {
+      const gy = pad.t + step * chartH;
+      return `<line x1="${pad.l}" x2="${width - pad.r}" y1="${gy.toFixed(1)}" y2="${gy.toFixed(1)}" class="env-grid"/>`;
+    }).join("");
+    const labels = [minT, minT + tSpan / 2, maxT].map((t, index) => {
+      const label = new Date(t).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+      return `<text class="env-axis-label" x="${x(t).toFixed(1)}" y="${height - 8}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml4(label)}</text>`;
+    }).join("");
+    const defs = metrics2.map(
+      (metric) => `
+      <linearGradient id="env-precision-${metric.key}" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="${metric.color}" stop-opacity="0.26"/>
+        <stop offset="100%" stop-color="${metric.color}" stop-opacity="0.02"/>
+      </linearGradient>
+    `
+    ).join("");
+    const shapes = metrics2.map((metric) => {
+      const points = metric.data.map((point) => ({
+        x: x(point.t),
+        y: y(normalizeValue(metric, point.v))
+      }));
+      const line = monotonePath(points);
+      if (!line) return "";
+      const first = points[0];
+      const last = points[points.length - 1];
+      const area = `${line} L${last.x.toFixed(1)},${(height - pad.b).toFixed(1)} L${first.x.toFixed(1)},${(height - pad.b).toFixed(1)} Z`;
+      return `
+        <path d="${area}" fill="url(#env-precision-${metric.key})"/>
+        <path d="${line}" fill="none" stroke="${metric.color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${metric.color}" stroke="var(--bg-primary)" stroke-width="1.5"/>
+      `;
+    }).join("");
+    return `
+    <svg class="env-precision-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Environmental precision chart">
+      <defs>${defs}</defs>
+      ${grid}
+      ${shapes}
+      ${labels}
+    </svg>
+  `;
+  }
+  function renderRadialGaugeSvg(metrics2) {
+    const width = 260;
+    const height = 230;
+    const cx = width / 2;
+    const cy = 122;
+    const start = -Math.PI * 0.72;
+    const end = Math.PI * 0.72;
+    const rings = metrics2.map((metric, index) => {
+      const value = latestValue(metric);
+      if (value == null) return "";
+      const progress = normalizeValue(metric, value);
+      const radius = 86 - index * 18;
+      const bg = describeArc(cx, cy, radius, start, end);
+      const fg = describeArc(
+        cx,
+        cy,
+        radius,
+        start,
+        start + (end - start) * progress
+      );
+      return `
+        <path d="${bg}" fill="none" stroke="var(--border)" stroke-width="10" stroke-linecap="round"/>
+        <path d="${fg}" fill="none" stroke="${metric.color}" stroke-width="10" stroke-linecap="round"/>
+      `;
+    }).join("");
+    const legend = metrics2.map((metric, index) => {
+      const value = latestValue(metric);
+      return `
+        <div class="env-gauge-row">
+          <span class="env-gauge-dot" style="background:${metric.color}"></span>
+          <span>${escapeHtml4(metricMeta(metric.key).shortLabel)}</span>
+          <strong style="color:${metric.color}">${value == null ? "No data" : escapeHtml4(formatMetricValue(metric, value))}</strong>
+        </div>
+      `;
+    }).join("");
+    return `
+    <div class="env-radial">
+      <svg class="env-radial-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Environmental radial gauge">
+        ${rings}
+        <text x="${cx}" y="${cy - 3}" text-anchor="middle" class="env-gauge-main">LIVE</text>
+        <text x="${cx}" y="${cy + 17}" text-anchor="middle" class="env-gauge-sub">active metrics</text>
+      </svg>
+      <div class="env-gauge-legend">${legend}</div>
+    </div>
+  `;
+  }
+  function renderFarmTelemetrySvg(metrics2, zoneName) {
+    const width = 920;
+    const height = 238;
+    const pad = { l: 50, r: 46, t: 26, b: 34 };
+    const chartW = width - pad.l - pad.r;
+    const chartH = height - pad.t - pad.b;
+    const allTimes = metrics2.flatMap(
+      (metric) => metric.data.map((point) => point.t)
+    );
+    const minT = Math.min(...allTimes);
+    const maxT = Math.max(...allTimes);
+    const tSpan = Math.max(1, maxT - minT);
+    const x = (t) => pad.l + (t - minT) / tSpan * chartW;
+    const y = (metric, value, lane) => {
+      const laneHeight = chartH / Math.max(1, metrics2.length);
+      const laneTop = pad.t + lane * laneHeight;
+      const laneMid = laneTop + laneHeight / 2;
+      return laneMid + (0.5 - normalizeValue(metric, value)) * laneHeight * 0.62;
+    };
+    const defs = metrics2.map(
+      (metric) => `
+      <linearGradient id="env-field-grad-${metric.key}" x1="0" x2="1" y1="0" y2="0">
+        <stop offset="0%" stop-color="${metric.color}" stop-opacity="0.1"/>
+        <stop offset="52%" stop-color="${metric.color}" stop-opacity="0.44"/>
+        <stop offset="100%" stop-color="${metric.color}" stop-opacity="0.1"/>
+      </linearGradient>
+      <filter id="env-field-glow-${metric.key}" x="-40%" y="-80%" width="180%" height="260%">
+        <feGaussianBlur stdDeviation="5" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    `
+    ).join("");
+    const canopy = Array.from({ length: 9 }, (_, index) => {
+      const x1 = pad.l + index * (chartW / 8);
+      const x2 = pad.l + (index + 0.5) * (chartW / 8);
+      const top = 42 + index % 2 * 10;
+      return `<path d="M${x1.toFixed(1)} ${height - pad.b} Q${x2.toFixed(1)} ${top} ${(x1 + chartW / 8).toFixed(1)} ${height - pad.b}" class="env-field-arch"/>`;
+    }).join("");
+    const lanes = metrics2.map((metric, index) => {
+      const laneHeight = chartH / Math.max(1, metrics2.length);
+      const y1 = pad.t + index * laneHeight + laneHeight / 2;
+      return `
+        <line x1="${pad.l}" x2="${width - pad.r}" y1="${y1.toFixed(1)}" y2="${y1.toFixed(1)}" class="env-field-lane"/>
+        <text x="${pad.l + 8}" y="${(y1 - 9).toFixed(1)}" class="env-field-label" fill="${metric.color}">${escapeHtml4(metricMeta(metric.key).shortLabel)}</text>
+      `;
+    }).join("");
+    const ribbons = metrics2.map((metric, index) => {
+      const points = metric.data.map((point) => ({
+        x: x(point.t),
+        y: y(metric, point.v, index)
+      }));
+      const line = monotonePath(points);
+      if (!line) return "";
+      const last = points[points.length - 1];
+      const value = latestValue(metric);
+      return `
+        <path d="${line}" class="env-field-ribbon-shadow" stroke="${metric.color}"/>
+        <path d="${line}" class="env-field-ribbon" stroke="url(#env-field-grad-${metric.key})" filter="url(#env-field-glow-${metric.key})"/>
+        <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="5.5" fill="${metric.color}" stroke="var(--bg-secondary)" stroke-width="2"/>
+        <text x="${(last.x - 8).toFixed(1)}" y="${(last.y - 12).toFixed(1)}" text-anchor="end" class="env-field-value" fill="${metric.color}">${value == null ? "" : escapeHtml4(formatMetricValue(metric, value))}</text>
+      `;
+    }).join("");
+    const tickLabels = [minT, minT + tSpan / 2, maxT].map((t, index) => {
+      const label = new Date(t).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+      return `<text class="env-field-time" x="${x(t).toFixed(1)}" y="${height - 10}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml4(label)}</text>`;
+    }).join("");
+    return `
+    <svg class="env-field-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Farm telemetry field for ${escapeAttr(zoneName)}">
+      <defs>${defs}</defs>
+      <rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="18" class="env-field-bg"/>
+      <path d="M42 ${height - 38} C180 ${height - 96} 295 ${height - 3} 430 ${height - 52} S718 ${height - 112} 878 ${height - 44}" class="env-field-bed"/>
+      ${canopy}
+      ${lanes}
+      ${ribbons}
+      <text x="${pad.l}" y="23" class="env-field-title">${escapeHtml4(zoneName)}</text>
+      <text x="${width - pad.r}" y="23" text-anchor="end" class="env-field-caption">live environmental ribbons</text>
+      ${tickLabels}
+    </svg>
+  `;
+  }
+  function describeArc(cx, cy, radius, start, end) {
+    const startPoint = {
+      x: cx + Math.cos(start) * radius,
+      y: cy + Math.sin(start) * radius
+    };
+    const endPoint = {
+      x: cx + Math.cos(end) * radius,
+      y: cy + Math.sin(end) * radius
+    };
+    const large = Math.abs(end - start) > Math.PI ? 1 : 0;
+    const sweep = end > start ? 1 : 0;
+    return `M${startPoint.x.toFixed(1)},${startPoint.y.toFixed(1)} A${radius},${radius} 0 ${large} ${sweep} ${endPoint.x.toFixed(1)},${endPoint.y.toFixed(1)}`;
+  }
+  function renderMetricSummary(metrics2) {
+    const rows = metrics2.map((metric) => {
+      const values = metric.data.map((point) => point.v);
+      if (values.length === 0) {
+        return `
+          <tr>
+            <td><span class="env-table-dot" style="background:${metric.color}"></span>${escapeHtml4(metric.label)}</td>
+            <td colspan="4" class="env-muted-cell">No data</td>
+          </tr>
+        `;
+      }
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+      const current = values[values.length - 1];
+      return `
+        <tr>
+          <td><span class="env-table-dot" style="background:${metric.color}"></span>${escapeHtml4(metric.label)}</td>
+          <td>${escapeHtml4(formatMetricValue(metric, current))}</td>
+          <td>${escapeHtml4(formatMetricValue(metric, min))}</td>
+          <td>${escapeHtml4(formatMetricValue(metric, avg))}</td>
+          <td>${escapeHtml4(formatMetricValue(metric, max))}</td>
+        </tr>
+      `;
+    }).join("");
+    return `
+    <table class="env-metric-table">
+      <thead><tr><th>Metric</th><th>Now</th><th>Min</th><th>Avg</th><th>Max</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+  }
+  function renderZoneTable(zones2, activeZone) {
+    const rows = zones2.map((zone) => {
+      const values = DEFAULT_OVERVIEW_METRICS.map((key) => {
+        const metric = zone.metrics.find((candidate) => candidate.key === key);
+        const value = metric ? latestValue(metric) : null;
+        return { key, metric, value };
+      });
+      const onlineMetrics = values.filter(
+        (value) => value.value != null
+      ).length;
+      const state2 = onlineMetrics === values.length ? "Good" : onlineMetrics > 0 ? "Partial" : "No data";
+      const cells = values.map(({ key, metric, value }) => {
+        const meta = metricMeta(key);
+        const display = metric && value != null ? formatMetricValue(metric, value) : "No data";
+        return `<td style="color:${metric?.color ?? meta.color}">${escapeHtml4(display)}</td>`;
+      }).join("");
+      return `
+        <tr class="${activeZone === zone.zoneName ? "active" : ""}" data-zone="${escapeAttr(zone.zoneName)}">
+          <td>${escapeHtml4(zone.zoneName)}</td>
+          ${cells}
+          <td><span class="env-zone-state ${state2.toLowerCase().replace(/\s+/g, "-")}">${state2}</span></td>
+        </tr>
+      `;
+    }).join("");
+    return `
+    <div class="env-zone-table-wrap">
+      <div class="env-zone-table-head">
+        <span>Zones</span>
+        <button class="env-zone-reset ${activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>
+      </div>
+      <table class="env-zone-table">
+        <thead><tr><th>Zone</th><th>Temp</th><th>RH</th><th>CO\u2082</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+  }
+  function renderOverviewEnvironmentHero(zones2, containerId, opts) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    injectEnvironmentChartStyles();
+    if (zones2.length === 0) {
+      container.innerHTML = '<div class="chart-empty">No sensor data</div>';
+      return;
+    }
+    const activeZoneName = opts.activeZone || "";
+    const selectedZone = zones2.find((zone) => zone.zoneName === activeZoneName) ?? aggregateZones(zones2);
+    const availableKeys = new Set(
+      zones2.flatMap((zone) => zone.metrics).filter((metric) => cleanData(metric.data).length > 0).map((metric) => metric.key)
+    );
+    const activeKeys = new Set(
+      DEFAULT_OVERVIEW_METRICS.filter(
+        (key) => opts.activeKeys.has(key) && availableKeys.has(key)
+      )
+    );
+    if (activeKeys.size === 0) {
+      const fallback = DEFAULT_OVERVIEW_METRICS.find(
+        (key) => availableKeys.has(key)
+      );
+      if (fallback) activeKeys.add(fallback);
+    }
+    const activeMetrics = getActiveMetrics(selectedZone, activeKeys);
+    if (activeMetrics.length === 0) {
+      container.innerHTML = '<div class="chart-empty">No data for selected zone</div>';
+      return;
+    }
+    const toggleHtml = DEFAULT_OVERVIEW_METRICS.map((key) => {
+      const meta = metricMeta(key);
+      const enabled = availableKeys.has(key);
+      const active = activeKeys.has(key);
+      return `<button class="env-toggle ${active ? "active" : ""}" ${enabled ? "" : "disabled"} data-metric="${key}" style="--toggle-color:${meta.color}">${escapeHtml4(meta.label)}</button>`;
+    }).join("");
+    container.innerHTML = `
+    <section class="env-overview-card">
+      <div class="env-overview-head">
+        <div>
+          <div class="env-title">Environmental Overview</div>
+          <div class="env-subtitle">${escapeHtml4(selectedZone.zoneName)} \xB7 SVG telemetry field plus precision traces</div>
+        </div>
+        <div class="env-toggles">${toggleHtml}</div>
+      </div>
+      <div class="env-field-panel">
+        ${renderFarmTelemetrySvg(activeMetrics, selectedZone.zoneName)}
+      </div>
+      <div class="env-overview-grid">
+        <div class="env-chart-panel">
+          ${renderPrecisionSvg(activeMetrics)}
+          ${renderMetricSummary(activeMetrics)}
+        </div>
+        <aside class="env-gauge-panel">
+          ${renderRadialGaugeSvg(activeMetrics)}
+        </aside>
+      </div>
+      ${renderZoneTable(zones2, activeZoneName)}
+    </section>
+  `;
+    if (opts.onMetricToggle) {
+      container.querySelectorAll(".env-toggle").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const key = btn.dataset.metric;
+          if (key) opts.onMetricToggle?.(key);
+        });
+      });
+    }
+    if (opts.onZoneSelect) {
+      container.querySelectorAll("[data-zone]").forEach((el) => {
+        el.addEventListener("click", () => {
+          const zone = el.dataset.zone;
+          opts.onZoneSelect?.(zone === "__all__" ? "" : zone || "");
+        });
+      });
+    }
+  }
+  function renderHorizonBandsSvg(metrics2) {
+    const width = 920;
+    const rowHeight = 48;
+    const height = Math.max(150, metrics2.length * rowHeight + 28);
+    const pad = { l: 74, r: 18, t: 16, b: 18 };
+    const chartW = width - pad.l - pad.r;
+    const allTimes = metrics2.flatMap(
+      (metric) => metric.data.map((point) => point.t)
+    );
+    const minT = Math.min(...allTimes);
+    const maxT = Math.max(...allTimes);
+    const tSpan = Math.max(1, maxT - minT);
+    const x = (t) => pad.l + (t - minT) / tSpan * chartW;
+    const rows = metrics2.map((metric, metricIndex) => {
+      const yBase = pad.t + metricIndex * rowHeight;
+      const values = cleanData(metric.data);
+      const cellW = Math.max(2, chartW / Math.max(1, values.length) - 1);
+      const cells = values.map((point) => {
+        const n = normalizeValue(metric, point.v);
+        const barH = Math.max(3, n * (rowHeight - 17));
+        const y = yBase + rowHeight - 8 - barH;
+        return `<rect x="${x(point.t).toFixed(1)}" y="${y.toFixed(1)}" width="${cellW.toFixed(1)}" height="${barH.toFixed(1)}" rx="1.5" fill="${metric.color}" opacity="${(0.2 + n * 0.72).toFixed(2)}"/>`;
+      }).join("");
+      const latest = latestValue(metric);
+      return `
+        <g>
+          <text x="8" y="${(yBase + 24).toFixed(1)}" class="env-axis-label">${escapeHtml4(metricMeta(metric.key).shortLabel)}</text>
+          ${cells}
+          <line x1="${pad.l}" x2="${width - pad.r}" y1="${(yBase + rowHeight - 6).toFixed(1)}" y2="${(yBase + rowHeight - 6).toFixed(1)}" class="env-grid"/>
+          <text x="${width - pad.r}" y="${(yBase + 24).toFixed(1)}" class="env-axis-label" text-anchor="end">${latest == null ? "No data" : escapeHtml4(formatMetricValue(metric, latest))}</text>
+        </g>
+      `;
+    }).join("");
+    return `
+    <svg class="env-horizon-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Environmental horizon bands">
+      ${rows}
+    </svg>
+  `;
+  }
+  function renderStackedAreaSvg(metrics2) {
+    const width = 920;
+    const height = 285;
+    const pad = { l: 34, r: 22, t: 22, b: 30 };
+    const chartW = width - pad.l - pad.r;
+    const chartH = height - pad.t - pad.b;
+    const times = Array.from(
+      new Set(metrics2.flatMap((metric) => metric.data.map((point) => point.t)))
+    ).sort((a, b) => a - b);
+    const minT = times[0] ?? 0;
+    const maxT = times[times.length - 1] ?? minT + 1;
+    const tSpan = Math.max(1, maxT - minT);
+    const x = (t) => pad.l + (t - minT) / tSpan * chartW;
+    const normalizedSeries = metrics2.map((metric) => {
+      const exact = new Map(metric.data.map((point) => [point.t, point.v]));
+      let carry = metric.data[0]?.v ?? 0;
+      return {
+        metric,
+        values: times.map((t) => {
+          const found = exact.get(t);
+          if (typeof found === "number") carry = found;
+          return normalizeValue(metric, carry) * 100;
+        })
+      };
+    });
+    const stacks = times.map((t, index) => {
+      let total = 0;
+      const segments = normalizedSeries.map((series) => {
+        const y0 = total;
+        total += series.values[index] ?? 0;
+        return { metric: series.metric, y0, y1: total };
+      });
+      return { t, index, total, segments };
+    });
+    const maxTotal = Math.max(1, ...stacks.map((stack) => stack.total));
+    const y = (value) => pad.t + (1 - value / maxTotal) * chartH;
+    const grid = [0, 0.25, 0.5, 0.75, 1].map((step) => {
+      const gy = pad.t + step * chartH;
+      return `<line x1="${pad.l}" x2="${width - pad.r}" y1="${gy.toFixed(1)}" y2="${gy.toFixed(1)}" class="env-grid"/>`;
+    }).join("");
+    const defs = normalizedSeries.map(
+      (series, index) => `
+      <linearGradient id="env-stack-${series.metric.key}-${index}" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="${series.metric.color}" stop-opacity="0.66"/>
+        <stop offset="100%" stop-color="${series.metric.color}" stop-opacity="0.12"/>
+      </linearGradient>
+    `
+    ).join("");
+    const layers = normalizedSeries.map((series, layerIndex) => {
+      const top = stacks.map((stack) => {
+        const segment = stack.segments[layerIndex];
+        return { x: x(stack.t), y: y(segment?.y1 ?? 0) };
+      });
+      const bottom = stacks.map((stack) => {
+        const segment = stack.segments[layerIndex];
+        return { x: x(stack.t), y: y(segment?.y0 ?? 0) };
+      });
+      const topLine = top.map(
+        (point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`
+      ).join(" ");
+      const bottomLine = bottom.slice().reverse().map((point) => `L${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+      const edge = monotonePath(top);
+      return `
+        <path d="${topLine} ${bottomLine} Z" fill="url(#env-stack-${series.metric.key}-${layerIndex})"/>
+        <path d="${edge}" fill="none" stroke="${series.metric.color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+    }).join("");
+    const labels = [minT, minT + tSpan / 2, maxT].map((t, index) => {
+      const label = new Date(t).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+      return `<text class="env-axis-label" x="${x(t).toFixed(1)}" y="${height - 8}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml4(label)}</text>`;
+    }).join("");
+    return `
+    <svg class="env-stack-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Stacked environmental pressure chart">
+      <defs>${defs}</defs>
+      ${grid}
+      ${layers}
+      ${labels}
+    </svg>
+  `;
+  }
+  function renderBulletRangeBars(metrics2) {
+    const rows = metrics2.map((metric) => {
+      const meta = metricMeta(metric.key);
+      const current = latestValue(metric);
+      const targetMin = meta.targetMin ?? meta.minAxis;
+      const targetMax = meta.targetMax ?? meta.maxAxis;
+      const currentPct = current == null ? 0 : normalizeValue(metric, current) * 100;
+      const targetStart = normalizeValue(metric, targetMin) * 100;
+      const targetWidth = Math.max(
+        2,
+        normalizeValue(metric, targetMax) * 100 - targetStart
+      );
+      return `
+        <div class="env-bullet-row">
+          <div>
+            <div class="env-bullet-label">${escapeHtml4(meta.label)}</div>
+            <div class="env-bullet-target">${escapeHtml4(formatMetricValue(metric, targetMin))} - ${escapeHtml4(formatMetricValue(metric, targetMax))}</div>
+          </div>
+          <div class="env-bullet-track">
+            <span class="env-bullet-target-band" style="left:${targetStart.toFixed(1)}%;width:${targetWidth.toFixed(1)}%;background:${metric.color}"></span>
+            <span class="env-bullet-value" style="width:${currentPct.toFixed(1)}%;background:${metric.color}"></span>
+          </div>
+          <strong style="color:${metric.color}">${current == null ? "No data" : escapeHtml4(formatMetricValue(metric, current))}</strong>
+        </div>
+      `;
+    }).join("");
+    return `<div class="env-bullet-list">${rows}</div>`;
+  }
+  function renderSensorEnvironmentHero(metrics2, containerId, opts = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    injectEnvironmentChartStyles();
+    const drawableMetrics = metrics2.map((metric) => ({ ...metric, data: cleanData(metric.data) })).filter((metric) => metric.data.length > 0);
+    if (drawableMetrics.length === 0) {
+      container.innerHTML = '<div class="chart-empty">No data for selection</div>';
+      return;
+    }
+    const title = drawableMetrics.map(
+      (metric) => `<span style="color:${metric.color}">${escapeHtml4(metric.label)}</span>`
+    ).join(' <span style="color:var(--text-secondary)">+</span> ');
+    container.innerHTML = `
+    <section class="env-sensor-stack">
+      <div class="env-sensor-panel">
+        <div class="env-sensor-panel-head">
+          <div>
+            <div class="env-title">${title}</div>
+            <div class="env-subtitle">${escapeHtml4(opts.subtitle ?? "Selected sensor history")}</div>
+          </div>
+          <span class="env-panel-kicker">Multi-line focus</span>
+        </div>
+        ${renderPrecisionSvg(drawableMetrics)}
+        ${renderMetricSummary(drawableMetrics)}
+      </div>
+      <div class="env-sensor-panel">
+        <div class="env-sensor-panel-head">
+          <div>
+            <div class="env-title">Horizon Bands</div>
+            <div class="env-subtitle">Dense scan of the same selected metrics</div>
+          </div>
+          <span class="env-panel-kicker">Normalized</span>
+        </div>
+        ${renderHorizonBandsSvg(drawableMetrics)}
+      </div>
+    </section>
+  `;
+  }
+  function renderSystemEnvironmentHero(metrics2, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    injectEnvironmentChartStyles();
+    const drawableMetrics = metrics2.map((metric) => ({ ...metric, data: cleanData(metric.data) })).filter((metric) => metric.data.length > 0);
+    if (drawableMetrics.length === 0) {
+      container.innerHTML = '<div class="chart-empty">No sensor data</div>';
+      return;
+    }
+    container.innerHTML = `
+    <section class="env-system-stack">
+      <div class="env-sensor-panel">
+        <div class="env-sensor-panel-head">
+          <div>
+            <div class="env-title">Environmental Pressure</div>
+            <div class="env-subtitle">Stacked normalized history for active system metrics</div>
+          </div>
+          <span class="env-panel-kicker">Stacked area</span>
+        </div>
+        ${renderStackedAreaSvg(drawableMetrics)}
+      </div>
+      <div class="env-sensor-panel">
+        <div class="env-sensor-panel-head">
+          <div>
+            <div class="env-title">Grow Targets</div>
+            <div class="env-subtitle">Display defaults only; not safety policy</div>
+          </div>
+          <span class="env-panel-kicker">Bullet ranges</span>
+        </div>
+        ${renderBulletRangeBars(drawableMetrics)}
+      </div>
+    </section>
+  `;
+  }
+  function renderSafetyDenialCalendarHeatmap(denials, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    injectEnvironmentChartStyles();
+    const width = 920;
+    const height = 190;
+    const pad = { l: 54, r: 16, t: 22, b: 24 };
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const cellGap = 3;
+    const cellW = (width - pad.l - pad.r - 23 * cellGap) / 24;
+    const cellH = (height - pad.t - pad.b - 6 * cellGap) / 7;
+    const counts = /* @__PURE__ */ new Map();
+    for (const denial of denials) {
+      const date2 = new Date(denial.createdAt);
+      if (Number.isNaN(date2.getTime())) continue;
+      const key = `${date2.getDay()}:${date2.getHours()}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const max = Math.max(1, ...counts.values());
+    const cells = days.flatMap(
+      (day, dayIndex) => Array.from({ length: 24 }, (_, hour) => {
+        const value = counts.get(`${dayIndex}:${hour}`) ?? 0;
+        const opacity = value === 0 ? 0.12 : 0.25 + value / max * 0.7;
+        const color = value === 0 ? "var(--bg-tertiary)" : value >= max ? "var(--danger)" : value > max / 2 ? "var(--warning)" : "var(--accent-bright)";
+        return `<rect x="${(pad.l + hour * (cellW + cellGap)).toFixed(1)}" y="${(pad.t + dayIndex * (cellH + cellGap)).toFixed(1)}" width="${cellW.toFixed(1)}" height="${cellH.toFixed(1)}" rx="2" fill="${color}" opacity="${opacity.toFixed(2)}"><title>${day} ${hour}:00 \xB7 ${value} denied</title></rect>`;
+      })
+    ).join("");
+    const dayLabels = days.map(
+      (day, index) => `<text class="env-axis-label" x="8" y="${(pad.t + index * (cellH + cellGap) + cellH * 0.68).toFixed(1)}">${day}</text>`
+    ).join("");
+    const hourLabels = [0, 6, 12, 18, 23].map(
+      (hour) => `<text class="env-axis-label" x="${(pad.l + hour * (cellW + cellGap)).toFixed(1)}" y="${height - 7}" text-anchor="middle">${hour}</text>`
+    ).join("");
+    container.innerHTML = `
+    <div class="env-safety-card">
+      <div class="env-sensor-panel-head">
+        <div>
+          <div class="env-title">Denied Action Calendar</div>
+          <div class="env-subtitle">Denied safety actions by day and hour</div>
+        </div>
+        <span class="env-panel-kicker">${denials.length} events</span>
+      </div>
+      <svg class="env-safety-heatmap-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Safety denial calendar heatmap">
+        ${cells}
+        ${dayLabels}
+        ${hourLabels}
+      </svg>
+    </div>
+  `;
+  }
+  function renderSafetyThresholdBulletBars(thresholds, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    injectEnvironmentChartStyles();
+    const active = thresholds.filter((threshold) => threshold.enabled);
+    if (active.length === 0) {
+      container.innerHTML = `
+      <div class="env-safety-card">
+        <div class="chart-empty">No enabled thresholds</div>
+      </div>
+    `;
+      return;
+    }
+    const rows = active.map((threshold) => {
+      const span = Math.max(1, threshold.axisMax - threshold.axisMin);
+      const pct = (value) => value == null ? 0 : Math.max(
+        0,
+        Math.min(100, (value - threshold.axisMin) / span * 100)
+      );
+      const minPct = pct(threshold.minValue);
+      const maxPct = threshold.maxValue == null ? 100 : Math.max(minPct + 2, pct(threshold.maxValue));
+      const currentPct = pct(threshold.currentValue);
+      const current = threshold.currentValue;
+      const lowBreach = current != null && threshold.minValue != null && current < threshold.minValue;
+      const highBreach = current != null && threshold.maxValue != null && current > threshold.maxValue;
+      const state2 = current == null ? "No data" : lowBreach || highBreach ? "Out" : "In";
+      return `
+        <div class="env-bullet-row env-threshold-row" data-threshold-id="${escapeAttr(threshold.id)}">
+          <div>
+            <div class="env-bullet-label">${escapeHtml4(threshold.label)}</div>
+            <div class="env-bullet-target">${escapeHtml4(threshold.scope)}</div>
+          </div>
+          <div class="env-bullet-track">
+            <span class="env-bullet-target-band" style="left:${minPct.toFixed(1)}%;width:${(maxPct - minPct).toFixed(1)}%;background:${threshold.color}"></span>
+            <span class="env-bullet-value" style="width:${currentPct.toFixed(1)}%;background:${threshold.color}"></span>
+          </div>
+          <strong style="color:${threshold.color}">${current == null ? "No data" : `${current.toFixed(Math.abs(current) >= 100 ? 0 : 1)}${escapeHtml4(threshold.unit)}`}</strong>
+          <span class="env-zone-state ${state2 === "Out" ? "partial" : state2 === "No data" ? "no-data" : ""}">${state2}</span>
+        </div>
+      `;
+    }).join("");
+    container.innerHTML = `
+    <div class="env-safety-card">
+      <div class="env-sensor-panel-head">
+        <div>
+          <div class="env-title">Threshold Range Bars</div>
+          <div class="env-subtitle">Current readings against enabled safety thresholds</div>
+        </div>
+        <span class="env-panel-kicker">${active.length} thresholds</span>
+      </div>
+      <div class="env-bullet-list">${rows}</div>
+    </div>
+  `;
+  }
+  function deviceTypeColor(type) {
+    switch (type) {
+      case "sensor":
+        return "#F59E0B";
+      case "relay":
+        return "#22C55E";
+      case "camera":
+        return "#38BDF8";
+      case "smart_plug":
+        return "#A855F7";
+      default:
+        return "#6C7278";
+    }
+  }
+  function runForceSimulation(nodes, edges, width, height) {
+    const ITERATIONS = 120;
+    const REPULSION = 8e3;
+    const ATTRACTION = 0.06;
+    const IDEAL_EDGE = 120;
+    const DAMPING = 0.82;
+    const PAD = 48;
+    const simNodes = nodes.map((n) => ({
+      ...n,
+      x: PAD + Math.random() * (width - PAD * 2),
+      y: PAD + Math.random() * (height - PAD * 2),
+      vx: 0,
+      vy: 0
+    }));
+    const nodeById = new Map(simNodes.map((n) => [n.id, n]));
+    for (let iter = 0; iter < ITERATIONS; iter++) {
+      for (let i = 0; i < simNodes.length; i++) {
+        for (let j = i + 1; j < simNodes.length; j++) {
+          const a = simNodes[i];
+          const b = simNodes[j];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const dist2 = Math.max(1, dx * dx + dy * dy);
+          const dist = Math.sqrt(dist2);
+          const force = REPULSION / dist2;
+          const fx = dx / dist * force;
+          const fy = dy / dist * force;
+          a.vx -= fx;
+          a.vy -= fy;
+          b.vx += fx;
+          b.vy += fy;
+        }
+      }
+      for (const edge of edges) {
+        const a = nodeById.get(edge.source);
+        const b = nodeById.get(edge.target);
+        if (!a || !b) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(Math.max(1, dx * dx + dy * dy));
+        const force = (dist - IDEAL_EDGE) * ATTRACTION;
+        const fx = dx / Math.max(1, dist) * force;
+        const fy = dy / Math.max(1, dist) * force;
+        a.vx += fx;
+        a.vy += fy;
+        b.vx -= fx;
+        b.vy -= fy;
+      }
+      const cool = DAMPING + (1 - DAMPING) * (iter / ITERATIONS);
+      for (const n of simNodes) {
+        n.vx *= cool;
+        n.vy *= cool;
+        n.x = Math.max(PAD, Math.min(width - PAD, n.x + n.vx));
+        n.y = Math.max(PAD, Math.min(height - PAD, n.y + n.vy));
+      }
+    }
+    return simNodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      type: n.type,
+      online: n.online,
+      zone: n.zone || "Unzoned",
+      x: n.x,
+      y: n.y,
+      color: deviceTypeColor(n.type)
+    }));
+  }
+  function renderDeviceForceGraphSvg(nodes, edges, containerId, onNodeClick) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    injectEnvironmentChartStyles();
+    if (nodes.length === 0) {
+      container.innerHTML = `<div class="env-force-empty">No devices to visualize</div>`;
+      return;
+    }
+    const width = 920;
+    const height = Math.min(560, 80 + nodes.length * 52);
+    const PAD = 48;
+    const simNodes = runForceSimulation(nodes, edges, width, height);
+    const nodeById = new Map(simNodes.map((n) => [n.id, n]));
+    const edgeSegments = [];
+    for (const edge of edges) {
+      const s = nodeById.get(edge.source);
+      const t = nodeById.get(edge.target);
+      if (!s || !t) continue;
+      edgeSegments.push({
+        x1: s.x,
+        y1: s.y,
+        x2: t.x,
+        y2: t.y,
+        kind: edge.kind
+      });
+    }
+    const zones2 = [...new Set(simNodes.map((n) => n.zone))].sort();
+    const edgeLines = edgeSegments.map((e) => {
+      const dash = e.kind === "zone" ? "4 6" : "none";
+      const opacity = e.kind === "zone" ? 0.22 : 0.45;
+      return `<line x1="${e.x1.toFixed(1)}" y1="${e.y1.toFixed(1)}" x2="${e.x2.toFixed(1)}" y2="${e.y2.toFixed(1)}" stroke="var(--text-tertiary)" stroke-width="1.2" stroke-dasharray="${dash}" opacity="${opacity}"/>`;
+    }).join("");
+    const R = 22;
+    const nodeCircles = simNodes.map((n) => {
+      const alpha = n.online ? 1 : 0.35;
+      const stroke = n.online ? n.color : "var(--border)";
+      const fill = n.online ? `color-mix(in srgb, ${n.color} 28%, transparent)` : "var(--bg-tertiary)";
+      return `
+        <circle
+          cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${R}"
+          fill="${fill}" stroke="${stroke}" stroke-width="2"
+          opacity="${alpha}" class="force-node"
+          data-node-id="${escapeAttr(n.id)}"
+          data-label="${escapeAttr(n.label)}"
+          data-type="${escapeAttr(n.type)}"
+          data-online="${n.online}"
+          data-zone="${escapeAttr(n.zone)}"
+        />
+        <text
+          x="${n.x.toFixed(1)}" y="${(n.y + R + 12).toFixed(1)}"
+          text-anchor="middle" class="env-force-label"
+          opacity="${n.online ? 0.88 : 0.38}"
+        >${escapeHtml4(n.label.length > 14 ? n.label.slice(0, 13) + "\u2026" : n.label)}</text>
+      `;
+    }).join("");
+    const typeLegend = ["sensor", "relay", "camera", "smart_plug"].filter((t) => nodes.some((n) => n.type === t)).map(
+      (t) => `<span class="env-force-legend-item"><span class="env-force-legend-dot" style="background:${deviceTypeColor(t)}"></span>${escapeHtml4(t)}</span>`
+    ).join("");
+    const zoneLegend = zones2.slice(0, 5).map((z) => `<span class="env-force-legend-item">${escapeHtml4(z)}</span>`).join("");
+    container.innerHTML = `
+    <div class="env-force-card">
+      <div class="env-sensor-panel-head">
+        <div>
+          <div class="env-title">Device Topology</div>
+          <div class="env-subtitle">${nodes.length} devices \xB7 ${edgeSegments.length} connections \xB7 spring-electrical layout</div>
+        </div>
+        <div class="env-force-legend">
+          <span class="env-force-legend-item">\u25CF Online</span>
+          <span class="env-force-legend-item env-force-legend-offline">\u25CB Offline</span>
+          <span class="env-force-legend-item" style="color:var(--text-tertiary);font-size:9px">\u2014 zone</span>
+          <span class="env-force-legend-item" style="color:var(--text-tertiary);font-size:9px">\u2500 dependency</span>
+          ${typeLegend}
+          ${zoneLegend ? `<span class="env-force-sep">|</span>${zoneLegend}` : ""}
+        </div>
+      </div>
+      <div class="env-force-wrap">
+        <svg class="env-force-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Device topology force graph">
+          <defs>
+            <filter id="force-glow">
+              <feGaussianBlur stdDeviation="3" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          ${edgeLines}
+          ${nodeCircles}
+        </svg>
+        <div class="env-force-tooltip" id="force-tooltip"></div>
+      </div>
+    </div>
+  `;
+    const tooltip = document.getElementById("force-tooltip");
+    container.querySelectorAll(".force-node").forEach((circle) => {
+      circle.addEventListener("pointerenter", (e) => {
+        if (!tooltip) return;
+        const id = circle.dataset.nodeId || "";
+        const label = circle.dataset.label || "";
+        const type = circle.dataset.type || "";
+        const online = circle.dataset.online === "true";
+        const zone = circle.dataset.zone || "";
+        tooltip.innerHTML = `
+        <div class="env-force-tip-name">${escapeHtml4(label)}</div>
+        <div class="env-force-tip-row"><span>Type</span><strong>${escapeHtml4(type)}</strong></div>
+        <div class="env-force-tip-row"><span>Status</span><strong style="color:${online ? "var(--success)" : "var(--danger)"}">${online ? "Online" : "Offline"}</strong></div>
+        ${zone ? `<div class="env-force-tip-row"><span>Zone</span><strong>${escapeHtml4(zone)}</strong></div>` : ""}
+      `;
+        const rect = e.target.closest("svg").getBoundingClientRect();
+        const cx = parseFloat(circle.getAttribute("cx"));
+        const cy = parseFloat(circle.getAttribute("cy"));
+        const svgEl = circle.closest("svg");
+        const vb = svgEl.viewBox.baseVal;
+        const scaleX = rect.width / vb.width;
+        const scaleY = rect.height / vb.height;
+        tooltip.style.left = `${cx * scaleX + rect.left - container.getBoundingClientRect().left + 12}px`;
+        tooltip.style.top = `${cy * scaleY + rect.top - container.getBoundingClientRect().top - 10}px`;
+        tooltip.style.display = "block";
+      });
+      circle.addEventListener("pointerleave", () => {
+        if (tooltip) tooltip.style.display = "none";
+      });
+      circle.addEventListener("click", () => {
+        const id = circle.dataset.nodeId;
+        if (id) onNodeClick?.(id);
+      });
+      circle.style.cursor = "pointer";
+    });
+  }
+  function renderCalibrationBeeswarmSvg(points, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    injectEnvironmentChartStyles();
+    const grouped = /* @__PURE__ */ new Map();
+    for (const p of points) {
+      const list = grouped.get(p.metric) ?? [];
+      list.push(p);
+      grouped.set(p.metric, list);
+    }
+    if (grouped.size === 0) {
+      container.innerHTML = `<div class="env-force-empty">No calibration data</div>`;
+      return;
+    }
+    const METRIC_LABELS2 = {
+      temperature: "Temperature",
+      humidity: "Humidity",
+      co2: "CO\u2082",
+      soil_moisture: "Soil Moisture",
+      light: "Light",
+      water_level: "Water Level",
+      ph: "pH",
+      weight: "Weight"
+    };
+    const METRIC_COLORS = {
+      temperature: "#F59E0B",
+      humidity: "#38BDF8",
+      co2: "#22C55E",
+      soil_moisture: "#EF4444",
+      light: "#FACC15",
+      water_level: "#2563EB",
+      ph: "#A855F7",
+      weight: "#94A3B8"
+    };
+    const ROW_H = 52;
+    const PAD = { l: 120, r: 24, t: 24, b: 16 };
+    const width = 920;
+    const metrics2 = Array.from(grouped.keys());
+    const height = PAD.t + metrics2.length * ROW_H + PAD.b;
+    const allOffsets = points.map((p) => p.offset);
+    const minOff = Math.min(...allOffsets);
+    const maxOff = Math.max(...allOffsets);
+    const span = Math.max(1, maxOff - minOff);
+    const xMap = (v) => PAD.l + (v - minOff) / span * (width - PAD.l - PAD.r);
+    const rows = metrics2.map((metric, rowIndex) => {
+      const pts = grouped.get(metric) ?? [];
+      const yBase = PAD.t + rowIndex * ROW_H;
+      const color = METRIC_COLORS[metric] ?? "#94A3B8";
+      const label = METRIC_LABELS2[metric] ?? metric;
+      const sorted = pts.slice().sort((a, b) => a.offset - b.offset);
+      const stackMap = /* @__PURE__ */ new Map();
+      let stack = 0;
+      for (const pt of sorted) {
+        stackMap.set(`${pt.deviceId}:${pt.metric}`, stack % 5);
+        stack++;
+      }
+      const STACK_GAP = 8;
+      const CENTER_Y = yBase + ROW_H / 2;
+      const R = 7;
+      const zeroX = xMap(0);
+      const zeroLine = `
+      <line x1="${zeroX.toFixed(1)}" y1="${(yBase + 4).toFixed(1)}" x2="${zeroX.toFixed(1)}" y2="${(yBase + ROW_H - 4).toFixed(1)}"
+        stroke="var(--border)" stroke-width="1" stroke-dasharray="3 4" opacity="0.6"/>
+    `;
+      const tickCount = Math.max(2, Math.min(5, Math.ceil(span / 0.5)));
+      const tickStep = span / (tickCount - 1);
+      const ticks = Array.from({ length: tickCount }, (_, i) => {
+        const v = minOff + i * tickStep;
+        const tx = xMap(v);
+        return `<text x="${tx.toFixed(1)}" y="${(yBase + ROW_H - 3).toFixed(1)}" text-anchor="middle" class="env-axis-label">${v >= 0 ? "+" : ""}${v.toFixed(1)}</text>`;
+      }).join("");
+      const metricLabel = `
+      <text x="${PAD.l - 10}" y="${(yBase + ROW_H / 2 + 4).toFixed(1)}"
+        text-anchor="end" class="env-force-label" fill="${color}" opacity="0.9">${escapeHtml4(label)}</text>
+    `;
+      const dots = pts.map((pt) => {
+        const x = xMap(pt.offset);
+        const stackIdx = stackMap.get(`${pt.deviceId}:${pt.metric}`) ?? 0;
+        const y = CENTER_Y + (stackIdx - 2) * STACK_GAP;
+        const dotColor = pt.offset > 1e-3 ? "var(--warning)" : pt.offset < -1e-3 ? "var(--info)" : "var(--border)";
+        const title = `${escapeHtml4(pt.deviceName)}
+offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
+        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R}" fill="${dotColor}" opacity="0.85" stroke="${color}" stroke-width="1.5"><title>${title}</title></circle>`;
+      }).join("");
+      return { metric, color, yBase, zeroLine, ticks, metricLabel, dots };
+    });
+    const svgContent = rows.map((r) => `${r.zeroLine}${r.ticks}${r.metricLabel}${r.dots}`).join("");
+    container.innerHTML = `
+    <div class="env-force-card">
+      <div class="env-sensor-panel-head">
+        <div>
+          <div class="env-title">Calibration Offset Distribution</div>
+          <div class="env-subtitle">${points.length} sensors across ${metrics2.length} metrics \xB7 jittered by device</div>
+        </div>
+        <div class="env-force-legend">
+          <span class="env-force-legend-item"><span class="env-force-legend-dot" style="background:var(--warning)"></span>Positive offset</span>
+          <span class="env-force-legend-item"><span class="env-force-legend-dot" style="background:var(--info)"></span>Negative offset</span>
+          <span class="env-force-legend-item"><span class="env-force-legend-dot" style="background:var(--border)"></span>Zero offset</span>
+          <span class="env-force-legend-item" style="color:var(--text-tertiary)">| Dashed line = zero</span>
+        </div>
+      </div>
+      <svg class="env-force-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Calibration offset beeswarm distribution">
+        ${svgContent}
+      </svg>
+    </div>
+  `;
+  }
+  function injectEnvironmentChartStyles() {
+    if (document.getElementById("hal-environment-charts-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-environment-charts-styles";
+    style.textContent = `
+.env-overview-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-bright) 10%, transparent), transparent 34%),
+    radial-gradient(circle at 86% 10%, rgba(56,139,253,0.18), transparent 26%),
+    var(--bg-secondary);
+  border: 1px solid color-mix(in srgb, var(--accent-bright) 24%, var(--border));
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card-lg);
+}
+.env-overview-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent 74%);
+}
+.env-overview-card > * {
+  position: relative;
+  z-index: 1;
+}
+.env-sensor-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.env-sensor-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+}
+.env-safety-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+  min-width: 0;
+}
+.env-sensor-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.env-panel-kicker {
+  flex-shrink: 0;
+  color: var(--accent-bright);
+  border: 1px solid color-mix(in srgb, var(--accent-bright) 30%, var(--border));
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent-bright) 8%, var(--bg-tertiary));
+  font-size: 10px;
+  font-weight: 800;
+  padding: 5px 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.env-overview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.env-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.env-subtitle {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.env-toggles {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.env-toggle,
+.env-zone-reset {
+  min-height: 30px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--toggle-color, var(--accent)) 34%, var(--border));
+  background: color-mix(in srgb, var(--toggle-color, var(--accent)) 7%, var(--bg-tertiary));
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 10px;
+}
+.env-toggle.active,
+.env-zone-reset.active {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--toggle-color, var(--accent)) 18%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--toggle-color, var(--accent)) 60%, var(--border));
+}
+.env-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.env-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--space-4);
+  align-items: stretch;
+}
+.env-field-panel {
+  min-width: 0;
+  margin-bottom: var(--space-4);
+}
+.env-field-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.env-field-bg {
+  fill: color-mix(in srgb, var(--bg-primary) 72%, var(--accent) 8%);
+  stroke: color-mix(in srgb, var(--accent-bright) 28%, var(--border));
+  stroke-width: 1;
+}
+.env-field-arch {
+  fill: none;
+  stroke: rgba(240,246,252,0.07);
+  stroke-width: 1.2;
+}
+.env-field-bed {
+  fill: none;
+  stroke: rgba(63,185,80,0.18);
+  stroke-width: 22;
+  stroke-linecap: round;
+}
+.env-field-lane {
+  stroke: rgba(240,246,252,0.08);
+  stroke-dasharray: 1 8;
+  stroke-linecap: round;
+}
+.env-field-label,
+.env-field-title,
+.env-field-caption,
+.env-field-time,
+.env-field-value {
+  font-family: var(--font-mono);
+}
+.env-field-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.env-field-title {
+  fill: var(--text-primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+.env-field-caption,
+.env-field-time {
+  fill: var(--text-secondary);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.env-field-value {
+  font-size: 11px;
+  font-weight: 800;
+}
+.env-field-ribbon-shadow {
+  fill: none;
+  stroke-width: 12;
+  stroke-opacity: 0.09;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.env-field-ribbon {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.env-chart-panel,
+.env-gauge-panel {
+  min-width: 0;
+}
+.env-precision-svg,
+.env-radial-svg,
+.env-horizon-svg,
+.env-stack-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.env-safety-heatmap-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.env-grid {
+  stroke: color-mix(in srgb, var(--text-tertiary) 28%, var(--border));
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+.env-axis-label {
+  fill: var(--text-tertiary);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+.env-metric-table,
+.env-zone-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.env-metric-table {
+  margin-top: var(--space-2);
+}
+.env-metric-table th,
+.env-zone-table th {
+  text-align: left;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.env-metric-table td,
+.env-zone-table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+.env-zone-table tbody tr {
+  cursor: pointer;
+}
+.env-zone-table tbody tr:hover td,
+.env-zone-table tbody tr.active td {
+  background: var(--bg-tertiary);
+}
+.env-table-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-right: 7px;
+}
+.env-muted-cell {
+  color: var(--text-secondary) !important;
+}
+.env-radial {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  height: 100%;
+}
+.env-gauge-main {
+  fill: var(--text-primary);
+  font-size: 23px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+}
+.env-gauge-sub {
+  fill: var(--text-secondary);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+.env-gauge-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.env-gauge-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 7px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.env-gauge-row strong {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.env-gauge-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+.env-zone-table-wrap {
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+.env-zone-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.env-zone-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 9%, var(--bg-tertiary));
+  border: 1px solid color-mix(in srgb, var(--success) 30%, var(--border));
+}
+.env-zone-state.partial {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 9%, var(--bg-tertiary));
+  border-color: color-mix(in srgb, var(--warning) 30%, var(--border));
+}
+.env-zone-state.no-data {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-color: var(--border);
+}
+.env-system-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.env-bullet-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.env-bullet-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 150px) 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.env-threshold-row {
+  grid-template-columns: minmax(130px, 190px) 1fr minmax(72px, auto) auto;
+}
+.env-bullet-label {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+.env-bullet-target {
+  color: var(--text-secondary);
+  font-size: 10px;
+  margin-top: 2px;
+}
+.env-bullet-track {
+  position: relative;
+  height: 18px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+}
+.env-bullet-target-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  opacity: 0.22;
+}
+.env-bullet-value {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  border-radius: var(--radius-sm);
+}
+.env-bullet-row strong {
+  min-width: 64px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.env-force-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+}
+.env-force-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+}
+.env-force-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 560px;
+}
+.env-force-label {
+  fill: var(--text-secondary);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  pointer-events: none;
+}
+.force-node {
+  transition: opacity 0.15s;
+}
+.force-node:hover {
+  opacity: 1 !important;
+}
+.env-force-tooltip {
+  display: none;
+  position: absolute;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  min-width: 140px;
+}
+.env-force-tip-name {
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.env-force-tip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.env-force-tip-row strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.env-force-legend {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.env-force-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+.env-force-legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.env-force-legend-offline {
+  opacity: 0.5;
+}
+.env-force-sep {
+  color: var(--border);
+  margin: 0 2px;
+}
+.env-force-empty {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+@media (max-width: 920px) {
+  .env-overview-grid {
+    grid-template-columns: 1fr;
+  }
+  .env-gauge-panel {
+    max-width: 360px;
+  }
+}
+@media (max-width: 640px) {
+  .env-overview-card {
+    padding: var(--space-3);
+  }
+  .env-zone-table-wrap {
+    overflow-x: auto;
+  }
+  .env-zone-table {
+    min-width: 520px;
+  }
+  .env-bullet-row {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+  .env-threshold-row {
+    grid-template-columns: 1fr;
+  }
+  .env-bullet-row strong {
+    text-align: left;
+  }
+}
+`;
+    document.head.appendChild(style);
+  }
+  var METRIC_META, DEFAULT_OVERVIEW_METRICS;
+  var init_EnvironmentCharts = __esm({
+    "src/web/hal-ui/components/EnvironmentCharts.ts"() {
+      "use strict";
+      METRIC_META = {
+        temperature: {
+          key: "temperature",
+          label: "Temperature",
+          shortLabel: "Temp",
+          color: "#F59E0B",
+          unit: "\xB0C",
+          minAxis: 10,
+          maxAxis: 40,
+          targetMin: 20,
+          targetMax: 28
+        },
+        humidity: {
+          key: "humidity",
+          label: "Humidity",
+          shortLabel: "RH",
+          color: "#38BDF8",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100,
+          targetMin: 45,
+          targetMax: 65
+        },
+        co2: {
+          key: "co2",
+          label: "CO\u2082",
+          shortLabel: "CO\u2082",
+          color: "#22C55E",
+          unit: "ppm",
+          minAxis: 400,
+          maxAxis: 1600,
+          targetMin: 700,
+          targetMax: 1200
+        },
+        soil_moisture: {
+          key: "soil_moisture",
+          label: "Soil Moisture",
+          shortLabel: "Soil",
+          color: "#EF4444",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        light: {
+          key: "light",
+          label: "Light",
+          shortLabel: "Light",
+          color: "#FACC15",
+          unit: "lux",
+          minAxis: 0,
+          maxAxis: 1e5
+        },
+        water_level: {
+          key: "water_level",
+          label: "Water Level",
+          shortLabel: "Water",
+          color: "#2563EB",
+          unit: "%",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        ph: {
+          key: "ph",
+          label: "pH",
+          shortLabel: "pH",
+          color: "#A855F7",
+          unit: "",
+          minAxis: 0,
+          maxAxis: 14
+        },
+        weight: {
+          key: "weight",
+          label: "Weight",
+          shortLabel: "Weight",
+          color: "#94A3B8",
+          unit: "kg",
+          minAxis: 0,
+          maxAxis: 100
+        }
+      };
+      DEFAULT_OVERVIEW_METRICS = [
+        "temperature",
+        "humidity",
+        "co2"
+      ];
+    }
+  });
+
   // src/web/hal-ui/components/OperatorPanels.ts
   async function renderOperatorPanels() {
     const store = getStore();
@@ -3898,7 +5421,7 @@ ${result.failures.join("\n")}`
     <div class="op-device-cell ${r.online ? "online" : "offline"}" data-device-id="${r.id}">
       <div class="op-device-icon">${r.type === "relay" ? "RLY" : "PLG"}</div>
       <div class="op-device-info">
-        <span class="op-device-name">${escapeHtml4(r.name)}</span>
+        <span class="op-device-name">${escapeHtml5(r.name)}</span>
         <span class="op-device-protocol text-xs text-secondary">${r.protocol}</span>
       </div>
       <div class="op-device-toggle ${r.state === "on" ? "on" : ""}" data-device-id="${r.id}">
@@ -4011,7 +5534,7 @@ ${result.failures.join("\n")}`
       (a) => `
           <div class="op-alert ${a.level}">
             <span class="op-alert-dot"></span>
-            <span class="op-alert-text">${escapeHtml4(a.text)}</span>
+            <span class="op-alert-text">${escapeHtml5(a.text)}</span>
             <span class="op-alert-time text-xs text-secondary">${a.time}</span>
           </div>
         `
@@ -4045,7 +5568,7 @@ ${result.failures.join("\n")}`
         <div class="op-camera-frame">
           <div class="op-camera-placeholder">
             <span class="op-camera-icon">CAM</span>
-            <span class="op-camera-name">${escapeHtml4(cam.name)}</span>
+            <span class="op-camera-name">${escapeHtml5(cam.name)}</span>
           </div>
         </div>
       </div>
@@ -4094,7 +5617,7 @@ ${result.failures.join("\n")}`
     if (mins < 60) return `${mins}m`;
     return `${Math.floor(mins / 60)}h`;
   }
-  function escapeHtml4(s) {
+  function escapeHtml5(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectOperatorPanelStyles() {
@@ -4371,8 +5894,8 @@ ${result.failures.join("\n")}`
       (e) => `
     <div class="terminal-line ${e.level}">
       <span class="terminal-time text-mono">${formatTime2(e.timestamp)}</span>
-      <span class="terminal-source">${escapeHtml5(e.source)}</span>
-      <span class="terminal-msg">${escapeHtml5(e.message)}</span>
+      <span class="terminal-source">${escapeHtml6(e.source)}</span>
+      <span class="terminal-msg">${escapeHtml6(e.message)}</span>
     </div>
   `
     ).join("");
@@ -4434,7 +5957,7 @@ ${result.failures.join("\n")}`
       return "--:--:--";
     }
   }
-  function escapeHtml5(s) {
+  function escapeHtml6(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectTerminalStyles() {
@@ -4532,6 +6055,29 @@ ${result.failures.join("\n")}`
       await renderDiagnosticDashboard(container);
     }
   }
+  async function refreshDashboardLiveData() {
+    const store = getStore();
+    if (store.layout === "operator") {
+      const kpiStrip = document.querySelector(".kpi-strip");
+      if (kpiStrip) {
+        kpiStrip.outerHTML = renderKpiStrip(await buildKpiData());
+      }
+      const operatorPanels = document.querySelector(".operator-panels");
+      if (operatorPanels) {
+        operatorPanels.outerHTML = await renderOperatorPanels();
+        attachOperatorPanelHandlers();
+      }
+    }
+    const statusPanel = document.querySelector(".sys-status-panel");
+    if (statusPanel) {
+      statusPanel.outerHTML = renderSystemStatus();
+    }
+    const latestDecision = document.querySelector(".latest-decision");
+    if (latestDecision) {
+      latestDecision.outerHTML = renderLatestDecision();
+    }
+    await loadDashboardHeroCard();
+  }
   async function renderCalmDashboard(container) {
     const store = getStore();
     container.innerHTML = `
@@ -4583,7 +6129,7 @@ ${result.failures.join("\n")}`
       (d) => `
     <div class="calm-device-item ${d.online ? "online" : "offline"}">
       <span class="calm-device-dot"></span>
-      <span class="calm-device-name">${escapeHtml6(d.name)}</span>
+      <span class="calm-device-name">${escapeHtml7(d.name)}</span>
       <span class="calm-device-type text-xs text-secondary">${d.type}</span>
     </div>
   `
@@ -4705,6 +6251,9 @@ ${result.failures.join("\n")}`
         zones2,
         store.unitSystem
       );
+      if (dashActiveZone && !zoneCards.some((z) => z.zoneName === dashActiveZone)) {
+        dashActiveZone = "";
+      }
       const availableMetricKeys = new Set(
         zoneCards.flatMap((zone) => zone.metrics).filter((metric) => metric.data.length > 0).map((metric) => metric.key).filter(
           (key) => OVERVIEW_METRIC_KEYS.includes(key)
@@ -4720,9 +6269,10 @@ ${result.failures.join("\n")}`
         dashActiveMetrics.add(fallbackMetric);
       }
       if (sequence !== dashLoadSequence) return;
-      renderDashboardOverviewCards(zoneCards, "dash-hero-card", {
+      renderOverviewEnvironmentHero(zoneCards, "dash-hero-card", {
         activeKeys: new Set(dashActiveMetrics),
-        onToggle: (key) => {
+        activeZone: dashActiveZone,
+        onMetricToggle: (key) => {
           if (!availableMetricKeys.has(key)) return;
           const currentlyActive = Array.from(dashActiveMetrics).filter(
             (metricKey) => availableMetricKeys.has(metricKey)
@@ -4733,6 +6283,10 @@ ${result.failures.join("\n")}`
           } else {
             dashActiveMetrics.add(key);
           }
+          void loadDashboardHeroCard();
+        },
+        onZoneSelect: (zoneName) => {
+          dashActiveZone = zoneName;
           void loadDashboardHeroCard();
         }
       });
@@ -4812,7 +6366,7 @@ ${result.failures.join("\n")}`
       return `
       <div class="diag-snapshot hal-card">
         <div class="diag-snapshot-header">
-          <span class="text-sm font-semibold">${escapeHtml6(device?.name || deviceId)}</span>
+          <span class="text-sm font-semibold">${escapeHtml7(device?.name || deviceId)}</span>
           <span class="text-xs text-secondary">${device?.protocol || "unknown"}</span>
         </div>
         <div class="diag-snapshot-body">
@@ -4941,7 +6495,7 @@ ${result.failures.join("\n")}`
     <div class="device-mini-card ${d.online ? "online" : "offline"}" data-device-id="${d.id}">
       <div class="device-mini-icon">${deviceIcon(d.type)}</div>
       <div class="device-mini-info">
-        <div class="device-mini-name">${escapeHtml6(d.name)}</div>
+        <div class="device-mini-name">${escapeHtml7(d.name)}</div>
         <div class="device-mini-meta text-xs text-secondary">${d.protocol} \xB7 ${d.online ? "online" : "offline"}</div>
       </div>
       ${d.type === "relay" || d.type === "smart_plug" ? `
@@ -4961,8 +6515,8 @@ ${result.failures.join("\n")}`
       (d) => `
     <div class="decision-row ${d.status || "pending"}">
       <div class="decision-time text-mono text-xs text-secondary">${formatTime3(d.timestamp)}</div>
-      <div class="decision-trigger text-sm">${escapeHtml6(d.trigger)}</div>
-      <div class="decision-text text-sm font-semibold">${escapeHtml6(d.decision)}</div>
+      <div class="decision-trigger text-sm">${escapeHtml7(d.trigger)}</div>
+      <div class="decision-text text-sm font-semibold">${escapeHtml7(d.decision)}</div>
       <div class="decision-footer">
         <span class="decision-status ${d.status || "pending"}">${d.status || "pending"}</span>
         <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor2(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
@@ -5009,7 +6563,7 @@ ${result.failures.join("\n")}`
     if (conf >= 0.5) return "var(--warning)";
     return "var(--danger)";
   }
-  function escapeHtml6(s) {
+  function escapeHtml7(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function deviceIcon(type) {
@@ -5393,7 +6947,7 @@ ${result.failures.join("\n")}`
 `;
     document.head.appendChild(style);
   }
-  var dashActiveMetrics, dashLoadSequence, OVERVIEW_METRIC_KEYS, DASH_METRIC_META;
+  var dashActiveMetrics, dashActiveZone, dashLoadSequence, OVERVIEW_METRIC_KEYS, DASH_METRIC_META;
   var init_Dashboard = __esm({
     "src/web/hal-ui/views/Dashboard.ts"() {
       "use strict";
@@ -5403,9 +6957,11 @@ ${result.failures.join("\n")}`
       init_KpiStrip();
       init_HeroChart();
       init_ChartKit();
+      init_EnvironmentCharts();
       init_OperatorPanels();
       init_Terminal();
       dashActiveMetrics = /* @__PURE__ */ new Set(["temperature", "humidity", "co2"]);
+      dashActiveZone = "";
       dashLoadSequence = 0;
       OVERVIEW_METRIC_KEYS = ["temperature", "humidity", "co2"];
       DASH_METRIC_META = {
@@ -5728,7 +7284,7 @@ ${result.failures.join("\n")}`
         <span class="dw-device-checkmark"></span>
       </label>
       <div class="dw-device-info">
-        <div class="dw-device-name">${escapeHtml7(d.label)}</div>
+        <div class="dw-device-name">${escapeHtml8(d.label)}</div>
         <div class="dw-device-meta">
           ${d.host} \xB7 ${d.protocol} \xB7 ${d.type}
         </div>
@@ -5760,7 +7316,7 @@ ${result.failures.join("\n")}`
   }
   function renderStep4_Assign() {
     const zoneOptions = zones.map(
-      (z) => `<option value="${escapeHtml7(z.name)}">${escapeHtml7(z.name)} (${z.deviceCount})</option>`
+      (z) => `<option value="${escapeHtml8(z.name)}">${escapeHtml8(z.name)} (${z.deviceCount})</option>`
     ).join("");
     const roleOptions = `
     <option value="sensor">Sensor</option>
@@ -5772,13 +7328,13 @@ ${result.failures.join("\n")}`
       (d, i) => `
     <div class="dw-assign-row">
       <div class="dw-assign-device-info">
-        <div class="dw-assign-device-name">${escapeHtml7(d.label)}</div>
+        <div class="dw-assign-device-name">${escapeHtml8(d.label)}</div>
         <div class="dw-assign-device-meta">${d.protocol} \xB7 ${d.type}</div>
       </div>
       <div class="dw-assign-form">
         <input class="dw-input" type="text"
           id="dw-name-${i}"
-          value="${escapeHtml7(d.label || "")}"
+          value="${escapeHtml8(d.label || "")}"
           placeholder="Device name (1-64 chars)"
           maxlength="64" data-index="${i}" data-field="name">
         <select class="dw-select" id="dw-zone-${i}" data-index="${i}" data-field="zone">
@@ -5808,9 +7364,9 @@ ${result.failures.join("\n")}`
     const rows = selectedDevices.map(
       (d) => `
     <div class="dw-confirm-row">
-      <div class="dw-confirm-name">${escapeHtml7(d.label || d.name || d.host)}</div>
+      <div class="dw-confirm-name">${escapeHtml8(d.label || d.name || d.host)}</div>
       <div class="dw-confirm-meta">
-        ${d.zone ? `<span class="dw-zone-tag">${escapeHtml7(d.zone)}</span>` : ""}
+        ${d.zone ? `<span class="dw-zone-tag">${escapeHtml8(d.zone)}</span>` : ""}
         <span class="dw-protocol-badge">${d.protocol}</span>
         <span class="dw-role-badge">${d.role || d.type}</span>
       </div>
@@ -6063,7 +7619,7 @@ ${result.failures.join("\n")}`
   }
   function renderManualAddForm() {
     const zoneOptions = zones.map(
-      (z) => `<option value="${escapeHtml7(z.name)}">${escapeHtml7(z.name)}</option>`
+      (z) => `<option value="${escapeHtml8(z.name)}">${escapeHtml8(z.name)}</option>`
     ).join("");
     return `
     <div class="dw-step-content">
@@ -6154,7 +7710,7 @@ ${result.failures.join("\n")}`
         closeWizard();
       } catch (err) {
         if (validationEl)
-          validationEl.innerHTML = `<span class="dw-validation-error">${escapeHtml7(err.message)}</span>`;
+          validationEl.innerHTML = `<span class="dw-validation-error">${escapeHtml8(err.message)}</span>`;
         if (saveBtn) {
           saveBtn.disabled = false;
           saveBtn.textContent = "Add Device";
@@ -6458,7 +8014,7 @@ ${result.failures.join("\n")}`
 `;
     document.head.appendChild(style);
   }
-  function escapeHtml7(s) {
+  function escapeHtml8(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   var PROTOCOLS, currentStep, selectedProtocol, discoveredDevices, selectedDevices, zones, isScanning, scanAbortController, scanTimeout, wizardOverlay;
@@ -6527,7 +8083,7 @@ ${result.failures.join("\n")}`
     } catch {
     }
     const zoneOptions = zones2.map(
-      (z) => `<option value="${escapeHtml8(z.name)}">${escapeHtml8(z.name)}</option>`
+      (z) => `<option value="${escapeHtml9(z.name)}">${escapeHtml9(z.name)}</option>`
     ).join("");
     container.innerHTML = `
     <div class="page-header">
@@ -6535,9 +8091,14 @@ ${result.failures.join("\n")}`
         <h1 class="page-title">Devices</h1>
         <p class="page-subtitle">Manage farm hardware</p>
       </div>
-      <button class="hal-btn-primary" id="dw-add-device-btn">
-        <span>+ Add Device</span>
-      </button>
+      <div class="page-header-right">
+        <button class="hal-btn-secondary" id="dw-graph-toggle-btn">
+          <span>Graph</span>
+        </button>
+        <button class="hal-btn-primary" id="dw-add-device-btn">
+          <span>+ Add Device</span>
+        </button>
+      </div>
     </div>
 
     <div class="devices-toolbar mb-4">
@@ -6559,6 +8120,7 @@ ${result.failures.join("\n")}`
       </select>
     </div>
 
+    <div id="devices-graph-container" style="display:none" class="mb-4"></div>
     <div id="devices-grid" class="grid-3">
       ${renderDeviceCards(store.devices)}
     </div>
@@ -6622,16 +8184,16 @@ ${result.failures.join("\n")}`
       <div class="device-card hal-card" data-device-id="${d.id}" style="border-left: 3px solid ${state2 === "online" ? "var(--accent)" : "var(--danger)"}">
         <div class="device-card-header">
           <div class="device-card-icon">${deviceIcon2(d.type)}</div>
-          <div class="device-card-title" id="dev-name-${d.id}">${escapeHtml8(d.name)}</div>
+          <div class="device-card-title" id="dev-name-${d.id}">${escapeHtml9(d.name)}</div>
           <span class="hal-badge hal-badge-slate">${d.protocol}</span>
           <button class="device-rename-btn" data-device-id="${d.id}" title="Rename device">\u270F\uFE0F</button>
         </div>
         <div class="device-card-meta">
           <span class="text-xs text-secondary">${d.type} \xB7 ${state2}</span>
-          ${zone ? `<span class="device-zone-tag">${escapeHtml8(zone)}</span>` : ""}
+          ${zone ? `<span class="device-zone-tag">${escapeHtml9(zone)}</span>` : ""}
           ${d.lastSeen ? `<span class="text-xs text-mono text-secondary">${formatRelativeTime(d.lastSeen)}</span>` : ""}
         </div>
-        ${description ? `<div class="device-description text-xs text-secondary">${escapeHtml8(description)}</div>` : ""}
+        ${description ? `<div class="device-description text-xs text-secondary">${escapeHtml9(description)}</div>` : ""}
         ${d.type === "sensor" ? `<div class="device-chart-wrap" id="${chartId}"></div>` : ""}
         ${d.type === "relay" ? `
           <div class="device-card-relay-info">
@@ -6663,6 +8225,65 @@ ${result.failures.join("\n")}`
     document.getElementById("dw-add-device-btn")?.addEventListener("click", () => {
       openDiscoveryWizard();
     });
+    let graphVisible = false;
+    const graphBtn = document.getElementById("dw-graph-toggle-btn");
+    const graphContainer = document.getElementById("devices-graph-container");
+    const gridContainer = document.getElementById("devices-grid");
+    graphBtn?.addEventListener("click", () => {
+      graphVisible = !graphVisible;
+      if (graphVisible) {
+        graphBtn.classList.add("active");
+        graphContainer.style.display = "";
+        gridContainer.style.display = "none";
+        renderForceGraph();
+      } else {
+        graphBtn.classList.remove("active");
+        graphContainer.style.display = "none";
+        gridContainer.style.display = "";
+      }
+    });
+    function renderForceGraph() {
+      if (!graphContainer) return;
+      const store = getStore();
+      const nodes = store.devices.map((d) => ({
+        id: d.id,
+        label: d.name,
+        type: d.type,
+        online: d.online,
+        zone: d.zone
+      }));
+      const edges = [];
+      const zoneGroups = /* @__PURE__ */ new Map();
+      for (const d of store.devices) {
+        const z = d.zone || "";
+        const list = zoneGroups.get(z) ?? [];
+        list.push(d.id);
+        zoneGroups.set(z, list);
+      }
+      for (const [, ids] of zoneGroups) {
+        for (let i = 0; i < ids.length - 1; i++) {
+          for (let j = i + 1; j < ids.length; j++) {
+            edges.push({ source: ids[i], target: ids[j], kind: "zone" });
+          }
+        }
+      }
+      renderDeviceForceGraphSvg(nodes, edges, "devices-graph-container", (nodeId) => {
+        gridContainer.style.display = "";
+        graphBtn.classList.remove("active");
+        graphContainer.style.display = "none";
+        graphVisible = false;
+        const card = document.querySelector(
+          `.device-card[data-device-id="${CSS.escape(nodeId)}"]`
+        );
+        if (card) {
+          card.scrollIntoView({ behavior: "smooth", block: "center" });
+          card.style.outline = `2px solid var(--accent)`;
+          setTimeout(() => {
+            card.style.outline = "";
+          }, 2e3);
+        }
+      });
+    }
     function applyFilter() {
       const q = filterInput?.value.toLowerCase() || "";
       const type = typeSelect?.value || "";
@@ -6745,13 +8366,13 @@ ${result.failures.join("\n")}`
     }
     const zoneOptions = zones2.map((z) => {
       const selected = device.zone === z.name ? "selected" : "";
-      return `<option value="${escapeHtml8(z.name)}" ${selected}>${escapeHtml8(z.name)}</option>`;
+      return `<option value="${escapeHtml9(z.name)}" ${selected}>${escapeHtml9(z.name)}</option>`;
     }).join("");
     const currentZone = device.zone || "";
     nameEl.innerHTML = `
     <div class="inline-rename-form">
       <input class="dw-input inline-rename-input" type="text" id="rename-input-${deviceId}"
-        value="${escapeHtml8(currentName)}" maxlength="64" placeholder="Device name">
+        value="${escapeHtml9(currentName)}" maxlength="64" placeholder="Device name">
       <select class="dw-select inline-rename-zone" id="rename-zone-${deviceId}">
         <option value="">No Zone</option>
         ${zoneOptions}
@@ -6809,7 +8430,7 @@ ${result.failures.join("\n")}`
       return "--";
     }
   }
-  function escapeHtml8(s) {
+  function escapeHtml9(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function deviceIcon2(type) {
@@ -6838,6 +8459,7 @@ ${result.failures.join("\n")}`
   margin-bottom: var(--space-4);
 }
 .page-header-left { flex: 1; }
+.page-header-right { display: flex; gap: var(--space-2); flex-shrink: 0; }
 .hal-btn-primary {
   background: var(--accent);
   color: var(--text-primary);
@@ -6852,6 +8474,21 @@ ${result.failures.join("\n")}`
   transition: opacity 150ms;
 }
 .hal-btn-primary:hover { opacity: 0.85; }
+.hal-btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 var(--space-4);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 150ms;
+}
+.hal-btn-secondary:hover { border-color: var(--accent); color: var(--text-primary); }
+.hal-btn-secondary.active { background: var(--accent); color: var(--text-primary); border-color: var(--accent); }
 .devices-toolbar {
   display: flex;
   gap: var(--space-2);
@@ -7004,316 +8641,7 @@ ${result.failures.join("\n")}`
       init_Toast();
       init_DiscoveryWizard();
       init_ChartKit();
-    }
-  });
-
-  // src/web/hal-ui/components/FarmPalCharts.ts
-  function injectFarmPalChartsStyles() {
-    if (document.getElementById("hal-farmpalcharts-styles")) return;
-    const style = document.createElement("style");
-    style.id = "hal-farmpalcharts-styles";
-    style.textContent = `
-.hal-chart-card {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        padding: 20px;
-        color: var(--text-primary);
-        font-family: var(--font-display);
-        width: 100%;
-        box-sizing: border-box;
-        box-shadow: var(--shadow-card);
-      }
-      .hal-chart-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 16px;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-      .hal-chart-title {
-        font-size: 16px;
-        font-weight: 700;
-        color: var(--accent-bright);
-        
-      }
-      .hal-chart-subtitle {
-        font-size: 12px;
-        color: var(--info);
-        margin-top: 4px;
-        
-      }
-      .hal-chart-wrap {
-        width: 100%;
-        position: relative;
-      }
-      .hal-chart {
-        width: 100%;
-        height: auto;
-        min-height: 220px;
-        max-height: 260px;
-        display: block;
-      }
-      .grid { stroke: var(--border); stroke-dasharray: 3 6; opacity: 0.8; }
-      .axis { fill: var(--text-secondary); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-      .axis.right { fill: var(--info); }
-      .axis-label {
-        fill: var(--info);
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0;
-        text-transform: uppercase;
-      }
-      .axis-label.right { fill: var(--info); }
-      .hal-fc-legend {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 16px;
-        margin-top: 14px;
-        color: var(--text-primary);
-        font-size: 13px;
-        font-weight: 500;
-      }
-      .hal-fc-legend-item {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .hal-fc-legend-item span {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
-        box-shadow: 0 0 10px currentColor;
-      }
-      .hal-stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-        gap: 20px;
-        margin-top: 20px;
-        padding-top: 16px;
-        border-top: 1px solid var(--border);
-      }
-      .hal-stat-section { }
-      .hal-stat-label {
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--stat-color, var(--accent-bright));
-        margin-bottom: 8px;
-        text-shadow: 0 0 15px currentColor;
-      }
-      .hal-stat-row {
-        display: flex;
-        justify-content: space-between;
-        font-size: 13px;
-        font-family: var(--font-mono);
-        color: var(--text-secondary);
-        padding: 4px 0;
-      }
-      .hal-stat-row strong { color: var(--text-primary); font-weight: 600; }
-      @media (max-width: 480px) {
-        .hal-chart-card { padding: 14px; border-radius: var(--radius-md); }
-        .hal-chart-header { flex-direction: column; }
-        .hal-fc-legend { gap: 12px; font-size: 12px; }
-        .hal-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
-      }
-  `;
-    document.head.appendChild(style);
-  }
-  function makeSvgChart(el, data, series, opts = {}) {
-    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-    const visibleSeries = series.filter(
-      (s) => data.some((d) => Number.isFinite(Number(d[s.key])))
-    );
-    if (!data.length || visibleSeries.length === 0) {
-      el.innerHTML = '<div class="chart-empty">No sensor data</div>';
-      return;
-    }
-    const width = 800;
-    const height = isMobile ? 200 : 260;
-    const pad = {
-      top: 24,
-      right: opts.dualAxis ? 64 : 24,
-      bottom: 48,
-      left: isMobile ? 52 : 68
-    };
-    const innerW = width - pad.left - pad.right;
-    const innerH = height - pad.top - pad.bottom;
-    const leftValues = visibleSeries.filter((s) => s.axis !== "right").flatMap(
-      (s) => data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v))
-    );
-    const rightValues = visibleSeries.filter((s) => s.axis === "right").flatMap(
-      (s) => data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v))
-    );
-    const leftMin = opts.leftMin ?? (leftValues.length ? Math.min(...leftValues) : 0);
-    const leftMax = opts.leftMax ?? (leftValues.length ? Math.max(...leftValues) : 100);
-    const rightMin = opts.rightMin ?? (rightValues.length ? Math.min(...rightValues) : 0);
-    const rightMax = opts.rightMax ?? (rightValues.length ? Math.max(...rightValues) : 100);
-    const x = (i) => pad.left + i / Math.max(1, data.length - 1) * innerW;
-    const yLeft = (v) => pad.top + innerH - (v - leftMin) / Math.max(1, leftMax - leftMin) * innerH;
-    const yRight = (v) => pad.top + innerH - (v - rightMin) / Math.max(1, rightMax - rightMin) * innerH;
-    const linePath = (s) => {
-      let started = false;
-      return data.map((d, i) => {
-        const v = Number(d[s.key]);
-        if (!Number.isFinite(v)) return "";
-        const y = s.axis === "right" ? yRight(v) : yLeft(v);
-        const command = started ? "L" : "M";
-        started = true;
-        return `${command} ${x(i)} ${y}`;
-      }).join(" ");
-    };
-    const areaPath = (s) => {
-      const finiteIndexes = data.map((d, i) => Number.isFinite(Number(d[s.key])) ? i : -1).filter((i) => i >= 0);
-      if (finiteIndexes.length === 0) return "";
-      const top = linePath(s);
-      if (!top) return "";
-      const first = finiteIndexes[0];
-      const last = finiteIndexes[finiteIndexes.length - 1];
-      return `${top} L ${x(last)} ${pad.top + innerH} L ${x(first)} ${pad.top + innerH} Z`;
-    };
-    const grid = Array.from({ length: 5 }, (_, i) => {
-      const gy = pad.top + i / 4 * innerH;
-      return `<line x1="${pad.left}" y1="${gy}" x2="${width - pad.right}" y2="${gy}" class="grid"/>`;
-    }).join("");
-    const step = Math.max(1, Math.ceil(data.length / (isMobile ? 4 : 6)));
-    const xLabels = data.map(
-      (d, i) => i % step === 0 ? `<text x="${x(i)}" y="${height - 14}" class="axis" text-anchor="middle">${d.time}</text>` : ""
-    ).join("");
-    const leftTicks = Array.from({ length: 5 }, (_, i) => {
-      const value = leftMax - (leftMax - leftMin) / 4 * i;
-      const gy = pad.top + i / 4 * innerH;
-      return `<text x="${pad.left - 12}" y="${gy + 4}" class="axis" text-anchor="end">${value.toFixed(0)}</text>`;
-    }).join("");
-    const rightTicks = opts.dualAxis ? Array.from({ length: 5 }, (_, i) => {
-      const value = rightMax - (rightMax - rightMin) / 4 * i;
-      const gy = pad.top + i / 4 * innerH;
-      return `<text x="${width - pad.right + 12}" y="${gy + 4}" class="axis right">${value.toFixed(0)}${opts.dualAxis ? "%" : ""}</text>`;
-    }).join("") : "";
-    const leftAxisLabel = opts.leftAxisLabel ? `<text x="${-(pad.top + innerH / 2)}" y="16" class="axis-label" text-anchor="middle" transform="rotate(-90)">${opts.leftAxisLabel}</text>` : "";
-    const rightAxisLabel = opts.dualAxis && opts.rightAxisLabel ? `<text x="${pad.top + innerH / 2}" y="${width - 12}" class="axis-label right" text-anchor="middle" transform="rotate(90 ${width - 12} ${pad.top + innerH / 2})">${opts.rightAxisLabel}</text>` : "";
-    const fills = visibleSeries.filter((s) => s.fill).map(
-      (s) => `<path d="${areaPath(s)}" fill="${s.color}" opacity="0.35"></path>`
-    ).join("");
-    const lines = visibleSeries.map(
-      (s) => `<path d="${linePath(s)}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>`
-    ).join("");
-    const legend = visibleSeries.map(
-      (s) => `<span class="hal-fc-legend-item"><span style="background:${s.color};box-shadow:0 0 8px ${s.color}"></span>${s.label}</span>`
-    ).join("");
-    const statsHtml = opts.showStats && opts.stats ? `<div class="hal-stats-grid">${opts.stats.map(
-      (stat) => `
-        <div class="hal-stat-section" style="--stat-color:${stat.color}">
-          <div class="hal-stat-label">${stat.label}</div>
-          <div class="hal-stat-row"><span>MIN</span><strong>${stat.min}</strong></div>
-          <div class="hal-stat-row"><span>AVG</span><strong>${stat.avg}</strong></div>
-          <div class="hal-stat-row"><span>MAX</span><strong>${stat.max}</strong></div>
-        </div>
-      `
-    ).join("")}</div>` : "";
-    injectFarmPalChartsStyles();
-    el.innerHTML = `
-    <div class="hal-chart-card">
-      ${opts.title ? `
-        <div class="hal-chart-header">
-          <div>
-            <div class="hal-chart-title">${opts.title}</div>
-            ${opts.subtitle ? `<div class="hal-chart-subtitle">${opts.subtitle}</div>` : ""}
-          </div>
-        </div>
-      ` : ""}
-      <div class="hal-chart-wrap">
-        <svg class="hal-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Chart">
-          ${grid}
-          ${xLabels}
-          ${leftTicks}
-          ${rightTicks}
-          ${leftAxisLabel}
-          ${rightAxisLabel}
-          ${fills}
-          ${lines}
-        </svg>
-      </div>
-      <div class="hal-fc-legend">${legend}</div>
-      ${statsHtml}
-    </div>
-  `;
-  }
-  function calcStats(values) {
-    if (!values.length) return { min: "--", avg: "--", max: "--" };
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const avg = values.reduce((a, b) => a + b, 0) / values.length;
-    return {
-      min: min.toFixed(1),
-      avg: avg.toFixed(1),
-      max: max.toFixed(1)
-    };
-  }
-  function renderFarmPalSensorChart(containerId, data, series, opts = {}) {
-    const el = document.getElementById(containerId);
-    if (!el) return;
-    const activeSeries = series.filter(
-      (s) => data.some((d) => Number.isFinite(Number(d[s.key])))
-    );
-    if (!data.length || activeSeries.length === 0) {
-      el.innerHTML = '<div class="chart-empty">No sensor data</div>';
-      return;
-    }
-    const extents = /* @__PURE__ */ new Map();
-    for (const s of activeSeries) {
-      const values = data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v));
-      extents.set(s.key, {
-        min: Math.min(...values),
-        max: Math.max(...values)
-      });
-    }
-    const normalizedData = data.map((row) => {
-      const normalized = { time: row.time };
-      for (const s of activeSeries) {
-        const value = Number(row[s.key]);
-        const extent = extents.get(s.key);
-        if (!Number.isFinite(value) || !extent) continue;
-        const { min, max } = extent;
-        normalized[s.key] = max === min ? 50 : (value - min) / (max - min) * 100;
-      }
-      return normalized;
-    });
-    const stats = activeSeries.map((s) => {
-      const values = data.map((d) => Number(d[s.key])).filter((v) => Number.isFinite(v));
-      const calculated = calcStats(values);
-      return {
-        label: s.label,
-        color: s.color,
-        min: `${calculated.min}${s.unit}`,
-        avg: `${calculated.avg}${s.unit}`,
-        max: `${calculated.max}${s.unit}`
-      };
-    });
-    makeSvgChart(
-      el,
-      normalizedData,
-      activeSeries.map((s) => ({
-        key: s.key,
-        label: s.unit ? `${s.label} (${s.unit})` : s.label,
-        color: s.color,
-        fill: true
-      })),
-      {
-        leftMin: 0,
-        leftMax: 100,
-        title: opts.title || "Telemetry Digital Twin",
-        subtitle: opts.subtitle,
-        leftAxisLabel: "Normalized range",
-        showStats: true,
-        stats
-      }
-    );
-  }
-  var init_FarmPalCharts = __esm({
-    "src/web/hal-ui/components/FarmPalCharts.ts"() {
-      "use strict";
+      init_EnvironmentCharts();
     }
   });
 
@@ -7333,7 +8661,7 @@ ${result.failures.join("\n")}`
         <div class="sensors-hero-controls">
           <select class="hal-input" id="sensor-device-select">
             <option value="all" ${viewState.deviceId === "all" ? "selected" : ""}>All Devices</option>
-            ${sensors.map((s) => `<option value="${s.id}" ${viewState.deviceId === s.id ? "selected" : ""}>${escapeHtml9(s.name)}</option>`).join("")}
+            ${sensors.map((s) => `<option value="${s.id}" ${viewState.deviceId === s.id ? "selected" : ""}>${escapeHtml10(s.name)}</option>`).join("")}
           </select>
           <div class="time-range-group" role="group">
             ${["1H", "6H", "24H", "7D", "30D"].map(
@@ -7358,7 +8686,7 @@ ${result.failures.join("\n")}`
               aria-pressed="${active ? "true" : "false"}"
             >
               <span class="pill-dot"></span>
-              <span class="pill-label">${escapeHtml9(m.shortLabel)}</span>
+              <span class="pill-label">${escapeHtml10(m.shortLabel)}</span>
               <span class="pill-value" id="pill-${m.key}">--</span>
             </button>
           `;
@@ -7413,6 +8741,11 @@ ${result.failures.join("\n")}`
     injectSensorStyles();
     attachHandlers(sensors);
     await loadData(sensors);
+  }
+  async function refreshSensorsLiveData() {
+    const store = getStore();
+    const sensors = store.devices.filter((d) => d.type === "sensor");
+    await loadData(sensors, { showLoading: false });
   }
   function attachHandlers(sensors) {
     const deviceSelect = document.getElementById(
@@ -7474,7 +8807,7 @@ ${result.failures.join("\n")}`
       });
     });
   }
-  async function loadData(sensors) {
+  async function loadData(sensors, opts = {}) {
     const sequence = ++loadSequence;
     const selectedDevices2 = viewState.deviceId === "all" ? sensors : sensors.filter((s) => s.id === viewState.deviceId);
     const { from, to } = getRangeBounds(viewState.range);
@@ -7485,7 +8818,7 @@ ${result.failures.join("\n")}`
       (m) => viewState.activeMetrics.has(m.key)
     );
     const heroChart = document.getElementById("hero-chart");
-    if (heroChart)
+    if (heroChart && opts.showLoading !== false)
       heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
     try {
       const layers = [];
@@ -7562,7 +8895,7 @@ ${result.failures.join("\n")}`
       `<button class="zone-pill ${viewState.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>`,
       ...sortedZones.map((z) => {
         const isActive = z === viewState.activeZone;
-        return `<button class="zone-pill ${isActive ? "active" : ""}" data-zone="${escapeAttr(z)}">${escapeHtml9(z)}</button>`;
+        return `<button class="zone-pill ${isActive ? "active" : ""}" data-zone="${escapeAttr2(z)}">${escapeHtml10(z)}</button>`;
       })
     ].join("");
     container.querySelectorAll(".zone-pill").forEach((btn) => {
@@ -7658,7 +8991,7 @@ ${result.failures.join("\n")}`
       );
     });
   }
-  function escapeAttr(s) {
+  function escapeAttr2(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function renderHeroChart2(layers, _decisions = []) {
@@ -7715,29 +9048,26 @@ ${result.failures.join("\n")}`
         }
       }
     }
-    const chartData = Array.from(bucketMap.entries()).sort((a, b) => a[0] - b[0]).map(([timestamp, values]) => {
-      const point = {
-        time: formatTimeValue(new Date(timestamp), store.timeFormat)
-      };
-      for (const [metricKey, aggregate] of Object.entries(values)) {
-        if (aggregate.count > 0) {
-          point[metricKey] = aggregate.sum / aggregate.count;
-        }
-      }
-      return point;
-    });
+    const bucketEntries = Array.from(bucketMap.entries()).sort(
+      (a, b) => a[0] - b[0]
+    );
+    const chartMetrics = series.map((metric) => ({
+      ...metric,
+      data: bucketEntries.map(([timestamp, values]) => {
+        const aggregate = values[metric.key];
+        return aggregate && aggregate.count > 0 ? { t: timestamp, v: aggregate.sum / aggregate.count } : null;
+      }).filter((point) => point !== null)
+    }));
     const deviceName = viewState.deviceId === "all" ? "All Sensors" : layers[0]?.deviceName;
     const zoneName = viewState.activeZone || "All Zones";
     const subtitle = `${deviceName || "Sensors"} \xB7 ${zoneName} \xB7 ${viewState.range}`;
     try {
-      renderFarmPalSensorChart("hero-chart", chartData, series, {
-        subtitle
-      });
+      renderSensorEnvironmentHero(chartMetrics, "hero-chart", { subtitle });
     } catch (err) {
       const heroContainer = document.getElementById("hero-chart");
       if (heroContainer)
         heroContainer.innerHTML = `<div class="chart-empty">Chart error</div>`;
-      console.error("FarmPal chart render failed:", err);
+      console.error("Environment chart render failed:", err);
     }
     if (legend) legend.innerHTML = "";
   }
@@ -7774,8 +9104,8 @@ ${result.failures.join("\n")}`
       (r) => `
     <tr style="--metric-color:${r.color}">
       <td class="text-mono text-xs">${formatDateTimeValue(new Date(r.time), store.timeFormat)}</td>
-      <td>${escapeHtml9(r.device)}</td>
-      <td><span class="history-dot"></span>${escapeHtml9(r.metric)}</td>
+      <td>${escapeHtml10(r.device)}</td>
+      <td><span class="history-dot"></span>${escapeHtml10(r.metric)}</td>
       <td class="text-mono metric-value">${r.value}</td>
     </tr>
   `
@@ -7803,7 +9133,7 @@ ${result.failures.join("\n")}`
     const precision = Math.abs(value) >= 100 ? 0 : value % 1 === 0 ? 0 : 1;
     return `${value.toFixed(precision)}${unit}`;
   }
-  function escapeHtml9(s) {
+  function escapeHtml10(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectSensorStyles() {
@@ -8337,7 +9667,7 @@ ${result.failures.join("\n")}`
       "use strict";
       init_store();
       init_api();
-      init_FarmPalCharts();
+      init_EnvironmentCharts();
       metrics = [
         {
           key: "temperature",
@@ -8464,7 +9794,9 @@ ${result.failures.join("\n")}`
     </div>
     <div class="sensors-hero-controls">
       <div class="time-range-group" role="group">
-        ${["1H", "6H", "24H", "7D", "30D"].map((r) => `<button class="hal-range-btn ${r === systemViewRange ? "active" : ""}" data-range="${r}">${r}</button>`).join("")}
+        ${["1H", "6H", "24H", "7D", "30D"].map(
+      (r) => `<button class="hal-range-btn ${r === systemViewRange ? "active" : ""}" data-range="${r}">${r}</button>`
+    ).join("")}
       </div>
       <button class="hal-range-btn" id="sys-unit-toggle">${store.unitSystem === "metric" ? "\xB0C" : "\xB0F"}</button>
     </div>
@@ -8534,71 +9866,89 @@ ${result.failures.join("\n")}`
     });
     await loadSystemData();
   }
+  function setChartState(el, msg) {
+    if (!el) return;
+    const div = document.createElement("div");
+    div.className = "chart-empty";
+    div.textContent = msg;
+    el.replaceChildren(div);
+  }
   async function loadSystemData() {
     const store = getStore();
     const sensors = store.devices.filter((d) => d.type === "sensor");
     const { from, to } = getRangeBounds2(systemViewRange);
     const heroChart = document.getElementById("system-hero-chart");
-    if (heroChart) {
-      heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
-    }
+    setChartState(heroChart, "Loading...");
     try {
-      const bucketMap = /* @__PURE__ */ new Map();
+      const metricBuckets = /* @__PURE__ */ new Map();
+      const metricLatestTs = /* @__PURE__ */ new Map();
+      const metricLatestVal = /* @__PURE__ */ new Map();
+      for (const m of systemMetrics) {
+        metricBuckets.set(m.key, /* @__PURE__ */ new Map());
+      }
       await Promise.all(
         sensors.flatMap(
           (device) => systemMetrics.map(async (metric) => {
-            const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
+            const data = await halApi.getSensorHistory(
+              device.id,
+              metric.key,
+              from,
+              to
+            );
             if (data.length === 0) return;
             const latest = data[data.length - 1];
-            const pill = document.getElementById(`sys-pill-${metric.key}`);
-            if (pill) {
-              const cv = formatSensorValue(latest.value, metric.key, store.unitSystem);
-              pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
+            const prevTs = metricLatestTs.get(metric.key) ?? "";
+            if (latest.timestamp > prevTs) {
+              metricLatestTs.set(metric.key, latest.timestamp);
+              const cv = formatSensorValue(
+                latest.value,
+                metric.key,
+                store.unitSystem
+              );
+              metricLatestVal.set(metric.key, cv.value);
+              const pill = document.getElementById(`sys-pill-${metric.key}`);
+              if (pill)
+                pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
             }
+            const buckets = metricBuckets.get(metric.key);
             for (const d of data) {
               const t = new Date(d.timestamp).getTime();
               if (!Number.isFinite(t)) continue;
               const bucket = Math.floor(t / 6e4) * 6e4;
-              const cv = formatSensorValue(d.value, metric.key, store.unitSystem).value;
-              const row = bucketMap.get(bucket) ?? {};
-              const acc = row[metric.key] ?? { sum: 0, count: 0 };
-              acc.sum += cv;
+              const val = formatSensorValue(
+                d.value,
+                metric.key,
+                store.unitSystem
+              ).value;
+              const acc = buckets.get(bucket) ?? { sum: 0, count: 0 };
+              acc.sum += val;
               acc.count += 1;
-              row[metric.key] = acc;
-              bucketMap.set(bucket, row);
+              buckets.set(bucket, acc);
             }
           })
         )
       );
-      const chartData = Array.from(bucketMap.entries()).sort((a, b) => a[0] - b[0]).map(([timestamp, values]) => {
-        const point = {
-          time: formatTimeValue(new Date(timestamp), store.timeFormat)
-        };
-        for (const [key, acc] of Object.entries(values)) {
-          if (acc.count > 0) point[key] = acc.sum / acc.count;
-        }
-        return point;
-      });
-      if (chartData.length === 0) {
-        if (heroChart) heroChart.innerHTML = '<div class="chart-empty">No sensor data</div>';
-        return;
-      }
-      const activeSeries = systemMetrics.filter((m) => chartData.some((d) => Number.isFinite(Number(d[m.key])))).map((m) => {
-        const sample = chartData.find((d) => Number.isFinite(Number(d[m.key])));
-        const cv = sample ? formatSensorValue(Number(sample[m.key]), m.key, store.unitSystem) : null;
+      const chartMetrics = systemMetrics.filter((m) => metricLatestVal.has(m.key)).map((m) => {
+        const minCv = formatSensorValue(m.minAxis, m.key, store.unitSystem);
         return {
           key: m.key,
           label: m.label,
+          unit: minCv.unit || m.fallbackUnit,
           color: m.color,
-          unit: cv?.unit || m.fallbackUnit
+          data: Array.from(metricBuckets.get(m.key).entries()).sort((a, b) => a[0] - b[0]).map(([t, acc]) => ({
+            t,
+            v: acc.count > 0 ? acc.sum / acc.count : 0
+          }))
         };
       });
-      renderFarmPalSensorChart("system-hero-chart", chartData, activeSeries, {
-        subtitle: `${systemViewRange} \xB7 All sensors`
-      });
+      if (chartMetrics.length === 0) {
+        setChartState(heroChart, "No sensor data");
+        return;
+      }
+      renderSystemEnvironmentHero(chartMetrics, "system-hero-chart");
     } catch (err) {
       console.error("System view load failed:", err);
-      if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
+      setChartState(heroChart, "Failed to load");
     }
   }
   function injectSystemStyles() {
@@ -8655,11 +10005,35 @@ ${result.failures.join("\n")}`
       "use strict";
       init_store();
       init_api();
-      init_FarmPalCharts();
+      init_EnvironmentCharts();
       systemMetrics = [
-        { key: "temperature", label: "Temperature", shortLabel: "Temp", fallbackUnit: "\xB0C", color: "#F59E0B", minAxis: 10, maxAxis: 40 },
-        { key: "humidity", label: "Humidity", shortLabel: "RH", fallbackUnit: "%", color: "#38BDF8", minAxis: 0, maxAxis: 100 },
-        { key: "co2", label: "CO\u2082", shortLabel: "CO\u2082", fallbackUnit: "ppm", color: "#22C55E", minAxis: 0, maxAxis: 2e3 }
+        {
+          key: "temperature",
+          label: "Temperature",
+          shortLabel: "Temp",
+          fallbackUnit: "\xB0C",
+          color: "#F59E0B",
+          minAxis: 10,
+          maxAxis: 40
+        },
+        {
+          key: "humidity",
+          label: "Humidity",
+          shortLabel: "RH",
+          fallbackUnit: "%",
+          color: "#38BDF8",
+          minAxis: 0,
+          maxAxis: 100
+        },
+        {
+          key: "co2",
+          label: "CO\u2082",
+          shortLabel: "CO\u2082",
+          fallbackUnit: "ppm",
+          color: "#22C55E",
+          minAxis: 0,
+          maxAxis: 2e3
+        }
       ];
       systemViewRange = "24H";
     }
@@ -8742,7 +10116,7 @@ ${result.failures.join("\n")}`
         ${countdown}
       </div>
       <div class="pending-decision-middle">
-        <span class="pending-decision-text">${escapeHtml10(decisionText)}</span>
+        <span class="pending-decision-text">${escapeHtml11(decisionText)}</span>
         <span class="pending-decision-confidence text-mono text-xs">${confidence}</span>
       </div>
       <div class="pending-decision-right">
@@ -8849,7 +10223,7 @@ ${result.failures.join("\n")}`
           <span class="decision-time text-mono text-xs text-secondary">${formatTime4(d.timestamp)}</span>
         </div>
         <div class="decision-middle">
-          <span class="decision-trigger-text text-sm">${escapeHtml10(d.trigger)}</span>
+          <span class="decision-trigger-text text-sm">${escapeHtml11(d.trigger)}</span>
         </div>
         <div class="decision-right">
           <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor3(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
@@ -8859,12 +10233,12 @@ ${result.failures.join("\n")}`
       <div class="decision-detail" ${expandedDecisionIds.has(d.id) ? "" : "hidden"}>
         <div class="decision-detail-row">
           <span class="decision-detail-label">Decision</span>
-          <span class="decision-detail-value font-semibold">${escapeHtml10(d.decision)}</span>
+          <span class="decision-detail-value font-semibold">${escapeHtml11(d.decision)}</span>
         </div>
         ${d.outcome ? `
         <div class="decision-detail-row">
           <span class="decision-detail-label">Outcome</span>
-          <span class="decision-detail-value">${escapeHtml10(d.outcome)}</span>
+          <span class="decision-detail-value">${escapeHtml11(d.outcome)}</span>
         </div>` : ""}
         <div class="decision-detail-row">
           <span class="decision-detail-label">Confidence</span>
@@ -8973,7 +10347,7 @@ ${result.failures.join("\n")}`
       return "--";
     }
   }
-  function escapeHtml10(s) {
+  function escapeHtml11(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectDecisionsStyles() {
@@ -9309,7 +10683,7 @@ ${result.failures.join("\n")}`
       return `
     <div class="camera-card hal-card ${c.online ? "" : "camera-offline"}" data-camera-id="${c.id}">
       <div class="camera-thumbnail" id="thumb-${c.id}">
-        ${demoImg && c.online ? `<img src="${demoImg}" alt="${escapeHtml11(c.name)}" class="camera-img" />` : `
+        ${demoImg && c.online ? `<img src="${demoImg}" alt="${escapeHtml12(c.name)}" class="camera-img" />` : `
         <div class="camera-placeholder">
           <span class="camera-icon">CAM</span>
           <span class="text-secondary text-sm">${c.online ? "No preview" : "Offline"}</span>
@@ -9320,7 +10694,7 @@ ${result.failures.join("\n")}`
         </div>
       </div>
       <div class="camera-info">
-        <div class="camera-name">${escapeHtml11(c.name)}</div>
+        <div class="camera-name">${escapeHtml12(c.name)}</div>
         <div class="camera-meta text-xs text-secondary">
           ${c.protocol}
           ${c.online ? '<span class="camera-status-online">\xB7 online</span>' : '<span class="camera-status-offline">\xB7 offline</span>'}
@@ -9366,7 +10740,7 @@ ${result.failures.join("\n")}`
               <div class="capture-meta">
                 <div class="capture-meta-row">
                   <span class="text-secondary text-xs">Path</span>
-                  <span class="text-mono text-xs">${escapeHtml11(result.path)}</span>
+                  <span class="text-mono text-xs">${escapeHtml12(result.path)}</span>
                 </div>
                 <div class="capture-meta-row">
                   <span class="text-secondary text-xs">Size</span>
@@ -9390,7 +10764,7 @@ ${result.failures.join("\n")}`
       });
     });
   }
-  function escapeHtml11(s) {
+  function escapeHtml12(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectCamerasStyles() {
@@ -11504,7 +12878,7 @@ ${result.failures.join("\n")}`
             id="password"
             class="form-input"
             placeholder="Minimum 8 characters"
-            value="${escapeHtml12(wizardData.adminPassword)}"
+            value="${escapeHtml13(wizardData.adminPassword)}"
             minlength="8"
             autocomplete="new-password"
           />
@@ -11560,7 +12934,7 @@ ${result.failures.join("\n")}`
           id="farm-name"
           class="form-input"
           placeholder="My Farm"
-          value="${escapeHtml12(wizardData.farmName)}"
+          value="${escapeHtml13(wizardData.farmName)}"
           maxlength="64"
           autocomplete="off"
         />
@@ -11601,7 +12975,7 @@ ${result.failures.join("\n")}`
         <select id="timezone" class="form-select">
           ${regionOptions}
         </select>
-        <div class="form-hint">Detected: <strong id="detected-timezone">${escapeHtml12(currentTz)}</strong></div>
+        <div class="form-hint">Detected: <strong id="detected-timezone">${escapeHtml13(currentTz)}</strong></div>
       </div>
     </div>
   `;
@@ -11619,13 +12993,13 @@ ${result.failures.join("\n")}`
           id="wifi-ssid"
           class="form-input"
           placeholder="Enter network name or select below"
-          value="${escapeHtml12(wizardData.wifiSsid)}"
+          value="${escapeHtml13(wizardData.wifiSsid)}"
           maxlength="32"
           autocomplete="off"
           list="wifi-networks-list"
         />
         <datalist id="wifi-networks-list">
-          ${wifiNetworks.map((n) => `<option value="${escapeHtml12(n.ssid)}">`).join("")}
+          ${wifiNetworks.map((n) => `<option value="${escapeHtml13(n.ssid)}">`).join("")}
         </datalist>
       </div>
 
@@ -11680,7 +13054,7 @@ ${result.failures.join("\n")}`
           id="llm-endpoint"
           class="form-input"
           placeholder="http://localhost:11434"
-          value="${escapeHtml12(wizardData.llmEndpoint)}"
+          value="${escapeHtml13(wizardData.llmEndpoint)}"
         />
         <div class="form-hint">${wizardData.llmProvider === "ollama" ? "Ollama must be running on your device." : "LM Studio server address."}</div>
       </div>
@@ -11695,7 +13069,7 @@ ${result.failures.join("\n")}`
             id="llm-api-key"
             class="form-input"
             placeholder="sk-..."
-            value="${escapeHtml12(wizardData.llmApiKey)}"
+            value="${escapeHtml13(wizardData.llmApiKey)}"
             autocomplete="off"
           />
           <button type="button" class="input-toggle" id="toggle-api-key" aria-label="Show API key">
@@ -11714,7 +13088,7 @@ ${result.failures.join("\n")}`
           id="llm-model"
           class="form-input"
           placeholder="${wizardData.llmProvider === "ollama" ? "llama3.2, mistral, etc." : "e.g., llama3.2"}"
-          value="${escapeHtml12(wizardData.llmModel)}"
+          value="${escapeHtml13(wizardData.llmModel)}"
           autocomplete="off"
         />
         <div class="form-hint">Must match an installed model in your Ollama/LM Studio.</div>
@@ -11750,7 +13124,7 @@ ${result.failures.join("\n")}`
             id="telegram-token"
             class="form-input"
             placeholder="123456789:ABCdefGHI..."
-            value="${escapeHtml12(wizardData.telegramBotToken)}"
+            value="${escapeHtml13(wizardData.telegramBotToken)}"
             autocomplete="off"
           />
           <button type="button" class="input-toggle" id="toggle-telegram-token" aria-label="Show token">
@@ -11773,7 +13147,7 @@ ${result.failures.join("\n")}`
       <div class="wizard-card wizard-error">
         <div class="error-icon">\u26A0</div>
         <h2>Setup Error</h2>
-        <p>${escapeHtml12(message)}</p>
+        <p>${escapeHtml13(message)}</p>
         <button class="wizard-btn wizard-btn-next" onclick="location.reload()">Refresh</button>
       </div>
     </div>
@@ -11975,7 +13349,7 @@ ${result.failures.join("\n")}`
     if (body) {
       body.innerHTML = `
       <div class="wizard-step-content">
-        <div class="step-error">${escapeHtml12(message)}</div>
+        <div class="step-error">${escapeHtml13(message)}</div>
       </div>
     `;
     }
@@ -12049,7 +13423,7 @@ ${result.failures.join("\n")}`
       );
     });
   }
-  function escapeHtml12(str) {
+  function escapeHtml13(str) {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
   function injectWizardStyles2() {
@@ -12702,6 +14076,15 @@ ${result.failures.join("\n")}`
         <div class="safety-summary-card loading">Loading...</div>
       </div>
 
+      <div class="safety-viz-grid mb-4">
+        <div id="safety-denial-heatmap">
+          <div class="safety-summary-card loading">Loading denials...</div>
+        </div>
+        <div id="safety-threshold-bars">
+          <div class="safety-summary-card loading">Loading thresholds...</div>
+        </div>
+      </div>
+
       <!-- Tab bar for Safety Rules vs Thresholds -->
       <div class="safety-tabs" id="safety-tabs">
         <button class="safety-tab active" data-tab="rules">Safety Rules</button>
@@ -12754,6 +14137,7 @@ ${result.failures.join("\n")}`
     await loadSafetySummary();
     await loadSafetyRules();
     await loadRecentDenials();
+    await loadSafetyVisualizations();
     await loadDevicesForFilter();
     await loadThresholds();
   }
@@ -12901,6 +14285,91 @@ ${result.failures.join("\n")}`
       console.error("Failed to load recent denials:", err);
     }
   }
+  async function loadSafetyVisualizations() {
+    const heatmapEl = document.getElementById("safety-denial-heatmap");
+    const barsEl = document.getElementById("safety-threshold-bars");
+    try {
+      const [audit, thresholds] = await Promise.all([
+        halApi.getSafetyAudit({ limit: 250, result: "DENIED" }),
+        halApi.getThresholds()
+      ]);
+      renderSafetyDenialCalendarHeatmap(audit, "safety-denial-heatmap");
+      renderSafetyThresholdBulletBars(
+        buildSafetyThresholdBars(thresholds),
+        "safety-threshold-bars"
+      );
+    } catch (err) {
+      console.error("Failed to load safety visualizations:", err);
+      if (heatmapEl)
+        heatmapEl.innerHTML = '<div class="safety-summary-card loading">Failed to load denials.</div>';
+      if (barsEl)
+        barsEl.innerHTML = '<div class="safety-summary-card loading">Failed to load thresholds.</div>';
+    }
+  }
+  function buildSafetyThresholdBars(thresholds) {
+    const store = getStore();
+    return thresholds.map((threshold) => {
+      const metric = threshold.metric;
+      const meta = getSafetyMetricMeta(metric);
+      const scope = resolveThresholdScope(threshold);
+      const currentValue = resolveThresholdCurrentValue(threshold, metric);
+      return {
+        id: threshold.id,
+        label: METRIC_LABELS[metric] || metric,
+        scope,
+        metric,
+        color: meta.color,
+        unit: METRIC_UNITS[metric] || "",
+        currentValue,
+        minValue: threshold.minValue,
+        maxValue: threshold.maxValue,
+        axisMin: meta.axisMin,
+        axisMax: meta.axisMax,
+        enabled: threshold.enabled
+      };
+    });
+  }
+  function resolveThresholdScope(threshold) {
+    const store = getStore();
+    if (threshold.deviceId) {
+      const device = store.devices.find((d) => d.id === threshold.deviceId);
+      return device?.name || threshold.deviceId;
+    }
+    if (threshold.zone) return `Zone: ${threshold.zone}`;
+    return "All Devices";
+  }
+  function resolveThresholdCurrentValue(threshold, metric) {
+    const store = getStore();
+    const sensors = store.devices.filter((device) => {
+      if (device.type !== "sensor") return false;
+      if (threshold.deviceId) return device.id === threshold.deviceId;
+      if (threshold.zone) return device.zone === threshold.zone;
+      return true;
+    });
+    const values = sensors.map((sensor) => {
+      const snapshot = store.sensors[sensor.id];
+      const value = snapshot?.[metric]?.value;
+      return typeof value === "number" && Number.isFinite(value) && value !== 0 ? value : null;
+    }).filter((value) => value != null);
+    if (values.length === 0) return null;
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  }
+  function getSafetyMetricMeta(metric) {
+    switch (metric) {
+      case "temperature":
+        return { color: "#F59E0B", axisMin: 10, axisMax: 40 };
+      case "humidity":
+        return { color: "#38BDF8", axisMin: 0, axisMax: 100 };
+      case "co2":
+        return { color: "#22C55E", axisMin: 400, axisMax: 1600 };
+      case "soil_moisture":
+        return { color: "#EF4444", axisMin: 0, axisMax: 100 };
+      case "light":
+        return { color: "#FACC15", axisMin: 0, axisMax: 1e5 };
+      default:
+        return { color: "#94A3B8", axisMin: 0, axisMax: 100 };
+    }
+  }
   async function loadDevicesForFilter() {
     const store = getStore();
     const selectEl = document.getElementById(
@@ -12910,7 +14379,7 @@ ${result.failures.join("\n")}`
     const devices = store.devices.filter(
       (d) => d.type === "relay" || d.type === "smart_plug"
     );
-    const options = devices.map((d) => `<option value="${d.id}">${escapeHtml13(d.name)}</option>`).join("");
+    const options = devices.map((d) => `<option value="${d.id}">${escapeHtml14(d.name)}</option>`).join("");
     selectEl.innerHTML = `<option value="">All Devices</option>${options}`;
     selectEl.addEventListener("change", () => {
     });
@@ -12946,10 +14415,10 @@ ${result.failures.join("\n")}`
     return `
     <div class="rule-card ${rule.enabled ? "" : "disabled"}" data-device-id="${rule.deviceId}">
       <div class="rule-header">
-        <div class="rule-device">${escapeHtml13(deviceName)}</div>
+        <div class="rule-device">${escapeHtml14(deviceName)}</div>
         <div class="rule-type-badge">${ruleLabel}</div>
       </div>
-      <div class="rule-config">${escapeHtml13(configDisplay)}</div>
+      <div class="rule-config">${escapeHtml14(configDisplay)}</div>
       <div class="rule-meta">
         Priority: ${rule.priority} \xB7 Updated ${formatRelativeTime2(rule.updatedAt)}
       </div>
@@ -13007,7 +14476,7 @@ ${result.failures.join("\n")}`
     const deviceName = device?.name || deviceId;
     openModal(
       "Delete Safety Rule",
-      `<p>Are you sure you want to delete this safety rule for <strong>${escapeHtml13(deviceName)}</strong>?</p>
+      `<p>Are you sure you want to delete this safety rule for <strong>${escapeHtml14(deviceName)}</strong>?</p>
      <p class="text-danger">This action cannot be undone. The device will no longer be protected by this rule.</p>`,
       `<button class="btn btn-secondary" onclick="window.__closeModal && window.__closeModal()">Cancel</button>
      <button class="btn btn-danger" id="confirm-delete-rule-btn">Delete Rule</button>`
@@ -13031,7 +14500,7 @@ ${result.failures.join("\n")}`
     const devices = store.devices.filter(
       (d) => d.type === "relay" || d.type === "smart_plug"
     );
-    const deviceOptions = devices.map((d) => `<option value="${d.id}">${escapeHtml13(d.name)}</option>`).join("");
+    const deviceOptions = devices.map((d) => `<option value="${d.id}">${escapeHtml14(d.name)}</option>`).join("");
     const ruleTypeOptions = Object.entries(RULE_TYPE_LABELS).map(([key, label]) => `<option value="${key}">${label}</option>`).join("");
     openModal(
       "Add Safety Rule",
@@ -13124,7 +14593,7 @@ ${result.failures.join("\n")}`
       case "dependency":
         const store = getStore();
         const sensorDevices = store.devices.filter((d) => d.type === "sensor");
-        const sensorOptions = sensorDevices.map((d) => `<option value="${d.id}">${escapeHtml13(d.name)}</option>`).join("");
+        const sensorOptions = sensorDevices.map((d) => `<option value="${d.id}">${escapeHtml14(d.name)}</option>`).join("");
         fieldsHtml = `
         <div class="form-group">
           <label for="config-trigger-device">When this sensor...</label>
@@ -13298,12 +14767,12 @@ ${result.failures.join("\n")}`
     const deviceName = device?.name || rule.deviceId;
     const ruleLabel = RULE_TYPE_LABELS[rule.ruleType] || rule.ruleType;
     openModal(
-      `Edit Safety Rule: ${escapeHtml13(deviceName)}`,
+      `Edit Safety Rule: ${escapeHtml14(deviceName)}`,
       `
     <form id="edit-rule-form" class="add-rule-form">
       <div class="form-group">
         <label>Device</label>
-        <div class="form-static">${escapeHtml13(deviceName)}</div>
+        <div class="form-static">${escapeHtml14(deviceName)}</div>
       </div>
 
       <div class="form-group">
@@ -13399,7 +14868,7 @@ ${result.failures.join("\n")}`
         const store = getStore();
         const sensorDevices = store.devices.filter((d) => d.type === "sensor");
         const sensorOptions = sensorDevices.map(
-          (d) => `<option value="${d.id}" ${d.id === ruleConfig.triggerDeviceId ? "selected" : ""}>${escapeHtml13(d.name)}</option>`
+          (d) => `<option value="${d.id}" ${d.id === ruleConfig.triggerDeviceId ? "selected" : ""}>${escapeHtml14(d.name)}</option>`
         ).join("");
         return `
         <div class="form-group">
@@ -13435,7 +14904,7 @@ ${result.failures.join("\n")}`
       `;
       }
       default:
-        return `<p class="text-secondary text-sm">Unknown rule type: ${escapeHtml13(ruleType)}</p>`;
+        return `<p class="text-secondary text-sm">Unknown rule type: ${escapeHtml14(ruleType)}</p>`;
     }
   }
   async function saveEditedRule(ruleId) {
@@ -13594,7 +15063,7 @@ ${result.failures.join("\n")}`
     return `
     <div class="threshold-card ${threshold.enabled ? "" : "disabled"}" data-threshold-id="${threshold.id}">
       <div class="threshold-header">
-        <div class="threshold-device">${escapeHtml13(deviceName)}</div>
+        <div class="threshold-device">${escapeHtml14(deviceName)}</div>
         <div class="threshold-metric-badge">${metricLabel}</div>
       </div>
       <div class="threshold-bounds">
@@ -13629,6 +15098,7 @@ ${result.failures.join("\n")}`
         "success"
       );
       await loadThresholds();
+      await loadSafetyVisualizations();
     } catch (err) {
       showToast(`Failed to toggle threshold: ${err.message}`, "error");
     }
@@ -13650,6 +15120,7 @@ ${result.failures.join("\n")}`
         await halApi.deleteThreshold(thresholdId);
         showToast("Threshold deleted", "success");
         await loadThresholds();
+        await loadSafetyVisualizations();
       } catch (err) {
         showToast(`Failed to delete threshold: ${err.message}`, "error");
       }
@@ -13662,10 +15133,10 @@ ${result.failures.join("\n")}`
       ...new Set(store.devices.map((d) => d.zone).filter(Boolean))
     ];
     const deviceOptions = `<option value="">All Devices (global)</option>` + sensorDevices.map(
-      (d) => `<option value="${d.id}">${escapeHtml13(d.name || d.id)}</option>`
+      (d) => `<option value="${d.id}">${escapeHtml14(d.name || d.id)}</option>`
     ).join("");
     const zoneOptions = zones2.length > 0 ? `<option value="">All Zones</option>` + zones2.map(
-      (z) => `<option value="${escapeHtml13(z)}">${escapeHtml13(z)}</option>`
+      (z) => `<option value="${escapeHtml14(z)}">${escapeHtml14(z)}</option>`
     ).join("") : "";
     const metricOptions = Object.entries(METRIC_LABELS).map(([key, label]) => `<option value="${key}">${label}</option>`).join("");
     openModal(
@@ -13776,6 +15247,7 @@ ${result.failures.join("\n")}`
       closeModal();
       showToast("Threshold created successfully", "success");
       await loadThresholds();
+      await loadSafetyVisualizations();
     } catch (err) {
       showToast(`Failed to create threshold: ${err.message}`, "error");
     }
@@ -13798,10 +15270,10 @@ ${result.failures.join("\n")}`
     if (threshold.deviceId) scope = "device";
     else if (threshold.zone) scope = "zone";
     const deviceOptions = `<option value="">All Devices (global)</option>` + sensorDevices.map(
-      (d) => `<option value="${d.id}" ${d.id === threshold.deviceId ? "selected" : ""}>${escapeHtml13(d.name || d.id)}</option>`
+      (d) => `<option value="${d.id}" ${d.id === threshold.deviceId ? "selected" : ""}>${escapeHtml14(d.name || d.id)}</option>`
     ).join("");
     const zoneOptions = zones2.length > 0 ? `<option value="">All Zones</option>` + zones2.map(
-      (z) => `<option value="${escapeHtml13(z)}" ${z === threshold.zone ? "selected" : ""}>${escapeHtml13(z)}</option>`
+      (z) => `<option value="${escapeHtml14(z)}" ${z === threshold.zone ? "selected" : ""}>${escapeHtml14(z)}</option>`
     ).join("") : "";
     const metricOptions = Object.entries(METRIC_LABELS).map(
       ([key, label]) => `<option value="${key}" ${key === threshold.metric ? "selected" : ""}>${label}</option>`
@@ -13923,6 +15395,7 @@ ${result.failures.join("\n")}`
       closeModal();
       showToast("Threshold updated successfully", "success");
       await loadThresholds();
+      await loadSafetyVisualizations();
     } catch (err) {
       showToast(`Failed to update threshold: ${err.message}`, "error");
     }
@@ -13944,7 +15417,7 @@ ${result.failures.join("\n")}`
       return isoString;
     }
   }
-  function escapeHtml13(text) {
+  function escapeHtml14(text) {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function injectSafetyStyles() {
@@ -13972,6 +15445,12 @@ ${result.failures.join("\n")}`
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: var(--space-4);
   margin-bottom: var(--space-6);
+}
+.safety-viz-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: var(--space-4);
+  align-items: stretch;
 }
 .safety-summary-card {
   background: var(--bg-secondary);
@@ -14016,6 +15495,11 @@ ${result.failures.join("\n")}`
 .summary-card-meta {
   font-size: 11px;
   color: var(--text-tertiary);
+}
+@media (max-width: 960px) {
+  .safety-viz-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .safety-section-header {
   display: flex;
@@ -14296,6 +15780,7 @@ ${result.failures.join("\n")}`
       init_api();
       init_Modal();
       init_Toast();
+      init_EnvironmentCharts();
       RULE_TYPE_LABELS = {
         max_on_duration: "Max On Duration",
         min_off_duration: "Min Off Duration",
@@ -14393,6 +15878,19 @@ ${result.failures.join("\n")}`
     <div class="cal-grid" id="cal-grid">
       ${calibrationData.map((cd) => renderCalibrationCard(cd)).join("")}
     </div>
+
+    <div class="cal-distribution-section" id="cal-distribution">
+      <div class="cal-section-header">
+        <div>
+          <h2 class="cal-section-title">Distribution</h2>
+          <p class="cal-section-desc">Calibration offset distribution across all sensors \u2014 hover dots for device details</p>
+        </div>
+        <button class="hal-btn-secondary" id="cal-distribution-toggle">
+          <span>Show</span>
+        </button>
+      </div>
+      <div id="cal-beeswarm-container" style="display:none"></div>
+    </div>
   `;
     attachCalibrationHandlers(calibrationData);
   }
@@ -14408,11 +15906,11 @@ ${result.failures.join("\n")}`
       <div class="cal-card-header">
         <div class="cal-device-icon">${getDeviceIcon(device)}</div>
         <div class="cal-device-info">
-          <div class="cal-device-name">${escapeHtml14(device.name)}</div>
+          <div class="cal-device-name">${escapeHtml15(device.name)}</div>
           <div class="cal-device-meta">
-            <span class="hal-badge hal-badge-slate">${escapeHtml14(metricLabel)}</span>
+            <span class="hal-badge hal-badge-slate">${escapeHtml15(metricLabel)}</span>
             <span class="hal-badge hal-badge-slate">${device.protocol}</span>
-            ${device.zone ? `<span class="cal-zone-tag">${escapeHtml14(device.zone)}</span>` : ""}
+            ${device.zone ? `<span class="cal-zone-tag">${escapeHtml15(device.zone)}</span>` : ""}
           </div>
         </div>
         <div class="cal-status ${offset !== 0 ? "calibrated" : ""}">
@@ -14531,6 +16029,34 @@ ${result.failures.join("\n")}`
         }
       });
     });
+    let distributionVisible = false;
+    const distToggle = document.getElementById("cal-distribution-toggle");
+    const beeswarmContainer = document.getElementById("cal-beeswarm-container");
+    distToggle?.addEventListener("click", () => {
+      distributionVisible = !distributionVisible;
+      if (distributionVisible) {
+        distToggle.classList.add("active");
+        distToggle.querySelector("span").textContent = "Hide";
+        beeswarmContainer.style.display = "";
+        renderBeeswarm(calibrationData);
+      } else {
+        distToggle.classList.remove("active");
+        distToggle.querySelector("span").textContent = "Show";
+        beeswarmContainer.style.display = "none";
+      }
+    });
+  }
+  function renderBeeswarm(calibrationData) {
+    const beeswarmContainer = document.getElementById("cal-beeswarm-container");
+    if (!beeswarmContainer) return;
+    const points = calibrationData.map((cd) => ({
+      deviceId: cd.device.id,
+      deviceName: cd.device.name,
+      metric: cd.metric,
+      offset: cd.offset,
+      unit: cd.unit
+    }));
+    renderCalibrationBeeswarmSvg(points, "cal-beeswarm-container");
   }
   function getDeviceIcon(device) {
     switch (device.type) {
@@ -14548,7 +16074,7 @@ ${result.failures.join("\n")}`
     const precision = Math.abs(value) >= 100 ? 0 : value % 1 === 0 ? 0 : 2;
     return `${value.toFixed(precision)}${unit}`;
   }
-  function escapeHtml14(s) {
+  function escapeHtml15(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectCalibrationStyles() {
@@ -14866,6 +16392,50 @@ ${result.failures.join("\n")}`
   cursor: not-allowed;
 }
 
+.cal-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: var(--space-6) 0 var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.cal-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+.cal-section-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.cal-distribution-section {
+  margin-top: var(--space-4);
+}
+.hal-btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 var(--space-4);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 150ms;
+}
+.hal-btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.hal-btn-secondary.active {
+  background: var(--accent);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
 @media (max-width: 768px) {
   .cal-grid {
     grid-template-columns: 1fr;
@@ -14888,6 +16458,7 @@ ${result.failures.join("\n")}`
       init_api();
       init_Toast();
       init_ChartKit();
+      init_EnvironmentCharts();
     }
   });
 
@@ -14965,7 +16536,7 @@ ${result.failures.join("\n")}`
                 type="text"
                 id="farm-name"
                 class="form-input"
-                value="${escapeHtml15(settingsData.farmName)}"
+                value="${escapeHtml16(settingsData.farmName)}"
                 maxlength="64"
                 placeholder="My Farm"
               />
@@ -15028,7 +16599,7 @@ ${result.failures.join("\n")}`
                 type="text"
                 id="llm-endpoint"
                 class="form-input"
-                value="${escapeHtml15(settingsData.llmEndpoint)}"
+                value="${escapeHtml16(settingsData.llmEndpoint)}"
                 placeholder="http://localhost:11434"
               />
               <p class="settings-hint">${settingsData.llmProvider === "ollama" ? "Ollama server address." : "LM Studio server address."}</p>
@@ -15042,7 +16613,7 @@ ${result.failures.join("\n")}`
                 type="password"
                 id="llm-api-key"
                 class="form-input"
-                value="${escapeHtml15(settingsData.llmApiKey)}"
+                value="${escapeHtml16(settingsData.llmApiKey)}"
                 placeholder="sk-..."
                 autocomplete="off"
               />
@@ -15055,7 +16626,7 @@ ${result.failures.join("\n")}`
                 type="text"
                 id="llm-model"
                 class="form-input"
-                value="${escapeHtml15(settingsData.llmModel)}"
+                value="${escapeHtml16(settingsData.llmModel)}"
                 placeholder="${settingsData.llmProvider === "ollama" ? "llama3.2, mistral, etc." : "e.g., llama3.2"}"
                 autocomplete="off"
               />
@@ -16096,7 +17667,7 @@ The service will restart after the update.`
     });
     confirmInput?.focus();
   }
-  function escapeHtml15(str) {
+  function escapeHtml16(str) {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
   function injectSettingsStyles() {
@@ -16715,7 +18286,7 @@ The service will restart after the update.`
     modal.innerHTML = `
     <div class="modal-panel" style="max-width:420px;">
       <div class="modal-header">
-        <h2>Installing FarmPal v${escapeHtml15(version)}</h2>
+        <h2>Installing FarmPal v${escapeHtml16(version)}</h2>
       </div>
       <div class="modal-body">
         <div class="update-progress-steps">
@@ -16919,9 +18490,9 @@ The service will restart after the update.`
     const historyRows = history2.length === 0 ? '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-tertiary);">No update history yet</td></tr>' : history2.map(
       (entry) => `
         <tr>
-          <td class="mono">v${escapeHtml15(entry.fromVersion)} \u2192 v${escapeHtml15(entry.toVersion)}</td>
+          <td class="mono">v${escapeHtml16(entry.fromVersion)} \u2192 v${escapeHtml16(entry.toVersion)}</td>
           <td><span class="badge ${entry.status === "success" ? "badge-green" : entry.status === "rolled_back" ? "badge-amber" : "badge-red"}">${entry.status}</span></td>
-          <td>${escapeHtml15(entry.triggeredBy)}</td>
+          <td>${escapeHtml16(entry.triggeredBy)}</td>
           <td>${new Date(entry.startedAt).toLocaleDateString()}</td>
         </tr>
       `
@@ -17122,6 +18693,8 @@ The service will restart after the update.`
       }
       return;
     }
+    const authenticated = await ensureAuthenticated(app);
+    if (!authenticated) return;
     const initialView = getInitialView();
     setStore({ activeView: initialView });
     const store = getStore();
@@ -17153,10 +18726,174 @@ The service will restart after the update.`
     );
     initSidebar(handleViewChange);
     window.addEventListener("hashchange", handleHashChange);
-    await refreshHALData();
+    await refreshHALData({ scheduleRender: false });
     await render2();
+    startLiveDataStream();
     startPolling();
     startUptimeCounter();
+  }
+  async function ensureAuthenticated(app) {
+    try {
+      const response = await fetch("/api/auth/session", {
+        credentials: "same-origin"
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.authenticated) return true;
+      }
+    } catch {
+    }
+    renderLogin(app);
+    return false;
+  }
+  function renderLogin(app) {
+    injectLoginStyles();
+    app.innerHTML = `
+    <main class="login-shell">
+      <section class="login-panel" aria-labelledby="login-title">
+        <div class="login-brand">
+          <img src="./ff_logo_svg.svg" alt="FarmPal" />
+          <span>FarmPal HAL</span>
+        </div>
+        <h1 id="login-title">Operator Sign In</h1>
+        <form id="hal-login-form" class="login-form">
+          <label>
+            <span>Username</span>
+            <input name="username" value="admin" autocomplete="username" required />
+          </label>
+          <label>
+            <span>Password</span>
+            <input name="password" type="password" autocomplete="current-password" required autofocus />
+          </label>
+          <button type="submit">Sign In</button>
+          <p id="login-error" class="login-error" role="alert"></p>
+        </form>
+      </section>
+    </main>
+  `;
+    const form = document.getElementById("hal-login-form");
+    const errorEl = document.getElementById("login-error");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorEl.textContent = "";
+      const data = new FormData(form);
+      const submit = form.querySelector(
+        'button[type="submit"]'
+      );
+      if (submit) submit.disabled = true;
+      try {
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: String(data.get("username") || ""),
+            password: String(data.get("password") || "")
+          })
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.error || "Sign in failed");
+        }
+        history.replaceState(null, "", "#dashboard");
+        await init();
+      } catch (err) {
+        errorEl.textContent = err.message || "Sign in failed";
+        if (submit) submit.disabled = false;
+      }
+    });
+  }
+  function injectLoginStyles() {
+    if (document.getElementById("hal-login-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-login-styles";
+    style.textContent = `
+    .login-shell {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        linear-gradient(135deg, rgba(35,134,54,0.18), transparent 38%),
+        radial-gradient(circle at 82% 18%, rgba(56,139,253,0.18), transparent 28%),
+        var(--bg-primary);
+    }
+    .login-panel {
+      width: min(100%, 380px);
+      border: 1px solid color-mix(in srgb, var(--accent-bright) 28%, var(--border));
+      border-radius: var(--radius-lg);
+      background: var(--bg-secondary);
+      box-shadow: var(--shadow-card-lg);
+      padding: 24px;
+    }
+    .login-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .login-brand img {
+      width: 26px;
+      height: 26px;
+    }
+    .login-panel h1 {
+      margin: 18px 0 20px;
+      color: var(--text-primary);
+      font-size: 24px;
+      line-height: 1.1;
+    }
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .login-form label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .login-form input {
+      height: 40px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      padding: 0 12px;
+      font: inherit;
+    }
+    .login-form input:focus {
+      outline: 2px solid color-mix(in srgb, var(--accent-bright) 50%, transparent);
+      border-color: var(--accent-bright);
+    }
+    .login-form button {
+      height: 40px;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-md);
+      background: var(--accent);
+      color: var(--on-accent);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .login-form button:disabled {
+      cursor: wait;
+      opacity: 0.7;
+    }
+    .login-error {
+      min-height: 18px;
+      color: var(--danger);
+      font-size: 12px;
+      margin: 0;
+    }
+  `;
+    document.head.appendChild(style);
   }
   function handleThemeChange(theme) {
     setStore({ theme });
@@ -17253,16 +18990,49 @@ The service will restart after the update.`
     ];
     return validViews.includes(hash2) ? hash2 : "dashboard";
   }
+  function escapeHtml17(value) {
+    return value.replace(
+      /[&<>"']/g,
+      (ch) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[ch] || ch
+    );
+  }
   async function render2() {
+    if (renderInProgress) {
+      renderAgainRequested = true;
+      return;
+    }
     const store = getStore();
     const container = document.getElementById("view-container");
     if (!container) return;
     const renderer = views[store.activeView];
     if (renderer) {
-      await renderer(container);
+      renderInProgress = true;
+      try {
+        await renderer(container);
+      } catch (err) {
+        console.error(`Failed to render ${store.activeView}:`, err);
+        container.innerHTML = `
+        <div class="hal-card" style="padding:16px">
+          <div class="text-sm font-semibold">View failed to load</div>
+          <div class="text-xs text-secondary">${escapeHtml17(err?.message || "Unknown render error")}</div>
+        </div>
+      `;
+      } finally {
+        renderInProgress = false;
+        if (renderAgainRequested) {
+          renderAgainRequested = false;
+          void render2();
+        }
+      }
     }
   }
-  async function refreshHALData() {
+  async function refreshHALData(opts = {}) {
     try {
       const [halState, modeData, pendingData] = await Promise.all([
         halApi.getState(),
@@ -17272,19 +19042,48 @@ The service will restart after the update.`
         })),
         halApi.getAutomationPending().catch(() => [])
       ]);
+      applyHalState(
+        halState,
+        {
+          automationMode: modeData.mode,
+          automationModeColor: modeData.color,
+          pendingDecisions: pendingData
+        },
+        opts.scheduleRender ?? true
+      );
+    } catch (err) {
+      console.error("HAL data refresh failed:", err);
+    }
+  }
+  async function refreshAutomationData() {
+    try {
+      const [modeData, pendingData] = await Promise.all([
+        halApi.getAutomationMode().catch(() => ({
+          mode: getStore().automationMode,
+          color: getStore().automationModeColor
+        })),
+        halApi.getAutomationPending().catch(() => getStore().pendingDecisions)
+      ]);
       setStore({
-        devices: halState.devices,
-        sensors: halState.sensorSnapshots,
-        cameras: halState.devices.filter((device) => device.type === "camera"),
-        decisions: halState.recentDecisions,
-        decisionsToday: countTodayDecisions(halState.recentDecisions),
         automationMode: modeData.mode,
         automationModeColor: modeData.color,
         pendingDecisions: pendingData
       });
+      scheduleLiveRender();
     } catch (err) {
-      console.error("HAL data refresh failed:", err);
+      console.error("HAL automation refresh failed:", err);
     }
+  }
+  function applyHalState(halState, extra = {}, scheduleRender = true) {
+    setStore({
+      devices: halState.devices,
+      sensors: halState.sensorSnapshots,
+      cameras: halState.devices.filter((device) => device.type === "camera"),
+      decisions: halState.recentDecisions,
+      decisionsToday: countTodayDecisions(halState.recentDecisions),
+      ...extra
+    });
+    if (scheduleRender) scheduleLiveRender();
   }
   function countTodayDecisions(decisions) {
     const today = (/* @__PURE__ */ new Date()).toDateString();
@@ -17296,8 +19095,70 @@ The service will restart after the update.`
       }
     }).length;
   }
+  function startLiveDataStream() {
+    liveStateStream?.close();
+    liveStateStream = halApi.openStateStream(
+      (halState) => {
+        liveStreamActive = true;
+        applyHalState(halState);
+      },
+      () => {
+        liveStreamActive = false;
+      }
+    );
+  }
   function startPolling() {
-    pollInterval = setInterval(refreshHALData, 1e4);
+    pollInterval = setInterval(() => {
+      if (liveStreamActive) {
+        void refreshAutomationData();
+      } else {
+        void refreshHALData();
+        if (!liveStateStream || liveStateStream.readyState === EventSource.CLOSED) {
+          startLiveDataStream();
+        }
+      }
+    }, 1e4);
+  }
+  function scheduleLiveRender() {
+    const activeView = getStore().activeView;
+    if (activeView === "settings" || activeView === "terminal") return;
+    if (liveRenderQueued) return;
+    const now = Date.now();
+    const delay = Math.max(0, 3e3 - (now - lastLiveRenderAt));
+    liveRenderQueued = true;
+    window.setTimeout(() => {
+      liveRenderQueued = false;
+      lastLiveRenderAt = Date.now();
+      void runLiveRefresh();
+    }, delay);
+  }
+  async function runLiveRefresh() {
+    if (liveRefreshInProgress) {
+      liveRefreshAgainRequested = true;
+      return;
+    }
+    liveRefreshInProgress = true;
+    try {
+      await refreshLiveView();
+    } finally {
+      liveRefreshInProgress = false;
+      if (liveRefreshAgainRequested) {
+        liveRefreshAgainRequested = false;
+        void runLiveRefresh();
+      }
+    }
+  }
+  async function refreshLiveView() {
+    switch (getStore().activeView) {
+      case "dashboard":
+        await refreshDashboardLiveData();
+        break;
+      case "sensors":
+        await refreshSensorsLiveData();
+        break;
+      default:
+        break;
+    }
   }
   function startUptimeCounter() {
     setInterval(() => {
@@ -17316,7 +19177,7 @@ The service will restart after the update.`
     const m = Math.floor(seconds % 3600 / 60);
     return `${h}h ${m}m`;
   }
-  var views, pageLoadTime, pollInterval;
+  var views, pageLoadTime, pollInterval, liveStateStream, liveStreamActive, liveRenderQueued, lastLiveRenderAt, renderInProgress, renderAgainRequested, liveRefreshInProgress, liveRefreshAgainRequested;
   var init_main = __esm({
     "src/web/hal-ui/main.ts"() {
       init_tokens();
@@ -17356,6 +19217,14 @@ The service will restart after the update.`
       };
       pageLoadTime = Date.now();
       pollInterval = null;
+      liveStateStream = null;
+      liveStreamActive = false;
+      liveRenderQueued = false;
+      lastLiveRenderAt = 0;
+      renderInProgress = false;
+      renderAgainRequested = false;
+      liveRefreshInProgress = false;
+      liveRefreshAgainRequested = false;
       document.addEventListener("DOMContentLoaded", init);
     }
   });

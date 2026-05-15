@@ -129,16 +129,32 @@ npm run hal:ui:build
 ```
 
 **Why it works this way:**
+
 - The esbuild bundle (`dist/`) contains minified JS + CSS extracted from inline `<style>` tags in source files
 - The HAL UI server (`hal-ui-server.ts`) serves static files from `src/web/hal-ui/`
 - For JS/CSS assets, it reads from `src/web/hal-ui/dist/`
 - HTML templates are served directly from source files
 
 **Important notes:**
+
 - **Always rebuild** (`npm run hal:ui:build`) after editing HAL UI source files
 - If changes don't appear, hard-refresh the browser or restart FarmPal
 - Update the cache-buster in `src/web/hal-ui/index.html` if needed (the `?v=...` query string)
 - `npm run hal:ui:watch` enables watch mode for automatic rebuilds during development
+
+### HAL UI SVG Visuals
+
+- The current HAL UI dashboard/sensor/system/safety visualizations are intentionally implemented as first-party SVG renderers in `src/web/hal-ui/components/EnvironmentCharts.ts` and `src/web/hal-ui/components/LakeTankChart.ts`.
+- Keep new FarmPal telemetry visuals in source components, not in `src/web/hal-ui/dist/`. Rebuild with `npm run hal:ui:build` after edits so the served bundle matches source.
+- Dashboard environmental overview state lives in `src/web/hal-ui/views/Dashboard.ts`: active metrics default to temperature, humidity, and CO₂, and the default zone is **All Zones** until a zone row is selected.
+- Live HAL UI state is streamed from `GET /api/hal/stream` as server-sent events and falls back to `GET /api/hal/state` polling when the stream is unavailable.
+- The overview chart should never imply missing sensor data by drawing zero-value fallback readings. Preserve the existing clean-data behavior when adding chart types.
+- Prefer compact, inspection-grade SVG controls and charts for operators: metric toggles must stay clickable, zone selection must keep working, and mobile layouts must avoid overlapping labels.
+- When debugging blank or slow HAL UI pages, measure authenticated endpoint latency. `hal_sensors` must keep indexes for latest/history lookups:
+  - `idx_hal_sensors_latest ON hal_sensors(device_id, metric, read_at DESC)`
+  - `idx_hal_sensors_history ON hal_sensors(device_id, metric, read_at ASC)`
+  Missing these indexes causes repeated full-table scans from `/api/hal/state`, `/api/hal/sensors/latest`, and chart history calls, which can block the single Node process long enough for pages to appear unloaded.
+- HAL UI session tokens are high-entropy random values and should use deterministic indexed hashes, not bcrypt scans per request. If every authenticated endpoint takes seconds even for tiny responses, inspect `admin_sessions` and `src/security/session.ts`.
 
 ## Runtime and Service Notes
 
@@ -158,6 +174,7 @@ npm run hal:ui:build
   ```bash
   ./scripts/service.sh restart
   ```
+- On older installs the macOS LaunchAgent may still be named `com.fft_nano` and may point at a different checkout. `scripts/service.sh` can discover that legacy label for status/restart/logs, but use `./scripts/service.sh install` from this checkout to create the current `com.farmpal` service when you need this checkout to own runtime.
 - Rebuild and restart after TypeScript changes:
   ```bash
   npm run build && ./scripts/service.sh restart
@@ -243,7 +260,12 @@ When investigating runtime behavior, first identify which checkout the active se
 
 ## Current Local State Notes
 
-- This checkout is currently clean on `main` but contains recent FarmPal HAL UI and multi-agent farm-controller commits.
+- This checkout may be on a HAL UI feature branch even when `main` points at the same commit. Check `git status --short --branch` before assuming local state.
+- Recent local work has focused on HAL UI environment charts, SVG visual systems, and multi-agent farm-controller commits.
+- Current local HAL UI incident findings:
+  - "No data" was caused by HAL UI auth/session handling, not absent telemetry.
+  - "Pages not loading" was caused by slow authenticated request handling: missing `hal_sensors` indexes plus bcrypt-scanning active admin sessions on every request.
+  - `com.farmpal` is the current LaunchAgent for this checkout; old `com.fft_nano` may still exist for another checkout and should not be treated as this runtime unless explicitly selected.
 - `HANDOFF.md` tracks local service port-conflict investigation and `better-sqlite3` ABI fallback notes; treat it as machine-local handoff state, not release documentation.
 - Current architecture should be described as hybrid: full FFT_nano host plus simplified FarmPal HAL agent modules.
 - For customer/OOTB readiness reviews, explicitly check the host-runtime path, TUI/no-Telegram path, HAL hardware path, demo-data behavior, and whether `HAL_AUTO_MODE`/`HAL_AUTO_DECISIONS` are actually enabled.

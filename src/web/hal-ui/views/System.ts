@@ -1,10 +1,18 @@
-// System view — multi-metric overview using the same chart pipeline as Sensors
+// System view — metric state overview with animated lake-tank visualization
 
-import { getStore, setStore, formatSensorValue, formatTimeValue } from '../store.js';
+import { getStore, setStore, formatSensorValue } from '../store.js';
 import { halApi } from '../api.js';
-import { renderFarmPalSensorChart } from '../components/FarmPalCharts.js';
+import { renderSystemEnvironmentHero } from '../components/EnvironmentCharts.js';
 
-type MetricKey = 'temperature' | 'humidity' | 'soil_moisture' | 'light' | 'co2' | 'water_level' | 'ph' | 'weight';
+type MetricKey =
+  | 'temperature'
+  | 'humidity'
+  | 'soil_moisture'
+  | 'light'
+  | 'co2'
+  | 'water_level'
+  | 'ph'
+  | 'weight';
 
 interface SystemMetricConfig {
   key: MetricKey;
@@ -17,14 +25,41 @@ interface SystemMetricConfig {
 }
 
 const systemMetrics: SystemMetricConfig[] = [
-  { key: 'temperature', label: 'Temperature', shortLabel: 'Temp', fallbackUnit: '°C', color: '#F59E0B', minAxis: 10, maxAxis: 40 },
-  { key: 'humidity', label: 'Humidity', shortLabel: 'RH', fallbackUnit: '%', color: '#38BDF8', minAxis: 0, maxAxis: 100 },
-  { key: 'co2', label: 'CO₂', shortLabel: 'CO₂', fallbackUnit: 'ppm', color: '#22C55E', minAxis: 0, maxAxis: 2000 },
+  {
+    key: 'temperature',
+    label: 'Temperature',
+    shortLabel: 'Temp',
+    fallbackUnit: '°C',
+    color: '#F59E0B',
+    minAxis: 10,
+    maxAxis: 40,
+  },
+  {
+    key: 'humidity',
+    label: 'Humidity',
+    shortLabel: 'RH',
+    fallbackUnit: '%',
+    color: '#38BDF8',
+    minAxis: 0,
+    maxAxis: 100,
+  },
+  {
+    key: 'co2',
+    label: 'CO₂',
+    shortLabel: 'CO₂',
+    fallbackUnit: 'ppm',
+    color: '#22C55E',
+    minAxis: 0,
+    maxAxis: 2000,
+  },
 ];
 
 let systemViewRange: '1H' | '6H' | '24H' | '7D' | '30D' = '24H';
 
-function getRangeBounds(range: typeof systemViewRange): { from: string; to: string } {
+function getRangeBounds(range: typeof systemViewRange): {
+  from: string;
+  to: string;
+} {
   const now = new Date();
   const ms: Record<typeof systemViewRange, number> = {
     '1H': 60 * 60 * 1000,
@@ -59,7 +94,10 @@ export async function renderSystemView(container: HTMLElement): Promise<void> {
     <div class="sensors-hero-controls">
       <div class="time-range-group" role="group">
         ${(['1H', '6H', '24H', '7D', '30D'] as const)
-          .map((r) => `<button class="hal-range-btn ${r === systemViewRange ? 'active' : ''}" data-range="${r}">${r}</button>`)
+          .map(
+            (r) =>
+              `<button class="hal-range-btn ${r === systemViewRange ? 'active' : ''}" data-range="${r}">${r}</button>`,
+          )
           .join('')}
       </div>
       <button class="hal-range-btn" id="sys-unit-toggle">${store.unitSystem === 'metric' ? '°C' : '°F'}</button>
@@ -121,15 +159,17 @@ export async function renderSystemView(container: HTMLElement): Promise<void> {
   container.appendChild(root);
 
   // Wire up range buttons
-  root.querySelectorAll<HTMLButtonElement>('.hal-range-btn[data-range]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      systemViewRange = btn.dataset.range as typeof systemViewRange;
-      root.querySelectorAll('.hal-range-btn[data-range]').forEach((b) => {
-        b.classList.toggle('active', b === btn);
+  root
+    .querySelectorAll<HTMLButtonElement>('.hal-range-btn[data-range]')
+    .forEach((btn) => {
+      btn.addEventListener('click', () => {
+        systemViewRange = btn.dataset.range as typeof systemViewRange;
+        root.querySelectorAll('.hal-range-btn[data-range]').forEach((b) => {
+          b.classList.toggle('active', b === btn);
+        });
+        void loadSystemData();
       });
-      void loadSystemData();
     });
-  });
 
   const unitToggle = document.getElementById('sys-unit-toggle');
   unitToggle?.addEventListener('click', () => {
@@ -142,83 +182,105 @@ export async function renderSystemView(container: HTMLElement): Promise<void> {
   await loadSystemData();
 }
 
+function setChartState(el: HTMLElement | null, msg: string): void {
+  if (!el) return;
+  const div = document.createElement('div');
+  div.className = 'chart-empty';
+  div.textContent = msg;
+  el.replaceChildren(div);
+}
+
 async function loadSystemData(): Promise<void> {
   const store = getStore();
   const sensors = store.devices.filter((d) => d.type === 'sensor');
   const { from, to } = getRangeBounds(systemViewRange);
   const heroChart = document.getElementById('system-hero-chart');
-  if (heroChart) {
-    heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
-  }
+  setChartState(heroChart, 'Loading...');
 
   try {
-    const bucketMap = new Map<number, Record<string, { sum: number; count: number }>>();
+    const metricBuckets = new Map<
+      string,
+      Map<number, { sum: number; count: number }>
+    >();
+    const metricLatestTs = new Map<string, string>();
+    const metricLatestVal = new Map<string, number>();
+
+    for (const m of systemMetrics) {
+      metricBuckets.set(m.key, new Map());
+    }
 
     await Promise.all(
       sensors.flatMap((device) =>
         systemMetrics.map(async (metric) => {
-          const data = await halApi.getSensorHistory(device.id, metric.key, from, to);
+          const data = await halApi.getSensorHistory(
+            device.id,
+            metric.key,
+            from,
+            to,
+          );
           if (data.length === 0) return;
 
           const latest = data[data.length - 1];
-          const pill = document.getElementById(`sys-pill-${metric.key}`);
-          if (pill) {
-            const cv = formatSensorValue(latest.value, metric.key, store.unitSystem);
-            pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
+          const prevTs = metricLatestTs.get(metric.key) ?? '';
+          if (latest.timestamp > prevTs) {
+            metricLatestTs.set(metric.key, latest.timestamp);
+            const cv = formatSensorValue(
+              latest.value,
+              metric.key,
+              store.unitSystem,
+            );
+            metricLatestVal.set(metric.key, cv.value);
+            const pill = document.getElementById(`sys-pill-${metric.key}`);
+            if (pill)
+              pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
           }
 
+          const buckets = metricBuckets.get(metric.key)!;
           for (const d of data) {
             const t = new Date(d.timestamp).getTime();
             if (!Number.isFinite(t)) continue;
             const bucket = Math.floor(t / 60000) * 60000;
-            const cv = formatSensorValue(d.value, metric.key, store.unitSystem).value;
-            const row = bucketMap.get(bucket) ?? {};
-            const acc = row[metric.key] ?? { sum: 0, count: 0 };
-            acc.sum += cv;
+            const val = formatSensorValue(
+              d.value,
+              metric.key,
+              store.unitSystem,
+            ).value;
+            const acc = buckets.get(bucket) ?? { sum: 0, count: 0 };
+            acc.sum += val;
             acc.count += 1;
-            row[metric.key] = acc;
-            bucketMap.set(bucket, row);
+            buckets.set(bucket, acc);
           }
         }),
       ),
     );
 
-    const chartData = Array.from(bucketMap.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([timestamp, values]) => {
-        const point: { time: string; [key: string]: string | number | undefined } = {
-          time: formatTimeValue(new Date(timestamp), store.timeFormat),
-        };
-        for (const [key, acc] of Object.entries(values)) {
-          if (acc.count > 0) point[key] = acc.sum / acc.count;
-        }
-        return point;
-      });
-
-    if (chartData.length === 0) {
-      if (heroChart) heroChart.innerHTML = '<div class="chart-empty">No sensor data</div>';
-      return;
-    }
-
-    const activeSeries = systemMetrics
-      .filter((m) => chartData.some((d) => Number.isFinite(Number(d[m.key]))))
+    const chartMetrics = systemMetrics
+      .filter((m) => metricLatestVal.has(m.key))
       .map((m) => {
-        const sample = chartData.find((d) => Number.isFinite(Number(d[m.key])));
-        const cv = sample ? formatSensorValue(Number(sample[m.key]), m.key, store.unitSystem) : null;
+        const minCv = formatSensorValue(m.minAxis, m.key, store.unitSystem);
         return {
           key: m.key,
           label: m.label,
+          unit: minCv.unit || m.fallbackUnit,
           color: m.color,
-          unit: cv?.unit || m.fallbackUnit,
+          data: Array.from(metricBuckets.get(m.key)!.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([t, acc]) => ({
+              t,
+              v: acc.count > 0 ? acc.sum / acc.count : 0,
+            })),
         };
       });
 
-    renderFarmPalSensorChart('system-hero-chart', chartData, activeSeries, {
-      subtitle: `${systemViewRange} · All sensors`,
-    });
+    if (chartMetrics.length === 0) {
+      setChartState(heroChart, 'No sensor data');
+      return;
+    }
+
+    renderSystemEnvironmentHero(chartMetrics, 'system-hero-chart');
   } catch (err) {
     console.error('System view load failed:', err);
-    if (heroChart) heroChart.innerHTML = '<div class="chart-empty">Failed to load</div>';
+    setChartState(heroChart, 'Failed to load');
   }
 }
 

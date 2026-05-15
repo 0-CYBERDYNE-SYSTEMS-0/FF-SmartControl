@@ -30,6 +30,14 @@ resolve_node_bin() {
     return
   fi
 
+  # FarmPal native modules are built in this checkout with the user's
+  # project Node. Prefer it over Homebrew's rolling node, which may be ABI-newer.
+  local project_node="${HOME}/.pocket-server/bin/node"
+  if [[ -x "${project_node}" ]]; then
+    printf '%s\n' "${project_node}"
+    return
+  fi
+
   # launchd does not load interactive shell profiles; resolve node from login shell first.
   local login_shell login_node
   login_shell="${SHELL:-/bin/zsh}"

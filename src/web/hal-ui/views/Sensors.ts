@@ -6,11 +6,10 @@ import {
   getStore,
   setStore,
   formatSensorValue,
-  formatTimeValue,
   formatDateTimeValue,
 } from '../store.js';
 import { halApi, HalSensorReading, HalDecision } from '../api.js';
-import { renderFarmPalSensorChart } from '../components/FarmPalCharts.js';
+import { renderSensorEnvironmentHero } from '../components/EnvironmentCharts.js';
 
 type MetricKey =
   | 'temperature'
@@ -246,6 +245,12 @@ export async function renderSensors(container: HTMLElement): Promise<void> {
   await loadData(sensors);
 }
 
+export async function refreshSensorsLiveData(): Promise<void> {
+  const store = getStore();
+  const sensors = store.devices.filter((d) => d.type === 'sensor');
+  await loadData(sensors, { showLoading: false });
+}
+
 function attachHandlers(sensors: ReturnType<typeof getStore>['devices']): void {
   const deviceSelect = document.getElementById(
     'sensor-device-select',
@@ -323,6 +328,7 @@ function attachHandlers(sensors: ReturnType<typeof getStore>['devices']): void {
 
 async function loadData(
   sensors: ReturnType<typeof getStore>['devices'],
+  opts: { showLoading?: boolean } = {},
 ): Promise<void> {
   const sequence = ++loadSequence;
   const selectedDevices =
@@ -338,7 +344,7 @@ async function loadData(
   );
 
   const heroChart = document.getElementById('hero-chart');
-  if (heroChart)
+  if (heroChart && opts.showLoading !== false)
     heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
 
   try {
@@ -643,22 +649,20 @@ function renderHeroChart(
     }
   }
 
-  const chartData = Array.from(bucketMap.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([timestamp, values]) => {
-      const point: {
-        time: string;
-        [key: string]: string | number | undefined;
-      } = {
-        time: formatTimeValue(new Date(timestamp), store.timeFormat),
-      };
-      for (const [metricKey, aggregate] of Object.entries(values)) {
-        if (aggregate.count > 0) {
-          point[metricKey] = aggregate.sum / aggregate.count;
-        }
-      }
-      return point;
-    });
+  const bucketEntries = Array.from(bucketMap.entries()).sort(
+    (a, b) => a[0] - b[0],
+  );
+  const chartMetrics = series.map((metric) => ({
+    ...metric,
+    data: bucketEntries
+      .map(([timestamp, values]) => {
+        const aggregate = values[metric.key];
+        return aggregate && aggregate.count > 0
+          ? { t: timestamp, v: aggregate.sum / aggregate.count }
+          : null;
+      })
+      .filter((point): point is { t: number; v: number } => point !== null),
+  }));
 
   const deviceName =
     viewState.deviceId === 'all' ? 'All Sensors' : layers[0]?.deviceName;
@@ -666,17 +670,15 @@ function renderHeroChart(
   const subtitle = `${deviceName || 'Sensors'} · ${zoneName} · ${viewState.range}`;
 
   try {
-    renderFarmPalSensorChart('hero-chart', chartData, series, {
-      subtitle,
-    });
+    renderSensorEnvironmentHero(chartMetrics, 'hero-chart', { subtitle });
   } catch (err) {
     const heroContainer = document.getElementById('hero-chart');
     if (heroContainer)
       heroContainer.innerHTML = `<div class="chart-empty">Chart error</div>`;
-    console.error('FarmPal chart render failed:', err);
+    console.error('Environment chart render failed:', err);
   }
 
-  // Legend is handled internally by renderFarmPalDualAxisChart
+  // Legend is handled internally by the environment chart stack.
   if (legend) legend.innerHTML = '';
 }
 

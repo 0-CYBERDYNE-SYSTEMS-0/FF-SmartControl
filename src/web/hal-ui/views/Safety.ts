@@ -10,6 +10,11 @@ import {
   injectModalStyles,
 } from '../components/Modal.js';
 import { showToast } from '../components/Toast.js';
+import {
+  renderSafetyDenialCalendarHeatmap,
+  renderSafetyThresholdBulletBars,
+  type SafetyThresholdBar,
+} from '../components/EnvironmentCharts.js';
 
 interface SafetyRule {
   id: string;
@@ -81,6 +86,15 @@ export async function renderSafety(container: HTMLElement): Promise<void> {
         <div class="safety-summary-card loading">Loading...</div>
       </div>
 
+      <div class="safety-viz-grid mb-4">
+        <div id="safety-denial-heatmap">
+          <div class="safety-summary-card loading">Loading denials...</div>
+        </div>
+        <div id="safety-threshold-bars">
+          <div class="safety-summary-card loading">Loading thresholds...</div>
+        </div>
+      </div>
+
       <!-- Tab bar for Safety Rules vs Thresholds -->
       <div class="safety-tabs" id="safety-tabs">
         <button class="safety-tab active" data-tab="rules">Safety Rules</button>
@@ -137,6 +151,7 @@ export async function renderSafety(container: HTMLElement): Promise<void> {
   await loadSafetySummary();
   await loadSafetyRules();
   await loadRecentDenials();
+  await loadSafetyVisualizations();
   await loadDevicesForFilter();
   await loadThresholds();
 }
@@ -304,6 +319,118 @@ async function loadRecentDenials(): Promise<void> {
       .join('');
   } catch (err) {
     console.error('Failed to load recent denials:', err);
+  }
+}
+
+async function loadSafetyVisualizations(): Promise<void> {
+  const heatmapEl = document.getElementById('safety-denial-heatmap');
+  const barsEl = document.getElementById('safety-threshold-bars');
+
+  try {
+    const [audit, thresholds] = await Promise.all([
+      halApi.getSafetyAudit({ limit: 250, result: 'DENIED' }),
+      halApi.getThresholds() as Promise<Threshold[]>,
+    ]);
+
+    renderSafetyDenialCalendarHeatmap(audit, 'safety-denial-heatmap');
+    renderSafetyThresholdBulletBars(
+      buildSafetyThresholdBars(thresholds),
+      'safety-threshold-bars',
+    );
+  } catch (err) {
+    console.error('Failed to load safety visualizations:', err);
+    if (heatmapEl)
+      heatmapEl.innerHTML =
+        '<div class="safety-summary-card loading">Failed to load denials.</div>';
+    if (barsEl)
+      barsEl.innerHTML =
+        '<div class="safety-summary-card loading">Failed to load thresholds.</div>';
+  }
+}
+
+function buildSafetyThresholdBars(
+  thresholds: Threshold[],
+): SafetyThresholdBar[] {
+  const store = getStore();
+
+  return thresholds.map((threshold) => {
+    const metric = threshold.metric;
+    const meta = getSafetyMetricMeta(metric);
+    const scope = resolveThresholdScope(threshold);
+    const currentValue = resolveThresholdCurrentValue(threshold, metric);
+    return {
+      id: threshold.id,
+      label: METRIC_LABELS[metric] || metric,
+      scope,
+      metric,
+      color: meta.color,
+      unit: METRIC_UNITS[metric] || '',
+      currentValue,
+      minValue: threshold.minValue,
+      maxValue: threshold.maxValue,
+      axisMin: meta.axisMin,
+      axisMax: meta.axisMax,
+      enabled: threshold.enabled,
+    };
+  });
+}
+
+function resolveThresholdScope(threshold: Threshold): string {
+  const store = getStore();
+  if (threshold.deviceId) {
+    const device = store.devices.find((d) => d.id === threshold.deviceId);
+    return device?.name || threshold.deviceId;
+  }
+  if (threshold.zone) return `Zone: ${threshold.zone}`;
+  return 'All Devices';
+}
+
+function resolveThresholdCurrentValue(
+  threshold: Threshold,
+  metric: string,
+): number | null {
+  const store = getStore();
+  const sensors = store.devices.filter((device) => {
+    if (device.type !== 'sensor') return false;
+    if (threshold.deviceId) return device.id === threshold.deviceId;
+    if (threshold.zone) return (device as any).zone === threshold.zone;
+    return true;
+  });
+
+  const values = sensors
+    .map((sensor) => {
+      const snapshot = store.sensors[sensor.id] as
+        | Record<string, { value?: number }>
+        | undefined;
+      const value = snapshot?.[metric]?.value;
+      return typeof value === 'number' && Number.isFinite(value) && value !== 0
+        ? value
+        : null;
+    })
+    .filter((value): value is number => value != null);
+
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function getSafetyMetricMeta(metric: string): {
+  color: string;
+  axisMin: number;
+  axisMax: number;
+} {
+  switch (metric) {
+    case 'temperature':
+      return { color: '#F59E0B', axisMin: 10, axisMax: 40 };
+    case 'humidity':
+      return { color: '#38BDF8', axisMin: 0, axisMax: 100 };
+    case 'co2':
+      return { color: '#22C55E', axisMin: 400, axisMax: 1600 };
+    case 'soil_moisture':
+      return { color: '#EF4444', axisMin: 0, axisMax: 100 };
+    case 'light':
+      return { color: '#FACC15', axisMin: 0, axisMax: 100000 };
+    default:
+      return { color: '#94A3B8', axisMin: 0, axisMax: 100 };
   }
 }
 
@@ -1170,6 +1297,7 @@ async function toggleThreshold(threshold: Threshold): Promise<void> {
       'success',
     );
     await loadThresholds();
+    await loadSafetyVisualizations();
   } catch (err: any) {
     showToast(`Failed to toggle threshold: ${err.message}`, 'error');
   }
@@ -1194,6 +1322,7 @@ function confirmDeleteThreshold(thresholdId: string, metric: string): void {
       await halApi.deleteThreshold(thresholdId);
       showToast('Threshold deleted', 'success');
       await loadThresholds();
+      await loadSafetyVisualizations();
     } catch (err: any) {
       showToast(`Failed to delete threshold: ${err.message}`, 'error');
     }
@@ -1348,6 +1477,7 @@ async function saveThreshold(): Promise<void> {
     closeModal();
     showToast('Threshold created successfully', 'success');
     await loadThresholds();
+    await loadSafetyVisualizations();
   } catch (err: any) {
     showToast(`Failed to create threshold: ${err.message}`, 'error');
   }
@@ -1526,6 +1656,7 @@ async function saveEditedThreshold(thresholdId: string): Promise<void> {
     closeModal();
     showToast('Threshold updated successfully', 'success');
     await loadThresholds();
+    await loadSafetyVisualizations();
   } catch (err: any) {
     showToast(`Failed to update threshold: ${err.message}`, 'error');
   }
@@ -1584,6 +1715,12 @@ function injectSafetyStyles(): void {
   gap: var(--space-4);
   margin-bottom: var(--space-6);
 }
+.safety-viz-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: var(--space-4);
+  align-items: stretch;
+}
 .safety-summary-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -1627,6 +1764,11 @@ function injectSafetyStyles(): void {
 .summary-card-meta {
   font-size: 11px;
   color: var(--text-tertiary);
+}
+@media (max-width: 960px) {
+  .safety-viz-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .safety-section-header {
   display: flex;

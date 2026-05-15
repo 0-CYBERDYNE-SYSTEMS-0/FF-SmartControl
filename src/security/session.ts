@@ -9,7 +9,7 @@
  * - Session fixation prevention (regenerate token on login)
  */
 
-import { randomBytes, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { getDb } from '../hal/db.js';
 import bcrypt from 'bcryptjs';
 
@@ -83,7 +83,9 @@ export function generateSessionToken(): string {
  * Hash a session token for storage
  */
 function hashToken(token: string): string {
-  return bcrypt.hashSync(token, 10);
+  // Session tokens are high-entropy random values. A deterministic hash lets
+  // requests use the token index instead of bcrypt-scanning every session.
+  return `sha256:${createHash('sha256').update(token).digest('hex')}`;
 }
 
 /**
@@ -91,6 +93,10 @@ function hashToken(token: string): string {
  */
 function verifyToken(token: string, hash: string): boolean {
   try {
+    if (hash.startsWith('sha256:')) {
+      const expected = hashToken(token);
+      return timingSafeEqual(Buffer.from(expected), Buffer.from(hash));
+    }
     return bcrypt.compareSync(token, hash);
   } catch {
     return false;
@@ -180,14 +186,57 @@ export function validateSession(token: string): Session | null {
   }
 
   const db = getDb();
+  const tokenHash = hashToken(token);
 
-  // Get all non-expired sessions and check each one
-  // (We can't index by token directly since it's hashed)
+  const direct = db
+    .prepare(
+      `
+    SELECT * FROM admin_sessions
+    WHERE token_hash = ? AND expires_at > datetime('now')
+    LIMIT 1
+  `,
+    )
+    .get(tokenHash) as
+    | {
+        id: string;
+        token_hash: string;
+        operator_id: string;
+        created_at: string;
+        expires_at: string;
+        last_activity_at: string;
+        ip_address: string | null;
+        user_agent: string | null;
+      }
+    | undefined;
+
+  if (direct) {
+    db.prepare(
+      `
+      UPDATE admin_sessions
+      SET last_activity_at = datetime('now')
+      WHERE id = ?
+    `,
+    ).run(direct.id);
+
+    return {
+      id: direct.id,
+      tokenHash: direct.token_hash,
+      createdAt: direct.created_at,
+      expiresAt: direct.expires_at,
+      lastActivityAt: direct.last_activity_at,
+      operatorId: direct.operator_id,
+      ipAddress: direct.ip_address || undefined,
+      userAgent: direct.user_agent || undefined,
+    };
+  }
+
+  // Legacy bcrypt sessions cannot be looked up directly. Check them only when
+  // the indexed SHA-256 lookup misses, then upgrade the matched row in place.
   const sessions = db
     .prepare(
       `
     SELECT * FROM admin_sessions
-    WHERE expires_at > datetime('now')
+    WHERE expires_at > datetime('now') AND token_hash NOT LIKE 'sha256:%'
     ORDER BY last_activity_at DESC
   `,
     )
@@ -209,14 +258,14 @@ export function validateSession(token: string): Session | null {
         db.prepare(
           `
           UPDATE admin_sessions
-          SET last_activity_at = datetime('now')
+          SET token_hash = ?, last_activity_at = datetime('now')
           WHERE id = ?
         `,
-        ).run(row.id);
+        ).run(tokenHash, row.id);
 
         return {
           id: row.id,
-          tokenHash: row.token_hash,
+          tokenHash,
           createdAt: row.created_at,
           expiresAt: row.expires_at,
           lastActivityAt: row.last_activity_at,
@@ -243,13 +292,18 @@ export function invalidateSession(token: string): void {
   }
 
   const db = getDb();
+  const tokenHash = hashToken(token);
+  const direct = db
+    .prepare('DELETE FROM admin_sessions WHERE token_hash = ?')
+    .run(tokenHash);
+  if (direct.changes > 0) return;
 
-  // Find and delete the session with this token
+  // Find and delete a legacy bcrypt session with this token.
   const sessions = db
     .prepare(
       `
-    SELECT id FROM admin_sessions
-    WHERE expires_at > datetime('now')
+    SELECT id, token_hash FROM admin_sessions
+    WHERE expires_at > datetime('now') AND token_hash NOT LIKE 'sha256:%'
   `,
     )
     .all() as Array<{ id: string; token_hash: string }>;
