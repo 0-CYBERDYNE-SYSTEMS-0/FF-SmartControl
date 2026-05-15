@@ -450,10 +450,10 @@ async function renderDiagnosticDashboard(
 
 function renderOverviewBrandChip(): string {
   return `
-    <div class="dash-brand-chip" title="FarmPal">
-      <img class="dash-brand-logo" src="./ff_logo_svg.svg" alt="FarmPal logo" />
-      <span class="dash-brand-text dash-brand-text-long">FarmPal</span>
-      <span class="dash-brand-text dash-brand-text-short">FarmPal</span>
+    <div class="dash-brand-chip" title="FF_SmartControl">
+      <img class="dash-brand-logo" src="./ff_logo_svg.svg" alt="FF_SmartControl logo" />
+      <span class="dash-brand-text dash-brand-text-long">FF_SmartControl</span>
+      <span class="dash-brand-text dash-brand-text-short">FF_SmartControl</span>
     </div>
   `;
 }

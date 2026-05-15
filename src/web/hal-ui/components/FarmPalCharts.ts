@@ -1,4 +1,4 @@
-// FarmPal SVG Charts — vanilla TS, responsive, no dependencies
+// FF_SmartControl SVG Charts — vanilla TS, responsive, no dependencies
 
 type Point = {
   time: string;
@@ -41,10 +41,10 @@ type ChartOpts = {
 };
 
 
-function injectFarmPalChartsStyles(): void {
-  if (document.getElementById('hal-farmpalcharts-styles')) return;
+function injectSmartControlChartsStyles(): void {
+  if (document.getElementById('hal-smartcontrolcharts-styles')) return;
   const style = document.createElement('style');
-  style.id = 'hal-farmpalcharts-styles';
+  style.id = 'hal-smartcontrolcharts-styles';
   style.textContent = `
 .hal-chart-card {
         background: var(--bg-secondary);
@@ -313,7 +313,7 @@ function makeSvgChart(
           .join('')}</div>`
       : '';
 
-  injectFarmPalChartsStyles();
+  injectSmartControlChartsStyles();
   el.innerHTML = `
     <div class="hal-chart-card">
       ${
@@ -364,7 +364,7 @@ function calcStats(values: number[]): {
 }
 
 // ── System Tab Chart ──────────────────────────────────────────────
-export function renderFarmPalAreaChart(
+export function renderSmartControlAreaChart(
   containerId: string,
   data: Array<{
     time: string;
@@ -399,17 +399,17 @@ export function renderFarmPalAreaChart(
 }
 
 
-export type FarmPalSensorSeries = {
+export type SmartControlSensorSeries = {
   key: string;
   label: string;
   color: string;
   unit: string;
 };
 
-export function renderFarmPalSensorChart(
+export function renderSmartControlSensorChart(
   containerId: string,
   data: Point[],
-  series: FarmPalSensorSeries[],
+  series: SmartControlSensorSeries[],
   opts: { title?: string; subtitle?: string } = {},
 ): void {
   const el = document.getElementById(containerId);

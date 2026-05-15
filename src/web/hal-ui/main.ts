@@ -1,4 +1,4 @@
-// FarmPal HAL UI — main.ts
+// FF_SmartControl HAL UI — main.ts
 // Entry point, router, state management, data polling
 
 import './tokens.css';
@@ -68,7 +68,7 @@ async function checkNetworkWarning(): Promise<void> {
                 <line x1="12" y1="9" x2="12" y2="13"/>
                 <line x1="12" y1="17" x2="12.01" y2="17"/>
               </svg>
-              <span>Warning: FarmPal is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
+              <span>Warning: FF_SmartControl is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
               <a href="#settings" class="lan-warning-link">Configure</a>
             </div>
           `;
@@ -233,8 +233,8 @@ function renderLogin(app: HTMLElement): void {
     <main class="login-shell">
       <section class="login-panel" aria-labelledby="login-title">
         <div class="login-brand">
-          <img src="./ff_logo_svg.svg" alt="FarmPal" />
-          <span>FarmPal HAL</span>
+          <img src="./ff_logo_svg.svg" alt="FF_SmartControl" />
+          <span>FF_SmartControl HAL</span>
         </div>
         <h1 id="login-title">Operator Sign In</h1>
         <form id="hal-login-form" class="login-form">

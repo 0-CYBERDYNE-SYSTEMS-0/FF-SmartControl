@@ -444,7 +444,7 @@ export function renderDualAxisCard(
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DASHBOARD HERO CARD — Ref Code 1 Style (FarmPal themed)
+   DASHBOARD HERO CARD — Ref Code 1 Style (FF_SmartControl themed)
    Toggle-able sensor metrics with exact card structure from user HTML.
    ═══════════════════════════════════════════════════════════════════════════ */
 

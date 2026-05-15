@@ -907,7 +907,7 @@ function renderManualAddForm(): string {
   return `
     <div class="dw-step-content">
       <p class="dw-step-desc">
-        Enter your device details manually. FarmPal will verify connectivity before saving.
+        Enter your device details manually. FF_SmartControl will verify connectivity before saving.
       </p>
       <div class="dw-manual-form">
         <div class="dw-form-group">

@@ -393,7 +393,7 @@ function renderSettingsPage(): string {
           <div class="settings-card">
             <div class="settings-field">
               <p class="settings-label">Configuration Backup</p>
-              <p class="settings-hint">Download a backup of your FarmPal configuration and settings.</p>
+              <p class="settings-hint">Download a backup of your FF_SmartControl configuration and settings.</p>
               <div class="settings-actions">
                 <button class="btn btn-secondary" id="backup-now-btn">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -449,7 +449,7 @@ function renderSettingsPage(): string {
                 <line x1="12" y1="9" x2="12" y2="13"/>
                 <line x1="12" y1="17" x2="12.01" y2="17"/>
               </svg>
-              <span>Warning: FarmPal is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
+              <span>Warning: FF_SmartControl is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
             </div>
             `
                 : ''
@@ -497,8 +497,8 @@ function renderSettingsPage(): string {
           </h2>
           <div class="settings-card">
             <div class="settings-field">
-              <p class="settings-label">Reset FarmPal</p>
-              <p class="settings-hint">Completely reset FarmPal to first-boot state. All data will be permanently deleted including sensor history, device configuration, automation rules, and admin password.</p>
+              <p class="settings-label">Reset FF_SmartControl</p>
+              <p class="settings-hint">Completely reset FF_SmartControl to first-boot state. All data will be permanently deleted including sensor history, device configuration, automation rules, and admin password.</p>
               <div class="settings-actions">
                 <button class="btn btn-danger" id="factory-reset-btn">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
@@ -517,7 +517,7 @@ function renderSettingsPage(): string {
           </h2>
           <div class="settings-card">
             <div class="settings-field">
-              <p class="settings-hint">Access operator guides for setup, hardware, safety, and troubleshooting. All guides work offline — they are bundled with FarmPal.</p>
+              <p class="settings-hint">Access operator guides for setup, hardware, safety, and troubleshooting. All guides work offline — they are bundled with FF_SmartControl.</p>
             </div>
             <div class="docs-links-grid">
               <a href="/docs/QUICKSTART.md" target="_blank" rel="noopener" class="doc-link-card">
@@ -599,7 +599,7 @@ function renderSettingsPage(): string {
 
       <!-- Version Footer (VAL-VERS-001) -->
       <div class="settings-version-footer" id="settings-version-footer">
-        <span class="settings-version-text" id="settings-version-text">FarmPal v1.0.0</span>
+        <span class="settings-version-text" id="settings-version-text">FF_SmartControl v1.0.0</span>
       </div>
     </div>
   `;
@@ -841,7 +841,7 @@ function attachSettingsEvents(): void {
     // Show confirmation dialog
     if (
       !confirm(
-        `Install FarmPal v${version}?\n\nA backup will be created automatically before the update.\n\nThe service will restart after the update.`,
+        `Install FF_SmartControl v${version}?\n\nA backup will be created automatically before the update.\n\nThe service will restart after the update.`,
       )
     ) {
       return;
@@ -871,7 +871,7 @@ function attachSettingsEvents(): void {
       if (result.success) {
         updateProgressModal('Restarting...', 100);
         showToast(
-          `FarmPal v${version} installed successfully!`,
+          `FF_SmartControl v${version} installed successfully!`,
           'success',
           5000,
         );
@@ -909,7 +909,7 @@ function attachSettingsEvents(): void {
   rollbackBtn?.addEventListener('click', async () => {
     if (
       !confirm(
-        'Rollback to the previous version?\n\nThe current version will be replaced and FarmPal will restart.',
+        'Rollback to the previous version?\n\nThe current version will be replaced and FF_SmartControl will restart.',
       )
     ) {
       return;
@@ -1029,7 +1029,7 @@ async function loadVersionInfo(): Promise<void> {
       versionEl.textContent = version;
     }
     if (versionFooterEl) {
-      versionFooterEl.textContent = `FarmPal v${version}`;
+      versionFooterEl.textContent = `FF_SmartControl v${version}`;
     }
   } catch {
     // Fallback to placeholder
@@ -1037,7 +1037,7 @@ async function loadVersionInfo(): Promise<void> {
       versionEl.textContent = 'Unknown';
     }
     if (versionFooterEl) {
-      versionFooterEl.textContent = 'FarmPal vUnknown';
+      versionFooterEl.textContent = 'FF_SmartControl vUnknown';
     }
   }
 }
@@ -1408,7 +1408,7 @@ function showFactoryResetConfirmDialog(): void {
         <h3 class="modal-title">⚠️ Factory Reset</h3>
       </div>
       <div class="modal-body">
-        <p class="reset-warning">This will <strong>permanently delete</strong> all FarmPal data:</p>
+        <p class="reset-warning">This will <strong>permanently delete</strong> all FF_SmartControl data:</p>
         <ul class="reset-list">
           <li>All sensor readings and history</li>
           <li>All device registrations and configuration</li>
@@ -1424,7 +1424,7 @@ function showFactoryResetConfirmDialog(): void {
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="reset-cancel-btn">Cancel</button>
-        <button class="btn btn-danger" id="reset-confirm-btn" disabled>Reset FarmPal</button>
+        <button class="btn btn-danger" id="reset-confirm-btn" disabled>Reset FF_SmartControl</button>
       </div>
     </div>
   `;
@@ -1498,7 +1498,7 @@ function showFactoryResetConfirmDialog(): void {
           4000,
         );
         confirmBtn.removeAttribute('disabled');
-        confirmBtn.textContent = 'Reset FarmPal';
+        confirmBtn.textContent = 'Reset FF_SmartControl';
       }
     } catch (err: any) {
       showToast(
@@ -1507,7 +1507,7 @@ function showFactoryResetConfirmDialog(): void {
         4000,
       );
       confirmBtn.removeAttribute('disabled');
-      confirmBtn.textContent = 'Reset FarmPal';
+      confirmBtn.textContent = 'Reset FF_SmartControl';
     }
   });
 
@@ -2184,7 +2184,7 @@ function showUpdateProgressModal(version: string): void {
   modal.innerHTML = `
     <div class="modal-panel" style="max-width:420px;">
       <div class="modal-header">
-        <h2>Installing FarmPal v${escapeHtml(version)}</h2>
+        <h2>Installing FF_SmartControl v${escapeHtml(version)}</h2>
       </div>
       <div class="modal-body">
         <div class="update-progress-steps">

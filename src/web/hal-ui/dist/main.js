@@ -370,9 +370,9 @@
     <aside class="sidebar ${collapsed ? "collapsed" : ""}" id="hal-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-logo">
-          <img class="sidebar-logo-img" src="./ff_logo_svg.svg" alt="FarmPal logo" />
-          <span class="sidebar-brand sidebar-brand-long">FarmPal</span>
-          <span class="sidebar-brand sidebar-brand-short">FarmPal</span>
+          <img class="sidebar-logo-img" src="./ff_logo_svg.svg" alt="FF_SmartControl logo" />
+          <span class="sidebar-brand sidebar-brand-long">FF_SmartControl</span>
+          <span class="sidebar-brand sidebar-brand-short">FF_SmartControl</span>
         </div>
         <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
           ${chevronIcon()}
@@ -1159,10 +1159,10 @@
         <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
-        <div class="hal-header-brand" title="FarmPal">
-          <img class="hal-header-brand-logo" src="./ff_logo_svg.svg" alt="FarmPal logo" />
-          <span class="hal-header-brand-text hal-header-brand-text-long">FarmPal</span>
-          <span class="hal-header-brand-text hal-header-brand-text-short">FarmPal</span>
+        <div class="hal-header-brand" title="FF_SmartControl">
+          <img class="hal-header-brand-logo" src="./ff_logo_svg.svg" alt="FF_SmartControl logo" />
+          <span class="hal-header-brand-text hal-header-brand-text-long">FF_SmartControl</span>
+          <span class="hal-header-brand-text hal-header-brand-text-short">FF_SmartControl</span>
         </div>
         <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
       </div>
@@ -1373,6 +1373,11 @@ ${result.failures.join("\n")}`
       document.querySelectorAll(".theme-dot").forEach((dot) => {
         dot.classList.toggle("active", dot.dataset.theme === key);
       });
+      const themeTrigger2 = document.getElementById("theme-picker-trigger");
+      themeTrigger2?.style.setProperty(
+        "--dot-color",
+        themeDefinitions[key].accent
+      );
       onThemeChange(key);
     }
     document.querySelectorAll(".theme-dot").forEach((btn) => {
@@ -6347,10 +6352,10 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   }
   function renderOverviewBrandChip() {
     return `
-    <div class="dash-brand-chip" title="FarmPal">
-      <img class="dash-brand-logo" src="./ff_logo_svg.svg" alt="FarmPal logo" />
-      <span class="dash-brand-text dash-brand-text-long">FarmPal</span>
-      <span class="dash-brand-text dash-brand-text-short">FarmPal</span>
+    <div class="dash-brand-chip" title="FF_SmartControl">
+      <img class="dash-brand-logo" src="./ff_logo_svg.svg" alt="FF_SmartControl logo" />
+      <span class="dash-brand-text dash-brand-text-long">FF_SmartControl</span>
+      <span class="dash-brand-text dash-brand-text-short">FF_SmartControl</span>
     </div>
   `;
   }
@@ -7624,7 +7629,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     return `
     <div class="dw-step-content">
       <p class="dw-step-desc">
-        Enter your device details manually. FarmPal will verify connectivity before saving.
+        Enter your device details manually. FF_SmartControl will verify connectivity before saving.
       </p>
       <div class="dw-manual-form">
         <div class="dw-form-group">
@@ -12758,7 +12763,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       status = await provisioningApi.getStatus();
     } catch {
       container.innerHTML = renderError(
-        "Could not connect to FarmPal. Please refresh."
+        "Could not connect to FF_SmartControl. Please refresh."
       );
       return;
     }
@@ -12803,9 +12808,9 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       <div class="wizard-card">
         <div class="wizard-header">
           <div class="wizard-logo">
-            <img src="./ff_logo_svg.svg" alt="FarmPal" />
+            <img src="./ff_logo_svg.svg" alt="FF_SmartControl" />
           </div>
-          <h1 class="wizard-title">Welcome to FarmPal</h1>
+          <h1 class="wizard-title">Welcome to FF_SmartControl</h1>
           <p class="wizard-subtitle">Let's set up your farm controller in a few steps</p>
         </div>
 
@@ -12868,7 +12873,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     return `
     <div class="wizard-step-content">
       <h2 class="step-title">Create Admin Password</h2>
-      <p class="step-desc">This password protects your FarmPal settings. Keep it safe \u2014 it cannot be recovered.</p>
+      <p class="step-desc">This password protects your FF_SmartControl settings. Keep it safe \u2014 it cannot be recovered.</p>
 
       <div class="form-group">
         <label class="form-label" for="password">Admin Password</label>
@@ -12968,7 +12973,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     return `
     <div class="wizard-step-content">
       <h2 class="step-title">Set Your Timezone</h2>
-      <p class="step-desc">FarmPal uses this timezone for scheduling and decision logs.</p>
+      <p class="step-desc">FF_SmartControl uses this timezone for scheduling and decision logs.</p>
 
       <div class="form-group">
         <label class="form-label" for="timezone">Timezone</label>
@@ -12984,7 +12989,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     return `
     <div class="wizard-step-content">
       <h2 class="step-title">WiFi Connection</h2>
-      <p class="step-desc">Connect FarmPal to your network. Ethernet is recommended if available.</p>
+      <p class="step-desc">Connect FF_SmartControl to your network. Ethernet is recommended if available.</p>
 
       <div class="form-group">
         <label class="form-label" for="wifi-ssid">Network (SSID)</label>
@@ -13031,7 +13036,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     return `
     <div class="wizard-step-content">
       <h2 class="step-title">AI Provider</h2>
-      <p class="step-desc">Choose how FarmPal connects to its AI brain. Local options run entirely on your network.</p>
+      <p class="step-desc">Choose how FF_SmartControl connects to its AI brain. Local options run entirely on your network.</p>
 
       <div class="form-group">
         <label class="form-label">Provider</label>
@@ -13101,7 +13106,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     return `
     <div class="wizard-step-content">
       <h2 class="step-title">Telegram <span class="badge-optional">Optional</span></h2>
-      <p class="step-desc">Connect Telegram to receive alerts and control FarmPal from your phone.</p>
+      <p class="step-desc">Connect Telegram to receive alerts and control FF_SmartControl from your phone.</p>
 
       <div class="form-group">
         <div class="toggle-row">
@@ -16728,7 +16733,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           <div class="settings-card">
             <div class="settings-field">
               <p class="settings-label">Configuration Backup</p>
-              <p class="settings-hint">Download a backup of your FarmPal configuration and settings.</p>
+              <p class="settings-hint">Download a backup of your FF_SmartControl configuration and settings.</p>
               <div class="settings-actions">
                 <button class="btn btn-secondary" id="backup-now-btn">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -16782,7 +16787,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
                 <line x1="12" y1="9" x2="12" y2="13"/>
                 <line x1="12" y1="17" x2="12.01" y2="17"/>
               </svg>
-              <span>Warning: FarmPal is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
+              <span>Warning: FF_SmartControl is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
             </div>
             ` : ""}
             <div class="settings-field">
@@ -16824,8 +16829,8 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           </h2>
           <div class="settings-card">
             <div class="settings-field">
-              <p class="settings-label">Reset FarmPal</p>
-              <p class="settings-hint">Completely reset FarmPal to first-boot state. All data will be permanently deleted including sensor history, device configuration, automation rules, and admin password.</p>
+              <p class="settings-label">Reset FF_SmartControl</p>
+              <p class="settings-hint">Completely reset FF_SmartControl to first-boot state. All data will be permanently deleted including sensor history, device configuration, automation rules, and admin password.</p>
               <div class="settings-actions">
                 <button class="btn btn-danger" id="factory-reset-btn">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
@@ -16844,7 +16849,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           </h2>
           <div class="settings-card">
             <div class="settings-field">
-              <p class="settings-hint">Access operator guides for setup, hardware, safety, and troubleshooting. All guides work offline \u2014 they are bundled with FarmPal.</p>
+              <p class="settings-hint">Access operator guides for setup, hardware, safety, and troubleshooting. All guides work offline \u2014 they are bundled with FF_SmartControl.</p>
             </div>
             <div class="docs-links-grid">
               <a href="/docs/QUICKSTART.md" target="_blank" rel="noopener" class="doc-link-card">
@@ -16926,7 +16931,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
 
       <!-- Version Footer (VAL-VERS-001) -->
       <div class="settings-version-footer" id="settings-version-footer">
-        <span class="settings-version-text" id="settings-version-text">FarmPal v1.0.0</span>
+        <span class="settings-version-text" id="settings-version-text">FF_SmartControl v1.0.0</span>
       </div>
     </div>
   `;
@@ -17102,7 +17107,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       const version = installUpdateBtn.dataset.version;
       const changelog = installUpdateBtn.dataset.changelog || "";
       if (!confirm(
-        `Install FarmPal v${version}?
+        `Install FF_SmartControl v${version}?
 
 A backup will be created automatically before the update.
 
@@ -17130,7 +17135,7 @@ The service will restart after the update.`
         if (result.success) {
           updateProgressModal("Restarting...", 100);
           showToast(
-            `FarmPal v${version} installed successfully!`,
+            `FF_SmartControl v${version} installed successfully!`,
             "success",
             5e3
           );
@@ -17164,7 +17169,7 @@ The service will restart after the update.`
     const rollbackBtn = document.getElementById("rollback-btn");
     rollbackBtn?.addEventListener("click", async () => {
       if (!confirm(
-        "Rollback to the previous version?\n\nThe current version will be replaced and FarmPal will restart."
+        "Rollback to the previous version?\n\nThe current version will be replaced and FF_SmartControl will restart."
       )) {
         return;
       }
@@ -17256,14 +17261,14 @@ The service will restart after the update.`
         versionEl.textContent = version;
       }
       if (versionFooterEl) {
-        versionFooterEl.textContent = `FarmPal v${version}`;
+        versionFooterEl.textContent = `FF_SmartControl v${version}`;
       }
     } catch {
       if (versionEl) {
         versionEl.textContent = "Unknown";
       }
       if (versionFooterEl) {
-        versionFooterEl.textContent = "FarmPal vUnknown";
+        versionFooterEl.textContent = "FF_SmartControl vUnknown";
       }
     }
   }
@@ -17580,7 +17585,7 @@ The service will restart after the update.`
         <h3 class="modal-title">\u26A0\uFE0F Factory Reset</h3>
       </div>
       <div class="modal-body">
-        <p class="reset-warning">This will <strong>permanently delete</strong> all FarmPal data:</p>
+        <p class="reset-warning">This will <strong>permanently delete</strong> all FF_SmartControl data:</p>
         <ul class="reset-list">
           <li>All sensor readings and history</li>
           <li>All device registrations and configuration</li>
@@ -17596,7 +17601,7 @@ The service will restart after the update.`
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="reset-cancel-btn">Cancel</button>
-        <button class="btn btn-danger" id="reset-confirm-btn" disabled>Reset FarmPal</button>
+        <button class="btn btn-danger" id="reset-confirm-btn" disabled>Reset FF_SmartControl</button>
       </div>
     </div>
   `;
@@ -17653,7 +17658,7 @@ The service will restart after the update.`
             4e3
           );
           confirmBtn.removeAttribute("disabled");
-          confirmBtn.textContent = "Reset FarmPal";
+          confirmBtn.textContent = "Reset FF_SmartControl";
         }
       } catch (err) {
         showToast(
@@ -17662,7 +17667,7 @@ The service will restart after the update.`
           4e3
         );
         confirmBtn.removeAttribute("disabled");
-        confirmBtn.textContent = "Reset FarmPal";
+        confirmBtn.textContent = "Reset FF_SmartControl";
       }
     });
     confirmInput?.focus();
@@ -18286,7 +18291,7 @@ The service will restart after the update.`
     modal.innerHTML = `
     <div class="modal-panel" style="max-width:420px;">
       <div class="modal-header">
-        <h2>Installing FarmPal v${escapeHtml16(version)}</h2>
+        <h2>Installing FF_SmartControl v${escapeHtml16(version)}</h2>
       </div>
       <div class="modal-body">
         <div class="update-progress-steps">
@@ -18627,7 +18632,7 @@ The service will restart after the update.`
                 <line x1="12" y1="9" x2="12" y2="13"/>
                 <line x1="12" y1="17" x2="12.01" y2="17"/>
               </svg>
-              <span>Warning: FarmPal is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
+              <span>Warning: FF_SmartControl is accessible over HTTP on your local network. Enable HTTPS for secure remote access.</span>
               <a href="#settings" class="lan-warning-link">Configure</a>
             </div>
           `;
@@ -18752,8 +18757,8 @@ The service will restart after the update.`
     <main class="login-shell">
       <section class="login-panel" aria-labelledby="login-title">
         <div class="login-brand">
-          <img src="./ff_logo_svg.svg" alt="FarmPal" />
-          <span>FarmPal HAL</span>
+          <img src="./ff_logo_svg.svg" alt="FF_SmartControl" />
+          <span>FF_SmartControl HAL</span>
         </div>
         <h1 id="login-title">Operator Sign In</h1>
         <form id="hal-login-form" class="login-form">

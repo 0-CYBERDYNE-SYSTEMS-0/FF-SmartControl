@@ -83,7 +83,7 @@ export async function renderSetupWizard(container: HTMLElement): Promise<void> {
     status = await provisioningApi.getStatus();
   } catch {
     container.innerHTML = renderError(
-      'Could not connect to FarmPal. Please refresh.',
+      'Could not connect to FF_SmartControl. Please refresh.',
     );
     return;
   }
@@ -146,9 +146,9 @@ function render(container: HTMLElement): void {
       <div class="wizard-card">
         <div class="wizard-header">
           <div class="wizard-logo">
-            <img src="./ff_logo_svg.svg" alt="FarmPal" />
+            <img src="./ff_logo_svg.svg" alt="FF_SmartControl" />
           </div>
-          <h1 class="wizard-title">Welcome to FarmPal</h1>
+          <h1 class="wizard-title">Welcome to FF_SmartControl</h1>
           <p class="wizard-subtitle">Let's set up your farm controller in a few steps</p>
         </div>
 
@@ -224,7 +224,7 @@ function renderPasswordStep(): string {
   return `
     <div class="wizard-step-content">
       <h2 class="step-title">Create Admin Password</h2>
-      <p class="step-desc">This password protects your FarmPal settings. Keep it safe — it cannot be recovered.</p>
+      <p class="step-desc">This password protects your FF_SmartControl settings. Keep it safe — it cannot be recovered.</p>
 
       <div class="form-group">
         <label class="form-label" for="password">Admin Password</label>
@@ -366,7 +366,7 @@ function renderTimezoneStep(): string {
   return `
     <div class="wizard-step-content">
       <h2 class="step-title">Set Your Timezone</h2>
-      <p class="step-desc">FarmPal uses this timezone for scheduling and decision logs.</p>
+      <p class="step-desc">FF_SmartControl uses this timezone for scheduling and decision logs.</p>
 
       <div class="form-group">
         <label class="form-label" for="timezone">Timezone</label>
@@ -389,7 +389,7 @@ function renderWifiStep(): string {
   return `
     <div class="wizard-step-content">
       <h2 class="step-title">WiFi Connection</h2>
-      <p class="step-desc">Connect FarmPal to your network. Ethernet is recommended if available.</p>
+      <p class="step-desc">Connect FF_SmartControl to your network. Ethernet is recommended if available.</p>
 
       <div class="form-group">
         <label class="form-label" for="wifi-ssid">Network (SSID)</label>
@@ -469,7 +469,7 @@ function renderLlmStep(): string {
   return `
     <div class="wizard-step-content">
       <h2 class="step-title">AI Provider</h2>
-      <p class="step-desc">Choose how FarmPal connects to its AI brain. Local options run entirely on your network.</p>
+      <p class="step-desc">Choose how FF_SmartControl connects to its AI brain. Local options run entirely on your network.</p>
 
       <div class="form-group">
         <label class="form-label">Provider</label>
@@ -555,7 +555,7 @@ function renderTelegramStep(): string {
   return `
     <div class="wizard-step-content">
       <h2 class="step-title">Telegram <span class="badge-optional">Optional</span></h2>
-      <p class="step-desc">Connect Telegram to receive alerts and control FarmPal from your phone.</p>
+      <p class="step-desc">Connect Telegram to receive alerts and control FF_SmartControl from your phone.</p>
 
       <div class="form-group">
         <div class="toggle-row">

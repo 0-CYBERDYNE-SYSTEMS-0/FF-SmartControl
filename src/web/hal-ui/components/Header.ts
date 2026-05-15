@@ -57,10 +57,10 @@ export function renderHeader(theme: ThemeName): string {
         <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
-        <div class="hal-header-brand" title="FarmPal">
-          <img class="hal-header-brand-logo" src="./ff_logo_svg.svg" alt="FarmPal logo" />
-          <span class="hal-header-brand-text hal-header-brand-text-long">FarmPal</span>
-          <span class="hal-header-brand-text hal-header-brand-text-short">FarmPal</span>
+        <div class="hal-header-brand" title="FF_SmartControl">
+          <img class="hal-header-brand-logo" src="./ff_logo_svg.svg" alt="FF_SmartControl logo" />
+          <span class="hal-header-brand-text hal-header-brand-text-long">FF_SmartControl</span>
+          <span class="hal-header-brand-text hal-header-brand-text-short">FF_SmartControl</span>
         </div>
         <span class="hal-header-view-label" id="header-view-label">${getViewLabel()}</span>
       </div>
@@ -314,6 +314,11 @@ function setupThemeButtons(onThemeChange: (t: ThemeName) => void): void {
     document.querySelectorAll('.theme-dot').forEach((dot) => {
       dot.classList.toggle('active', dot.dataset.theme === key);
     });
+    const themeTrigger = document.getElementById('theme-picker-trigger');
+    themeTrigger?.style.setProperty(
+      '--dot-color',
+      themeDefinitions[key].accent,
+    );
     onThemeChange(key);
   }
 
