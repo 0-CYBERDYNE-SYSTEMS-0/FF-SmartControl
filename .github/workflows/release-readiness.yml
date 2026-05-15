@@ -39,6 +39,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+      - name: Install native dependency headers
+        run: sudo apt-get update && sudo apt-get install -y libsystemd-dev
       - run: npm ci
       - name: Typecheck
         run: npm run typecheck
@@ -56,6 +58,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+      - name: Install native dependency headers
+        run: sudo apt-get update && sudo apt-get install -y libsystemd-dev
       - run: npm ci
       - name: Release checks
         run: npm run release-check
