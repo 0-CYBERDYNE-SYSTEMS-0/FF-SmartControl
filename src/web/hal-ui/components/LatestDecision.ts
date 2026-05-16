@@ -1,6 +1,6 @@
 // Latest Decision + Camera Snapshot — compact inline decision card
 
-import { getStore } from '../store.js';
+import { formatDateTimeValue, getStore } from '../store.js';
 
 export function renderLatestDecision(): string {
   const store = getStore();
@@ -48,13 +48,7 @@ export function renderLatestDecision(): string {
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+    return formatDateTimeValue(new Date(iso), getStore().timeFormat);
   } catch {
     return '--';
   }

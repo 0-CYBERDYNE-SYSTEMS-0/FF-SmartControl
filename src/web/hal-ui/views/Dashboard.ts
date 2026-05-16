@@ -1,7 +1,7 @@
 // Dashboard view — mode-aware: CALM / OPERATOR / DIAGNOSTIC
 // Each mode shows different levels of detail
 
-import { getStore, formatSensorValue } from '../store.js';
+import { getStore, formatSensorValue, formatTimeValue } from '../store.js';
 import { halApi, type HalSensorReading } from '../api.js';
 import {
   renderSystemStatus,
@@ -75,8 +75,7 @@ export async function refreshDashboardLiveData(): Promise<void> {
     }
   }
 
-  const statusPanel =
-    document.querySelector<HTMLElement>('.sys-status-panel');
+  const statusPanel = document.querySelector<HTMLElement>('.sys-status-panel');
   if (statusPanel) {
     statusPanel.outerHTML = renderSystemStatus();
   }
@@ -94,6 +93,11 @@ export async function refreshDashboardLiveData(): Promise<void> {
 
 async function renderCalmDashboard(container: HTMLElement): Promise<void> {
   const store = getStore();
+  const temp = formatSensorValue(
+    getLatestTemp(),
+    'temperature',
+    store.unitSystem,
+  );
 
   container.innerHTML = `
     <div class="dash-layout calm-layout">
@@ -101,7 +105,7 @@ async function renderCalmDashboard(container: HTMLElement): Promise<void> {
         ${renderOverviewBrandChip()}
         <div class="calm-hero">
           <div class="calm-status-row">
-            ${renderCalmKpi('Temperature', getLatestTemp(), '°C', '#F59E0B')}
+            ${renderCalmKpi('Temperature', temp.value, temp.unit, '#F59E0B')}
             ${renderCalmKpi('Humidity', getLatestHum(), '%', '#38BDF8')}
             ${renderCalmKpi('Devices', store.devices.filter((d) => d.online).length, `/${store.devices.length}`, 'var(--accent)')}
           </div>
@@ -263,7 +267,7 @@ function aggregateZoneOverviewCards(
         key,
         label: cfg.label,
         color: cfg.color,
-        unit: key === 'temperature' ? `°${dynamicUnit}` : cfg.unit,
+        unit: key === 'temperature' ? dynamicUnit : cfg.unit,
         data: entries,
       };
     });
@@ -462,6 +466,7 @@ function renderRawSnapshots(
   sensors: ReturnType<typeof getStore>['sensors'],
   devices: ReturnType<typeof getStore>['devices'],
 ): string {
+  const store = getStore();
   const entries = Object.entries(sensors);
   if (entries.length === 0) {
     return '<p class="text-secondary text-sm">No sensor snapshots available</p>';
@@ -472,6 +477,9 @@ function renderRawSnapshots(
       const device = devices.find((d) => d.id === deviceId);
       const temp = snap.temperature;
       const hum = snap.humidity;
+      const formattedTemp = temp
+        ? formatSensorValue(temp.value, 'temperature', store.unitSystem)
+        : null;
       return `
       <div class="diag-snapshot hal-card">
         <div class="diag-snapshot-header">
@@ -484,7 +492,7 @@ function renderRawSnapshots(
               ? `
             <div class="diag-snapshot-row">
               <span class="text-xs text-secondary">temperature</span>
-              <span class="text-mono text-xs">${temp.value.toFixed(2)} °C @ ${new Date(temp.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}</span>
+              <span class="text-mono text-xs">${formattedTemp!.value.toFixed(2)} ${formattedTemp!.unit} @ ${formatTimeValue(new Date(temp.timestamp), store.timeFormat)}</span>
             </div>
           `
               : ''
@@ -494,7 +502,7 @@ function renderRawSnapshots(
               ? `
             <div class="diag-snapshot-row">
               <span class="text-xs text-secondary">humidity</span>
-              <span class="text-mono text-xs">${hum.value.toFixed(2)} % @ ${new Date(hum.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}</span>
+              <span class="text-mono text-xs">${hum.value.toFixed(2)} % @ ${formatTimeValue(new Date(hum.timestamp), store.timeFormat)}</span>
             </div>
           `
               : ''
@@ -776,7 +784,7 @@ function attachOperatorPanelHandlers(): void {
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString('en-US', { hour12: false });
+    return formatTimeValue(new Date(iso), getStore().timeFormat);
   } catch {
     return '--';
   }

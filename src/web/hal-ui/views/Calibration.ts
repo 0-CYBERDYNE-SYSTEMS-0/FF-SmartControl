@@ -124,15 +124,18 @@ export async function renderCalibration(container: HTMLElement): Promise<void> {
 }
 
 function renderCalibrationCard(cd: CalibrationDevice): string {
-  const { device, rawValue, calibratedValue, offset, metric, unit } = cd;
+  const { device, rawValue, calibratedValue, offset, metric } = cd;
+  const store = getStore();
+  const unit = formatSensorValue(0, metric, store.unitSystem).unit || cd.unit;
 
   // Metric label for display (e.g. "Temperature" instead of "temperature")
   const metricLabel =
     metric.charAt(0).toUpperCase() + metric.slice(1).replace('_', ' ');
 
-  const formattedRaw = formatValue(rawValue, unit);
-  const formattedCalibrated = formatValue(calibratedValue, unit);
-  const formattedOffset = offset !== 0 ? formatValue(offset, unit) : '0';
+  const formattedRaw = formatDisplayValue(rawValue, metric);
+  const formattedCalibrated = formatDisplayValue(calibratedValue, metric);
+  const formattedOffset =
+    offset !== 0 ? formatOffsetValue(offset, metric) : '0';
 
   // Unique ID per (device, metric) pair since we now show all metrics
   const inputId = `ref-${device.id}-${metric}`;
@@ -223,7 +226,7 @@ function attachCalibrationHandlers(calibrationData: CalibrationDevice[]): void {
       const inputEl = document.getElementById(
         `ref-${deviceId}-${metric}`,
       ) as HTMLInputElement;
-      const refValue = parseFloat(inputEl.value);
+      const refValue = parseDisplayInput(parseFloat(inputEl.value), metric);
 
       if (isNaN(refValue)) {
         showToast('Please enter a valid reference value', 'warning');
@@ -338,6 +341,31 @@ function getDeviceIcon(device: HalDevice): string {
 function formatValue(value: number, unit: string): string {
   const precision = Math.abs(value) >= 100 ? 0 : value % 1 === 0 ? 0 : 2;
   return `${value.toFixed(precision)}${unit}`;
+}
+
+function formatDisplayValue(value: number, metric: string): string {
+  const store = getStore();
+  const converted = formatSensorValue(value, metric, store.unitSystem);
+  return formatValue(converted.value, converted.unit);
+}
+
+function formatOffsetValue(value: number, metric: string): string {
+  const store = getStore();
+  if (metric === 'temperature' && store.unitSystem === 'imperial') {
+    return formatValue((value * 9) / 5, '°F');
+  }
+  return formatDisplayValue(value, metric);
+}
+
+function parseDisplayInput(value: number, metric: string): number {
+  const store = getStore();
+  if (metric === 'temperature' && store.unitSystem === 'imperial') {
+    return ((value - 32) * 5) / 9;
+  }
+  if (metric === 'weight' && store.unitSystem === 'imperial') {
+    return value / 2.20462;
+  }
+  return value;
 }
 
 function escapeHtml(s: string): string {

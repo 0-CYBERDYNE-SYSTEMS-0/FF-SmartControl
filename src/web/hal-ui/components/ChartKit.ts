@@ -1,7 +1,7 @@
 // ChartKit — Pure SVG chart renderers extracted from options.html
 // Zero dependencies, zero external libraries. All metrics, all card types.
 
-import { getStore, formatSensorValue } from '../store.js';
+import { getStore, formatSensorValue, formatTimeValue } from '../store.js';
 import type { HalSensorReading, HalDecision } from '../api.js';
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -311,10 +311,7 @@ export function renderDualAxisCard(
   const timeLabels = Array.from({ length: timeSteps + 1 }, (_, i) => {
     const t = tMin + (i / timeSteps) * tSpan;
     const x = tx(t);
-    const label = new Date(t).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const label = formatTimeValue(new Date(t), getStore().timeFormat);
     return `<text x="${x.toFixed(1)}" y="${height - 8}" class="chart-label" text-anchor="middle">${label}</text>`;
   }).join('');
 
@@ -1116,14 +1113,11 @@ export function renderOriginalAreaChart(
 
   const lx = x(vals.length - 1).toFixed(1);
   const ly = y(vals[vals.length - 1]).toFixed(1);
-  const t0 = new Date(data[0].ts).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  const t1 = new Date(data[data.length - 1].ts).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const t0 = formatTimeValue(new Date(data[0].ts), getStore().timeFormat);
+  const t1 = formatTimeValue(
+    new Date(data[data.length - 1].ts),
+    getStore().timeFormat,
+  );
 
   container.innerHTML = `
     <svg class="og-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
@@ -1254,10 +1248,7 @@ export function renderStackedAreaChart(
   const timeLabels = Array.from({ length: 7 }, (_, i) => {
     const t = tMin + (i / 6) * tSpan;
     const x = tx(t);
-    const label = new Date(t).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const label = formatTimeValue(new Date(t), getStore().timeFormat);
     return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
   }).join('');
 
@@ -1335,7 +1326,8 @@ export function renderLakeChart(
 ): void {
   const container = document.getElementById(containerId);
   if (!container || layers.length === 0) {
-    if (container) container.innerHTML = '<div class="chart-empty">No data</div>';
+    if (container)
+      container.innerHTML = '<div class="chart-empty">No data</div>';
     return;
   }
 
@@ -1358,39 +1350,47 @@ export function renderLakeChart(
     pad.top + (1 - v) * (height - pad.top - pad.bottom);
 
   // Build per-layer paths
-  const layerPaths = layers.map((layer) => {
-    const pts = layer.data
-      .slice()
-      .sort((a, b) => a.t - b.t)
-      .map((d) => ({ x: tx(d.t), y: yScale(d.v) }));
+  const layerPaths = layers
+    .map((layer) => {
+      const pts = layer.data
+        .slice()
+        .sort((a, b) => a.t - b.t)
+        .map((d) => ({ x: tx(d.t), y: yScale(d.v) }));
 
-    if (pts.length < 2) return null;
+      if (pts.length < 2) return null;
 
-    const linePath = pts
-      .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-      .join(' ');
-    const areaPath = `${linePath} L${pts[pts.length - 1].x.toFixed(1)},${height - pad.bottom} L${pts[0].x.toFixed(1)},${height - pad.bottom} Z`;
+      const linePath = pts
+        .map(
+          (p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`,
+        )
+        .join(' ');
+      const areaPath = `${linePath} L${pts[pts.length - 1].x.toFixed(1)},${height - pad.bottom} L${pts[0].x.toFixed(1)},${height - pad.bottom} Z`;
 
-    return { layer, pts, linePath, areaPath };
-  }).filter(Boolean) as Array<{ layer: LakeLayer; pts: Array<{x: number; y: number}>; linePath: string; areaPath: string }>;
+      return { layer, pts, linePath, areaPath };
+    })
+    .filter(Boolean) as Array<{
+    layer: LakeLayer;
+    pts: Array<{ x: number; y: number }>;
+    linePath: string;
+    areaPath: string;
+  }>;
 
   if (layerPaths.length === 0) return;
 
   // Y axis labels (0 to 1, show as percentages)
-  const yLabels = [0, 0.25, 0.5, 0.75, 1].map((v) => {
-    const y = yScale(v);
-    const pct = Math.round(v * 100);
-    return `<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${pct}%</text>`;
-  }).join('');
+  const yLabels = [0, 0.25, 0.5, 0.75, 1]
+    .map((v) => {
+      const y = yScale(v);
+      const pct = Math.round(v * 100);
+      return `<text x="${pad.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${pct}%</text>`;
+    })
+    .join('');
 
   // Time axis labels
   const timeLabels = Array.from({ length: 7 }, (_, i) => {
     const t = tMin + (i / 6) * tSpan;
     const x = tx(t);
-    const label = new Date(t).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const label = formatTimeValue(new Date(t), getStore().timeFormat);
     return `<text x="${x.toFixed(1)}" y="${height - 10}" class="chart-label" text-anchor="middle">${label}</text>`;
   }).join('');
 
@@ -1408,15 +1408,17 @@ export function renderLakeChart(
 
   // Areas (behind lines)
   const areas = layerPaths
-    .map((lp, i) =>
-      `<path d="${lp.areaPath}" fill="url(#lake-grad-${containerId}-${i})" stroke="none" style="mix-blend-mode:screen"/>`
+    .map(
+      (lp, i) =>
+        `<path d="${lp.areaPath}" fill="url(#lake-grad-${containerId}-${i})" stroke="none" style="mix-blend-mode:screen"/>`,
     )
     .join('');
 
   // Glowing line outlines
   const lines = layerPaths
-    .map((lp) =>
-      `<path d="${lp.linePath}" fill="none" stroke="${lp.layer.color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" opacity="0.95"/>`
+    .map(
+      (lp) =>
+        `<path d="${lp.linePath}" fill="none" stroke="${lp.layer.color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" opacity="0.95"/>`,
     )
     .join('');
 
@@ -1567,8 +1569,12 @@ export function renderLineCard(
   const tSpan = Math.max(1, tMax - tMin);
   const tx = (t: number) => pad.l + ((t - tMin) / tSpan) * (w - pad.l - pad.r);
 
-  const axisMin = cfg.minAxis,
+  let axisMin = cfg.minAxis,
     axisMax = cfg.maxAxis;
+  if (metricKey === 'temperature' && store.unitSystem === 'imperial') {
+    axisMin = (axisMin * 9) / 5 + 32;
+    axisMax = (axisMax * 9) / 5 + 32;
+  }
   const vSpan = Math.max(1, axisMax - axisMin);
 
   const pts = data
@@ -1620,8 +1626,12 @@ export function renderBarCard(
   const step = (w - pad.l - pad.r) / bars;
   const barW = step * 0.7;
 
-  const axisMin = cfg.minAxis,
+  let axisMin = cfg.minAxis,
     axisMax = cfg.maxAxis;
+  if (metricKey === 'temperature' && store.unitSystem === 'imperial') {
+    axisMin = (axisMin * 9) / 5 + 32;
+    axisMax = (axisMax * 9) / 5 + 32;
+  }
   const vSpan = Math.max(1, axisMax - axisMin);
 
   const rects = data

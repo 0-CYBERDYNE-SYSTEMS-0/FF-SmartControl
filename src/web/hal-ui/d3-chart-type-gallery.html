@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FF_SmartControl D3 SVG Chart Gallery</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<style>
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --panel-2: #21262d;
+  --text: #f0f6fc;
+  --muted: #8b949e;
+  --faint: #484f58;
+  --border: #30363d;
+  --green: #22c55e;
+  --blue: #38bdf8;
+  --amber: #f59e0b;
+  --yellow: #facc15;
+  --red: #ef4444;
+  --violet: #a855f7;
+  --mono: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+  --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+}
+
+.page {
+  width: min(1580px, 100%);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 38px);
+  line-height: 1.05;
+  font-weight: 780;
+}
+
+.intro {
+  max-width: 900px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.tag {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--blue) 50%, var(--border));
+  background: color-mix(in srgb, var(--blue) 8%, var(--panel));
+  color: var(--blue);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-bottom: 22px;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--c) 80%, transparent);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.card {
+  min-width: 0;
+  min-height: 348px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  background:
+    radial-gradient(circle at 78% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 94%, var(--accent)) 0%, #10151d 100%);
+  box-shadow: 0 18px 42px rgba(0,0,0,0.24);
+}
+
+.head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.num {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
+  border-radius: 6px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel-2));
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.18;
+  font-weight: 780;
+}
+
+.desc {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.34;
+}
+
+.chart {
+  width: 100%;
+  flex: 1;
+  min-height: 230px;
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.chip {
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.axis text,
+.axis-label,
+.small-label {
+  fill: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.axis path,
+.axis line {
+  stroke: var(--border);
+}
+
+.grid-line {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.error {
+  border: 1px solid var(--red);
+  background: color-mix(in srgb, var(--red) 9%, var(--panel));
+  color: var(--text);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+@media (max-width: 1320px) {
+  .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 980px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 680px) {
+  .page { padding: 16px; }
+  .top { display: block; }
+  .tag { display: inline-block; margin-top: 14px; }
+  .grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="top">
+    <div>
+      <h1>FF_SmartControl D3 SVG Chart Gallery</h1>
+      <p class="intro">Twenty D3-powered SVG visualization options using the same synthetic FF_SmartControl telemetry. D3 is doing the scales, shapes, layouts, stacks, forces, contours, arcs, and paths while the page remains a single HTML file.</p>
+    </div>
+    <div class="tag">D3 v7 · SVG helpers</div>
+  </header>
+
+  <div class="legend">
+    <span><i class="dot" style="--c:var(--amber)"></i>Temperature</span>
+    <span><i class="dot" style="--c:var(--blue)"></i>Humidity</span>
+    <span><i class="dot" style="--c:var(--green)"></i>CO2</span>
+    <span><i class="dot" style="--c:var(--yellow)"></i>Light</span>
+    <span><i class="dot" style="--c:var(--red)"></i>Soil</span>
+  </div>
+
+  <div id="error"></div>
+  <section class="grid" id="gallery"></section>
+</main>
+
+<script>
+(function () {
+  if (!window.d3) {
+    document.getElementById('error').innerHTML = '<div class="error">D3 did not load. This single file uses the D3 CDN. Connect to the internet or replace the script tag with a local bundled D3 file.</div>';
+    return;
+  }
+
+  const metricMeta = [
+    { key: 'temperature', label: 'Temp', color: '#f59e0b', min: 12, max: 36, unit: 'C' },
+    { key: 'humidity', label: 'RH', color: '#38bdf8', min: 25, max: 90, unit: '%' },
+    { key: 'co2', label: 'CO2', color: '#22c55e', min: 420, max: 1500, unit: 'ppm' },
+    { key: 'light', label: 'Light', color: '#facc15', min: 0, max: 1000, unit: 'ppfd' },
+    { key: 'soil', label: 'Soil', color: '#ef4444', min: 15, max: 90, unit: '%' }
+  ];
+
+  const colors = d3.scaleOrdinal()
+    .domain(metricMeta.map((d) => d.key))
+    .range(metricMeta.map((d) => d.color));
+
+  const rand = d3.randomLcg(0.42);
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+
+  const rows = d3.range(72).map((i) => {
+    const d = new Date(now.getTime() - (71 - i) * 20 * 60 * 1000);
+    const hour = d.getHours() + d.getMinutes() / 60;
+    const day = Math.sin((hour - 6) * Math.PI / 12);
+    return {
+      index: i,
+      time: d,
+      label: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      temperature: 23 + day * 5.2 + (rand() - 0.5) * 1.6,
+      humidity: 58 - day * 13 + (rand() - 0.5) * 4,
+      co2: 800 + (1 - day) * 135 + (rand() - 0.5) * 60,
+      light: Math.max(0, day) * 900 + (rand() - 0.5) * 70,
+      soil: 52 + Math.sin(i / 8) * 12 + (rand() - 0.5) * 5
+    };
+  });
+
+  const zones = ['Tent A', 'Tent B', 'Clone Rack', 'Reservoir'].map((name, zi) => ({
+    name,
+    rows: rows.map((r) => ({
+      ...r,
+      temperature: r.temperature + [0, 1.3, -1.8, -4][zi],
+      humidity: r.humidity + [0, -4, 8, 2][zi],
+      co2: r.co2 + [0, 85, -55, -120][zi],
+      soil: r.soil + [0, -5, 7, 12][zi]
+    }))
+  }));
+
+  const latest = rows[rows.length - 1];
+  const fmt = (m, v) => (m.key === 'co2' || m.key === 'light' ? d3.format('.0f')(v) : d3.format('.1f')(v)) + m.unit;
+  const norm = (m, v) => Math.max(0, Math.min(1, (v - m.min) / (m.max - m.min)));
+
+  function makeCard(item, i) {
+    const card = d3.select('#gallery').append('article')
+      .attr('class', 'card')
+      .style('--accent', item.accent);
+    const head = card.append('div').attr('class', 'head');
+    head.append('div').attr('class', 'num').text(i + 1);
+    const copy = head.append('div');
+    copy.append('h2').attr('class', 'title').text(item.title);
+    copy.append('p').attr('class', 'desc').text(item.desc);
+    const chart = card.append('div').attr('class', 'chart').attr('id', item.id);
+    const foot = card.append('div').attr('class', 'foot');
+    item.chips.forEach((chip) => foot.append('span').attr('class', 'chip').text(chip));
+    item.render(chart);
+  }
+
+  function svgRoot(sel, w = 420, h = 245) {
+    return sel.append('svg').attr('viewBox', [0, 0, w, h]).attr('role', 'img');
+  }
+
+  function addGrid(g, yScale, width, ticks = 4) {
+    g.selectAll('line.grid-line')
+      .data(yScale.ticks(ticks))
+      .join('line')
+      .attr('class', 'grid-line')
+      .attr('x1', 0)
+      .attr('x2', width)
+      .attr('y1', yScale)
+      .attr('y2', yScale);
+  }
+
+  function metricSeries(keys = ['temperature', 'humidity', 'co2']) {
+    return keys.map((key) => {
+      const m = metricMeta.find((d) => d.key === key);
+      return {
+        ...m,
+        values: rows.map((r) => ({ time: r.time, value: norm(m, r[key]) * 100, raw: r[key] }))
+      };
+    });
+  }
+
+  const charts = [
+    {
+      id: 'line-focus', title: 'Multi-Line Focus', accent: '#58a6ff',
+      desc: 'Classic D3 scales, axes, line generators, dots, and latest labels.',
+      chips: ['hero-safe', 'readable', 'direct port'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 34, r: 42, t: 16, b: 30 };
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scaleTime().domain(d3.extent(rows, (d) => d.time)).range([p.l, w - p.r]);
+        const y = d3.scaleLinear().domain([0, 100]).range([h - p.b, p.t]);
+        const line = d3.line().x((d) => x(d.time)).y((d) => y(d.value)).curve(d3.curveCatmullRom.alpha(0.5));
+        addGrid(svg.append('g').attr('transform', `translate(0,0)`), y, w - p.r, 4);
+        svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${h - p.b})`).call(d3.axisBottom(x).ticks(3).tickSizeOuter(0));
+        metricSeries().forEach((series) => {
+          svg.append('path').datum(series.values).attr('d', line).attr('fill', 'none').attr('stroke', series.color).attr('stroke-width', 2.4);
+          const last = series.values[series.values.length - 1];
+          svg.append('circle').attr('cx', x(last.time)).attr('cy', y(last.value)).attr('r', 4).attr('fill', series.color);
+          svg.append('text').attr('class', 'small-label').attr('x', x(last.time) + 8).attr('y', y(last.value) + 3).attr('fill', series.color).text(series.label);
+        });
+      }
+    },
+    {
+      id: 'stacked-area', title: 'Stacked Area', accent: '#22c55e',
+      desc: 'D3 stack layout for additive normalized environmental pressure.',
+      chips: ['stack', 'metric toggles', 'dashboard'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 28, r: 18, t: 14, b: 28 };
+        const keys = ['temperature', 'humidity', 'co2', 'soil'];
+        const data = rows.map((r) => Object.fromEntries([['time', r.time], ...keys.map((k) => [k, norm(metricMeta.find((m) => m.key === k), r[k]) * 100])]));
+        const stack = d3.stack().keys(keys)(data);
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scaleTime().domain(d3.extent(rows, (d) => d.time)).range([p.l, w - p.r]);
+        const y = d3.scaleLinear().domain([0, d3.max(stack, (s) => d3.max(s, (d) => d[1]))]).range([h - p.b, p.t]);
+        const area = d3.area().x((d) => x(d.data.time)).y0((d) => y(d[0])).y1((d) => y(d[1])).curve(d3.curveBasis);
+        svg.selectAll('path.layer').data(stack).join('path').attr('d', area).attr('fill', (d) => colors(d.key)).attr('opacity', 0.65);
+        svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${h - p.b})`).call(d3.axisBottom(x).ticks(3).tickSizeOuter(0));
+      }
+    },
+    {
+      id: 'streamgraph', title: 'Streamgraph', accent: '#a855f7',
+      desc: 'Centered stack offset for a more organic hero visualization.',
+      chips: ['expressive', 'hero', 'D3 stack'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 22, r: 22, t: 16, b: 24 };
+        const keys = ['temperature', 'humidity', 'co2', 'light', 'soil'];
+        const data = rows.map((r) => Object.fromEntries([['time', r.time], ...keys.map((k) => [k, norm(metricMeta.find((m) => m.key === k), r[k]) * 100])]));
+        const stack = d3.stack().keys(keys).offset(d3.stackOffsetWiggle).order(d3.stackOrderInsideOut)(data);
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scaleTime().domain(d3.extent(rows, (d) => d.time)).range([p.l, w - p.r]);
+        const y = d3.scaleLinear().domain([d3.min(stack, (s) => d3.min(s, (d) => d[0])), d3.max(stack, (s) => d3.max(s, (d) => d[1]))]).range([h - p.b, p.t]);
+        const area = d3.area().x((d) => x(d.data.time)).y0((d) => y(d[0])).y1((d) => y(d[1])).curve(d3.curveBasis);
+        svg.selectAll('path').data(stack).join('path').attr('d', area).attr('fill', (d) => colors(d.key)).attr('opacity', 0.78);
+      }
+    },
+    {
+      id: 'horizon', title: 'Horizon Bands', accent: '#ef4444',
+      desc: 'Dense metric strips built with D3 scales and per-sample bars.',
+      chips: ['dense', 'all metrics', 'small height'],
+      render(sel) {
+        const w = 420, h = 245, rowH = 43, p = { l: 42, r: 12, t: 14 };
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scaleTime().domain(d3.extent(rows, (d) => d.time)).range([p.l, w - p.r]);
+        metricMeta.forEach((m, i) => {
+          const g = svg.append('g').attr('transform', `translate(0,${p.t + i * rowH})`);
+          g.append('text').attr('class', 'small-label').attr('x', 4).attr('y', 24).text(m.label);
+          const y = d3.scaleLinear().domain([0, 1]).range([rowH - 8, 6]);
+          g.selectAll('rect').data(rows).join('rect')
+            .attr('x', (d) => x(d.time)).attr('y', (d) => y(norm(m, d[m.key])))
+            .attr('width', 4).attr('height', (d) => rowH - 8 - y(norm(m, d[m.key])))
+            .attr('rx', 1.5).attr('fill', m.color).attr('opacity', (d) => 0.18 + norm(m, d[m.key]) * 0.72);
+        });
+      }
+    },
+    {
+      id: 'calendar', title: 'Calendar Heatmap', accent: '#f59e0b',
+      desc: 'D3 band scales for day/hour heat blocks and repeat-pattern scanning.',
+      chips: ['history', 'heat', 'patterns'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 38, r: 10, t: 26, b: 12 };
+        const days = d3.range(14), hours = d3.range(12);
+        const cells = days.flatMap((day) => hours.map((hour) => ({ day, hour, value: 22 + Math.sin((hour * 2 - 6) * Math.PI / 12) * 5 + (rand() - 0.5) * 2 })));
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scaleBand().domain(days).range([p.l, w - p.r]).padding(0.12);
+        const y = d3.scaleBand().domain(hours).range([p.t, h - p.b]).padding(0.12);
+        const c = d3.scaleSequential(d3.interpolateYlOrRd).domain([16, 31]);
+        svg.selectAll('rect').data(cells).join('rect').attr('x', (d) => x(d.day)).attr('y', (d) => y(d.hour)).attr('width', x.bandwidth()).attr('height', y.bandwidth()).attr('rx', 3).attr('fill', (d) => c(d.value));
+        svg.append('text').attr('class', 'small-label').attr('x', p.l).attr('y', 16).text('14 days x 2-hour blocks');
+      }
+    },
+    {
+      id: 'radial-gauge', title: 'Radial Gauge Rings', accent: '#58a6ff',
+      desc: 'D3 arc generator for compact current-state dashboard gauges.',
+      chips: ['system', 'current', 'radial'],
+      render(sel) {
+        const w = 420, h = 245, cx = 160, cy = 136;
+        const svg = svgRoot(sel, w, h);
+        metricMeta.forEach((m, i) => {
+          const radius = 98 - i * 15;
+          const arcBg = d3.arc().innerRadius(radius - 5).outerRadius(radius + 5).startAngle(-Math.PI * 0.68).endAngle(Math.PI * 0.68);
+          const arcVal = d3.arc().innerRadius(radius - 5).outerRadius(radius + 5).startAngle(-Math.PI * 0.68).endAngle(-Math.PI * 0.68 + Math.PI * 1.36 * norm(m, latest[m.key]));
+          svg.append('path').attr('transform', `translate(${cx},${cy})`).attr('d', arcBg).attr('fill', '#30363d');
+          svg.append('path').attr('transform', `translate(${cx},${cy})`).attr('d', arcVal).attr('fill', m.color);
+          svg.append('text').attr('class', 'small-label').attr('x', 280).attr('y', 66 + i * 24).attr('fill', m.color).text(`${m.label} ${fmt(m, latest[m.key])}`);
+        });
+        svg.append('text').attr('x', cx).attr('y', cy + 4).attr('text-anchor', 'middle').attr('fill', '#f0f6fc').attr('font-size', 28).attr('font-weight', 850).attr('font-family', 'var(--mono)').text('LIVE');
+      }
+    },
+    {
+      id: 'radar', title: 'Radar Health Profile', accent: '#a855f7',
+      desc: 'D3 radial line generator for normalized farm balance profile.',
+      chips: ['summary', 'balance', 'profile'],
+      render(sel) {
+        const w = 420, h = 245, cx = 210, cy = 120, r = 84;
+        const svg = svgRoot(sel, w, h);
+        const angle = d3.scalePoint().domain(metricMeta.map((m) => m.key)).range([-Math.PI / 2, Math.PI * 1.5]).padding(0);
+        [0.33, 0.66, 1].forEach((k) => {
+          const pts = metricMeta.map((m) => [cx + Math.cos(angle(m.key)) * r * k, cy + Math.sin(angle(m.key)) * r * k]);
+          svg.append('path').attr('d', d3.line()(pts) + 'Z').attr('fill', 'none').attr('stroke', '#30363d');
+        });
+        metricMeta.forEach((m) => {
+          const a = angle(m.key);
+          svg.append('line').attr('x1', cx).attr('y1', cy).attr('x2', cx + Math.cos(a) * r).attr('y2', cy + Math.sin(a) * r).attr('stroke', '#30363d');
+          svg.append('text').attr('class', 'small-label').attr('x', cx + Math.cos(a) * (r + 20)).attr('y', cy + Math.sin(a) * (r + 20)).attr('text-anchor', 'middle').text(m.label);
+        });
+        const points = metricMeta.map((m) => [cx + Math.cos(angle(m.key)) * r * norm(m, latest[m.key]), cy + Math.sin(angle(m.key)) * r * norm(m, latest[m.key])]);
+        svg.append('path').attr('d', d3.line()(points) + 'Z').attr('fill', '#a855f7').attr('opacity', 0.26).attr('stroke', '#a855f7').attr('stroke-width', 2.5);
+      }
+    },
+    {
+      id: 'bubble-scatter', title: 'Bubble Scatter', accent: '#22c55e',
+      desc: 'D3 x/y/r scales: temperature vs humidity, CO2 as bubble size.',
+      chips: ['correlation', 'diagnostic', 'CO2'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 38, r: 18, t: 16, b: 32 };
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scaleLinear().domain([16, 32]).range([p.l, w - p.r]);
+        const y = d3.scaleLinear().domain([30, 82]).range([h - p.b, p.t]);
+        const r = d3.scaleSqrt().domain([500, 1100]).range([3, 12]);
+        svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${h - p.b})`).call(d3.axisBottom(x).ticks(4));
+        svg.append('g').attr('class', 'axis').attr('transform', `translate(${p.l},0)`).call(d3.axisLeft(y).ticks(4));
+        svg.selectAll('circle').data(rows).join('circle').attr('cx', (d) => x(d.temperature)).attr('cy', (d) => y(d.humidity)).attr('r', (d) => r(d.co2)).attr('fill', '#22c55e').attr('opacity', 0.38).attr('stroke', '#38bdf8').attr('stroke-opacity', 0.5);
+      }
+    },
+    {
+      id: 'parallel', title: 'Parallel Coordinates', accent: '#38bdf8',
+      desc: 'D3 point and linear scales for comparing zones across metrics.',
+      chips: ['zones', 'devices', 'comparison'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 32, r: 22, t: 24, b: 36 };
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scalePoint().domain(metricMeta.map((m) => m.key)).range([p.l, w - p.r]);
+        const yBy = Object.fromEntries(metricMeta.map((m) => [m.key, d3.scaleLinear().domain([m.min, m.max]).range([h - p.b, p.t])]));
+        metricMeta.forEach((m) => {
+          svg.append('line').attr('x1', x(m.key)).attr('x2', x(m.key)).attr('y1', p.t).attr('y2', h - p.b).attr('stroke', '#30363d');
+          svg.append('text').attr('class', 'small-label').attr('x', x(m.key)).attr('y', h - 12).attr('text-anchor', 'middle').text(m.label);
+        });
+        const line = d3.line().x((d) => x(d.key)).y((d) => yBy[d.key](d.value)).curve(d3.curveCatmullRom.alpha(0.5));
+        zones.forEach((zone, i) => {
+          const last = zone.rows[zone.rows.length - 1];
+          const values = metricMeta.map((m) => ({ key: m.key, value: last[m.key] }));
+          svg.append('path').datum(values).attr('d', line).attr('fill', 'none').attr('stroke', d3.schemeTableau10[i]).attr('stroke-width', 2.4).attr('opacity', 0.85);
+        });
+      }
+    },
+    {
+      id: 'ridgeline', title: 'Ridgeline Trends', accent: '#ef4444',
+      desc: 'D3 area generator creates separated metric ridges over time.',
+      chips: ['beautiful', 'stacked', 'hero'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 44, r: 14, t: 18, b: 16 };
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scaleTime().domain(d3.extent(rows, (d) => d.time)).range([p.l, w - p.r]);
+        metricMeta.slice(0, 4).forEach((m, i) => {
+          const base = p.t + 42 + i * 47;
+          const y = d3.scaleLinear().domain([0, 1]).range([base, base - 34]);
+          const area = d3.area().x((d) => x(d.time)).y0(base).y1((d) => y(norm(m, d[m.key]))).curve(d3.curveBasis);
+          const line = d3.line().x((d) => x(d.time)).y((d) => y(norm(m, d[m.key]))).curve(d3.curveBasis);
+          svg.append('path').datum(rows).attr('d', area).attr('fill', m.color).attr('opacity', 0.23);
+          svg.append('path').datum(rows).attr('d', line).attr('fill', 'none').attr('stroke', m.color).attr('stroke-width', 2);
+          svg.append('text').attr('class', 'small-label').attr('x', 6).attr('y', base - 12).text(m.label);
+        });
+      }
+    },
+    {
+      id: 'bullet', title: 'Bullet Range Bars', accent: '#d29922',
+      desc: 'D3 linear scales for current value, healthy range, and target.',
+      chips: ['targets', 'thresholds', 'clear'],
+      render(sel) {
+        const w = 420, h = 245, left = 88, right = 386, top = 24, gap = 40;
+        const svg = svgRoot(sel, w, h);
+        metricMeta.forEach((m, i) => {
+          const y = top + i * gap;
+          const x = d3.scaleLinear().domain([0, 1]).range([left, right]);
+          const n = norm(m, latest[m.key]);
+          const target = m.key === 'light' ? 0.72 : m.key === 'co2' ? 0.42 : 0.58;
+          svg.append('text').attr('class', 'small-label').attr('x', 8).attr('y', y + 17).text(m.label);
+          svg.append('rect').attr('x', left).attr('y', y).attr('width', right - left).attr('height', 20).attr('rx', 4).attr('fill', '#30363d');
+          svg.append('rect').attr('x', left).attr('y', y).attr('width', (right - left) * 0.66).attr('height', 20).attr('rx', 4).attr('fill', m.color).attr('opacity', 0.12);
+          svg.append('rect').attr('x', left).attr('y', y + 5).attr('width', x(n) - left).attr('height', 10).attr('rx', 3).attr('fill', m.color);
+          svg.append('line').attr('x1', x(target)).attr('x2', x(target)).attr('y1', y - 4).attr('y2', y + 24).attr('stroke', '#f0f6fc').attr('stroke-width', 2);
+        });
+      }
+    },
+    {
+      id: 'waterfall', title: 'Waterfall Contribution', accent: '#58a6ff',
+      desc: 'D3 cumulative bars for explaining action or device impact.',
+      chips: ['decisions', 'impact', 'variance'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 32, r: 18, t: 20, b: 34 };
+        const data = [
+          { label: 'Light', value: 18, color: '#facc15' },
+          { label: 'Fan', value: -7, color: '#38bdf8' },
+          { label: 'CO2', value: 12, color: '#22c55e' },
+          { label: 'Pump', value: -4, color: '#58a6ff' },
+          { label: 'Heat', value: 9, color: '#f59e0b' },
+          { label: 'Drift', value: -11, color: '#ef4444' }
+        ];
+        let running = 52;
+        data.forEach((d) => { d.start = running; running += d.value; d.end = running; });
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scaleBand().domain(data.map((d) => d.label)).range([p.l, w - p.r]).padding(0.28);
+        const y = d3.scaleLinear().domain([30, 95]).range([h - p.b, p.t]);
+        svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${h - p.b})`).call(d3.axisBottom(x).tickSizeOuter(0));
+        svg.selectAll('rect').data(data).join('rect').attr('x', (d) => x(d.label)).attr('y', (d) => y(Math.max(d.start, d.end))).attr('width', x.bandwidth()).attr('height', (d) => Math.max(4, Math.abs(y(d.start) - y(d.end)))).attr('rx', 4).attr('fill', (d) => d.color).attr('opacity', 0.78);
+      }
+    },
+    {
+      id: 'treemap', title: 'Treemap Load View', accent: '#facc15',
+      desc: 'D3 hierarchy and treemap layout for resource or power share.',
+      chips: ['power', 'resource', 'layout'],
+      render(sel) {
+        const w = 420, h = 245;
+        const data = { name: 'farm', children: [
+          { name: 'Lights', value: 410, color: '#facc15' }, { name: 'HVAC', value: 260, color: '#38bdf8' },
+          { name: 'CO2', value: 120, color: '#22c55e' }, { name: 'Pumps', value: 94, color: '#58a6ff' },
+          { name: 'Heat', value: 88, color: '#f59e0b' }, { name: 'Sensors', value: 38, color: '#ef4444' }
+        ]};
+        const root = d3.treemap().size([w, h]).padding(5).round(true)(d3.hierarchy(data).sum((d) => d.value));
+        const svg = svgRoot(sel, w, h);
+        const node = svg.selectAll('g').data(root.leaves()).join('g').attr('transform', (d) => `translate(${d.x0},${d.y0})`);
+        node.append('rect').attr('width', (d) => d.x1 - d.x0).attr('height', (d) => d.y1 - d.y0).attr('rx', 7).attr('fill', (d) => d.data.color).attr('opacity', 0.24).attr('stroke', (d) => d.data.color);
+        node.append('text').attr('x', 10).attr('y', 23).attr('fill', '#f0f6fc').attr('font-weight', 800).attr('font-size', 13).text((d) => d.data.name);
+        node.append('text').attr('x', 10).attr('y', 43).attr('class', 'small-label').text((d) => `${d.data.value}W`);
+      }
+    },
+    {
+      id: 'sankey', title: 'Sankey-Style Flow', accent: '#22c55e',
+      desc: 'D3 linkHorizontal paths for sensor-to-agent-to-action flow.',
+      chips: ['agent loop', 'causality', 'story'],
+      render(sel) {
+        const w = 420, h = 245;
+        const svg = svgRoot(sel, w, h);
+        const link = d3.linkHorizontal().x((d) => d.x).y((d) => d.y);
+        const flows = [
+          { s: [40, 58], t: [194, 52], width: 18, color: '#facc15' },
+          { s: [40, 108], t: [194, 122], width: 14, color: '#38bdf8' },
+          { s: [40, 160], t: [194, 178], width: 10, color: '#22c55e' },
+          { s: [226, 58], t: [374, 90], width: 20, color: '#f59e0b' },
+          { s: [226, 130], t: [374, 138], width: 15, color: '#58a6ff' },
+          { s: [226, 184], t: [374, 188], width: 9, color: '#ef4444' }
+        ];
+        svg.selectAll('path.flow').data(flows).join('path').attr('d', (d) => link({ source: { x: d.s[0], y: d.s[1] }, target: { x: d.t[0], y: d.t[1] } })).attr('fill', 'none').attr('stroke', (d) => d.color).attr('stroke-width', (d) => d.width).attr('opacity', 0.48).attr('stroke-linecap', 'round');
+        [[18, 34, 'Sensors'], [176, 28, 'Agent'], [350, 70, 'Actions']].forEach((n) => {
+          svg.append('rect').attr('x', n[0]).attr('y', n[1]).attr('width', 52).attr('height', 146).attr('rx', 8).attr('fill', '#21262d').attr('stroke', '#30363d');
+          svg.append('text').attr('class', 'small-label').attr('x', n[0] + 26).attr('y', n[1] + 166).attr('text-anchor', 'middle').text(n[2]);
+        });
+      }
+    },
+    {
+      id: 'candlestick', title: 'Candlestick Range', accent: '#f59e0b',
+      desc: 'D3 band and linear scales for daily min/max stability ranges.',
+      chips: ['range', 'daily', 'stability'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 34, r: 18, t: 18, b: 30 };
+        const days = d3.range(18).map((i) => {
+          const base = 23 + Math.sin(i / 3) * 3;
+          return { day: i + 1, min: base - 3 - rand(), q1: base - 1.2, q3: base + 1.6, max: base + 3 + rand() };
+        });
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scaleBand().domain(days.map((d) => d.day)).range([p.l, w - p.r]).padding(0.35);
+        const y = d3.scaleLinear().domain([12, 36]).range([h - p.b, p.t]);
+        svg.selectAll('line.range').data(days).join('line').attr('x1', (d) => x(d.day) + x.bandwidth() / 2).attr('x2', (d) => x(d.day) + x.bandwidth() / 2).attr('y1', (d) => y(d.max)).attr('y2', (d) => y(d.min)).attr('stroke', '#f59e0b').attr('stroke-width', 1.5);
+        svg.selectAll('rect').data(days).join('rect').attr('x', (d) => x(d.day)).attr('y', (d) => y(d.q3)).attr('width', x.bandwidth()).attr('height', (d) => Math.max(4, y(d.q1) - y(d.q3))).attr('rx', 2).attr('fill', '#f59e0b').attr('opacity', 0.58);
+      }
+    },
+    {
+      id: 'spiral', title: 'Spiral Timeline', accent: '#a855f7',
+      desc: 'D3 radial math and sequential encoding for 24-hour rhythm.',
+      chips: ['cycle', 'distinctive', 'hero'],
+      render(sel) {
+        const w = 420, h = 245, cx = 210, cy = 122;
+        const svg = svgRoot(sel, w, h);
+        const color = d3.scaleSequential(d3.interpolateInferno).domain([12, 34]);
+        rows.forEach((d, i) => {
+          const a = i * 0.48;
+          const r = 10 + i * 1.55;
+          svg.append('circle').attr('cx', cx + Math.cos(a) * r).attr('cy', cy + Math.sin(a) * r).attr('r', 3 + norm(metricMeta[0], d.temperature) * 5).attr('fill', color(d.temperature)).attr('opacity', 0.85);
+        });
+        svg.append('text').attr('x', cx).attr('y', cy).attr('text-anchor', 'middle').attr('fill', '#f0f6fc').attr('font-family', 'var(--mono)').attr('font-weight', 850).attr('font-size', 20).text('24H');
+      }
+    },
+    {
+      id: 'lollipop', title: 'Lollipop Rank', accent: '#ef4444',
+      desc: 'D3 ranking chart for current metric pressure and alert triage.',
+      chips: ['rank', 'scan', 'alerts'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 78, r: 26, t: 24, b: 18 };
+        const data = metricMeta.map((m) => ({ ...m, value: norm(m, latest[m.key]) })).sort((a, b) => b.value - a.value);
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scaleLinear().domain([0, 1]).range([p.l, w - p.r]);
+        const y = d3.scaleBand().domain(data.map((d) => d.key)).range([p.t, h - p.b]).padding(0.36);
+        svg.selectAll('text.label').data(data).join('text').attr('class', 'small-label').attr('x', 8).attr('y', (d) => y(d.key) + y.bandwidth() / 2 + 4).text((d) => d.label);
+        svg.selectAll('line').data(data).join('line').attr('x1', p.l).attr('x2', (d) => x(d.value)).attr('y1', (d) => y(d.key) + y.bandwidth() / 2).attr('y2', (d) => y(d.key) + y.bandwidth() / 2).attr('stroke', (d) => d.color).attr('stroke-width', 4).attr('stroke-linecap', 'round').attr('opacity', 0.68);
+        svg.selectAll('circle').data(data).join('circle').attr('cx', (d) => x(d.value)).attr('cy', (d) => y(d.key) + y.bandwidth() / 2).attr('r', 9).attr('fill', (d) => d.color);
+      }
+    },
+    {
+      id: 'force', title: 'Force Device Graph', accent: '#38bdf8',
+      desc: 'D3 force simulation for devices, sensors, relays, and agent nodes.',
+      chips: ['topology', 'devices', 'network'],
+      render(sel) {
+        const w = 420, h = 245;
+        const nodes = [
+          { id: 'Agent', group: 'agent' }, { id: 'Tent A', group: 'zone' }, { id: 'Tent B', group: 'zone' },
+          { id: 'Temp', group: 'sensor' }, { id: 'RH', group: 'sensor' }, { id: 'CO2', group: 'sensor' },
+          { id: 'Light', group: 'relay' }, { id: 'Fan', group: 'relay' }, { id: 'Pump', group: 'relay' }
+        ];
+        const links = [
+          ['Agent', 'Tent A'], ['Agent', 'Tent B'], ['Tent A', 'Temp'], ['Tent A', 'RH'], ['Tent B', 'CO2'],
+          ['Agent', 'Light'], ['Agent', 'Fan'], ['Agent', 'Pump'], ['Fan', 'CO2']
+        ].map(([source, target]) => ({ source, target }));
+        const color = d3.scaleOrdinal().domain(['agent', 'zone', 'sensor', 'relay']).range(['#a855f7', '#58a6ff', '#22c55e', '#f59e0b']);
+        const sim = d3.forceSimulation(nodes).force('link', d3.forceLink(links).id((d) => d.id).distance(58)).force('charge', d3.forceManyBody().strength(-120)).force('center', d3.forceCenter(w / 2, h / 2)).stop();
+        for (let i = 0; i < 160; i++) sim.tick();
+        const svg = svgRoot(sel, w, h);
+        svg.selectAll('line').data(links).join('line').attr('x1', (d) => d.source.x).attr('y1', (d) => d.source.y).attr('x2', (d) => d.target.x).attr('y2', (d) => d.target.y).attr('stroke', '#30363d').attr('stroke-width', 1.5);
+        const node = svg.selectAll('g.node').data(nodes).join('g').attr('transform', (d) => `translate(${d.x},${d.y})`);
+        node.append('circle').attr('r', (d) => d.group === 'agent' ? 18 : 12).attr('fill', (d) => color(d.group)).attr('opacity', 0.88);
+        node.append('text').attr('class', 'small-label').attr('text-anchor', 'middle').attr('y', 28).text((d) => d.id);
+      }
+    },
+    {
+      id: 'chord', title: 'Chord Relations', accent: '#a855f7',
+      desc: 'D3 chord and ribbon layout for metric/device interactions.',
+      chips: ['relations', 'flows', 'advanced'],
+      render(sel) {
+        const w = 420, h = 245, outer = 92, inner = 78;
+        const names = ['Temp', 'RH', 'CO2', 'Light', 'Fan'];
+        const matrix = [
+          [0, 7, 5, 4, 8], [5, 0, 4, 2, 7], [6, 3, 0, 3, 9], [8, 2, 4, 0, 5], [6, 7, 8, 4, 0]
+        ];
+        const chord = d3.chord().padAngle(0.05).sortSubgroups(d3.descending)(matrix);
+        const arc = d3.arc().innerRadius(inner).outerRadius(outer);
+        const ribbon = d3.ribbon().radius(inner);
+        const color = d3.scaleOrdinal().domain(d3.range(names.length)).range(['#f59e0b', '#38bdf8', '#22c55e', '#facc15', '#ef4444']);
+        const svg = svgRoot(sel, w, h).append('g').attr('transform', 'translate(210,122)');
+        svg.append('g').selectAll('path').data(chord).join('path').attr('d', ribbon).attr('fill', (d) => color(d.source.index)).attr('opacity', 0.35);
+        const group = svg.append('g').selectAll('g').data(chord.groups).join('g');
+        group.append('path').attr('d', arc).attr('fill', (d) => color(d.index));
+        group.append('text').attr('class', 'small-label').attr('dy', '0.35em').attr('transform', (d) => {
+          const a = (d.startAngle + d.endAngle) / 2;
+          return `rotate(${a * 180 / Math.PI - 90}) translate(${outer + 16}) ${a > Math.PI ? 'rotate(180)' : ''}`;
+        }).attr('text-anchor', (d) => ((d.startAngle + d.endAngle) / 2) > Math.PI ? 'end' : 'start').text((d) => names[d.index]);
+      }
+    },
+    {
+      id: 'contour', title: 'Contour Density', accent: '#22c55e',
+      desc: 'D3 contourDensity for environmental comfort clusters.',
+      chips: ['density', 'clustering', 'diagnostic'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 36, r: 16, t: 16, b: 30 };
+        const points = rows.map((d) => [d.temperature, d.humidity]);
+        const x = d3.scaleLinear().domain([16, 32]).range([p.l, w - p.r]);
+        const y = d3.scaleLinear().domain([30, 82]).range([h - p.b, p.t]);
+        const contours = d3.contourDensity().x((d) => x(d[0])).y((d) => y(d[1])).size([w, h]).bandwidth(18)(points);
+        const c = d3.scaleSequential(d3.interpolateGreens).domain(d3.extent(contours, (d) => d.value));
+        const svg = svgRoot(sel, w, h);
+        svg.selectAll('path').data(contours).join('path').attr('d', d3.geoPath()).attr('fill', (d) => c(d.value)).attr('opacity', 0.58).attr('stroke', '#22c55e').attr('stroke-opacity', 0.38);
+        svg.selectAll('circle').data(points).join('circle').attr('cx', (d) => x(d[0])).attr('cy', (d) => y(d[1])).attr('r', 2).attr('fill', '#f0f6fc').attr('opacity', 0.35);
+      }
+    },
+    {
+      id: 'sunburst', title: 'Sunburst Device Share', accent: '#facc15',
+      desc: 'D3 partition and arc layout for zones, devices, and loads.',
+      chips: ['hierarchy', 'share', 'radial'],
+      render(sel) {
+        const w = 420, h = 245, radius = 112;
+        const data = { name: 'Farm', children: [
+          { name: 'Tent A', children: [{ name: 'Light', value: 32 }, { name: 'Fan', value: 14 }, { name: 'Pump', value: 8 }] },
+          { name: 'Tent B', children: [{ name: 'Light', value: 28 }, { name: 'Fan', value: 17 }, { name: 'CO2', value: 10 }] },
+          { name: 'System', children: [{ name: 'Host', value: 7 }, { name: 'Sensors', value: 5 }] }
+        ]};
+        const root = d3.partition().size([2 * Math.PI, radius])(d3.hierarchy(data).sum((d) => d.value));
+        const arc = d3.arc().startAngle((d) => d.x0).endAngle((d) => d.x1).innerRadius((d) => d.y0).outerRadius((d) => d.y1 - 1);
+        const color = d3.scaleOrdinal(d3.schemeTableau10);
+        const svg = svgRoot(sel, w, h).append('g').attr('transform', 'translate(210,122)');
+        svg.selectAll('path').data(root.descendants().filter((d) => d.depth)).join('path').attr('d', arc).attr('fill', (d) => color(d.ancestors().at(-2).data.name)).attr('opacity', (d) => d.depth === 1 ? 0.45 : 0.82).attr('stroke', '#0d1117');
+        svg.append('text').attr('text-anchor', 'middle').attr('fill', '#f0f6fc').attr('font-family', 'var(--mono)').attr('font-weight', 850).text('LOAD');
+      }
+    },
+    {
+      id: 'violin', title: 'Violin Distribution', accent: '#38bdf8',
+      desc: 'D3 density-style mirrored areas for metric spread comparison.',
+      chips: ['distribution', 'spread', 'stats'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 42, r: 18, t: 18, b: 26 };
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scalePoint().domain(metricMeta.slice(0, 4).map((m) => m.key)).range([p.l, w - p.r]).padding(0.5);
+        const y = d3.scaleLinear().domain([0, 1]).range([h - p.b, p.t]);
+        metricMeta.slice(0, 4).forEach((m) => {
+          const bins = d3.bin().domain([0, 1]).thresholds(18)(rows.map((r) => norm(m, r[m.key])));
+          const max = d3.max(bins, (b) => b.length) || 1;
+          const width = d3.scaleLinear().domain([0, max]).range([0, 32]);
+          const ptsR = bins.map((b) => ({ x: x(m.key) + width(b.length), y: y((b.x0 + b.x1) / 2) }));
+          const ptsL = bins.slice().reverse().map((b) => ({ x: x(m.key) - width(b.length), y: y((b.x0 + b.x1) / 2) }));
+          svg.append('path').attr('d', d3.line().x((d) => d.x).y((d) => d.y).curve(d3.curveBasisClosed)(ptsR.concat(ptsL))).attr('fill', m.color).attr('opacity', 0.42).attr('stroke', m.color);
+          svg.append('text').attr('class', 'small-label').attr('x', x(m.key)).attr('y', h - 8).attr('text-anchor', 'middle').text(m.label);
+        });
+      }
+    },
+    {
+      id: 'beeswarm', title: 'Beeswarm Sensor Cloud', accent: '#ef4444',
+      desc: 'D3 force collision creates compact point clouds by metric.',
+      chips: ['distribution', 'points', 'playful'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 42, r: 20, t: 28, b: 32 };
+        const metrics = metricMeta.slice(0, 4);
+        const data = metrics.flatMap((m) => rows.slice(-28).map((r) => ({ metric: m, value: norm(m, r[m.key]) })));
+        const x = d3.scaleLinear().domain([0, 1]).range([p.l, w - p.r]);
+        const yBase = d3.scalePoint().domain(metrics.map((m) => m.key)).range([p.t, h - p.b]);
+        const sim = d3.forceSimulation(data).force('x', d3.forceX((d) => x(d.value)).strength(1)).force('y', d3.forceY((d) => yBase(d.metric.key)).strength(0.35)).force('collide', d3.forceCollide(4)).stop();
+        for (let i = 0; i < 120; i++) sim.tick();
+        const svg = svgRoot(sel, w, h);
+        metrics.forEach((m) => svg.append('text').attr('class', 'small-label').attr('x', 8).attr('y', yBase(m.key) + 4).text(m.label));
+        svg.selectAll('circle').data(data).join('circle').attr('cx', (d) => d.x).attr('cy', (d) => d.y).attr('r', 3.5).attr('fill', (d) => d.metric.color).attr('opacity', 0.72);
+      }
+    },
+    {
+      id: 'glyph-map', title: 'Zone Glyph Matrix', accent: '#58a6ff',
+      desc: 'D3 symbol generators build mini-glyphs per zone and metric.',
+      chips: ['matrix', 'zones', 'glyphs'],
+      render(sel) {
+        const w = 420, h = 245, p = { l: 72, r: 18, t: 34, b: 18 };
+        const svg = svgRoot(sel, w, h);
+        const x = d3.scalePoint().domain(metricMeta.map((m) => m.key)).range([p.l, w - p.r]);
+        const y = d3.scalePoint().domain(zones.map((z) => z.name)).range([p.t, h - p.b]);
+        const symbol = d3.symbol().type(d3.symbolDiamond);
+        metricMeta.forEach((m) => svg.append('text').attr('class', 'small-label').attr('x', x(m.key)).attr('y', 18).attr('text-anchor', 'middle').text(m.label));
+        zones.forEach((z) => svg.append('text').attr('class', 'small-label').attr('x', 8).attr('y', y(z.name) + 4).text(z.name));
+        const cells = zones.flatMap((zone) => metricMeta.map((m) => ({ zone, metric: m, value: norm(m, zone.rows.at(-1)[m.key]) })));
+        svg.selectAll('path').data(cells).join('path').attr('transform', (d) => `translate(${x(d.metric.key)},${y(d.zone.name)})`).attr('d', (d) => symbol.size(70 + d.value * 360)()).attr('fill', (d) => d.metric.color).attr('opacity', (d) => 0.26 + d.value * 0.65);
+      }
+    }
+  ];
+
+  charts.forEach(makeCard);
+})();
+</script>
+</body>
+</html>

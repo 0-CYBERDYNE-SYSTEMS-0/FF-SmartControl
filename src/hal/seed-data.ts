@@ -1,7 +1,5 @@
 import { getDb } from './db.js';
 import { halRegistry } from './registry.js';
-import { halSensors } from './sensors.js';
-import { halRelays } from './relays.js';
 import { halDecisions } from './decisions.js';
 import type {
   DeviceType,
@@ -11,6 +9,7 @@ import type {
   DecisionType,
   RelayReason,
 } from './types.js';
+import { getMetricUnit, normalizeMetricValue } from './telemetry-model.js';
 
 const DEVICES: Array<{
   id: string;
@@ -501,6 +500,120 @@ function hashPhase(input: string): number {
   return (hash % 360) * (Math.PI / 180);
 }
 
+function stableNoise(input: string, min: number, max: number): number {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const unit = (hash >>> 0) / 4294967295;
+  return min + unit * (max - min);
+}
+
+function generateDemoSensorValue(
+  sensor: (typeof SENSORS)[number],
+  t: number,
+): number {
+  const date = new Date(t);
+  const hour = date.getUTCHours() + date.getUTCMinutes() / 60;
+  const lightsOn = hour >= 6 && hour < 24;
+  const dayProgress = ((t % 86400000) / 86400000) * 2 * Math.PI;
+  const weeklyProgress = (t / (7 * 86400000)) * 2 * Math.PI;
+  const phase = hashPhase(`${sensor.deviceId}:${sensor.metric}`);
+  const zoneOffset = sensor.deviceId.startsWith('tent_b_') ? -0.8 : 0.6;
+  const noise = stableNoise(
+    `${sensor.deviceId}:${sensor.metric}:${Math.floor(t / 3600000)}`,
+    -1,
+    1,
+  );
+
+  switch (sensor.metric) {
+    case 'temperature': {
+      const lightHeat = lightsOn ? 2.3 : -1.2;
+      const daily = Math.sin(dayProgress - Math.PI / 2 + phase) * 1.8;
+      const value =
+        23.2 +
+        zoneOffset +
+        lightHeat +
+        daily +
+        Math.sin(weeklyProgress) * 0.8 +
+        noise * 0.35;
+      return normalizeMetricValue(sensor.metric, value);
+    }
+    case 'humidity': {
+      const daily = Math.sin(dayProgress + Math.PI / 2 + phase) * 5.5;
+      const lightDrying = lightsOn ? -3 : 4;
+      const value =
+        61 +
+        zoneOffset * -2 +
+        lightDrying +
+        daily +
+        Math.sin(weeklyProgress + phase) * 2 +
+        noise * 1.5;
+      return normalizeMetricValue(sensor.metric, value);
+    }
+    case 'co2': {
+      const lightTarget = lightsOn ? 760 : 520;
+      const daily = Math.sin(dayProgress + phase) * (lightsOn ? 120 : 50);
+      const value =
+        lightTarget +
+        (sensor.deviceId.startsWith('tent_b_') ? 70 : -30) +
+        daily +
+        noise * 35;
+      return normalizeMetricValue(sensor.metric, value);
+    }
+    case 'light': {
+      if (!lightsOn) return 0;
+      const ramp = Math.sin(((hour - 6) / 18) * Math.PI);
+      const value =
+        (sensor.deviceId.startsWith('tent_b_') ? 54000 : 62000) *
+          Math.max(0.12, ramp) +
+        noise * 900;
+      return normalizeMetricValue(sensor.metric, value);
+    }
+    case 'soil_moisture': {
+      const hoursSinceWatering = (hour + date.getUTCDate() * 24) % 36;
+      const dryDown = hoursSinceWatering * 0.9;
+      const irrigationLift =
+        hoursSinceWatering < 3 ? (3 - hoursSinceWatering) * 4 : 0;
+      const value =
+        68 -
+        dryDown +
+        irrigationLift +
+        (sensor.deviceId.startsWith('tent_b_') ? 4 : 0) +
+        noise * 1.8;
+      return normalizeMetricValue(sensor.metric, value);
+    }
+    case 'water_level': {
+      const dayOfCycle = date.getUTCDate() % 14;
+      const refill = dayOfCycle === 0 ? 8 : 0;
+      const value = 88 - dayOfCycle * 4.8 - hour * 0.08 + refill + noise * 1.2;
+      return normalizeMetricValue(sensor.metric, value);
+    }
+    case 'ph': {
+      const value =
+        (sensor.deviceId.startsWith('tent_b_') ? 6.05 : 6.18) +
+        Math.sin(weeklyProgress + phase) * 0.12 +
+        noise * 0.03;
+      return normalizeMetricValue(sensor.metric, value);
+    }
+    case 'weight': {
+      const daysFromStart = Math.max(
+        0,
+        (t - (Date.now() - 60 * 86400000)) / 86400000,
+      );
+      const value =
+        (sensor.deviceId.startsWith('tent_b_') ? 10.8 : 11.4) +
+        daysFromStart * 0.055 +
+        Math.sin(dayProgress + phase) * 0.08 +
+        noise * 0.04;
+      return normalizeMetricValue(sensor.metric, value);
+    }
+    default:
+      return normalizeMetricValue(sensor.metric, sensor.baseValue);
+  }
+}
+
 export function seedHalDemoData(): void {
   const db = getDb();
 
@@ -573,40 +686,14 @@ export function seedHalDemoData(): void {
   const storedAt = new Date(now).toISOString();
 
   for (const sensor of SENSORS) {
-    const phase = hashPhase(`${sensor.deviceId}:${sensor.metric}`);
-    const secondaryPhase = hashPhase(
-      `${sensor.metric}:${sensor.deviceId}:secondary`,
-    );
     for (let t = startTime; t <= now; t += readIntervalMs) {
-      const hourOfDay = ((t % 86400000) / 86400000) * 24;
-      const primaryWave =
-        Math.sin((hourOfDay / 24) * 2 * Math.PI - Math.PI / 2 + phase) *
-        sensor.amplitude;
-      const secondaryWave =
-        Math.sin((hourOfDay / 24) * 4 * Math.PI + secondaryPhase) *
-        (sensor.amplitude * 0.22);
-      const weeklyWave =
-        Math.sin((t / (7 * 86400000)) * 2 * Math.PI + phase * 0.7) *
-        (sensor.amplitude * 0.14);
-      const noise = randBetween(
-        -sensor.amplitude * 0.11,
-        sensor.amplitude * 0.11,
-      );
-      const value =
-        Math.round(
-          (sensor.baseValue +
-            primaryWave +
-            secondaryWave +
-            weeklyWave +
-            noise) *
-            100,
-        ) / 100;
+      const value = generateDemoSensorValue(sensor, t);
       const readAt = new Date(t).toISOString();
       readings.push({
         id: demoId('sns', sensor.deviceId, sensor.metric, t),
         device_id: sensor.deviceId,
         metric: sensor.metric,
-        unit: sensor.unit,
+        unit: getMetricUnit(sensor.metric),
         value,
         read_at: readAt,
         stored_at: storedAt,

@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT_DIR"
+
+usage() {
+  cat <<'USAGE'
+FarmPal local start
+
+Usage:
+  ./start          Build assets, then run FarmPal in the foreground
+  ./start --demo   Same as ./start, with HAL simulator mode enabled
+  ./start --tui    Attach the terminal UI to an already-running host
+  ./start --whatsapp        Also start WhatsApp integration
+  ./start --home-assistant  Also start Home Assistant farm-state collector
+  ./start --help   Show this help
+
+URLs:
+  HAL UI:         http://127.0.0.1:3392
+  Control center: http://127.0.0.1:3393
+  TUI gateway:    ws://127.0.0.1:3390
+USAGE
+}
+
+die() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+mode="run"
+demo=0
+whatsapp=0
+home_assistant=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --demo)
+      demo=1
+      ;;
+    --tui)
+      mode="tui"
+      ;;
+    --whatsapp)
+      whatsapp=1
+      ;;
+    --home-assistant)
+      home_assistant=1
+      ;;
+    -h|--help|help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "Unknown argument: $1 (try ./start --help)"
+      ;;
+  esac
+  shift
+done
+
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
+export CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-host}"
+export FFT_NANO_ALLOW_HOST_RUNTIME="${FFT_NANO_ALLOW_HOST_RUNTIME:-1}"
+export WHATSAPP_ENABLED=0
+export FARM_STATE_ENABLED=false
+export FFT_NANO_TUI_ENABLED="${FFT_NANO_TUI_ENABLED:-1}"
+export FFT_NANO_TUI_HOST="${FFT_NANO_TUI_HOST:-127.0.0.1}"
+export FFT_NANO_TUI_PORT="${FFT_NANO_TUI_PORT:-3390}"
+export FFT_NANO_WEB_ENABLED="${FFT_NANO_WEB_ENABLED:-1}"
+export FFT_NANO_WEB_ACCESS_MODE="${FFT_NANO_WEB_ACCESS_MODE:-localhost}"
+export FFT_NANO_WEB_HOST="${FFT_NANO_WEB_HOST:-127.0.0.1}"
+export FFT_NANO_WEB_PORT="${FFT_NANO_WEB_PORT:-3393}"
+export HAL_UI_ENABLED="${HAL_UI_ENABLED:-1}"
+export HAL_UI_HOST="${HAL_UI_HOST:-127.0.0.1}"
+export HAL_UI_PORT="${HAL_UI_PORT:-3392}"
+export HAL_UI_AUTO_OPEN="${HAL_UI_AUTO_OPEN:-0}"
+
+if [[ "$demo" -eq 1 ]]; then
+  export HAL_SIM_MODE=1
+fi
+
+if [[ "$whatsapp" -eq 1 ]]; then
+  export WHATSAPP_ENABLED=1
+fi
+
+if [[ "$home_assistant" -eq 1 ]]; then
+  export FARM_STATE_ENABLED=true
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+  die "npm was not found. Install Node.js, then run ./start again."
+fi
+
+if [[ ! -d node_modules ]]; then
+  die "Dependencies are missing. Run: npm install"
+fi
+
+case "$mode" in
+  tui)
+    printf 'Attaching FarmPal TUI at ws://%s:%s\n' "$FFT_NANO_TUI_HOST" "$FFT_NANO_TUI_PORT"
+    exec npm run tui:dev
+    ;;
+  run)
+    if [[ -f data/farmpal.lock ]]; then
+      existing_pid="$(sed -n 's/.*"pid":[[:space:]]*\([0-9][0-9]*\).*/\1/p' data/farmpal.lock | head -n 1)"
+      if [[ -n "${existing_pid:-}" ]] && kill -0 "$existing_pid" >/dev/null 2>&1; then
+        die "FarmPal is already running as pid ${existing_pid}. Use ./start --tui to attach, or ./scripts/service.sh stop before foreground dev."
+      fi
+    fi
+
+    printf 'Starting FarmPal in the foreground%s...\n' "$([[ "$demo" -eq 1 ]] && printf ' (demo simulator mode)' || true)"
+    printf 'HAL UI:         http://%s:%s\n' "$HAL_UI_HOST" "$HAL_UI_PORT"
+    printf 'Control center: http://%s:%s\n' "$FFT_NANO_WEB_HOST" "$FFT_NANO_WEB_PORT"
+    printf 'TUI gateway:    ws://%s:%s\n\n' "$FFT_NANO_TUI_HOST" "$FFT_NANO_TUI_PORT"
+    printf 'Local start defaults: WhatsApp off, Home Assistant collector off.\n'
+    printf 'Use --whatsapp or --home-assistant to enable those integrations.\n\n'
+
+    npm run hal:ui:build
+    npm run build
+    exec npm run start
+    ;;
+esac

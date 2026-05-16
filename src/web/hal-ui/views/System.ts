@@ -101,6 +101,7 @@ export async function renderSystemView(container: HTMLElement): Promise<void> {
           .join('')}
       </div>
       <button class="hal-range-btn" id="sys-unit-toggle">${store.unitSystem === 'metric' ? '°C' : '°F'}</button>
+      <button class="hal-range-btn" id="sys-time-format-toggle">${store.timeFormat === '24h' ? '24H' : '12H'}</button>
     </div>
   `;
   root.appendChild(header);
@@ -176,6 +177,15 @@ export async function renderSystemView(container: HTMLElement): Promise<void> {
     const s = getStore();
     setStore({ unitSystem: s.unitSystem === 'metric' ? 'imperial' : 'metric' });
     unitToggle.textContent = getStore().unitSystem === 'metric' ? '°C' : '°F';
+    void loadSystemData();
+  });
+
+  const timeFormatToggle = document.getElementById('sys-time-format-toggle');
+  timeFormatToggle?.addEventListener('click', () => {
+    const s = getStore();
+    const newFormat = s.timeFormat === '24h' ? '12h' : '24h';
+    setStore({ timeFormat: newFormat });
+    timeFormatToggle.textContent = newFormat === '24h' ? '24H' : '12H';
     void loadSystemData();
   });
 

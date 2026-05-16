@@ -91,6 +91,62 @@ export interface HalStore {
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
+const preferencesStorageKey = 'farmpal-ui-preferences';
+const themeNames: ThemeName[] = [
+  'emerald',
+  'amber',
+  'blue',
+  'rose',
+  'violet',
+  'cyan',
+  'orange',
+  'slate',
+];
+const dashboardLayouts: DashboardLayout[] = ['calm', 'operator', 'diagnostic'];
+
+function loadStoredPreferences(): Partial<
+  Pick<HalStore, 'unitSystem' | 'timeFormat' | 'theme' | 'layout'>
+> {
+  try {
+    const raw = localStorage.getItem(preferencesStorageKey);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Partial<HalStore>;
+    return {
+      unitSystem:
+        parsed.unitSystem === 'metric' || parsed.unitSystem === 'imperial'
+          ? parsed.unitSystem
+          : undefined,
+      timeFormat:
+        parsed.timeFormat === '12h' || parsed.timeFormat === '24h'
+          ? parsed.timeFormat
+          : undefined,
+      theme: themeNames.includes(parsed.theme as ThemeName)
+        ? (parsed.theme as ThemeName)
+        : undefined,
+      layout: dashboardLayouts.includes(parsed.layout as DashboardLayout)
+        ? (parsed.layout as DashboardLayout)
+        : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function persistPreferences(next: HalStore): void {
+  try {
+    localStorage.setItem(
+      preferencesStorageKey,
+      JSON.stringify({
+        unitSystem: next.unitSystem,
+        timeFormat: next.timeFormat,
+        theme: next.theme,
+        layout: next.layout,
+      }),
+    );
+  } catch {
+    // Ignore storage failures; in-memory state still works.
+  }
+}
 
 let state: HalStore = {
   theme: 'emerald',
@@ -117,6 +173,7 @@ let state: HalStore = {
   safetyActiveRulesCount: 0,
   safetyWarningDevicesCount: 0,
   safetyDeniedLast24h: 0,
+  ...loadStoredPreferences(),
 };
 
 export function getStore(): HalStore {
@@ -125,6 +182,14 @@ export function getStore(): HalStore {
 
 export function setStore(partial: Partial<HalStore>): void {
   state = { ...state, ...partial };
+  if (
+    partial.unitSystem ||
+    partial.timeFormat ||
+    partial.theme ||
+    partial.layout
+  ) {
+    persistPreferences(state);
+  }
   listeners.forEach((l) => l());
 }
 
@@ -140,7 +205,7 @@ export function convertTemp(celsius: number, to: UnitSystem): number {
 }
 
 export function tempUnit(system: UnitSystem): string {
-  return system === 'imperial' ? 'F' : 'C';
+  return system === 'imperial' ? '°F' : '°C';
 }
 
 export function convertWeight(kg: number, to: UnitSystem): number {

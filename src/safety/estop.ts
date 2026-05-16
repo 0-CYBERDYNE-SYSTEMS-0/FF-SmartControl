@@ -584,6 +584,7 @@ export function startWatchdog(): void {
   watchdogInterval = setInterval(() => {
     watchdogTick();
   }, 15_000); // 15 seconds
+  watchdogInterval.unref(); // don't block process exit in test environments
 
   logger.info('Watchdog started (sd_notify every 15s)');
 }

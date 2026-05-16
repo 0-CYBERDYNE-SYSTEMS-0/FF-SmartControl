@@ -2,7 +2,7 @@
 // Shows: active rules count, warning devices, denied actions 24h, E-Stop status
 // Allows: creating, editing, deleting safety rules per device
 
-import { getStore, formatDateTimeValue } from '../store.js';
+import { getStore, formatDateTimeValue, formatSensorValue } from '../store.js';
 import { halApi } from '../api.js';
 import {
   openModal,
@@ -204,7 +204,7 @@ async function loadSafetySummary(): Promise<void> {
         <div class="summary-card-content">
           <div class="summary-card-label">Safety State</div>
           <div class="summary-card-value">${summary.estopActive ? 'EMERGENCY STOP' : summary.farmLoopSafetyMode ? 'WARNING' : 'NORMAL'}</div>
-          ${summary.estopActive && summary.estopActivatedAt ? `<div class="summary-card-meta">since ${new Date(summary.estopActivatedAt).toLocaleTimeString()}</div>` : ''}
+          ${summary.estopActive && summary.estopActivatedAt ? `<div class="summary-card-meta">since ${formatDateTimeValue(new Date(summary.estopActivatedAt), getStore().timeFormat)}</div>` : ''}
         </div>
       </div>
 
@@ -358,16 +358,34 @@ function buildSafetyThresholdBars(
     const meta = getSafetyMetricMeta(metric);
     const scope = resolveThresholdScope(threshold);
     const currentValue = resolveThresholdCurrentValue(threshold, metric);
+    const unit =
+      metric === 'temperature'
+        ? formatSensorValue(0, 'temperature', store.unitSystem).unit
+        : METRIC_UNITS[metric] || '';
     return {
       id: threshold.id,
-      label: METRIC_LABELS[metric] || metric,
+      label:
+        metric === 'temperature'
+          ? `Temperature (${unit})`
+          : METRIC_LABELS[metric] || metric,
       scope,
       metric,
       color: meta.color,
-      unit: METRIC_UNITS[metric] || '',
-      currentValue,
-      minValue: threshold.minValue,
-      maxValue: threshold.maxValue,
+      unit,
+      currentValue:
+        currentValue !== null
+          ? formatSensorValue(currentValue, metric, store.unitSystem).value
+          : null,
+      minValue:
+        threshold.minValue !== null
+          ? formatSensorValue(threshold.minValue, metric, store.unitSystem)
+              .value
+          : null,
+      maxValue:
+        threshold.maxValue !== null
+          ? formatSensorValue(threshold.maxValue, metric, store.unitSystem)
+              .value
+          : null,
       axisMin: meta.axisMin,
       axisMax: meta.axisMax,
       enabled: threshold.enabled,
@@ -1174,7 +1192,7 @@ interface Threshold {
 }
 
 const METRIC_LABELS: Record<string, string> = {
-  temperature: 'Temperature (°C)',
+  temperature: 'Temperature',
   humidity: 'Humidity (%)',
   soil_moisture: 'Soil Moisture (%)',
   co2: 'CO₂ (ppm)',
@@ -1251,12 +1269,27 @@ function renderThresholdCard(threshold: Threshold): string {
     deviceName = `Zone: ${threshold.zone}`;
   }
 
-  const metricLabel = METRIC_LABELS[threshold.metric] || threshold.metric;
-  const unit = METRIC_UNITS[threshold.metric] || '';
+  const formattedZero = formatSensorValue(
+    0,
+    threshold.metric,
+    store.unitSystem,
+  );
+  const unit =
+    threshold.metric === 'temperature'
+      ? formattedZero.unit
+      : METRIC_UNITS[threshold.metric] || '';
+  const metricLabel =
+    threshold.metric === 'temperature'
+      ? `Temperature (${unit})`
+      : METRIC_LABELS[threshold.metric] || threshold.metric;
   const minDisplay =
-    threshold.minValue !== null ? `${threshold.minValue}${unit}` : '—';
+    threshold.minValue !== null
+      ? `${formatSensorValue(threshold.minValue, threshold.metric, store.unitSystem).value.toFixed(1)}${unit}`
+      : '—';
   const maxDisplay =
-    threshold.maxValue !== null ? `${threshold.maxValue}${unit}` : '—';
+    threshold.maxValue !== null
+      ? `${formatSensorValue(threshold.maxValue, threshold.metric, store.unitSystem).value.toFixed(1)}${unit}`
+      : '—';
 
   return `
     <div class="threshold-card ${threshold.enabled ? '' : 'disabled'}" data-threshold-id="${threshold.id}">

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { METRIC_SPECS } from './telemetry-model.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -64,23 +65,22 @@ export function _closeDbForTesting(): void {
  */
 export function checkDbIntegrity(): string[] {
   const db = getDb();
-  // PRAGMA integrity_check returns one row per error, or a single 'ok' row
-  const result = db.prepare('PRAGMA integrity_check').get() as
-    | { integrity_check: string }
+  // PRAGMA quick_check is fast on large DBs; catches structural corruption without full traversal
+  const result = db.prepare('PRAGMA quick_check').get() as
+    | { quick_check: string }
     | undefined;
 
   if (!result) {
     return ['Integrity check returned no result - database may be unreadable'];
   }
 
-  if (result.integrity_check === 'ok') {
+  if (result.quick_check === 'ok') {
     return [];
   }
 
-  // integrity_check returns a string with multiple lines, each containing an error
-  const lines = result.integrity_check
+  const lines = result.quick_check
     .split('\n')
-    .filter((l) => l.trim().length > 0);
+    .filter((line) => line.trim().length > 0);
   return lines.length > 0 ? lines : ['Unknown integrity check failure'];
 }
 
@@ -135,6 +135,8 @@ export function runMigrations(): void {
     /* column already exists */
   }
 
+  repairImpossibleSensorReadings(db);
+
   // VAL-SVC-028: Check DB integrity after migrations
   // WAL mode is already enabled (pragma journal_mode = WAL above)
   // This ensures rapid restarts don't corrupt the DB (VAL-SVC-034)
@@ -151,6 +153,28 @@ export function runMigrations(): void {
 
   // Update System: Initialize update history table (VAL-UPDT-003, VAL-VERS-003)
   initUpdateHistoryTable();
+}
+
+function repairImpossibleSensorReadings(db: Database.Database): void {
+  const repairLow = db.prepare(`
+    UPDATE hal_sensors
+    SET value = ?, quality = 'error'
+    WHERE metric = ? AND value < ?
+  `);
+  const repairHigh = db.prepare(`
+    UPDATE hal_sensors
+    SET value = ?, quality = 'error'
+    WHERE metric = ? AND value > ?
+  `);
+
+  const repairMany = db.transaction(() => {
+    for (const spec of Object.values(METRIC_SPECS)) {
+      repairLow.run(spec.hardMin, spec.metric, spec.hardMin);
+      repairHigh.run(spec.hardMax, spec.metric, spec.hardMax);
+    }
+  });
+
+  repairMany();
 }
 
 // Session database tables for admin authentication

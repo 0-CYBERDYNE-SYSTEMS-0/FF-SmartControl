@@ -1,6 +1,6 @@
 // Decisions view — expandable rows, timestamp, trigger, decision, confidence, status filter
 
-import { getStore } from '../store.js';
+import { formatDateTimeValue, getStore } from '../store.js';
 import { halApi, type HalDecision } from '../api.js';
 import {
   renderHeatmap,
@@ -380,14 +380,7 @@ function confidenceColor(conf: number): string {
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
+    return formatDateTimeValue(new Date(iso), getStore().timeFormat);
   } catch {
     return '--';
   }

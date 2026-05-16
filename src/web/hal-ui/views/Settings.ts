@@ -4,6 +4,7 @@
 import { provisioningApi } from '../api-provisioning.js';
 import { halApi } from '../api.js';
 import { showToast } from '../components/Toast.js';
+import { getStore, setStore } from '../store.js';
 
 // LLM Providers (same as SetupWizard)
 const LLM_PROVIDERS = [
@@ -168,6 +169,7 @@ function renderSettingsPage(): string {
 
   const currentTz =
     settingsData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const store = getStore();
 
   return `
     <div class="settings-view">
@@ -225,6 +227,30 @@ function renderSettingsPage(): string {
                   .join('')}
               </select>
               <p class="settings-hint">Used for scheduling and decision logs.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Display Section -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 18v3"/></svg>
+            Display
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <p class="settings-label">Temperature Units</p>
+              <div class="settings-segmented" id="unit-system-control">
+                <button type="button" class="settings-segment ${store.unitSystem === 'metric' ? 'active' : ''}" data-unit-system="metric">°C</button>
+                <button type="button" class="settings-segment ${store.unitSystem === 'imperial' ? 'active' : ''}" data-unit-system="imperial">°F</button>
+              </div>
+            </div>
+            <div class="settings-field">
+              <p class="settings-label">Time Format</p>
+              <div class="settings-segmented" id="time-format-control">
+                <button type="button" class="settings-segment ${store.timeFormat === '12h' ? 'active' : ''}" data-time-format="12h">12H</button>
+                <button type="button" class="settings-segment ${store.timeFormat === '24h' ? 'active' : ''}" data-time-format="24h">24H</button>
+              </div>
             </div>
           </div>
         </section>
@@ -606,6 +632,36 @@ function renderSettingsPage(): string {
 }
 
 function attachSettingsEvents(): void {
+  document
+    .querySelectorAll<HTMLButtonElement>('[data-unit-system]')
+    .forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const unitSystem = btn.dataset.unitSystem as 'metric' | 'imperial';
+        setStore({ unitSystem });
+        document.querySelectorAll('[data-unit-system]').forEach((b) => {
+          b.classList.toggle('active', b === btn);
+        });
+        showToast(
+          `Temperature units: ${unitSystem === 'metric' ? '°C' : '°F'}`,
+          'info',
+          1600,
+        );
+      });
+    });
+
+  document
+    .querySelectorAll<HTMLButtonElement>('[data-time-format]')
+    .forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const timeFormat = btn.dataset.timeFormat as '12h' | '24h';
+        setStore({ timeFormat });
+        document.querySelectorAll('[data-time-format]').forEach((b) => {
+          b.classList.toggle('active', b === btn);
+        });
+        showToast(`Time format: ${timeFormat.toUpperCase()}`, 'info', 1600);
+      });
+    });
+
   // Provider selection
   document
     .querySelectorAll<HTMLButtonElement>('.provider-card')
@@ -1598,6 +1654,36 @@ function injectSettingsStyles(): void {
   display: flex;
   gap: var(--space-3);
   margin-top: var(--space-2);
+}
+.settings-segmented {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-tertiary);
+}
+.settings-segment {
+  min-width: 56px;
+  height: 34px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.settings-segment:last-child {
+  border-right: 0;
+}
+.settings-segment.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.settings-segment:hover:not(.active) {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text-primary);
 }
 .settings-footer {
   margin-top: var(--space-xl);

@@ -1,6 +1,7 @@
 // Hero Multi-Area Chart — ChartKit wrapper (pure SVG, zero deps)
 
 import { halApi, type HalSensorReading, type HalDecision } from '../api.js';
+import { getStore, formatSensorValue } from '../store.js';
 import {
   renderDualAxisCard,
   renderSparkline,
@@ -161,6 +162,7 @@ export function renderHeroChart(
   }
 
   // Convert HeroChartLayer[] to DualAxisLayer[] for ChartKit with shade variation
+  const store = getStore();
   const dualLayers: DualAxisLayer[] = layers.map((l) => {
     const cfg = metricConfig[l.metric] || {
       label: l.metric,
@@ -176,15 +178,23 @@ export function renderHeroChart(
       const shades = generateDeviceShades(l.color, group.length);
       color = shades[idx];
     }
+    let minAxis = cfg.minAxis;
+    let maxAxis = cfg.maxAxis;
+    let unit = cfg.unit;
+    if (l.metric === 'temperature' && store.unitSystem === 'imperial') {
+      minAxis = (minAxis * 9) / 5 + 32;
+      maxAxis = (maxAxis * 9) / 5 + 32;
+      unit = formatSensorValue(0, 'temperature', 'imperial').unit;
+    }
     return {
       label: `${l.deviceName} — ${cfg.label}`,
       color,
-      minAxis: cfg.minAxis,
-      maxAxis: cfg.maxAxis,
-      unit: cfg.unit,
+      minAxis,
+      maxAxis,
+      unit,
       data: l.data.map((d) => ({
         t: new Date(d.timestamp).getTime(),
-        v: d.value,
+        v: formatSensorValue(d.value, l.metric, store.unitSystem).value,
       })),
     };
   });

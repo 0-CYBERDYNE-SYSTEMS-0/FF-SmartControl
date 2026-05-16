@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FF_SmartControl Advanced Chart Type Gallery</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --panel-2: #21262d;
+  --ink: #f0f6fc;
+  --muted: #8b949e;
+  --faint: #484f58;
+  --border: #30363d;
+  --temp: #f59e0b;
+  --humidity: #38bdf8;
+  --co2: #22c55e;
+  --light: #facc15;
+  --soil: #ef4444;
+  --accent: #58a6ff;
+  --mono: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+  --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+}
+
+.page {
+  width: min(1500px, 100%);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 36px);
+  line-height: 1.05;
+  font-weight: 780;
+}
+
+.intro {
+  max-width: 850px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.tag {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-bottom: 22px;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--c) 80%, transparent);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.card {
+  min-width: 0;
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 80% 0%, color-mix(in srgb, var(--chart-accent) 11%, transparent), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 96%, var(--chart-accent)) 0%, #10151d 100%);
+  padding: 14px;
+  box-shadow: 0 18px 42px rgba(0,0,0,0.23);
+}
+
+.card-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.num {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--chart-accent) 48%, var(--border));
+  border-radius: 6px;
+  color: var(--chart-accent);
+  background: color-mix(in srgb, var(--chart-accent) 10%, var(--panel-2));
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.15;
+  font-weight: 780;
+}
+
+.desc {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.fit {
+  justify-self: end;
+  color: var(--chart-accent);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.chart {
+  width: 100%;
+  flex: 1;
+  min-height: 235px;
+  display: grid;
+  place-items: stretch;
+}
+
+svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.axis {
+  fill: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.tiny {
+  fill: var(--muted);
+  font-family: var(--mono);
+  font-size: 8.5px;
+}
+
+.grid-line {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.chip {
+  border: 1px solid color-mix(in srgb, var(--chart-accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--chart-accent) 7%, transparent);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+@media (max-width: 1180px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .page { padding: 16px; }
+  .hero { display: block; }
+  .tag { display: inline-block; margin-top: 14px; }
+  .grid { grid-template-columns: 1fr; }
+  .card { min-height: 330px; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <div>
+      <h1>FF_SmartControl Advanced Chart Type Gallery</h1>
+      <p class="intro">Twelve chart types that can be built with the same stack as the current HAL UI: one HTML file, inline CSS, vanilla JavaScript, and SVG. These are more different than simple line/area variants so you can choose a stronger visualization direction.</p>
+    </div>
+    <div class="tag">no libraries · pure SVG</div>
+  </header>
+
+  <div class="legend">
+    <span><i class="dot" style="--c:var(--temp)"></i>Temperature</span>
+    <span><i class="dot" style="--c:var(--humidity)"></i>Humidity</span>
+    <span><i class="dot" style="--c:var(--co2)"></i>CO2</span>
+    <span><i class="dot" style="--c:var(--light)"></i>Light</span>
+    <span><i class="dot" style="--c:var(--soil)"></i>Soil</span>
+  </div>
+
+  <section class="grid" id="gallery"></section>
+</main>
+
+<script>
+const metrics = [
+  { key: 'temperature', label: 'Temp', color: '#f59e0b', min: 12, max: 36, unit: 'C' },
+  { key: 'humidity', label: 'RH', color: '#38bdf8', min: 25, max: 90, unit: '%' },
+  { key: 'co2', label: 'CO2', color: '#22c55e', min: 420, max: 1500, unit: 'ppm' },
+  { key: 'light', label: 'Light', color: '#facc15', min: 0, max: 1000, unit: 'ppfd' },
+  { key: 'soil', label: 'Soil', color: '#ef4444', min: 15, max: 90, unit: '%' }
+];
+
+const devices = [
+  { name: 'Tent A', tempBias: 0, humBias: 0, co2Bias: 0 },
+  { name: 'Tent B', tempBias: 1.4, humBias: -4, co2Bias: 80 },
+  { name: 'Clone Rack', tempBias: -1.8, humBias: 8, co2Bias: -60 },
+  { name: 'Reservoir', tempBias: -4, humBias: 0, co2Bias: -100 }
+];
+
+function seeded(seed) {
+  let s = seed;
+  return function rand() {
+    s += 0x6d2b79f5;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const rand = seeded(4402);
+const now = new Date();
+now.setMinutes(0, 0, 0);
+
+const rows = [];
+for (let i = 47; i >= 0; i--) {
+  const d = new Date(now.getTime() - i * 30 * 60 * 1000);
+  const hour = d.getHours() + d.getMinutes() / 60;
+  const day = Math.sin((hour - 6) * Math.PI / 12);
+  const light = Math.max(0, day) * 880 + (rand() - 0.5) * 60;
+  rows.push({
+    t: d.getTime(),
+    label: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    temperature: 23 + day * 5 + (rand() - 0.5) * 1.4,
+    humidity: 58 - day * 13 + (rand() - 0.5) * 3.8,
+    co2: 790 + (1 - day) * 130 + (rand() - 0.5) * 52,
+    light,
+    soil: 52 + Math.sin(i / 7) * 11 + (rand() - 0.5) * 5
+  });
+}
+
+const deviceRows = devices.map((device) => ({
+  device,
+  values: rows.map((row) => ({
+    ...row,
+    temperature: row.temperature + device.tempBias,
+    humidity: row.humidity + device.humBias,
+    co2: row.co2 + device.co2Bias
+  }))
+}));
+
+function esc(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[char]);
+}
+
+function norm(metric, value) {
+  return Math.max(0, Math.min(1, (value - metric.min) / (metric.max - metric.min)));
+}
+
+function latest(metricKey) {
+  return rows[rows.length - 1][metricKey];
+}
+
+function fmt(metric, value) {
+  return (metric.key === 'co2' || metric.key === 'light' ? value.toFixed(0) : value.toFixed(1)) + metric.unit;
+}
+
+function polar(cx, cy, r, angle) {
+  return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
+}
+
+function path(points, close = false) {
+  const d = points.map((p, i) => (i ? 'L' : 'M') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+  return close ? d + ' Z' : d;
+}
+
+function smooth(points) {
+  if (points.length < 2) return '';
+  let d = 'M' + points[0].x.toFixed(1) + ',' + points[0].y.toFixed(1);
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i], b = points[i + 1], mx = (a.x + b.x) / 2;
+    d += ' C' + mx.toFixed(1) + ',' + a.y.toFixed(1) + ' ' + mx.toFixed(1) + ',' + b.y.toFixed(1) + ' ' + b.x.toFixed(1) + ',' + b.y.toFixed(1);
+  }
+  return d;
+}
+
+function makeCard(index, title, desc, accent, svg, chips) {
+  return '<article class="card" style="--chart-accent:' + accent + '">' +
+    '<div class="card-head"><div class="num">' + index + '</div><div><h2 class="title">' + esc(title) + '</h2><p class="desc">' + esc(desc) + '</p></div><div class="fit">works</div></div>' +
+    '<div class="chart">' + svg + '</div>' +
+    '<div class="card-foot">' + chips.map((chip) => '<span class="chip">' + esc(chip) + '</span>').join('') + '</div>' +
+    '</article>';
+}
+
+function radialGauge() {
+  const w = 420, h = 250, cx = 210, cy = 170;
+  const arcs = metrics.slice(0, 5).map((m, i) => {
+    const value = norm(m, latest(m.key));
+    const r = 112 - i * 17;
+    const start = Math.PI * 0.82, end = Math.PI * 2.18;
+    const a2 = start + (end - start) * value;
+    const p1 = polar(cx, cy, r, start), p2 = polar(cx, cy, r, end), p3 = polar(cx, cy, r, a2);
+    const largeBg = end - start > Math.PI ? 1 : 0;
+    const large = a2 - start > Math.PI ? 1 : 0;
+    return '<path d="M' + p1.x + ',' + p1.y + ' A' + r + ',' + r + ' 0 ' + largeBg + ' 1 ' + p2.x + ',' + p2.y + '" fill="none" stroke="#30363d" stroke-width="10" stroke-linecap="round"/>' +
+      '<path d="M' + p1.x + ',' + p1.y + ' A' + r + ',' + r + ' 0 ' + large + ' 1 ' + p3.x + ',' + p3.y + '" fill="none" stroke="' + m.color + '" stroke-width="10" stroke-linecap="round"/>' +
+      '<text class="tiny" x="' + (cx + 132) + '" y="' + (66 + i * 22) + '" fill="' + m.color + '">' + esc(m.label) + ' ' + esc(fmt(m, latest(m.key))) + '</text>';
+  }).join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '">' + arcs + '<text x="' + cx + '" y="160" text-anchor="middle" fill="#f0f6fc" font-size="30" font-weight="850" font-family="var(--mono)">LIVE</text><text x="' + cx + '" y="184" text-anchor="middle" class="axis">current farm state</text></svg>';
+}
+
+function radarChart() {
+  const w = 420, h = 250, cx = 210, cy = 126, r = 88;
+  const spokes = metrics.map((m, i) => {
+    const a = -Math.PI / 2 + i * Math.PI * 2 / metrics.length;
+    const p = polar(cx, cy, r, a);
+    const lp = polar(cx, cy, r + 20, a);
+    return '<line x1="' + cx + '" y1="' + cy + '" x2="' + p.x + '" y2="' + p.y + '" stroke="#30363d"/><text class="axis" x="' + lp.x + '" y="' + lp.y + '" text-anchor="middle">' + esc(m.label) + '</text>';
+  }).join('');
+  const rings = [0.33, 0.66, 1].map((k) => {
+    const pts = metrics.map((m, i) => polar(cx, cy, r * k, -Math.PI / 2 + i * Math.PI * 2 / metrics.length));
+    return '<path d="' + path(pts, true) + '" fill="none" stroke="#30363d" opacity="0.7"/>';
+  }).join('');
+  const areaPts = metrics.map((m, i) => polar(cx, cy, r * norm(m, latest(m.key)), -Math.PI / 2 + i * Math.PI * 2 / metrics.length));
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '">' + rings + spokes + '<path d="' + path(areaPts, true) + '" fill="#58a6ff" opacity="0.22" stroke="#58a6ff" stroke-width="2.5"/></svg>';
+}
+
+function calendarHeatmap() {
+  const w = 420, h = 250, left = 34, top = 32, cell = 15, gap = 4;
+  const cells = [];
+  for (let day = 0; day < 14; day++) {
+    for (let hour = 0; hour < 12; hour++) {
+      const v = 22 + Math.sin((hour * 2 - 6) * Math.PI / 12) * 5 + (rand() - 0.5) * 2;
+      const n = norm(metrics[0], v);
+      cells.push('<rect x="' + (left + day * (cell + gap)) + '" y="' + (top + hour * (cell + gap)) + '" width="' + cell + '" height="' + cell + '" rx="3" fill="#f59e0b" opacity="' + (0.12 + n * 0.82).toFixed(2) + '"/>');
+    }
+  }
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '"><text class="axis" x="' + left + '" y="18">14 days x 2-hour blocks</text>' + cells.join('') + '</svg>';
+}
+
+function scatterBubble() {
+  const w = 420, h = 250, p = { l: 42, r: 18, t: 18, b: 32 };
+  const x = (v) => p.l + norm(metrics[0], v) * (w - p.l - p.r);
+  const y = (v) => p.t + (1 - norm(metrics[1], v)) * (h - p.t - p.b);
+  const points = rows.map((r) => {
+    const co2n = norm(metrics[2], r.co2);
+    return '<circle cx="' + x(r.temperature).toFixed(1) + '" cy="' + y(r.humidity).toFixed(1) + '" r="' + (3 + co2n * 8).toFixed(1) + '" fill="#22c55e" opacity="' + (0.22 + co2n * 0.65).toFixed(2) + '" stroke="#38bdf8" stroke-opacity="0.45"/>';
+  }).join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '"><line class="grid-line" x1="' + p.l + '" x2="' + p.l + '" y1="' + p.t + '" y2="' + (h - p.b) + '"/><line class="grid-line" x1="' + p.l + '" x2="' + (w - p.r) + '" y1="' + (h - p.b) + '" y2="' + (h - p.b) + '"/>' + points + '<text class="axis" x="180" y="239">temperature -></text><text class="axis" x="4" y="24">RH</text></svg>';
+}
+
+function parallelCoordinates() {
+  const w = 420, h = 250, top = 25, bottom = 214;
+  const xs = metrics.map((_, i) => 38 + i * 84);
+  const axes = metrics.map((m, i) => '<line x1="' + xs[i] + '" x2="' + xs[i] + '" y1="' + top + '" y2="' + bottom + '" stroke="#30363d"/><text class="axis" x="' + xs[i] + '" y="235" text-anchor="middle">' + esc(m.label) + '</text>').join('');
+  const lines = deviceRows.map((entry, di) => {
+    const sample = entry.values[entry.values.length - 1];
+    const pts = metrics.map((m, i) => ({ x: xs[i], y: top + (1 - norm(m, sample[m.key])) * (bottom - top) }));
+    const color = ['#58a6ff', '#f59e0b', '#22c55e', '#ef4444'][di];
+    return '<path d="' + path(pts) + '" fill="none" stroke="' + color + '" stroke-width="2.4" opacity="0.82"/>';
+  }).join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '">' + axes + lines + '</svg>';
+}
+
+function ridgeline() {
+  const w = 420, h = 250, p = { l: 28, r: 22, t: 28, b: 16 };
+  const groups = metrics.slice(0, 4);
+  const ridges = groups.map((m, gi) => {
+    const base = p.t + gi * 51 + 36;
+    const pts = rows.map((r, i) => ({
+      x: p.l + i / (rows.length - 1) * (w - p.l - p.r),
+      y: base - norm(m, r[m.key]) * 35
+    }));
+    return '<path d="' + smooth(pts) + ' L' + pts[pts.length - 1].x.toFixed(1) + ',' + base + ' L' + pts[0].x.toFixed(1) + ',' + base + ' Z" fill="' + m.color + '" opacity="0.22"/><path d="' + smooth(pts) + '" fill="none" stroke="' + m.color + '" stroke-width="2"/><text class="axis" x="8" y="' + (base - 12) + '">' + esc(m.label) + '</text>';
+  }).join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '">' + ridges + '</svg>';
+}
+
+function bulletRanges() {
+  const w = 420, h = 250, left = 90, top = 25, bw = 270, rowH = 42;
+  const bars = metrics.map((m, i) => {
+    const y = top + i * rowH;
+    const n = norm(m, latest(m.key));
+    const target = m.key === 'co2' ? 0.42 : m.key === 'light' ? 0.72 : 0.58;
+    return '<text class="axis" x="8" y="' + (y + 19) + '">' + esc(m.label) + '</text><rect x="' + left + '" y="' + y + '" width="' + bw + '" height="20" rx="4" fill="#30363d"/><rect x="' + left + '" y="' + y + '" width="' + (bw * 0.33) + '" height="20" rx="4" fill="' + m.color + '" opacity="0.16"/><rect x="' + left + '" y="' + y + '" width="' + (bw * 0.66) + '" height="20" rx="4" fill="' + m.color + '" opacity="0.10"/><rect x="' + left + '" y="' + (y + 4) + '" width="' + (bw * n) + '" height="12" rx="3" fill="' + m.color + '"/><line x1="' + (left + bw * target) + '" x2="' + (left + bw * target) + '" y1="' + (y - 4) + '" y2="' + (y + 24) + '" stroke="#f0f6fc" stroke-width="2"/>';
+  }).join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '">' + bars + '</svg>';
+}
+
+function waterfall() {
+  const w = 420, h = 250, left = 36, bottom = 210, bw = 42, gap = 14;
+  const changes = [
+    { label: 'Light', value: 18, color: '#facc15' },
+    { label: 'Fan', value: -7, color: '#38bdf8' },
+    { label: 'CO2', value: 12, color: '#22c55e' },
+    { label: 'Pump', value: -4, color: '#58a6ff' },
+    { label: 'Heat', value: 9, color: '#f59e0b' },
+    { label: 'Drift', value: -11, color: '#ef4444' }
+  ];
+  let cursor = 52;
+  const scale = 2.2;
+  const bars = changes.map((c, i) => {
+    const start = cursor;
+    cursor += c.value;
+    const y1 = bottom - Math.max(start, cursor) * scale;
+    const y2 = bottom - Math.min(start, cursor) * scale;
+    const x = left + i * (bw + gap);
+    return '<line x1="' + (x - gap / 2) + '" x2="' + x + '" y1="' + (bottom - start * scale) + '" y2="' + (bottom - start * scale) + '" stroke="#30363d"/><rect x="' + x + '" y="' + y1 + '" width="' + bw + '" height="' + Math.max(4, y2 - y1) + '" rx="4" fill="' + c.color + '" opacity="0.78"/><text class="tiny" x="' + (x + bw / 2) + '" y="232" text-anchor="middle">' + esc(c.label) + '</text>';
+  }).join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '"><line class="grid-line" x1="24" x2="390" y1="' + bottom + '" y2="' + bottom + '"/>' + bars + '<text class="axis" x="26" y="20">environment contribution</text></svg>';
+}
+
+function treemap() {
+  const w = 420, h = 250;
+  const blocks = [
+    { x: 16, y: 18, w: 166, h: 100, label: 'Lights', value: '410W', color: '#facc15' },
+    { x: 190, y: 18, w: 112, h: 100, label: 'HVAC', value: '260W', color: '#38bdf8' },
+    { x: 310, y: 18, w: 94, h: 100, label: 'CO2', value: '120W', color: '#22c55e' },
+    { x: 16, y: 128, w: 130, h: 94, label: 'Pumps', value: '94W', color: '#58a6ff' },
+    { x: 154, y: 128, w: 120, h: 94, label: 'Heat', value: '88W', color: '#f59e0b' },
+    { x: 282, y: 128, w: 122, h: 94, label: 'Sensors', value: '38W', color: '#ef4444' }
+  ];
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '">' + blocks.map((b) => '<rect x="' + b.x + '" y="' + b.y + '" width="' + b.w + '" height="' + b.h + '" rx="7" fill="' + b.color + '" opacity="0.24" stroke="' + b.color + '" stroke-opacity="0.65"/><text x="' + (b.x + 10) + '" y="' + (b.y + 24) + '" fill="#f0f6fc" font-weight="800" font-size="13">' + esc(b.label) + '</text><text x="' + (b.x + 10) + '" y="' + (b.y + 45) + '" class="axis">' + esc(b.value) + '</text>').join('') + '</svg>';
+}
+
+function sankeyFlow() {
+  const w = 420, h = 250;
+  const flows = [
+    { from: [46, 70], to: [198, 56], width: 18, color: '#facc15' },
+    { from: [46, 118], to: [198, 128], width: 13, color: '#38bdf8' },
+    { from: [46, 166], to: [198, 178], width: 10, color: '#22c55e' },
+    { from: [226, 58], to: [370, 92], width: 20, color: '#f59e0b' },
+    { from: [226, 132], to: [370, 138], width: 15, color: '#58a6ff' },
+    { from: [226, 180], to: [370, 184], width: 9, color: '#ef4444' }
+  ];
+  const paths = flows.map((f) => '<path d="M' + f.from[0] + ',' + f.from[1] + ' C130,' + f.from[1] + ' 130,' + f.to[1] + ' ' + f.to[0] + ',' + f.to[1] + '" fill="none" stroke="' + f.color + '" stroke-width="' + f.width + '" opacity="0.48" stroke-linecap="round"/>').join('');
+  const nodes = [[24, 42, 'Inputs'], [176, 28, 'Control'], [346, 72, 'Outcome']].map((n) => '<rect x="' + n[0] + '" y="' + n[1] + '" width="50" height="146" rx="8" fill="#21262d" stroke="#30363d"/><text class="axis" x="' + (n[0] + 25) + '" y="' + (n[1] + 166) + '" text-anchor="middle">' + n[2] + '</text>').join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '">' + paths + nodes + '</svg>';
+}
+
+function candlestickRange() {
+  const w = 420, h = 250, p = { l: 34, r: 18, t: 18, b: 30 };
+  const daily = Array.from({ length: 18 }, (_, i) => {
+    const base = 23 + Math.sin(i / 3) * 3;
+    return { min: base - 3 - rand(), q1: base - 1.2, q3: base + 1.6, max: base + 3 + rand() };
+  });
+  const x = (i) => p.l + i / (daily.length - 1) * (w - p.l - p.r);
+  const y = (v) => p.t + (1 - norm(metrics[0], v)) * (h - p.t - p.b);
+  const candles = daily.map((d, i) => '<line x1="' + x(i) + '" x2="' + x(i) + '" y1="' + y(d.max) + '" y2="' + y(d.min) + '" stroke="#f59e0b" stroke-width="1.5"/><rect x="' + (x(i) - 6) + '" y="' + y(d.q3) + '" width="12" height="' + Math.max(4, y(d.q1) - y(d.q3)) + '" rx="2" fill="#f59e0b" opacity="0.55"/>').join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '"><line class="grid-line" x1="' + p.l + '" x2="' + (w - p.r) + '" y1="' + (h - p.b) + '" y2="' + (h - p.b) + '"/>' + candles + '<text class="axis" x="36" y="20">daily temp range</text></svg>';
+}
+
+function spiralTimeline() {
+  const w = 420, h = 250, cx = 210, cy = 126;
+  const pts = rows.map((r, i) => {
+    const a = i * 0.52;
+    const rad = 12 + i * 2.1;
+    const n = norm(metrics[0], r.temperature);
+    const p = polar(cx, cy, rad, a);
+    return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (3 + n * 5).toFixed(1) + '" fill="#f59e0b" opacity="' + (0.25 + n * 0.7).toFixed(2) + '"/>';
+  }).join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '">' + pts + '<text x="' + cx + '" y="' + cy + '" text-anchor="middle" fill="#f0f6fc" font-family="var(--mono)" font-size="18" font-weight="850">24H</text><text x="' + cx + '" y="' + (cy + 20) + '" text-anchor="middle" class="axis">spiral time</text></svg>';
+}
+
+function lollipopRank() {
+  const w = 420, h = 250, left = 110, right = 376, top = 28, gap = 38;
+  const items = metrics.map((m) => ({ metric: m, value: norm(m, latest(m.key)) })).sort((a, b) => b.value - a.value);
+  const rowsSvg = items.map((item, i) => {
+    const y = top + i * gap;
+    const x = left + item.value * (right - left);
+    return '<text class="axis" x="16" y="' + (y + 4) + '">' + esc(item.metric.label) + '</text><line x1="' + left + '" x2="' + x + '" y1="' + y + '" y2="' + y + '" stroke="' + item.metric.color + '" stroke-width="4" stroke-linecap="round" opacity="0.68"/><circle cx="' + x + '" cy="' + y + '" r="9" fill="' + item.metric.color + '"/><text class="tiny" x="' + (x + 14) + '" y="' + (y + 4) + '">' + Math.round(item.value * 100) + '%</text>';
+  }).join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '">' + rowsSvg + '</svg>';
+}
+
+const charts = [
+  ['Radial Multi-Gauge', 'Five live metrics in one compact instrument cluster.', '#58a6ff', radialGauge(), ['System hero', 'current state', 'compact']],
+  ['Radar Health Profile', 'One shape shows overall balance across all farm conditions.', '#a855f7', radarChart(), ['summary', 'normalized', 'operator']],
+  ['Calendar Heatmap', 'Best for seeing daily temperature rhythm and recurring issues.', '#f59e0b', calendarHeatmap(), ['history', 'dense', 'time blocks']],
+  ['Scatter Bubble', 'Temperature vs humidity, with CO2 encoded as bubble size.', '#22c55e', scatterBubble(), ['correlation', 'diagnostic', 'CO2']],
+  ['Parallel Coordinates', 'Compare multiple zones or devices across the same metrics.', '#38bdf8', parallelCoordinates(), ['multi-zone', 'comparison', 'devices']],
+  ['Ridgeline Trends', 'Stacked metric distributions over time with clear separation.', '#ef4444', ridgeline(), ['beautiful', 'multi-metric', 'hero']],
+  ['Bullet Range Bars', 'Current vs target vs acceptable range for each metric.', '#d29922', bulletRanges(), ['targets', 'thresholds', 'clear']],
+  ['Waterfall Contribution', 'Shows how actions or device groups changed farm state.', '#58a6ff', waterfall(), ['decisions', 'impact', 'variance']],
+  ['Treemap Load View', 'Space-filling chart for power, device load, or resource share.', '#facc15', treemap(), ['power', 'resources', 'devices']],
+  ['Sankey Flow', 'Visualizes sensor inputs flowing through decisions into outcomes.', '#22c55e', sankeyFlow(), ['agent loop', 'causality', 'story']],
+  ['Candlestick Range', 'Daily min, max, and middle range for temperature stability.', '#f59e0b', candlestickRange(), ['daily range', 'stability', 'history']],
+  ['Spiral Timeline', 'A high-impact 24-hour rhythm chart for repeating cycles.', '#a855f7', spiralTimeline(), ['distinctive', 'cycle', 'hero']],
+  ['Lollipop Rank', 'Ranks current metric pressure from highest to lowest.', '#ef4444', lollipopRank(), ['scan', 'ranking', 'alerts']]
+];
+
+document.getElementById('gallery').innerHTML = charts.map((chart, index) =>
+  makeCard(index + 1, chart[0], chart[1], chart[2], chart[3], chart[4])
+).join('');
+</script>
+</body>
+</html>

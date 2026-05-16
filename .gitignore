@@ -83,3 +83,9 @@ fft-experience/
 # Claude Code planning artifacts (local only)
 docs/superpowers/
 node_modules_old/\ncompiled/\n
+
+# Playwright MCP browser session artifacts
+.playwright-mcp/
+
+# Stray local screenshots
+system-height-fixed.png

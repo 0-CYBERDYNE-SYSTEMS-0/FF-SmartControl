@@ -30,6 +30,9 @@ CREATE INDEX IF NOT EXISTS idx_hal_sensors_latest
 CREATE INDEX IF NOT EXISTS idx_hal_sensors_history
   ON hal_sensors(device_id, metric, read_at ASC);
 
+CREATE INDEX IF NOT EXISTS idx_hal_sensors_metric
+  ON hal_sensors(metric, value);
+
 -- HAL Relays: toggle log for relay/switch devices
 CREATE TABLE IF NOT EXISTS hal_relays (
   id          TEXT PRIMARY KEY,

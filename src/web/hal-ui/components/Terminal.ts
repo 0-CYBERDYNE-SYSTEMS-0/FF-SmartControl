@@ -1,6 +1,6 @@
 // Diagnostic Terminal — monospace log output with timestamped lines
 
-import { getStore } from '../store.js';
+import { formatTimeValue, getStore } from '../store.js';
 import type { HalDecision } from '../api.js';
 
 export interface LogEntry {
@@ -103,12 +103,7 @@ export function buildLogEntries(decisions: HalDecision[]): LogEntry[] {
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
+    return formatTimeValue(new Date(iso), getStore().timeFormat);
   } catch {
     return '--:--:--';
   }

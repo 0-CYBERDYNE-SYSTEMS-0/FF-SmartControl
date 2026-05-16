@@ -5,6 +5,7 @@ import {
   type ThemeName,
   type DashboardLayout,
   getStore,
+  formatTimeValue,
 } from '../store.js';
 import { halApi } from '../api.js';
 
@@ -251,7 +252,7 @@ function updateEstopUI(active: boolean, activatedAt: string | null): void {
       banner.style.display = 'flex';
       if (activatedAt && bannerTime) {
         const date = new Date(activatedAt);
-        bannerTime.textContent = ` since ${date.toLocaleTimeString('en-US', { hour12: false })}`;
+        bannerTime.textContent = ` since ${formatTimeValue(date, getStore().timeFormat)}`;
       }
     }
   } else {
@@ -454,9 +455,7 @@ function startClock(): void {
   function tick(): void {
     const el = document.getElementById('hal-clock');
     if (el) {
-      el.textContent = new Date().toLocaleTimeString('en-US', {
-        hour12: false,
-      });
+      el.textContent = formatTimeValue(new Date(), getStore().timeFormat);
     }
   }
   tick();

@@ -112,6 +112,11 @@ function computeAverage(values: number[]): number {
   return Number((sum / values.length).toFixed(2));
 }
 
+function clampMetric(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
 function inferTimeOfDay(now: Date): FarmContext['timeOfDay'] {
   const hour = now.getHours();
   if (hour >= 5 && hour < 12) return 'morning';
@@ -323,28 +328,36 @@ function appendTelemetry(
     .map((entity) => parseNumericState(entity))
     .filter((value): value is number => value !== null);
 
-  const solarKw =
+  const solarKw = clampMetric(
     parseNumericState(
       getFirstEntityByRegex(entities, /sensor\..*(solar|pv).*(kw|power)/i),
-    ) || 0;
-  const batteryPct =
+    ) || 0,
+    0,
+    25,
+  );
+  const batteryPct = clampMetric(
     parseNumericState(
       getFirstEntityByRegex(
         entities,
         /sensor\..*battery.*(pct|percent|level)?/i,
       ),
-    ) || 0;
-  const waterTotal =
+    ) || 0,
+    0,
+    100,
+  );
+  const waterTotal = Math.max(
+    0,
     parseNumericState(
       getFirstEntityByRegex(entities, /sensor\..*(water.*total|total.*water)/i),
-    ) || 0;
+    ) || 0,
+  );
 
   const telemetry = {
     t: nowIso,
     solarKw,
     batteryPct,
     waterTotal,
-    soilMoistureAvg: computeAverage(soilReadings),
+    soilMoistureAvg: clampMetric(computeAverage(soilReadings), 0, 100),
   };
 
   fs.appendFileSync(activePath, `${JSON.stringify(telemetry)}\n`);

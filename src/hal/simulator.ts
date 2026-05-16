@@ -18,6 +18,11 @@ import type {
   DeviceType,
   DeviceProtocol,
 } from './types.js';
+import {
+  approach,
+  getMetricUnit,
+  normalizeMetricValue,
+} from './telemetry-model.js';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CONFIG
@@ -117,7 +122,7 @@ interface SimDevice {
   host: string | null;
   state: 'on' | 'off';
   powerWatts: number;
-  effect: Partial<Record<keyof ZoneState, number>>; // units per second when on
+  effect: Partial<Record<keyof ZoneState, number>>;
 }
 
 interface SimSensor {
@@ -746,6 +751,10 @@ export class HalSimulator {
     }
   }
 
+  runTickForTesting(): void {
+    this.tick();
+  }
+
   injectFault(
     fault:
       | 'sensor_stuck'
@@ -884,15 +893,7 @@ export class HalSimulator {
     }
 
     // 2. Apply device effects to zone physics
-    for (const dev of this.devices) {
-      if (dev.state !== 'on') continue;
-      if (this.faultState.deviceOffline.has(dev.id)) continue;
-      for (const [key, rate] of Object.entries(dev.effect)) {
-        for (const zone of this.zones) {
-          (zone as any)[key] += (rate as number) * dtSeconds;
-        }
-      }
-    }
+    this.applyDeviceEffects(dtSeconds);
 
     // 3. Natural physics (convection, evaporation, plant respiration)
     this.zones.forEach((zone, zoneIndex) => {
@@ -916,19 +917,15 @@ export class HalSimulator {
       const co2Target =
         (this.lightScheduleOn ? 800 : co2Ambient) + zoneCo2Offset;
       zone.co2 += (co2Target - zone.co2) * 0.0005 * dtSeconds;
-      zone.co2 = Math.max(300, Math.min(2000, zone.co2));
 
       // Soil moisture evaporates
       zone.soilMoisture -= zoneSoilEvaporation * dtSeconds;
-      zone.soilMoisture = Math.max(15, Math.min(90, zone.soilMoisture));
 
       // Water level slowly drops
       zone.waterLevel -= zoneWaterDrain * dtSeconds;
-      zone.waterLevel = Math.max(5, Math.min(100, zone.waterLevel));
 
       // pH drifts slowly
       zone.ph += (ZONE_TARGETS.ph - zone.ph) * 0.0001 * dtSeconds;
-      zone.ph = Math.max(5.0, Math.min(7.5, zone.ph));
 
       // Weight grows slowly (plant growth)
       zone.weight += 0.0001 * dtSeconds;
@@ -939,6 +936,7 @@ export class HalSimulator {
         Math.exp((17.27 * zone.temperature) / (zone.temperature + 237.3));
       const actualVaporPressure = satVaporPressure * (zone.humidity / 100);
       zone.vpd = satVaporPressure - actualVaporPressure;
+      this.clampZone(zone);
     });
 
     // 4. Agent-style auto decisions
@@ -959,6 +957,92 @@ export class HalSimulator {
         );
       }
     }
+  }
+
+  private applyDeviceEffects(dtSeconds: number): void {
+    const lightOn =
+      this.devices.find((d) => d.id === 'grow_light_main')?.state === 'on' &&
+      !this.faultState.deviceOffline.has('grow_light_main');
+    const exhaustOn =
+      this.devices.find((d) => d.id === 'exhaust_fan')?.state === 'on' &&
+      !this.faultState.deviceOffline.has('exhaust_fan');
+    const humidifierOn =
+      this.devices.find((d) => d.id === 'humidifier')?.state === 'on' &&
+      !this.faultState.deviceOffline.has('humidifier');
+    const pumpOn =
+      this.devices.find((d) => d.id === 'water_pump')?.state === 'on' &&
+      !this.faultState.deviceOffline.has('water_pump');
+    const heaterOn =
+      this.devices.find((d) => d.id === 'heater_plug')?.state === 'on' &&
+      !this.faultState.deviceOffline.has('heater_plug');
+    const dehumidifierOn =
+      this.devices.find((d) => d.id === 'dehumidifier_plug')?.state === 'on' &&
+      !this.faultState.deviceOffline.has('dehumidifier_plug');
+
+    this.zones.forEach((zone, zoneIndex) => {
+      const lightTarget = lightOn ? (zoneIndex === 0 ? 62000 : 56000) : 0;
+      zone.light = approach(
+        zone.light,
+        lightTarget,
+        lightOn ? 0.08 : 0.18,
+        dtSeconds,
+      );
+
+      if (lightOn) {
+        const canopyTarget = zoneIndex === 0 ? 27.5 : 26.4;
+        zone.temperature = approach(
+          zone.temperature,
+          canopyTarget,
+          0.0009,
+          dtSeconds,
+        );
+      }
+
+      if (heaterOn) {
+        zone.temperature = approach(zone.temperature, 25.5, 0.0014, dtSeconds);
+      }
+
+      if (exhaustOn) {
+        const intakeTemp = 21 + (zoneIndex === 0 ? 0.2 : -0.3);
+        zone.temperature = approach(
+          zone.temperature,
+          intakeTemp,
+          0.0018,
+          dtSeconds,
+        );
+        zone.humidity = approach(zone.humidity, 52, 0.0015, dtSeconds);
+        zone.co2 = approach(zone.co2, 430, 0.0024, dtSeconds);
+      }
+
+      if (humidifierOn) {
+        zone.humidity = approach(zone.humidity, 68, 0.0018, dtSeconds);
+      }
+
+      if (dehumidifierOn) {
+        zone.humidity = approach(zone.humidity, 48, 0.0018, dtSeconds);
+      }
+
+      if (pumpOn) {
+        zone.soilMoisture = approach(zone.soilMoisture, 72, 0.006, dtSeconds);
+        zone.waterLevel -= 0.012 * dtSeconds;
+      }
+
+      this.clampZone(zone);
+    });
+  }
+
+  private clampZone(zone: ZoneState): void {
+    zone.temperature = normalizeMetricValue('temperature', zone.temperature);
+    zone.humidity = normalizeMetricValue('humidity', zone.humidity);
+    zone.co2 = normalizeMetricValue('co2', zone.co2);
+    zone.light = normalizeMetricValue('light', zone.light);
+    zone.soilMoisture = normalizeMetricValue(
+      'soil_moisture',
+      zone.soilMoisture,
+    );
+    zone.waterLevel = normalizeMetricValue('water_level', zone.waterLevel);
+    zone.ph = normalizeMetricValue('ph', zone.ph);
+    zone.weight = normalizeMetricValue('weight', zone.weight);
   }
 
   private runAutoDecisions(): void {
@@ -1157,8 +1241,7 @@ export class HalSimulator {
       if (sensor.buffer.length > 5) sensor.buffer.shift();
       reading = sensor.buffer.reduce((a, b) => a + b, 0) / sensor.buffer.length;
 
-      // Clamp
-      reading = Math.max(0, reading);
+      reading = normalizeMetricValue(sensor.metric, reading);
 
       sensor.lastValue = reading;
 
@@ -1174,8 +1257,8 @@ export class HalSimulator {
       halSensors.store({
         device_id: sensor.deviceId,
         metric: sensor.metric,
-        unit: sensor.unit,
-        value: Math.round(reading * 100) / 100,
+        unit: getMetricUnit(sensor.metric),
+        value: reading,
         quality: this.faultState.sensorStuck.has(stuckKey) ? 'error' : 'good',
         read_at: readAt,
       });

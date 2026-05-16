@@ -69,11 +69,43 @@
     themeDefinitions: () => themeDefinitions,
     weightUnit: () => weightUnit
   });
+  function loadStoredPreferences() {
+    try {
+      const raw = localStorage.getItem(preferencesStorageKey);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return {
+        unitSystem: parsed.unitSystem === "metric" || parsed.unitSystem === "imperial" ? parsed.unitSystem : void 0,
+        timeFormat: parsed.timeFormat === "12h" || parsed.timeFormat === "24h" ? parsed.timeFormat : void 0,
+        theme: themeNames.includes(parsed.theme) ? parsed.theme : void 0,
+        layout: dashboardLayouts.includes(parsed.layout) ? parsed.layout : void 0
+      };
+    } catch {
+      return {};
+    }
+  }
+  function persistPreferences(next) {
+    try {
+      localStorage.setItem(
+        preferencesStorageKey,
+        JSON.stringify({
+          unitSystem: next.unitSystem,
+          timeFormat: next.timeFormat,
+          theme: next.theme,
+          layout: next.layout
+        })
+      );
+    } catch {
+    }
+  }
   function getStore() {
     return state;
   }
   function setStore(partial) {
     state = { ...state, ...partial };
+    if (partial.unitSystem || partial.timeFormat || partial.theme || partial.layout) {
+      persistPreferences(state);
+    }
     listeners.forEach((l) => l());
   }
   function subscribe(fn) {
@@ -85,7 +117,7 @@
     return celsius;
   }
   function tempUnit(system) {
-    return system === "imperial" ? "F" : "C";
+    return system === "imperial" ? "\xB0F" : "\xB0C";
   }
   function convertWeight(kg, to) {
     if (to === "imperial") return kg * 2.20462;
@@ -180,11 +212,23 @@
     root.style.setProperty("--danger", def.danger);
     root.style.setProperty("--glow", def.glow);
   }
-  var listeners, state, themeDefinitions;
+  var listeners, preferencesStorageKey, themeNames, dashboardLayouts, state, themeDefinitions;
   var init_store = __esm({
     "src/web/hal-ui/store.ts"() {
       "use strict";
       listeners = /* @__PURE__ */ new Set();
+      preferencesStorageKey = "farmpal-ui-preferences";
+      themeNames = [
+        "emerald",
+        "amber",
+        "blue",
+        "rose",
+        "violet",
+        "cyan",
+        "orange",
+        "slate"
+      ];
+      dashboardLayouts = ["calm", "operator", "diagnostic"];
       state = {
         theme: "emerald",
         layout: "operator",
@@ -209,7 +253,8 @@
         safetyState: "NORMAL",
         safetyActiveRulesCount: 0,
         safetyWarningDevicesCount: 0,
-        safetyDeniedLast24h: 0
+        safetyDeniedLast24h: 0,
+        ...loadStoredPreferences()
       };
       themeDefinitions = {
         emerald: {
@@ -1318,7 +1363,7 @@
         banner.style.display = "flex";
         if (activatedAt && bannerTime) {
           const date2 = new Date(activatedAt);
-          bannerTime.textContent = ` since ${date2.toLocaleTimeString("en-US", { hour12: false })}`;
+          bannerTime.textContent = ` since ${formatTimeValue(date2, getStore().timeFormat)}`;
         }
       }
     } else {
@@ -1480,9 +1525,7 @@ ${result.failures.join("\n")}`
     function tick() {
       const el = document.getElementById("hal-clock");
       if (el) {
-        el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
-          hour12: false
-        });
+        el.textContent = formatTimeValue(/* @__PURE__ */ new Date(), getStore().timeFormat);
       }
     }
     tick();
@@ -2493,13 +2536,7 @@ ${result.failures.join("\n")}`
   }
   function formatTime(iso) {
     try {
-      return new Date(iso).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
-      });
+      return formatDateTimeValue(new Date(iso), getStore().timeFormat);
     } catch {
       return "--";
     }
@@ -3301,6 +3338,7 @@ ${result.failures.join("\n")}`
     "src/web/hal-ui/components/HeroChart.ts"() {
       "use strict";
       init_api();
+      init_store();
       init_ChartKit();
       HERO_METRIC_KEYS = [
         "temperature",
@@ -3726,8 +3764,14 @@ ${result.failures.join("\n")}`
   }
   function normalizeValue(metric, value) {
     const meta = metricMeta(metric.key);
-    const span = Math.max(1, meta.maxAxis - meta.minAxis);
-    return Math.max(0, Math.min(1, (value - meta.minAxis) / span));
+    let minAxis = meta.minAxis;
+    let maxAxis = meta.maxAxis;
+    if (metric.key === "temperature" && getStore().unitSystem === "imperial") {
+      minAxis = minAxis * 9 / 5 + 32;
+      maxAxis = maxAxis * 9 / 5 + 32;
+    }
+    const span = Math.max(1, maxAxis - minAxis);
+    return Math.max(0, Math.min(1, (value - minAxis) / span));
   }
   function monotonePath(points) {
     if (points.length < 2) return "";
@@ -3760,11 +3804,12 @@ ${result.failures.join("\n")}`
           buckets.set(point.t, bucket);
         }
       }
+      const unitFromZones = zones2.flatMap((z) => z.metrics).find((m) => m.key === key)?.unit ?? meta.unit;
       return {
         key,
         label: meta.label,
         color: meta.color,
-        unit: meta.unit,
+        unit: unitFromZones,
         data: Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]).map(([t, bucket]) => ({
           t,
           v: bucket.count > 0 ? bucket.sum / bucket.count : 0
@@ -3781,6 +3826,9 @@ ${result.failures.join("\n")}`
   function latestValue(metric) {
     const data = cleanData(metric.data);
     return data.length > 0 ? data[data.length - 1].v : null;
+  }
+  function formatChartTime(t) {
+    return formatTimeValue(new Date(t), getStore().timeFormat);
   }
   function renderPrecisionSvg(metrics2) {
     const width = 920;
@@ -3801,10 +3849,7 @@ ${result.failures.join("\n")}`
       return `<line x1="${pad.l}" x2="${width - pad.r}" y1="${gy.toFixed(1)}" y2="${gy.toFixed(1)}" class="env-grid"/>`;
     }).join("");
     const labels = [minT, minT + tSpan / 2, maxT].map((t, index) => {
-      const label = new Date(t).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      const label = formatChartTime(t);
       return `<text class="env-axis-label" x="${x(t).toFixed(1)}" y="${height - 8}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml4(label)}</text>`;
     }).join("");
     const defs = metrics2.map(
@@ -3952,10 +3997,7 @@ ${result.failures.join("\n")}`
       `;
     }).join("");
     const tickLabels = [minT, minT + tSpan / 2, maxT].map((t, index) => {
-      const label = new Date(t).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      const label = formatChartTime(t);
       return `<text class="env-field-time" x="${x(t).toFixed(1)}" y="${height - 10}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml4(label)}</text>`;
     }).join("");
     return `
@@ -4237,10 +4279,7 @@ ${result.failures.join("\n")}`
       `;
     }).join("");
     const labels = [minT, minT + tSpan / 2, maxT].map((t, index) => {
-      const label = new Date(t).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      const label = formatChartTime(t);
       return `<text class="env-axis-label" x="${x(t).toFixed(1)}" y="${height - 8}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml4(label)}</text>`;
     }).join("");
     return `
@@ -4256,8 +4295,12 @@ ${result.failures.join("\n")}`
     const rows = metrics2.map((metric) => {
       const meta = metricMeta(metric.key);
       const current = latestValue(metric);
-      const targetMin = meta.targetMin ?? meta.minAxis;
-      const targetMax = meta.targetMax ?? meta.maxAxis;
+      let targetMin = meta.targetMin ?? meta.minAxis;
+      let targetMax = meta.targetMax ?? meta.maxAxis;
+      if (metric.key === "temperature" && getStore().unitSystem === "imperial") {
+        targetMin = targetMin * 9 / 5 + 32;
+        targetMax = targetMax * 9 / 5 + 32;
+      }
       const currentPct = current == null ? 0 : normalizeValue(metric, current) * 100;
       const targetStart = normalizeValue(metric, targetMin) * 100;
       const targetWidth = Math.max(
@@ -5300,6 +5343,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   var init_EnvironmentCharts = __esm({
     "src/web/hal-ui/components/EnvironmentCharts.ts"() {
       "use strict";
+      init_store();
       METRIC_META = {
         temperature: {
           key: "temperature",
@@ -5952,12 +5996,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   }
   function formatTime2(iso) {
     try {
-      return new Date(iso).toLocaleTimeString("en-US", {
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit"
-      });
+      return formatTimeValue(new Date(iso), getStore().timeFormat);
     } catch {
       return "--:--:--";
     }
@@ -6085,13 +6124,18 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   }
   async function renderCalmDashboard(container) {
     const store = getStore();
+    const temp = formatSensorValue(
+      getLatestTemp(),
+      "temperature",
+      store.unitSystem
+    );
     container.innerHTML = `
     <div class="dash-layout calm-layout">
       <div class="dash-main">
         ${renderOverviewBrandChip()}
         <div class="calm-hero">
           <div class="calm-status-row">
-            ${renderCalmKpi("Temperature", getLatestTemp(), "\xB0C", "#F59E0B")}
+            ${renderCalmKpi("Temperature", temp.value, temp.unit, "#F59E0B")}
             ${renderCalmKpi("Humidity", getLatestHum(), "%", "#38BDF8")}
             ${renderCalmKpi("Devices", store.devices.filter((d) => d.online).length, `/${store.devices.length}`, "var(--accent)")}
           </div>
@@ -6196,7 +6240,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           key,
           label: cfg.label,
           color: cfg.color,
-          unit: key === "temperature" ? `\xB0${dynamicUnit}` : cfg.unit,
+          unit: key === "temperature" ? dynamicUnit : cfg.unit,
           data: entries
         };
       });
@@ -6360,6 +6404,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   `;
   }
   function renderRawSnapshots(sensors, devices) {
+    const store = getStore();
     const entries = Object.entries(sensors);
     if (entries.length === 0) {
       return '<p class="text-secondary text-sm">No sensor snapshots available</p>';
@@ -6368,6 +6413,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       const device = devices.find((d) => d.id === deviceId);
       const temp = snap.temperature;
       const hum = snap.humidity;
+      const formattedTemp = temp ? formatSensorValue(temp.value, "temperature", store.unitSystem) : null;
       return `
       <div class="diag-snapshot hal-card">
         <div class="diag-snapshot-header">
@@ -6378,13 +6424,13 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           ${temp ? `
             <div class="diag-snapshot-row">
               <span class="text-xs text-secondary">temperature</span>
-              <span class="text-mono text-xs">${temp.value.toFixed(2)} \xB0C @ ${new Date(temp.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}</span>
+              <span class="text-mono text-xs">${formattedTemp.value.toFixed(2)} ${formattedTemp.unit} @ ${formatTimeValue(new Date(temp.timestamp), store.timeFormat)}</span>
             </div>
           ` : ""}
           ${hum ? `
             <div class="diag-snapshot-row">
               <span class="text-xs text-secondary">humidity</span>
-              <span class="text-mono text-xs">${hum.value.toFixed(2)} % @ ${new Date(hum.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}</span>
+              <span class="text-mono text-xs">${hum.value.toFixed(2)} % @ ${formatTimeValue(new Date(hum.timestamp), store.timeFormat)}</span>
             </div>
           ` : ""}
           ${!temp && !hum ? '<span class="text-xs text-secondary">No data</span>' : ""}
@@ -6551,7 +6597,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   }
   function formatTime3(iso) {
     try {
-      return new Date(iso).toLocaleTimeString("en-US", { hour12: false });
+      return formatTimeValue(new Date(iso), getStore().timeFormat);
     } catch {
       return "--";
     }
@@ -9804,6 +9850,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     ).join("")}
       </div>
       <button class="hal-range-btn" id="sys-unit-toggle">${store.unitSystem === "metric" ? "\xB0C" : "\xB0F"}</button>
+      <button class="hal-range-btn" id="sys-time-format-toggle">${store.timeFormat === "24h" ? "24H" : "12H"}</button>
     </div>
   `;
     root.appendChild(header);
@@ -9867,6 +9914,14 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       const s = getStore();
       setStore({ unitSystem: s.unitSystem === "metric" ? "imperial" : "metric" });
       unitToggle.textContent = getStore().unitSystem === "metric" ? "\xB0C" : "\xB0F";
+      void loadSystemData();
+    });
+    const timeFormatToggle = document.getElementById("sys-time-format-toggle");
+    timeFormatToggle?.addEventListener("click", () => {
+      const s = getStore();
+      const newFormat = s.timeFormat === "24h" ? "12h" : "24h";
+      setStore({ timeFormat: newFormat });
+      timeFormatToggle.textContent = newFormat === "24h" ? "24H" : "12H";
       void loadSystemData();
     });
     await loadSystemData();
@@ -10340,14 +10395,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   }
   function formatTime4(iso) {
     try {
-      return new Date(iso).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false
-      });
+      return formatDateTimeValue(new Date(iso), getStore().timeFormat);
     } catch {
       return "--";
     }
@@ -10619,6 +10667,9 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   function setLastCaptureTime(cameraId, timestamp) {
     sessionStorage.setItem(`camera_capture_${cameraId}`, timestamp);
   }
+  function formatCameraTime(date2) {
+    return formatTimeValue(date2, getStore().timeFormat);
+  }
   async function renderCameras(container) {
     const store = getStore();
     const cameras = store.devices.filter((d) => d.type === "camera");
@@ -10643,18 +10694,9 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         const cameraId = el.dataset.cameraId;
         const lastCapture = cameraId ? getLastCaptureTime(cameraId) : null;
         if (lastCapture) {
-          const date2 = new Date(lastCapture);
-          el.textContent = date2.toLocaleTimeString("en-US", {
-            hour12: false,
-            hour: "2-digit",
-            minute: "2-digit"
-          });
+          el.textContent = formatCameraTime(new Date(lastCapture));
         } else {
-          el.textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
-            hour12: false,
-            hour: "2-digit",
-            minute: "2-digit"
-          });
+          el.textContent = formatCameraTime(/* @__PURE__ */ new Date());
         }
       });
     }, 3e4);
@@ -10676,15 +10718,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       const demoImg = DEMO_IMAGES[c.id];
       const isDemo = isDemoCamera(c);
       const lastCapture = getLastCaptureTime(c.id);
-      const displayTime = lastCapture ? new Date(lastCapture).toLocaleTimeString("en-US", {
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit"
-      }) : (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      const displayTime = lastCapture ? formatCameraTime(new Date(lastCapture)) : formatCameraTime(/* @__PURE__ */ new Date());
       return `
     <div class="camera-card hal-card ${c.online ? "" : "camera-offline"}" data-camera-id="${c.id}">
       <div class="camera-thumbnail" id="thumb-${c.id}">
@@ -10730,11 +10764,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           );
           if (timeEl) {
             const date2 = new Date(captureTime);
-            timeEl.textContent = date2.toLocaleTimeString("en-US", {
-              hour12: false,
-              hour: "2-digit",
-              minute: "2-digit"
-            });
+            timeEl.textContent = formatCameraTime(date2);
           }
           showToast(`Capture saved: ${result.path}`, "success");
           openModal(
@@ -10753,7 +10783,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
                 </div>
                 <div class="capture-meta-row">
                   <span class="text-secondary text-xs">Captured</span>
-                  <span class="text-mono text-xs">${date.toLocaleTimeString("en-US", { hour12: false })}</span>
+                  <span class="text-mono text-xs">${formatCameraTime(date)}</span>
                 </div>
               </div>
             </div>
@@ -14185,7 +14215,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         <div class="summary-card-content">
           <div class="summary-card-label">Safety State</div>
           <div class="summary-card-value">${summary.estopActive ? "EMERGENCY STOP" : summary.farmLoopSafetyMode ? "WARNING" : "NORMAL"}</div>
-          ${summary.estopActive && summary.estopActivatedAt ? `<div class="summary-card-meta">since ${new Date(summary.estopActivatedAt).toLocaleTimeString()}</div>` : ""}
+          ${summary.estopActive && summary.estopActivatedAt ? `<div class="summary-card-meta">since ${formatDateTimeValue(new Date(summary.estopActivatedAt), getStore().timeFormat)}</div>` : ""}
         </div>
       </div>
 
@@ -14318,16 +14348,17 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       const meta = getSafetyMetricMeta(metric);
       const scope = resolveThresholdScope(threshold);
       const currentValue = resolveThresholdCurrentValue(threshold, metric);
+      const unit = metric === "temperature" ? formatSensorValue(0, "temperature", store.unitSystem).unit : METRIC_UNITS[metric] || "";
       return {
         id: threshold.id,
-        label: METRIC_LABELS[metric] || metric,
+        label: metric === "temperature" ? `Temperature (${unit})` : METRIC_LABELS[metric] || metric,
         scope,
         metric,
         color: meta.color,
-        unit: METRIC_UNITS[metric] || "",
-        currentValue,
-        minValue: threshold.minValue,
-        maxValue: threshold.maxValue,
+        unit,
+        currentValue: currentValue !== null ? formatSensorValue(currentValue, metric, store.unitSystem).value : null,
+        minValue: threshold.minValue !== null ? formatSensorValue(threshold.minValue, metric, store.unitSystem).value : null,
+        maxValue: threshold.maxValue !== null ? formatSensorValue(threshold.maxValue, metric, store.unitSystem).value : null,
         axisMin: meta.axisMin,
         axisMax: meta.axisMax,
         enabled: threshold.enabled
@@ -15061,10 +15092,15 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     } else if (threshold.zone) {
       deviceName = `Zone: ${threshold.zone}`;
     }
-    const metricLabel = METRIC_LABELS[threshold.metric] || threshold.metric;
-    const unit = METRIC_UNITS[threshold.metric] || "";
-    const minDisplay = threshold.minValue !== null ? `${threshold.minValue}${unit}` : "\u2014";
-    const maxDisplay = threshold.maxValue !== null ? `${threshold.maxValue}${unit}` : "\u2014";
+    const formattedZero = formatSensorValue(
+      0,
+      threshold.metric,
+      store.unitSystem
+    );
+    const unit = threshold.metric === "temperature" ? formattedZero.unit : METRIC_UNITS[threshold.metric] || "";
+    const metricLabel = threshold.metric === "temperature" ? `Temperature (${unit})` : METRIC_LABELS[threshold.metric] || threshold.metric;
+    const minDisplay = threshold.minValue !== null ? `${formatSensorValue(threshold.minValue, threshold.metric, store.unitSystem).value.toFixed(1)}${unit}` : "\u2014";
+    const maxDisplay = threshold.maxValue !== null ? `${formatSensorValue(threshold.maxValue, threshold.metric, store.unitSystem).value.toFixed(1)}${unit}` : "\u2014";
     return `
     <div class="threshold-card ${threshold.enabled ? "" : "disabled"}" data-threshold-id="${threshold.id}">
       <div class="threshold-header">
@@ -15801,7 +15837,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         dependency: "Device state depends on another device/sensor condition"
       };
       METRIC_LABELS = {
-        temperature: "Temperature (\xB0C)",
+        temperature: "Temperature",
         humidity: "Humidity (%)",
         soil_moisture: "Soil Moisture (%)",
         co2: "CO\u2082 (ppm)",
@@ -15900,11 +15936,13 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     attachCalibrationHandlers(calibrationData);
   }
   function renderCalibrationCard(cd) {
-    const { device, rawValue, calibratedValue, offset, metric, unit } = cd;
+    const { device, rawValue, calibratedValue, offset, metric } = cd;
+    const store = getStore();
+    const unit = formatSensorValue(0, metric, store.unitSystem).unit || cd.unit;
     const metricLabel = metric.charAt(0).toUpperCase() + metric.slice(1).replace("_", " ");
-    const formattedRaw = formatValue2(rawValue, unit);
-    const formattedCalibrated = formatValue2(calibratedValue, unit);
-    const formattedOffset = offset !== 0 ? formatValue2(offset, unit) : "0";
+    const formattedRaw = formatDisplayValue(rawValue, metric);
+    const formattedCalibrated = formatDisplayValue(calibratedValue, metric);
+    const formattedOffset = offset !== 0 ? formatOffsetValue(offset, metric) : "0";
     const inputId = `ref-${device.id}-${metric}`;
     return `
     <div class="cal-card" data-device-id="${device.id}" data-metric="${metric}">
@@ -15988,7 +16026,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         const inputEl = document.getElementById(
           `ref-${deviceId}-${metric}`
         );
-        const refValue = parseFloat(inputEl.value);
+        const refValue = parseDisplayInput(parseFloat(inputEl.value), metric);
         if (isNaN(refValue)) {
           showToast("Please enter a valid reference value", "warning");
           return;
@@ -16078,6 +16116,28 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   function formatValue2(value, unit) {
     const precision = Math.abs(value) >= 100 ? 0 : value % 1 === 0 ? 0 : 2;
     return `${value.toFixed(precision)}${unit}`;
+  }
+  function formatDisplayValue(value, metric) {
+    const store = getStore();
+    const converted = formatSensorValue(value, metric, store.unitSystem);
+    return formatValue2(converted.value, converted.unit);
+  }
+  function formatOffsetValue(value, metric) {
+    const store = getStore();
+    if (metric === "temperature" && store.unitSystem === "imperial") {
+      return formatValue2(value * 9 / 5, "\xB0F");
+    }
+    return formatDisplayValue(value, metric);
+  }
+  function parseDisplayInput(value, metric) {
+    const store = getStore();
+    if (metric === "temperature" && store.unitSystem === "imperial") {
+      return (value - 32) * 5 / 9;
+    }
+    if (metric === "weight" && store.unitSystem === "imperial") {
+      return value / 2.20462;
+    }
+    return value;
   }
   function escapeHtml15(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -16521,6 +16581,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       regionGroups[region].push(tz);
     }
     const currentTz = settingsData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const store = getStore();
     return `
     <div class="settings-view">
       <div class="settings-header">
@@ -16573,6 +16634,30 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     ).join("")}
               </select>
               <p class="settings-hint">Used for scheduling and decision logs.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Display Section -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 18v3"/></svg>
+            Display
+          </h2>
+          <div class="settings-card">
+            <div class="settings-field">
+              <p class="settings-label">Temperature Units</p>
+              <div class="settings-segmented" id="unit-system-control">
+                <button type="button" class="settings-segment ${store.unitSystem === "metric" ? "active" : ""}" data-unit-system="metric">\xB0C</button>
+                <button type="button" class="settings-segment ${store.unitSystem === "imperial" ? "active" : ""}" data-unit-system="imperial">\xB0F</button>
+              </div>
+            </div>
+            <div class="settings-field">
+              <p class="settings-label">Time Format</p>
+              <div class="settings-segmented" id="time-format-control">
+                <button type="button" class="settings-segment ${store.timeFormat === "12h" ? "active" : ""}" data-time-format="12h">12H</button>
+                <button type="button" class="settings-segment ${store.timeFormat === "24h" ? "active" : ""}" data-time-format="24h">24H</button>
+              </div>
             </div>
           </div>
         </section>
@@ -16937,6 +17022,30 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   `;
   }
   function attachSettingsEvents() {
+    document.querySelectorAll("[data-unit-system]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const unitSystem = btn.dataset.unitSystem;
+        setStore({ unitSystem });
+        document.querySelectorAll("[data-unit-system]").forEach((b) => {
+          b.classList.toggle("active", b === btn);
+        });
+        showToast(
+          `Temperature units: ${unitSystem === "metric" ? "\xB0C" : "\xB0F"}`,
+          "info",
+          1600
+        );
+      });
+    });
+    document.querySelectorAll("[data-time-format]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const timeFormat = btn.dataset.timeFormat;
+        setStore({ timeFormat });
+        document.querySelectorAll("[data-time-format]").forEach((b) => {
+          b.classList.toggle("active", b === btn);
+        });
+        showToast(`Time format: ${timeFormat.toUpperCase()}`, "info", 1600);
+      });
+    });
     document.querySelectorAll(".provider-card").forEach((btn) => {
       btn.addEventListener("click", () => {
         const provider = btn.dataset.provider;
@@ -17750,6 +17859,36 @@ The service will restart after the update.`
   gap: var(--space-3);
   margin-top: var(--space-2);
 }
+.settings-segmented {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-tertiary);
+}
+.settings-segment {
+  min-width: 56px;
+  height: 34px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.settings-segment:last-child {
+  border-right: 0;
+}
+.settings-segment.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.settings-segment:hover:not(.active) {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text-primary);
+}
 .settings-footer {
   margin-top: var(--space-xl);
   padding-top: var(--space-lg);
@@ -18543,6 +18682,7 @@ The service will restart after the update.`
       init_api_provisioning();
       init_api();
       init_Toast();
+      init_store();
       LLM_PROVIDERS2 = [
         {
           id: "ollama",

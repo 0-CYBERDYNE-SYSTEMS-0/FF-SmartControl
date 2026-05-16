@@ -14,6 +14,32 @@ Additional surfaces:
 - Web control center: Vite/React frontend at `127.0.0.1:3393`
 - TUI: terminal UI gateway/client at `127.0.0.1:3390`
 
+### Autonomous Decision Pipeline
+
+`src/agent/decision-loop.ts` → `runDecisionCycle()` triggers on `message | heartbeat | scheduled_task | manual`. It snapshots sensor state, calls the LLM, and proposes relay actions. Multi-agent roles in `src/agent/`:
+- `generator.ts` — proposes actions
+- `verifier.ts` — validates proposed actions against policy before execution
+- `reflector.ts` — post-run suggestions and self-improvement
+- `diagnostic.ts` — structured health/diagnostic reports
+
+### Automation Modes
+
+Four modes in `src/automation/modes.ts`, persisted to SQLite, survive restarts:
+
+| Mode | Behavior |
+|---|---|
+| `OBSERVE_ONLY` | LLM sees sensor data; zero hardware writes |
+| `SUGGEST` | Proposed actions written as `pending_review`; operator must approve |
+| `ASSISTED_CONTROL` | 30-second operator veto window before execution |
+| `AUTONOMOUS` | Approved actions execute immediately |
+
+### Safety Layer
+
+`src/safety/` is a pure deterministic gate — no LLM calls — that runs before any relay action:
+- `policy-engine.ts` — evaluates rules: `max_on_duration`, `min_off_duration`, `max_activations_per_hour`, `allowed_schedule_windows`, `dependency`, `threshold`
+- `estop.ts` — emergency stop flag; checked by cron service before task execution
+- `audit-log.ts` — append-only record of all safety decisions
+
 ## Build & Test
 
 ```bash
@@ -31,6 +57,8 @@ npm run format:check   # Prettier check (CI)
 npm run validate:skills # Validate repo/runtime skills
 npm run release-check   # Full release gate (runs typecheck, tests, secret-scan, skills, pack-check)
 npm run secret-scan     # Check for personal paths, chat IDs, secrets
+npm run doctor         # Diagnose runtime environment issues
+npm run onboard        # Interactive operator onboarding CLI
 
 # HAL UI (src/web/hal-ui/)
 npm run hal:ui:build   # Bundle source → src/web/hal-ui/dist/
@@ -76,6 +104,12 @@ For chart toggle changes, verify both `dashboard` and `sensors` views: default z
 | `src/runtime/host-events.ts` | `HostEventBus` — typed EventEmitter hub for host-local delivery |
 | `src/config.ts` | All configuration constants |
 | `src/hal/` | HAL registries, sensors, relays, MQTT, simulator |
+| `src/hal/db.ts` | HAL-specific SQLite (separate from main `src/db.ts`) |
+| `src/agent/` | Multi-agent pipeline: generator, verifier, reflector, diagnostic, decision-loop |
+| `src/safety/` | Deterministic policy engine, estop, audit-log |
+| `src/automation/modes.ts` | Four automation modes and their transitions |
+| `src/cron/service.ts` | Scheduled task runner with exponential backoff |
+| `src/farm-action-gateway.ts` | Home Assistant dashboard and canvas action gateway |
 | `src/web/hal-ui/` | HAL UI source (views, components, store, API) |
 | `src/web/hal-ui-server.ts` | HAL UI/API server |
 | `src/web/control-center-server.ts` | Web control center server and local file APIs |

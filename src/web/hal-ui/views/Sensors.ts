@@ -943,13 +943,13 @@ function renderGaugeCard(layer: SeriesLayer, title: string): string {
     store.unitSystem,
   );
   const unit = latest.unit || metric.fallbackUnit;
-  const pct = Math.max(
-    0,
-    Math.min(
-      1,
-      (latest.value - metric.minAxis) / (metric.maxAxis - metric.minAxis),
-    ),
-  );
+  let axisMin = metric.minAxis,
+    axisMax = metric.maxAxis;
+  if (metric.key === 'temperature' && store.unitSystem === 'imperial') {
+    axisMin = (axisMin * 9) / 5 + 32;
+    axisMax = (axisMax * 9) / 5 + 32;
+  }
+  const pct = Math.max(0, Math.min(1, (latest.value - axisMin) / (axisMax - axisMin)));
   const r = 42,
     cx = 80,
     cy = 56;

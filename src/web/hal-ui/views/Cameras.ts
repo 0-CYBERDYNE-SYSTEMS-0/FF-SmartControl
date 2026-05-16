@@ -1,6 +1,6 @@
 // Cameras view — 2-col thumbnail grid with demo stock imagery, click for capture modal
 
-import { getStore } from '../store.js';
+import { formatTimeValue, getStore } from '../store.js';
 import { halApi, HalDevice } from '../api.js';
 import { openModal } from '../components/Modal.js';
 import { showToast } from '../components/Toast.js';
@@ -23,6 +23,10 @@ function getLastCaptureTime(cameraId: string): string | null {
 // Store last capture timestamp
 function setLastCaptureTime(cameraId: string, timestamp: string): void {
   sessionStorage.setItem(`camera_capture_${cameraId}`, timestamp);
+}
+
+function formatCameraTime(date: Date): string {
+  return formatTimeValue(date, getStore().timeFormat);
 }
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null;
@@ -54,18 +58,9 @@ function startCameraRefresh(): void {
       const cameraId = (el as HTMLElement).dataset.cameraId;
       const lastCapture = cameraId ? getLastCaptureTime(cameraId) : null;
       if (lastCapture) {
-        const date = new Date(lastCapture);
-        el.textContent = date.toLocaleTimeString('en-US', {
-          hour12: false,
-          hour: '2-digit',
-          minute: '2-digit',
-        });
+        el.textContent = formatCameraTime(new Date(lastCapture));
       } else {
-        el.textContent = new Date().toLocaleTimeString('en-US', {
-          hour12: false,
-          hour: '2-digit',
-          minute: '2-digit',
-        });
+        el.textContent = formatCameraTime(new Date());
       }
     });
   }, 30000);
@@ -90,16 +85,8 @@ function renderCameraGrid(cameras: HalDevice[]): string {
       const isDemo = isDemoCamera(c);
       const lastCapture = getLastCaptureTime(c.id);
       const displayTime = lastCapture
-        ? new Date(lastCapture).toLocaleTimeString('en-US', {
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : new Date().toLocaleTimeString('en-US', {
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit',
-          });
+        ? formatCameraTime(new Date(lastCapture))
+        : formatCameraTime(new Date());
 
       return `
     <div class="camera-card hal-card ${c.online ? '' : 'camera-offline'}" data-camera-id="${c.id}">
@@ -166,11 +153,7 @@ function attachCameraHandlers(cameras: HalDevice[]): void {
           );
           if (timeEl) {
             const date = new Date(captureTime);
-            timeEl.textContent = date.toLocaleTimeString('en-US', {
-              hour12: false,
-              hour: '2-digit',
-              minute: '2-digit',
-            });
+            timeEl.textContent = formatCameraTime(date);
           }
 
           showToast(`Capture saved: ${result.path}`, 'success');
@@ -191,7 +174,7 @@ function attachCameraHandlers(cameras: HalDevice[]): void {
                 </div>
                 <div class="capture-meta-row">
                   <span class="text-secondary text-xs">Captured</span>
-                  <span class="text-mono text-xs">${date.toLocaleTimeString('en-US', { hour12: false })}</span>
+                  <span class="text-mono text-xs">${formatCameraTime(date)}</span>
                 </div>
               </div>
             </div>
