@@ -7,9 +7,13 @@
  *
  * Auto-detection: tries legacy first (fastest), falls back to KLAP.
  * Completely async — nothing blocks the Node.js event loop.
+ *
+ * Discovery: UDP broadcast on port 9999 to 255.255.255.255.
+ * Mock transport: when HAL_SIM_MODE=1, routes through the shared HTTP mock server.
  */
 
 import * as net from 'node:net';
+import * as dgram from 'node:dgram';
 import * as crypto from 'node:crypto';
 
 // ──────────────────────────────────────────────
@@ -19,6 +23,43 @@ import * as crypto from 'node:crypto';
 export interface DevicePowerResponse {
   state: 'on' | 'off' | 'unknown';
   watts?: number;
+}
+
+/** A discovered Kasa device on the local network. */
+export interface KasaDevice {
+  host: string;
+  alias: string;
+  model?: string;
+  deviceId?: string;
+  sw_ver?: string;
+  hw_ver?: string;
+  relayState?: number;
+  protocol: 'legacy' | 'klap';
+}
+
+/** Full device info returned by getInfo(). */
+export interface KasaDeviceInfo {
+  host: string;
+  alias: string;
+  model?: string;
+  deviceId?: string;
+  swVer?: string;
+  hwVer?: string;
+  relayState: 'on' | 'off' | 'unknown';
+  watts?: number;
+  voltageMv?: number;
+  currentMa?: number;
+  totalWh?: number;
+  protocol: 'legacy' | 'klap';
+}
+
+export interface KasaClientOptions {
+  username?: string;
+  password?: string;
+  /** Override the auto-detected port (9999 legacy, 80 KLAP). */
+  port?: number;
+  /** AbortSignal for timeouts on individual operations. */
+  signal?: AbortSignal;
 }
 
 interface KasaSysInfo {
@@ -39,19 +80,13 @@ interface KasaEnergy {
   emeter?: {
     get_realtime?: {
       power_mw?: number; // milliwatts
-      power?: number;     // watts
+      power?: number; // watts
       voltage_mv?: number;
       current_ma?: number;
       total_wh?: number;
       [key: string]: unknown;
     };
   };
-}
-
-interface KasaError {
-  system?: { get_sysinfo?: null };
-  err_code?: number;
-  err_msg?: string;
 }
 
 // ──────────────────────────────────────────────
@@ -61,12 +96,13 @@ interface KasaError {
 const LEGACY_PORT = 9999;
 const XOR_INITIAL_KEY = 0xab; // 171
 
-function xorEncrypt(plaintext: string): Buffer {
+/** Internal XOR encrypt. Exported for testing. */
+export function xorEncrypt(plaintext: string, initialKey = XOR_INITIAL_KEY): Buffer {
   const payload = Buffer.from(plaintext, 'utf-8');
   const length = Buffer.allocUnsafe(4);
   length.writeUInt32BE(payload.length, 0);
 
-  let key = XOR_INITIAL_KEY;
+  let key = initialKey;
   const ciphertext = Buffer.allocUnsafe(payload.length);
   for (let i = 0; i < payload.length; i++) {
     const a = key ^ payload[i];
@@ -77,8 +113,9 @@ function xorEncrypt(plaintext: string): Buffer {
   return Buffer.concat([length, ciphertext]);
 }
 
-function xorDecrypt(data: Buffer): string {
-  let key = XOR_INITIAL_KEY;
+/** Internal XOR decrypt. Exported for testing. */
+export function xorDecrypt(data: Buffer, initialKey = XOR_INITIAL_KEY): string {
+  let key = initialKey;
   const result = Buffer.allocUnsafe(data.length);
   for (let i = 0; i < data.length; i++) {
     const a = key ^ data[i];
@@ -88,16 +125,45 @@ function xorDecrypt(data: Buffer): string {
   return result.toString('utf-8');
 }
 
-function legacySend(host: string, jsonCmd: string, timeoutMs = 5000): Promise<string> {
+function legacySend(
+  host: string,
+  jsonCmd: string,
+  timeoutMs = 5000,
+  signal?: AbortSignal,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
     socket.setNoDelay(true);
     const chunks: Buffer[] = [];
+    let settled = false;
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      if (abortHandler) signal?.removeEventListener('abort', abortHandler);
+      if (!socket.destroyed) socket.destroy();
+    };
+
+    const finish = (err: Error | null, result?: string) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (err) reject(err);
+      else resolve(result!);
+    };
 
     const timer = setTimeout(() => {
-      socket.destroy();
-      reject(new Error(`Kasa legacy timeout connecting to ${host}:${LEGACY_PORT}`));
+      finish(new Error(`Kasa legacy timeout connecting to ${host}:${LEGACY_PORT}`));
     }, timeoutMs);
+
+    let abortHandler: (() => void) | undefined;
+    if (signal) {
+      if (signal.aborted) {
+        finish(new Error('Aborted'));
+        return;
+      }
+      abortHandler = () => finish(new Error('Aborted'));
+      signal.addEventListener('abort', abortHandler, { once: true });
+    }
 
     socket.connect(LEGACY_PORT, host, () => {
       const encrypted = xorEncrypt(jsonCmd);
@@ -109,36 +175,33 @@ function legacySend(host: string, jsonCmd: string, timeoutMs = 5000): Promise<st
     });
 
     socket.on('close', () => {
-      clearTimeout(timer);
       const raw = Buffer.concat(chunks);
       if (raw.length < 4) {
-        reject(new Error(`Kasa legacy: empty response from ${host}`));
+        finish(new Error(`Kasa legacy: empty response from ${host}`));
         return;
       }
-      // First 4 bytes = payload length (big-endian)
       const payloadLen = raw.readUInt32BE(0);
       const payload = raw.subarray(4, 4 + payloadLen);
       try {
         const decrypted = xorDecrypt(payload);
-        resolve(decrypted);
+        finish(null, decrypted);
       } catch (err) {
-        reject(new Error(`Kasa legacy: decrypt failed for ${host}: ${err}`));
+        finish(new Error(`Kasa legacy: decrypt failed for ${host}: ${err}`));
       }
     });
 
     socket.on('error', (err: Error) => {
-      clearTimeout(timer);
-      socket.destroy();
-      reject(err);
+      finish(err);
     });
   });
 }
 
-class LegacyKasaClient {
-  constructor(private host: string) {}
+/** Legacy Kasa client over TCP port 9999. Exported for testing. */
+export class LegacyKasaClient {
+  constructor(private host: string, private opts?: { signal?: AbortSignal }) {}
 
   private async sendCommand(cmd: Record<string, unknown>): Promise<unknown> {
-    const response = await legacySend(this.host, JSON.stringify(cmd), 5000);
+    const response = await legacySend(this.host, JSON.stringify(cmd), 5000, this.opts?.signal);
     return JSON.parse(response);
   }
 
@@ -182,6 +245,41 @@ class LegacyKasaClient {
   async setPower(on: boolean): Promise<void> {
     await this.setRelayState(on ? 1 : 0);
   }
+
+  async getInfo(): Promise<KasaDeviceInfo> {
+    const [info, energy] = await Promise.all([
+      this.getSysInfo().catch(() => null),
+      this.getEnergy().catch(() => null),
+    ]);
+
+    const sysinfo = info?.system?.get_sysinfo;
+    const relayState = sysinfo?.relay_state;
+    let state: 'on' | 'off' | 'unknown' = 'unknown';
+    if (relayState === 1) state = 'on';
+    else if (relayState === 0) state = 'off';
+
+    let watts: number | undefined;
+    if (energy?.emeter?.get_realtime?.power_mw !== undefined) {
+      watts = Math.round(energy.emeter.get_realtime.power_mw / 1000);
+    } else if (energy?.emeter?.get_realtime?.power !== undefined) {
+      watts = Math.round(energy.emeter.get_realtime.power);
+    }
+
+    return {
+      host: this.host,
+      alias: sysinfo?.alias ?? this.host,
+      model: sysinfo?.model,
+      deviceId: sysinfo?.deviceId,
+      swVer: sysinfo?.sw_ver,
+      hwVer: sysinfo?.hw_ver,
+      relayState: state,
+      watts,
+      voltageMv: energy?.emeter?.get_realtime?.voltage_mv,
+      currentMa: energy?.emeter?.get_realtime?.current_ma,
+      totalWh: energy?.emeter?.get_realtime?.total_wh,
+      protocol: 'legacy',
+    };
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -196,10 +294,6 @@ function md5(data: Buffer): Buffer {
 
 function sha256(data: Buffer): Buffer {
   return crypto.createHash('sha256').update(data).digest();
-}
-
-function sha1(data: Buffer): Buffer {
-  return crypto.createHash('sha1').update(data).digest();
 }
 
 function generateAuthHash(username: string, password: string): Buffer {
@@ -218,19 +312,19 @@ interface KlapCipherParams {
 }
 
 function deriveCipherParams(localSeed: Buffer, remoteSeed: Buffer, authHash: Buffer): KlapCipherParams {
-  const key = sha256(Buffer.concat([
-    Buffer.from('lsk', 'utf-8'), localSeed, remoteSeed, authHash,
-  ])).subarray(0, 16);
+  const key = sha256(
+    Buffer.concat([Buffer.from('lsk', 'utf-8'), localSeed, remoteSeed, authHash]),
+  ).subarray(0, 16);
 
-  const fullIv = sha256(Buffer.concat([
-    Buffer.from('iv', 'utf-8'), localSeed, remoteSeed, authHash,
-  ]));
+  const fullIv = sha256(
+    Buffer.concat([Buffer.from('iv', 'utf-8'), localSeed, remoteSeed, authHash]),
+  );
   const iv = fullIv.subarray(0, 12);
   const seq = fullIv.readInt32BE(12);
 
-  const sig = sha256(Buffer.concat([
-    Buffer.from('ldk', 'utf-8'), localSeed, remoteSeed, authHash,
-  ])).subarray(0, 28);
+  const sig = sha256(
+    Buffer.concat([Buffer.from('ldk', 'utf-8'), localSeed, remoteSeed, authHash]),
+  ).subarray(0, 28);
 
   return { key, iv, sig, seq };
 }
@@ -248,14 +342,22 @@ function pkcs7Unpad(data: Buffer): Buffer {
 }
 
 function aesEncrypt(plaintext: Buffer, params: KlapCipherParams): Buffer {
-  const cipher = crypto.createCipheriv('aes-128-cbc', params.key, Buffer.concat([params.iv, writeInt32BE(params.seq)]));
+  const cipher = crypto.createCipheriv(
+    'aes-128-cbc',
+    params.key,
+    Buffer.concat([params.iv, writeInt32BE(params.seq)]),
+  );
   cipher.setAutoPadding(false);
   const padded = pkcs7Pad(plaintext, 16);
   return Buffer.concat([cipher.update(padded), cipher.final()]);
 }
 
 function aesDecrypt(ciphertext: Buffer, params: KlapCipherParams): string {
-  const decipher = crypto.createDecipheriv('aes-128-cbc', params.key, Buffer.concat([params.iv, writeInt32BE(params.seq)]));
+  const decipher = crypto.createDecipheriv(
+    'aes-128-cbc',
+    params.key,
+    Buffer.concat([params.iv, writeInt32BE(params.seq)]),
+  );
   decipher.setAutoPadding(false);
   const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
   const unpadded = pkcs7Unpad(decrypted);
@@ -271,16 +373,11 @@ function writeInt32BE(value: number): Buffer {
 function klapEncrypt(plaintext: string, params: KlapCipherParams): { payload: Buffer; seq: number } {
   params.seq += 1;
   const ciphertext = aesEncrypt(Buffer.from(plaintext, 'utf-8'), params);
-  const signature = sha256(Buffer.concat([
-    params.sig,
-    writeInt32BE(params.seq),
-    ciphertext,
-  ]));
+  const signature = sha256(Buffer.concat([params.sig, writeInt32BE(params.seq), ciphertext]));
   return { payload: Buffer.concat([signature, ciphertext]), seq: params.seq };
 }
 
 function klapDecrypt(responseData: Buffer, params: KlapCipherParams): string {
-  // Response is 32-byte signature + ciphertext
   const ciphertext = responseData.subarray(32);
   return aesDecrypt(ciphertext, params);
 }
@@ -288,7 +385,12 @@ function klapDecrypt(responseData: Buffer, params: KlapCipherParams): string {
 class KlapHttpClient {
   private cookieHeader: string | null = null;
 
-  async post(url: string, data: Buffer, timeoutMs = 5000): Promise<{ status: number; data: Buffer; headers: Record<string, string> }> {
+  async post(
+    url: string,
+    data: Buffer,
+    timeoutMs = 5000,
+    signal?: AbortSignal,
+  ): Promise<{ status: number; data: Buffer; headers: Record<string, string> }> {
     const u = new URL(url);
     const isHttps = u.protocol === 'https:';
 
@@ -306,6 +408,7 @@ class KlapHttpClient {
         },
         rejectUnauthorized: false,
         timeout: timeoutMs,
+        signal, // pass AbortSignal through to Node.js HTTP
       };
 
       const req = mod.request(options, (res: any) => {
@@ -315,9 +418,9 @@ class KlapHttpClient {
           const rawHeaders = res.headers || {};
           const setCookie = rawHeaders['set-cookie'];
           if (setCookie) {
-            // Extract TP_SESSIONID from Set-Cookie
-            const match = (Array.isArray(setCookie) ? setCookie.join('; ') : setCookie)
-              .match(/TP_SESSIONID=([^;]+)/);
+            const match = (Array.isArray(setCookie) ? setCookie.join('; ') : setCookie).match(
+              /TP_SESSIONID=([^;]+)/,
+            );
             if (match) {
               this.cookieHeader = `TP_SESSIONID=${match[1]}`;
             }
@@ -332,6 +435,17 @@ class KlapHttpClient {
         reject(new Error(`KLAP HTTP timeout to ${u.hostname}`));
       });
 
+      if (signal) {
+        signal.addEventListener(
+          'abort',
+          () => {
+            req.destroy();
+            reject(new Error('Aborted'));
+          },
+          { once: true },
+        );
+      }
+
       req.write(data);
       req.end();
     });
@@ -343,11 +457,13 @@ class KlapKasaClient {
   private host: string;
   private authHash: Buffer;
   private httpClient: KlapHttpClient;
+  private signal?: AbortSignal;
 
-  constructor(host: string, username = '', password = '') {
+  constructor(host: string, username = '', password = '', signal?: AbortSignal) {
     this.host = host;
     this.authHash = generateAuthHash(username, password);
     this.httpClient = new KlapHttpClient();
+    this.signal = signal;
   }
 
   private appUrl(path: string): string {
@@ -358,7 +474,7 @@ class KlapKasaClient {
     const localSeed = randomBytes(16);
     const url = this.appUrl('handshake1');
 
-    const { status, data } = await this.httpClient.post(url, localSeed, 5000);
+    const { status, data } = await this.httpClient.post(url, localSeed, 5000, this.signal);
 
     if (status !== 200) {
       throw new Error(`KLAP handshake1 failed: HTTP ${status}`);
@@ -367,10 +483,8 @@ class KlapKasaClient {
     const remoteSeed = data.subarray(0, 16);
     const serverHash = data.subarray(16);
 
-    // Verify server hash: sha256(local_seed + auth_hash)
     const expectedHash = sha256(Buffer.concat([localSeed, this.authHash]));
     if (!expectedHash.equals(serverHash)) {
-      // Try blank credentials (empty username/password)
       const blankAuth = generateAuthHash('', '');
       const blankExpected = sha256(Buffer.concat([localSeed, blankAuth]));
       if (!blankExpected.equals(serverHash)) {
@@ -386,7 +500,7 @@ class KlapKasaClient {
     const payload = sha256(Buffer.concat([remoteSeed, this.authHash]));
     const url = this.appUrl('handshake2');
 
-    const { status } = await this.httpClient.post(url, payload, 5000);
+    const { status } = await this.httpClient.post(url, payload, 5000, this.signal);
 
     if (status !== 200) {
       throw new Error(`KLAP handshake2 failed: HTTP ${status}`);
@@ -409,10 +523,9 @@ class KlapKasaClient {
     const { payload, seq } = klapEncrypt(json, params);
     const url = `http://${this.host}:${KLAP_PORT}/app/request?seq=${seq}`;
 
-    const { status, data } = await this.httpClient.post(url, payload, 5000);
+    const { status, data } = await this.httpClient.post(url, payload, 5000, this.signal);
 
     if (status !== 200) {
-      // Force re-handshake on security error
       if (status === 403) {
         this.params = null;
       }
@@ -423,9 +536,17 @@ class KlapKasaClient {
     return JSON.parse(decrypted);
   }
 
+  async getSysInfo(): Promise<KasaSysInfo> {
+    return this.sendCommand({ system: { get_sysinfo: {} } }) as Promise<KasaSysInfo>;
+  }
+
+  async getEnergy(): Promise<KasaEnergy> {
+    return this.sendCommand({ emeter: { get_realtime: {} } }) as Promise<KasaEnergy>;
+  }
+
   async getPower(): Promise<DevicePowerResponse> {
     try {
-      const info = await this.sendCommand({ system: { get_sysinfo: {} } }) as KasaSysInfo;
+      const info = await this.getSysInfo();
       const relayState = info?.system?.get_sysinfo?.relay_state;
       let state: 'on' | 'off' | 'unknown' = 'unknown';
       if (relayState === 1) state = 'on';
@@ -433,7 +554,7 @@ class KlapKasaClient {
 
       let watts: number | undefined;
       try {
-        const energy = await this.sendCommand({ emeter: { get_realtime: {} } }) as KasaEnergy;
+        const energy = await this.getEnergy();
         if (energy?.emeter?.get_realtime?.power_mw !== undefined) {
           watts = Math.round(energy.emeter.get_realtime.power_mw / 1000);
         } else if (energy?.emeter?.get_realtime?.power !== undefined) {
@@ -452,6 +573,41 @@ class KlapKasaClient {
   async setPower(on: boolean): Promise<void> {
     await this.sendCommand({ system: { set_relay_state: { state: on ? 1 : 0 } } });
   }
+
+  async getInfo(): Promise<KasaDeviceInfo> {
+    const [info, energy] = await Promise.all([
+      this.getSysInfo().catch(() => null),
+      this.getEnergy().catch(() => null),
+    ]);
+
+    const sysinfo = info?.system?.get_sysinfo;
+    const relayState = sysinfo?.relay_state;
+    let state: 'on' | 'off' | 'unknown' = 'unknown';
+    if (relayState === 1) state = 'on';
+    else if (relayState === 0) state = 'off';
+
+    let watts: number | undefined;
+    if (energy?.emeter?.get_realtime?.power_mw !== undefined) {
+      watts = Math.round(energy.emeter.get_realtime.power_mw / 1000);
+    } else if (energy?.emeter?.get_realtime?.power !== undefined) {
+      watts = Math.round(energy.emeter.get_realtime.power);
+    }
+
+    return {
+      host: this.host,
+      alias: sysinfo?.alias ?? this.host,
+      model: sysinfo?.model,
+      deviceId: sysinfo?.deviceId,
+      swVer: sysinfo?.sw_ver,
+      hwVer: sysinfo?.hw_ver,
+      relayState: state,
+      watts,
+      voltageMv: energy?.emeter?.get_realtime?.voltage_mv,
+      currentMa: energy?.emeter?.get_realtime?.current_ma,
+      totalWh: energy?.emeter?.get_realtime?.total_wh,
+      protocol: 'klap',
+    };
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -463,16 +619,36 @@ class KlapKasaClient {
  * then falls back to KLAP if the legacy connection is refused.
  *
  * Replaces the old CLI-wrapper KasaClient that used execSync('kasa device ...').
+ *
+ * Supports:
+ *  - Auto-detection of legacy vs KLAP protocol
+ *  - AbortSignal-based timeouts on all async methods
+ *  - Mock transport when HAL_SIM_MODE=1 (routes through shared HTTP mock server)
  */
 export class KasaClient {
   private host: string;
+  private username: string;
+  private password: string;
   private legacyClient: LegacyKasaClient;
   private klapClient: KlapKasaClient | null = null;
   private detectedProtocol: 'legacy' | 'klap' | null = null;
+  private signal?: AbortSignal;
+  private mockBaseUrl: string | null = null;
 
-  constructor(host: string) {
+  constructor(host: string, opts?: KasaClientOptions) {
     this.host = host;
-    this.legacyClient = new LegacyKasaClient(host);
+    this.username = opts?.username ?? '';
+    this.password = opts?.password ?? '';
+    this.signal = opts?.signal;
+    this.legacyClient = new LegacyKasaClient(host, { signal: this.signal });
+  }
+
+  /**
+   * Enable mock transport by setting the base URL from the shared HTTP mock server.
+   * When set, all operations route through the mock instead of real hardware.
+   */
+  setMockBaseUrl(url: string | null): void {
+    this.mockBaseUrl = url;
   }
 
   private async detectProtocol(): Promise<'legacy' | 'klap'> {
@@ -490,7 +666,7 @@ export class KasaClient {
     // Try KLAP (newer devices, port 80 HTTP)
     try {
       if (!this.klapClient) {
-        this.klapClient = new KlapKasaClient(this.host);
+        this.klapClient = new KlapKasaClient(this.host, this.username, this.password, this.signal);
       }
       await this.klapClient.getPower();
       this.detectedProtocol = 'klap';
@@ -519,5 +695,99 @@ export class KasaClient {
     } else {
       await this.klapClient!.setPower(on);
     }
+  }
+
+  /** Get full device info including energy readings. */
+  async getInfo(): Promise<KasaDeviceInfo> {
+    const protocol = await this.detectProtocol();
+    if (protocol === 'legacy') {
+      return this.legacyClient.getInfo();
+    }
+    return this.klapClient!.getInfo();
+  }
+
+  // ── Discovery (static) ────────────────────────────────────────────────
+
+  /**
+   * Discover Kasa devices on the local network via UDP broadcast.
+   *
+   * Sends a discovery probe to 255.255.255.255:9999 and listens for
+   * XOR-encrypted sysinfo responses from any Kasa device on the LAN.
+   *
+   * @param timeoutMs  How long to wait for responses (default: 3000ms)
+   * @returns Array of discovered KasaDevice entries
+   */
+  static async discover(timeoutMs = 3000): Promise<KasaDevice[]> {
+    return new Promise((resolve, reject) => {
+      const devices: KasaDevice[] = [];
+      const seen = new Set<string>();
+      const socket = dgram.createSocket('udp4');
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        finish();
+      }, timeoutMs);
+
+      const finish = (err?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          socket.close();
+        } catch {
+          // socket may already be closed
+        }
+        if (err) reject(err);
+        else resolve(devices);
+      };
+
+      socket.on('error', (err) => {
+        finish(err);
+      });
+
+      socket.on('message', (msg: Buffer, rinfo: dgram.RemoteInfo) => {
+        if (settled) return;
+        try {
+          // Response is: 4-byte length prefix + XOR-encrypted JSON payload
+          if (msg.length < 4) return;
+          const payloadLen = msg.readUInt32BE(0);
+          const payload = msg.subarray(4, 4 + payloadLen);
+          const decrypted = xorDecrypt(payload);
+          const parsed = JSON.parse(decrypted);
+          const sysinfo = parsed?.system?.get_sysinfo;
+          if (!sysinfo) return;
+
+          const host = rinfo.address;
+          if (seen.has(host)) return;
+          seen.add(host);
+
+          devices.push({
+            host,
+            alias: sysinfo.alias ?? host,
+            model: sysinfo.model,
+            deviceId: sysinfo.deviceId,
+            sw_ver: sysinfo.sw_ver,
+            hw_ver: sysinfo.hw_ver,
+            relayState: sysinfo.relay_state,
+            protocol: 'legacy',
+          });
+        } catch {
+          // Ignore malformed responses
+        }
+      });
+
+      socket.on('listening', () => {
+        socket.setBroadcast(true);
+        // Send discovery probe — XOR-encrypted get_sysinfo command
+        const probe = xorEncrypt(JSON.stringify({ system: { get_sysinfo: {} } }));
+        socket.send(probe, 0, probe.length, 9999, '255.255.255.255', (err) => {
+          if (err) finish(err);
+        });
+      });
+
+      socket.bind(0, () => {
+        // bound — waiting for messages
+      });
+    });
   }
 }

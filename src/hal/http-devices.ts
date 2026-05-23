@@ -116,10 +116,78 @@ export class ShellyClient {
 
 // ── Kasa (TP-Link) ───────────────────────────────────────────────────────
 
-import { KasaClient } from './kasa-client.js';
+import { KasaClient, type KasaDevice, type KasaDeviceInfo } from './kasa-client.js';
+import { execSync } from 'node:child_process';
+
 export { KasaClient };
+export type { KasaDevice, KasaDeviceInfo };
+
+// ── KasaCliClient (debugging fallback using CLI) ────────────────────────
+
+/**
+ * Kasa CLI wrapper — uses the `kasa` CLI tool via execSync.
+ * This is a debugging fallback, kept for reference. The preferred client
+ * is the native KasaClient which uses raw TCP/UDP without blocking I/O.
+ *
+ * Set KASA_PROTOCOL=cli to force this client instead of the native one.
+ */
+export class KasaCliClient {
+  constructor(private host: string) {}
+
+  async getPower(): Promise<DevicePowerResponse> {
+    try {
+      const raw = execSync(`kasa --host ${this.host} --type plug sysinfo`, {
+        timeout: 5000,
+        encoding: 'utf-8',
+      });
+      const data = JSON.parse(raw);
+      const relayState = data?.system?.get_sysinfo?.relay_state;
+      const state: 'on' | 'off' | 'unknown' =
+        relayState === 1 ? 'on' : relayState === 0 ? 'off' : 'unknown';
+
+      let watts: number | undefined;
+      try {
+        const energyRaw = execSync(`kasa --host ${this.host} --type plug emeter`, {
+          timeout: 5000,
+          encoding: 'utf-8',
+        });
+        const energyData = JSON.parse(energyRaw);
+        const powerMw = energyData?.emeter?.get_realtime?.power_mw;
+        if (typeof powerMw === 'number') {
+          watts = Math.round(powerMw / 1000);
+        }
+      } catch {
+        // Energy not available
+      }
+
+      return { state, watts };
+    } catch {
+      return { state: 'unknown' };
+    }
+  }
+
+  async setPower(on: boolean): Promise<void> {
+    execSync(`kasa --host ${this.host} --type plug ${on ? 'on' : 'off'}`, {
+      timeout: 5000,
+      encoding: 'utf-8',
+    });
+  }
+}
 
 // ── Factory ──────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the KASA_PROTOCOL env var.
+ *   - 'klap' or unset → use native KasaClient (KLAP + legacy auto-detect)
+ *   - 'cli'           → use KasaCliClient (execSync wrapper, for debugging)
+ */
+function resolveKasaClient(host: string): KasaClient | KasaCliClient {
+  const protocol = process.env.KASA_PROTOCOL?.toLowerCase() ?? 'klap';
+  if (protocol === 'cli') {
+    return new KasaCliClient(host);
+  }
+  return new KasaClient(host);
+}
 
 export async function createHttpClient(
   host: string,
@@ -131,6 +199,6 @@ export async function createHttpClient(
     case 'shelly':
       return new ShellyClient(host);
     case 'kasa':
-      return new KasaClient(host);
+      return resolveKasaClient(host);
   }
 }
