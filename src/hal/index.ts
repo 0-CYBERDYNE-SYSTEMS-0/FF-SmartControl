@@ -23,6 +23,8 @@ export {
   ShellyClient,
   KasaClient,
   createHttpClient,
+  setMockBaseUrl,
+  getMockBaseUrl,
 } from './http-devices.js';
 export { gpio, GPIOController } from './gpio.js';
 export { mqttSubscriber, MQTTSubscriber } from './mqtt.js';
@@ -49,6 +51,8 @@ export type {
   FaultTriggerRecord,
   FaultStatus,
 } from './fault-injection.js';
+
+// In-process mock transports (non-HTTP)
 export {
   createMockTransport,
   MockTasmotaTransport,
@@ -60,3 +64,19 @@ export type {
   DevicePowerResponse,
   FailureMode,
 } from './mock-devices.js';
+
+// Protocol-level HTTP mock servers
+export {
+  HttpMockServer,
+  getHttpMockServer,
+  resetHttpMockServer,
+  TasmotaMock,
+  ShellyMock,
+  GpioMock,
+} from './mock-transport/index.js';
+export type {
+  MockTransport,
+  MockTransportFault,
+  MockTransportConfig,
+  MockDeviceState,
+} from './mock-transport/index.js';
