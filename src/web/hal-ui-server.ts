@@ -181,7 +181,6 @@ function isProtectedRoute(requestPath: string): boolean {
     '/health',
     '/api/provisioning',
     '/api/auth/login',
-    '/_sim',
     '/login',
   ];
 
@@ -189,6 +188,11 @@ function isProtectedRoute(requestPath: string): boolean {
     if (requestPath.startsWith(p)) {
       return false;
     }
+  }
+
+  // Allow unauthenticated GET for _sim status (read-only monitoring health check)
+  if (requestPath === '/_sim/status') {
+    return false;
   }
 
   // Development bypass: skip auth when HAL_UI_AUTH_BYPASS=1 env var is set
@@ -1027,25 +1031,25 @@ export async function startHalUiServer(
       // POST /api/hal/estop/clear — clear emergency stop (requires auth)
       if (apiPath === '/estop/clear' && method === 'POST') {
         const { clearEstop } = await import('../safety/estop.js');
+        // Consume request body (may be empty — operator identity comes from session)
         let body = '';
         for await (const chunk of req) body += chunk;
-        const parsed = body ? JSON.parse(body) : {};
 
-        // Check for admin auth
-        const operatorId = parsed.operatorId || parsed.operator_id;
-        if (!operatorId) {
+        // Extract authenticated session token from cookie
+        const sessionToken = parseSessionCookie(req.headers.cookie);
+        if (!sessionToken) {
           sendJson(res, 401, {
-            error: 'Authentication required to clear E-Stop',
+            error: 'Admin authentication required to clear E-Stop',
           });
           return;
         }
 
-        const result = clearEstop(operatorId);
+        const result = clearEstop(sessionToken);
         if (!result.success) {
-          sendJson(res, 400, { error: result.error });
+          sendJson(res, 401, { error: result.error });
           return;
         }
-        sendJson(res, 200, { ok: true });
+        sendJson(res, 200, { ok: true, clearedBy: result.clearedBy });
         return;
       }
 

@@ -15,6 +15,7 @@ import { getDb } from '../hal/db.js';
 import { halRegistry } from '../hal/registry.js';
 import { halRelays } from '../hal/relays.js';
 import { createAuditEntry } from './audit-log.js';
+import { validateSession } from '../security/session.js';
 import { logger } from '../logger.js';
 
 export type EmergencyStopReason =
@@ -263,17 +264,42 @@ export async function activateEstop(
 }
 
 /**
- * Clear Emergency Stop (requires admin auth)
+ * Clear Emergency Stop (requires valid admin session)
+ *
+ * Validates the session token against admin_sessions before clearing.
+ * The operator's identity is derived from the authenticated session —
+ * caller-supplied operator IDs are NOT trusted.
  */
-export function clearEstop(operatorId: string): {
+export function clearEstop(sessionToken: string): {
   success: boolean;
   error?: string;
+  clearedBy?: string;
 } {
+  // Validate admin session — defense in depth: even if the caller
+  // already checked auth, the safety gate enforces its own contract.
+  if (!sessionToken) {
+    return {
+      success: false,
+      error: 'Authentication required to clear E-Stop',
+    };
+  }
+
+  const session = validateSession(sessionToken);
+  if (!session) {
+    return {
+      success: false,
+      error: 'Invalid or expired session. Please log in again.',
+    };
+  }
+
+  const operatorId = session.operatorId;
+  const sessionId = session.id;
+
   const db = getEstopDb();
   const state = getEstopState();
 
   if (!state.active) {
-    return { success: true }; // Already cleared
+    return { success: true, clearedBy: operatorId }; // Already cleared
   }
 
   const now = new Date().toISOString();
@@ -291,9 +317,21 @@ export function clearEstop(operatorId: string): {
   // Invalidate cache
   estopStateCache = null;
 
-  logger.info({ operatorId }, 'Emergency Stop cleared by operator');
+  // Log E-Stop clearance to audit trail with session context
+  createAuditEntry({
+    proposedAction: 'noop',
+    verifierResult: 'APPROVED',
+    sensorSnapshot: {},
+    triggeredBy: 'manual_ui',
+    decisionId: sessionId,
+  });
 
-  return { success: true };
+  logger.info(
+    { operatorId, sessionId },
+    'Emergency Stop cleared by authenticated operator',
+  );
+
+  return { success: true, clearedBy: operatorId };
 }
 
 /**
