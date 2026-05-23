@@ -472,6 +472,9 @@
   function camerasIcon() {
     return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
   }
+  function simulationIcon() {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/><polyline points="16 6 16 3 20 3"/><polyline points="8 18 8 21 4 21"/></svg>`;
+  }
   function safetyIcon() {
     return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>`;
   }
@@ -695,6 +698,7 @@
         { id: "calibration", label: "Calibration", icon: calibrationIcon() },
         { id: "decisions", label: "Decisions", icon: decisionsIcon() },
         { id: "cameras", label: "Cameras", icon: camerasIcon() },
+        { id: "simulation", label: "Simulation", icon: simulationIcon() },
         { id: "safety", label: "Safety", icon: safetyIcon() },
         { id: "system", label: "System", icon: systemIcon() },
         { id: "terminal", label: "Terminal", icon: terminalIcon() }
@@ -925,9 +929,9 @@
         async activateEstop(reason, reasonText) {
           return halPost("/estop", { reason: reason || "operator", reasonText });
         },
-        // POST /api/hal/estop/clear — clear emergency stop (requires auth)
-        async clearEstop(operatorId) {
-          return halPost("/estop/clear", { operatorId });
+        // POST /api/hal/estop/clear — clear emergency stop (uses session cookie for auth)
+        async clearEstop() {
+          return halPost("/estop/clear");
         },
         // GET /api/hal/estop/safe-states
         async getEstopSafeStates() {
@@ -1378,10 +1382,9 @@
       try {
         const status = await halApi.getEstopStatus();
         if (status.estop.active) {
-          const operatorId = prompt("Enter operator ID to clear E-Stop:");
-          if (!operatorId) return;
+          if (!confirm("Clear Emergency Stop? This will resume autonomous control of all devices.")) return;
           try {
-            await halApi.clearEstop(operatorId);
+            await halApi.clearEstop();
             updateEstopUI(false, null);
             onEstopChange?.(false);
           } catch (err) {
@@ -18752,6 +18755,1080 @@ The service will restart after the update.`
     }
   });
 
+  // src/web/hal-ui/components/SimDeviceCard.ts
+  function renderSimDeviceCard(device) {
+    const stateClass = device.state === "on" ? "state-on" : device.state === "off" ? "state-off" : "state-unknown";
+    const stateLabel = device.state === "on" ? "ON" : device.state === "off" ? "OFF" : "---";
+    const faultPill = device.faultInjected ? `<span class="sim-fault-pill fault-active">FAULT: ${escapeAttr3(device.faultType || "unknown")}</span>` : '<span class="sim-fault-pill fault-nominal">NOMINAL</span>';
+    const latencyStr = device.lastLatencyMs != null ? `${device.lastLatencyMs.toFixed(0)}ms` : "--ms";
+    const powerStr = device.power != null ? `${device.power}W` : "";
+    return `
+    <div class="sim-device-card" data-device-id="${escapeAttr3(device.id)}">
+      <div class="sim-card-header">
+        <span class="sim-protocol-badge sim-proto-${escapeAttr3(device.protocol)}">${escapeHtml17(device.protocol.toUpperCase())}</span>
+        <span class="sim-device-state ${stateClass}">${stateLabel}</span>
+      </div>
+      <div class="sim-device-name" title="${escapeAttr3(device.label)}">${escapeHtml17(device.label)}</div>
+      <div class="sim-card-stats">
+        <div class="sim-stat">
+          <span class="sim-stat-label">LATENCY</span>
+          <span class="sim-stat-value mono">${latencyStr}</span>
+        </div>
+        ${powerStr ? `<div class="sim-stat"><span class="sim-stat-label">POWER</span><span class="sim-stat-value mono">${powerStr}</span></div>` : ""}
+        ${!powerStr ? `<div class="sim-stat"><span class="sim-stat-label">HOST</span><span class="sim-stat-value mono text-xs">${escapeHtml17(device.host || "--")}</span></div>` : ""}
+      </div>
+      <div class="sim-card-faults">
+        ${faultPill}
+      </div>
+      <div class="sim-card-actions">
+        <button class="sim-fault-btn fault-sensor-stuck" data-device="${escapeAttr3(device.id)}" data-fault="sensor_stuck" title="Inject sensor stuck fault">\u2593 STUCK</button>
+        <button class="sim-fault-btn fault-device-offline" data-device="${escapeAttr3(device.id)}" data-fault="device_offline" title="Inject device offline fault">\u2205 OFFLINE</button>
+        <button class="sim-fault-btn fault-clear" data-device="${escapeAttr3(device.id)}" data-fault="clear" title="Clear faults">\u2715 CLR</button>
+      </div>
+    </div>
+  `;
+  }
+  function injectSimDeviceCardStyles() {
+    if (document.getElementById("sim-device-card-styles")) return;
+    const style = document.createElement("style");
+    style.id = "sim-device-card-styles";
+    style.textContent = `
+.sim-device-card {
+  background: var(--bg-secondary, #161B22);
+  border: 1px solid var(--border, #30363D);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s;
+}
+.sim-device-card:hover {
+  border-color: var(--accent-bright, #3FB950);
+}
+.sim-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sim-protocol-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+.sim-proto-http, .sim-proto-tasmota, .sim-proto-shelly, .sim-proto-kasa {
+  background: #1A3A5C;
+  color: #58A6FF;
+  border: 1px solid #264466;
+}
+.sim-proto-mqtt {
+  background: #1A2E1A;
+  color: #3FB950;
+  border: 1px solid #264426;
+}
+.sim-proto-serial {
+  background: #3A2A1A;
+  color: #D29922;
+  border: 1px solid #4A3A26;
+}
+.sim-proto-gpio {
+  background: #2A1A3A;
+  color: #A371F7;
+  border: 1px solid #3A264A;
+}
+.sim-device-state {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+.state-on {
+  background: rgba(63, 185, 80, 0.15);
+  color: #3FB950;
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+.state-off {
+  background: rgba(248, 81, 73, 0.15);
+  color: #F85149;
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+.state-unknown {
+  background: rgba(139, 148, 158, 0.1);
+  color: #8B949E;
+  border: 1px solid rgba(139, 148, 158, 0.2);
+}
+.sim-device-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #F0F6FC);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sim-card-stats {
+  display: flex;
+  gap: 12px;
+}
+.sim-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sim-stat-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-tertiary, #484F58);
+  letter-spacing: 0.06em;
+}
+.sim-stat-value {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #8B949E);
+}
+.sim-stat-value.mono, .mono {
+  font-family: var(--font-mono);
+}
+.sim-card-faults {
+  min-height: 20px;
+}
+.sim-fault-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.04em;
+}
+.fault-nominal {
+  background: rgba(63, 185, 80, 0.12);
+  color: #3FB950;
+  border: 1px solid rgba(63, 185, 80, 0.2);
+}
+.fault-active {
+  background: rgba(210, 153, 34, 0.12);
+  color: #D29922;
+  border: 1px solid rgba(210, 153, 34, 0.3);
+}
+.sim-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.sim-fault-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border: 1px solid var(--border, #30363D);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary, #8B949E);
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: all 0.12s;
+}
+.sim-fault-btn:hover {
+  border-color: var(--accent-bright, #3FB950);
+  color: var(--text-primary, #F0F6FC);
+}
+.sim-fault-btn.fault-sensor-stuck:hover {
+  border-color: #D29922;
+  color: #D29922;
+}
+.sim-fault-btn.fault-device-offline:hover {
+  border-color: #F85149;
+  color: #F85149;
+}
+.sim-fault-btn.fault-clear:hover {
+  border-color: #3FB950;
+  color: #3FB950;
+}
+`;
+    document.head.appendChild(style);
+  }
+  function escapeHtml17(s) {
+    return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] || ch);
+  }
+  function escapeAttr3(s) {
+    return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] || ch);
+  }
+  var init_SimDeviceCard = __esm({
+    "src/web/hal-ui/components/SimDeviceCard.ts"() {
+      "use strict";
+    }
+  });
+
+  // src/web/hal-ui/components/SimNetworkLog.ts
+  function setServerLogEntries(entries) {
+    serverLogEntries = entries;
+    logEntries = entries.slice(-MAX_LOG_ENTRIES);
+  }
+  function renderSimNetworkLog() {
+    const entries = logEntries.length > 0 ? logEntries : serverLogEntries;
+    const rows = entries.slice(-100).reverse().map((entry) => {
+      const codeClass = getResponseCodeClass(entry.responseCode);
+      const dirClass = entry.direction === "TX" ? "log-dir-tx" : "log-dir-rx";
+      const faultClass = entry.faultInjected ? "log-fault" : "";
+      const arrow = entry.direction === "TX" ? "\u25B6" : "\u25C0";
+      return `
+      <div class="sim-log-row ${faultClass}">
+        <span class="sim-log-time mono">${escapeHtml18(entry.timestamp)}</span>
+        <span class="sim-log-dir ${dirClass} mono">${arrow} ${entry.direction}</span>
+        <span class="sim-log-proto mono">${escapeHtml18(entry.protocol)}</span>
+        <span class="sim-log-method mono">${escapeHtml18(entry.method)}</span>
+        <span class="sim-log-code ${codeClass} mono">${escapeHtml18(String(entry.responseCode))}</span>
+        <span class="sim-log-payload mono" title="${escapeAttr4(entry.payloadPreview)}">${escapeHtml18(entry.payloadPreview.slice(0, 120))}</span>
+      </div>
+    `;
+    }).join("");
+    const empty = entries.length === 0 ? '<div class="sim-log-empty">Waiting for simulation data...</div>' : "";
+    return `
+    <div class="sim-network-log">
+      <div class="sim-log-header">
+        <span class="sim-log-title">Network Activity Log</span>
+        <span class="sim-log-count mono">${entries.length} / ${MAX_LOG_ENTRIES}</span>
+      </div>
+      <div class="sim-log-body" id="sim-log-body">
+        ${empty}
+        ${rows}
+      </div>
+    </div>
+  `;
+  }
+  function getResponseCodeClass(code) {
+    const n = typeof code === "number" ? code : parseInt(code, 10);
+    if (isNaN(n)) {
+      const s = String(code).toUpperCase();
+      if (s === "TIMEOUT") return "code-timeout";
+      if (s === "MALFORMED") return "code-error";
+      return "code-gray";
+    }
+    if (n >= 200 && n < 300) return "code-success";
+    if (n >= 400 && n < 500) return "code-error";
+    if (n >= 500) return "code-error";
+    if (n === 0) return "code-timeout";
+    return "code-gray";
+  }
+  function injectSimNetworkLogStyles() {
+    if (document.getElementById("sim-network-log-styles")) return;
+    const style = document.createElement("style");
+    style.id = "sim-network-log-styles";
+    style.textContent = `
+.sim-network-log {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary, #0D1117);
+  border: 1px solid var(--border, #30363D);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.sim-log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-secondary, #161B22);
+  border-bottom: 1px solid var(--border, #30363D);
+  flex-shrink: 0;
+}
+.sim-log-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary, #F0F6FC);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.sim-log-count {
+  font-size: 10px;
+  color: var(--text-tertiary, #484F58);
+}
+.sim-log-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.sim-log-body::-webkit-scrollbar {
+  width: 6px;
+}
+.sim-log-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sim-log-body::-webkit-scrollbar-thumb {
+  background: var(--border, #30363D);
+  border-radius: 3px;
+}
+.sim-log-row {
+  display: flex;
+  gap: 8px;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--border-subtle, #21262D);
+  align-items: baseline;
+  white-space: nowrap;
+}
+.sim-log-row.log-fault {
+  background: rgba(210, 153, 34, 0.06);
+}
+.sim-log-time {
+  color: var(--text-tertiary, #484F58);
+  flex-shrink: 0;
+  min-width: 95px;
+}
+.sim-log-dir {
+  font-weight: 700;
+  flex-shrink: 0;
+  min-width: 50px;
+}
+.log-dir-tx {
+  color: #58A6FF;
+}
+.log-dir-rx {
+  color: #3FB950;
+}
+.sim-log-proto {
+  color: var(--text-secondary, #8B949E);
+  flex-shrink: 0;
+  min-width: 65px;
+}
+.sim-log-method {
+  color: var(--text-secondary, #8B949E);
+  flex-shrink: 0;
+  min-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sim-log-code {
+  font-weight: 700;
+  flex-shrink: 0;
+  min-width: 55px;
+}
+.code-success { color: #3FB950; }
+.code-timeout { color: #D29922; }
+.code-error { color: #F85149; }
+.code-gray { color: #8B949E; }
+.sim-log-payload {
+  color: var(--text-tertiary, #484F58);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.sim-log-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-tertiary, #484F58);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.mono {
+  font-family: var(--font-mono);
+}
+`;
+    document.head.appendChild(style);
+  }
+  function escapeHtml18(s) {
+    return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] || ch);
+  }
+  function escapeAttr4(s) {
+    return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] || ch);
+  }
+  var logEntries, MAX_LOG_ENTRIES, serverLogEntries;
+  var init_SimNetworkLog = __esm({
+    "src/web/hal-ui/components/SimNetworkLog.ts"() {
+      "use strict";
+      logEntries = [];
+      MAX_LOG_ENTRIES = 500;
+      serverLogEntries = [];
+    }
+  });
+
+  // src/web/hal-ui/components/SimControlBar.ts
+  function renderSimControlBar(state2) {
+    const scenarioOptions = SCENARIOS.map(
+      (s) => `<option value="${escapeAttr5(s.value)}" ${s.value === state2.scenario ? "selected" : ""}>${escapeHtml19(s.label)}</option>`
+    ).join("");
+    const speedButtons = SPEEDS.map(
+      (s) => `<button class="sim-speed-btn ${s.value === state2.speed ? "active" : ""}" data-speed="${s.value}">${s.label}</button>`
+    ).join("");
+    const runStateClass = state2.running ? "sim-running" : "sim-stopped";
+    const estopClass = state2.estopActive ? "sim-estop-active" : "sim-estop-inactive";
+    return `
+    <div class="sim-control-bar">
+      <div class="sim-control-section">
+        <button class="sim-run-btn ${runStateClass}" id="sim-toggle-run" title="${state2.running ? "Stop simulation" : "Start simulation"}">
+          <span class="sim-run-icon mono">${state2.running ? "\u25A0" : "\u25B6"}</span>
+          <span class="sim-run-label mono">${state2.running ? "STOP" : "START"}</span>
+        </button>
+
+        <div class="sim-speed-group">
+          <span class="sim-speed-label mono">SPEED</span>
+          <div class="sim-speed-btns">
+            ${speedButtons}
+          </div>
+        </div>
+      </div>
+
+      <div class="sim-control-section">
+        <div class="sim-scenario-group">
+          <label class="sim-scenario-label mono" for="sim-scenario-select">SCENARIO</label>
+          <select class="sim-scenario-select mono" id="sim-scenario-select">
+            ${scenarioOptions}
+          </select>
+        </div>
+      </div>
+
+      <div class="sim-control-section sim-control-right">
+        <button class="sim-estop-btn ${estopClass}" id="sim-estop-toggle" title="${state2.estopActive ? "Clear E-Stop" : "Activate E-Stop"}">
+          <span class="sim-estop-icon mono">${state2.estopActive ? "\u26D4" : "\u26A0"}</span>
+          <span class="sim-estop-label mono">${state2.estopActive ? "E-STOP ACTIVE" : "E-STOP"}</span>
+        </button>
+      </div>
+    </div>
+  `;
+  }
+  function initSimControlBar(callbacks) {
+    injectSimControlBarStyles();
+    const toggleBtn = document.getElementById("sim-toggle-run");
+    toggleBtn?.addEventListener("click", callbacks.onToggleRun);
+    document.querySelectorAll(".sim-speed-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const speed = parseInt(btn.getAttribute("data-speed") || "1", 10);
+        callbacks.onSpeedChange(speed);
+      });
+    });
+    const scenarioSelect = document.getElementById("sim-scenario-select");
+    scenarioSelect?.addEventListener("change", () => {
+      callbacks.onScenarioChange(scenarioSelect.value);
+    });
+    const estopBtn = document.getElementById("sim-estop-toggle");
+    estopBtn?.addEventListener("click", callbacks.onEstopToggle);
+  }
+  function renderSparklinesPanel(sensorData) {
+    const metrics2 = [
+      { key: "temperature", label: "TEMP", unit: "C", color: "#F59E0B" },
+      { key: "humidity", label: "HUM", unit: "%", color: "#38BDF8" },
+      { key: "co2", label: "CO2", unit: "ppm", color: "#22C55E" },
+      { key: "soil_moisture", label: "SOIL", unit: "%", color: "#EF4444" },
+      { key: "light", label: "LIGHT", unit: "lx", color: "#FACC15" },
+      { key: "water_level", label: "H2O", unit: "%", color: "#2563EB" }
+    ];
+    const charts = metrics2.map((m) => {
+      const values = sensorData[m.key] || [];
+      const sparkline = renderAsciiSparkline(values, m.color);
+      const lastVal = values.length > 0 ? values[values.length - 1].toFixed(1) : "--";
+      return `
+      <div class="sim-sparkline-card">
+        <div class="sim-sparkline-header">
+          <span class="sim-sparkline-label mono">${m.label}</span>
+          <span class="sim-sparkline-value mono" style="color: ${m.color}">${lastVal}${m.unit}</span>
+        </div>
+        <div class="sim-sparkline-chart mono" style="color: ${m.color}">${sparkline}</div>
+      </div>
+    `;
+    }).join("");
+    return `
+    <div class="sim-sensor-panel">
+      <div class="sim-panel-header">
+        <span class="sim-panel-title">Sensor Charts</span>
+      </div>
+      <div class="sim-sparklines-grid">
+        ${charts}
+      </div>
+    </div>
+  `;
+  }
+  function renderAsciiSparkline(values, color) {
+    if (values.length < 2) return '<span class="sim-no-data">no data</span>';
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+    const range = max - min || 1;
+    const chars = [" ", "\u2581", "\u2582", "\u2583", "\u2584", "\u2585", "\u2586", "\u2587", "\u2588"];
+    const recent = values.slice(-40);
+    return recent.map((v) => {
+      const level = Math.round((v - min) / range * 8);
+      return chars[Math.max(0, Math.min(8, level))];
+    }).join("");
+  }
+  function injectSimControlBarStyles() {
+    if (document.getElementById("sim-control-bar-styles")) return;
+    const style = document.createElement("style");
+    style.id = "sim-control-bar-styles";
+    style.textContent = `
+.sim-control-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--bg-secondary, #161B22);
+  border: 1px solid var(--border, #30363D);
+  border-radius: 6px;
+  flex-wrap: wrap;
+}
+.sim-control-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sim-control-right {
+  margin-left: auto;
+}
+.sim-run-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border, #30363D);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.sim-run-btn:hover { border-color: var(--accent-bright, #3FB950); }
+.sim-running { border-color: #F85149; color: #F85149; }
+.sim-stopped { border-color: #3FB950; color: #3FB950; }
+.sim-run-icon { font-size: 14px; }
+.sim-run-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; }
+
+.sim-speed-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sim-speed-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-tertiary, #484F58);
+  letter-spacing: 0.06em;
+}
+.sim-speed-btns {
+  display: flex;
+  gap: 2px;
+}
+.sim-speed-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border: 1px solid var(--border, #30363D);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary, #8B949E);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.sim-speed-btn:hover { border-color: var(--accent-bright, #3FB950); color: var(--text-primary, #F0F6FC); }
+.sim-speed-btn.active { background: rgba(56, 139, 253, 0.15); border-color: #388BFD; color: #58A6FF; }
+
+.sim-scenario-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sim-scenario-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-tertiary, #484F58);
+  letter-spacing: 0.06em;
+}
+.sim-scenario-select {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 8px;
+  border: 1px solid var(--border, #30363D);
+  border-radius: 4px;
+  background: var(--bg-primary, #0D1117);
+  color: var(--text-primary, #F0F6FC);
+  cursor: pointer;
+}
+.sim-scenario-select:focus { outline: 2px solid var(--accent-bright, #3FB950); }
+
+.sim-estop-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s;
+  font-weight: 700;
+}
+.sim-estop-inactive {
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  color: #F85149;
+}
+.sim-estop-active {
+  background: rgba(248, 81, 73, 0.25);
+  border: 2px solid #F85149;
+  color: #FFF;
+  animation: estop-pulse 2s infinite;
+}
+@keyframes estop-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+.sim-estop-icon { font-size: 14px; }
+.sim-estop-label { font-size: 10px; letter-spacing: 0.05em; }
+
+.sim-sensor-panel {
+  background: var(--bg-secondary, #161B22);
+  border: 1px solid var(--border, #30363D);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.sim-panel-header {
+  padding: 8px 12px;
+  background: var(--bg-primary, #0D1117);
+  border-bottom: 1px solid var(--border, #30363D);
+}
+.sim-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary, #F0F6FC);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.sim-sparklines-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sim-sparkline-card {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle, #21262D);
+}
+.sim-sparkline-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.sim-sparkline-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-tertiary, #484F58);
+  letter-spacing: 0.06em;
+}
+.sim-sparkline-value {
+  font-size: 12px;
+  font-weight: 700;
+}
+.sim-sparkline-chart {
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: -1px;
+  opacity: 0.8;
+  overflow: hidden;
+}
+.sim-no-data {
+  color: var(--text-tertiary, #484F58);
+  font-size: 10px;
+  font-style: italic;
+}
+.mono { font-family: var(--font-mono); }
+`;
+    document.head.appendChild(style);
+  }
+  function escapeHtml19(s) {
+    return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] || ch);
+  }
+  function escapeAttr5(s) {
+    return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] || ch);
+  }
+  var SCENARIOS, SPEEDS;
+  var init_SimControlBar = __esm({
+    "src/web/hal-ui/components/SimControlBar.ts"() {
+      "use strict";
+      SCENARIOS = [
+        { value: "normal_day", label: "Normal Day" },
+        { value: "heat_wave", label: "Heat Wave" },
+        { value: "cold_snap", label: "Cold Snap" },
+        { value: "pump_failure", label: "Pump Failure" },
+        { value: "sensor_fault", label: "Sensor Fault" },
+        { value: "recovery", label: "Recovery" }
+      ];
+      SPEEDS = [
+        { value: 1, label: "1x" },
+        { value: 5, label: "5x" },
+        { value: 10, label: "10x" },
+        { value: 60, label: "60x" }
+      ];
+    }
+  });
+
+  // src/web/hal-ui/views/Simulation.ts
+  async function renderSimulation(container) {
+    injectSimDeviceCardStyles();
+    injectSimNetworkLogStyles();
+    injectSimControlBarStyles();
+    try {
+      await refreshSimStatus();
+    } catch {
+      simControl.running = false;
+    }
+    container.innerHTML = `
+    <div class="sim-dashboard">
+      <div class="sim-top-bar">
+        ${renderSimControlBar(simControl)}
+      </div>
+      <div class="sim-grid">
+        <div class="sim-panel sim-devices-panel" id="sim-devices-panel">
+          <div class="sim-panel-header">
+            <span class="sim-panel-title">Device Cards</span>
+            <span class="sim-panel-count mono">${simDevices.length}</span>
+          </div>
+          <div class="sim-devices-grid" id="sim-devices-grid">
+            ${simDevices.map((d) => renderSimDeviceCard(d)).join("")}
+          </div>
+        </div>
+        <div class="sim-panel sim-log-panel" id="sim-log-panel">
+          ${renderSimNetworkLog()}
+        </div>
+        <div class="sim-panel sim-sensors-panel" id="sim-sensors-panel">
+          ${renderSparklinesPanel(sensorHistory)}
+        </div>
+      </div>
+    </div>
+  `;
+    initSimControlBar({
+      onToggleRun: handleToggleRun,
+      onSpeedChange: handleSpeedChange,
+      onScenarioChange: handleScenarioChange,
+      onEstopToggle: handleEstopToggle
+    });
+    attachFaultButtonHandlers();
+    startSimStream();
+  }
+  function refreshSimulationLiveData() {
+    const devicesGrid = document.getElementById("sim-devices-grid");
+    if (devicesGrid) {
+      devicesGrid.innerHTML = simDevices.map((d) => renderSimDeviceCard(d)).join("");
+    }
+    const logPanel = document.getElementById("sim-log-panel");
+    if (logPanel) {
+      logPanel.innerHTML = renderSimNetworkLog();
+    }
+    const sensorsPanel = document.getElementById("sim-sensors-panel");
+    if (sensorsPanel) {
+      sensorsPanel.innerHTML = renderSparklinesPanel(sensorHistory);
+    }
+    attachFaultButtonHandlers();
+  }
+  async function refreshSimStatus() {
+    try {
+      const resp = await fetch("/api/hal/sim/status");
+      if (!resp.ok) return;
+      const status = await resp.json();
+      simControl.running = status.running ?? false;
+      simControl.speed = status.speed ?? 1;
+      simControl.scenario = status.scenario ?? "normal_day";
+      if (status.devices && Array.isArray(status.devices)) {
+        for (const sd of status.devices) {
+          const existing = simDevices.find((d) => d.id === sd.id);
+          if (existing) {
+            existing.state = sd.state || "unknown";
+            if (sd.power != null) existing.power = sd.power;
+            if (sd.lastLatencyMs != null) existing.lastLatencyMs = sd.lastLatencyMs;
+          }
+        }
+      }
+      if (status.zones && Array.isArray(status.zones)) {
+        for (const metric of ["temperature", "humidity", "co2", "light", "water_level"]) {
+          const vals = status.zones.map((z) => z[metric]).filter((v) => v != null);
+          if (vals.length > 0) {
+            const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+            pushMetric(metric, avg);
+          }
+        }
+        if (status.zones[0]?.soilMoisture != null) {
+          pushMetric("soil_moisture", status.zones[0].soilMoisture);
+        }
+      }
+      if (status.faults) {
+        updateDeviceFaults(status.faults);
+      }
+    } catch {
+    }
+  }
+  function pushMetric(metric, value) {
+    if (!sensorHistory[metric]) sensorHistory[metric] = [];
+    sensorHistory[metric].push(value);
+    if (sensorHistory[metric].length > MAX_HISTORY) {
+      sensorHistory[metric] = sensorHistory[metric].slice(-MAX_HISTORY);
+    }
+  }
+  function updateDeviceFaults(faults) {
+    for (const device of simDevices) {
+      device.faultInjected = false;
+      device.faultType = void 0;
+    }
+    if (faults.sensorStuck && Array.isArray(faults.sensorStuck)) {
+      for (const stuck of faults.sensorStuck) {
+        const [deviceId] = stuck.split(":");
+        const dev = simDevices.find((d) => d.id === deviceId);
+        if (dev) {
+          dev.faultInjected = true;
+          dev.faultType = "sensor_stuck";
+        }
+      }
+    }
+    if (faults.deviceOffline && Array.isArray(faults.deviceOffline)) {
+      for (const offlineId of faults.deviceOffline) {
+        const dev = simDevices.find((d) => d.id === offlineId);
+        if (dev) {
+          dev.faultInjected = true;
+          dev.faultType = "device_offline";
+        }
+      }
+    }
+    if (faults.badCalibration && Array.isArray(faults.badCalibration)) {
+      for (const cal of faults.badCalibration) {
+        const [deviceId] = cal.split(":");
+        const dev = simDevices.find((d) => d.id === deviceId);
+        if (dev) {
+          dev.faultInjected = true;
+          dev.faultType = dev.faultType ? `${dev.faultType}, bad_cal` : "bad_cal";
+        }
+      }
+    }
+    if (faults.networkFlap) {
+      for (const device of simDevices) {
+        if (!device.faultInjected) {
+          device.faultInjected = true;
+          device.faultType = "network_flap";
+        }
+      }
+    }
+    if (faults.delayedTelemetry) {
+      for (const device of simDevices) {
+        if (!device.faultInjected) {
+          device.faultInjected = true;
+          device.faultType = "delayed_tlm";
+        }
+      }
+    }
+  }
+  function startSimStream() {
+    if (typeof EventSource === "undefined") {
+      refreshInterval2 = setInterval(() => {
+        refreshSimStatus().then(() => refreshSimulationLiveData());
+      }, 2e3);
+      return;
+    }
+    sseSource = new EventSource("/api/hal/sim/sse");
+    sseSource.addEventListener("status", (event) => {
+      try {
+        const status = JSON.parse(event.data);
+        simControl.running = status.running ?? false;
+        simControl.speed = status.speed ?? 1;
+        simControl.scenario = status.scenario ?? "normal_day";
+        if (status.devices) {
+          for (const sd of status.devices) {
+            const existing = simDevices.find((d) => d.id === sd.id);
+            if (existing) {
+              existing.state = sd.state || "unknown";
+              if (sd.power != null) existing.power = sd.power;
+              if (sd.lastLatencyMs != null) existing.lastLatencyMs = sd.lastLatencyMs;
+            }
+          }
+        }
+        if (status.zones) {
+          for (const metric of ["temperature", "humidity", "co2", "light", "water_level"]) {
+            const vals = status.zones.map((z) => z[metric]).filter((v) => v != null);
+            if (vals.length > 0) {
+              const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+              pushMetric(metric, avg);
+            }
+          }
+          if (status.zones[0]?.soilMoisture != null) {
+            pushMetric("soil_moisture", status.zones[0].soilMoisture);
+          }
+        }
+        if (status.faults) updateDeviceFaults(status.faults);
+        refreshSimulationLiveData();
+      } catch {
+      }
+    });
+    sseSource.addEventListener("log", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.entries && Array.isArray(data.entries)) {
+          setServerLogEntries(data.entries);
+          refreshSimulationLiveData();
+        }
+      } catch {
+      }
+    });
+    sseSource.onerror = () => {
+      sseSource?.close();
+      sseSource = null;
+      if (!refreshInterval2) {
+        refreshInterval2 = setInterval(() => {
+          refreshSimStatus().then(() => refreshSimulationLiveData());
+        }, 2e3);
+      }
+    };
+  }
+  async function handleToggleRun() {
+    try {
+      if (simControl.running) {
+        await fetch("/api/hal/sim/stop", { method: "POST" });
+        simControl.running = false;
+      } else {
+        await fetch("/api/hal/sim/start", { method: "POST" });
+        simControl.running = true;
+      }
+      const topBar = document.querySelector(".sim-top-bar");
+      if (topBar) {
+        topBar.innerHTML = renderSimControlBar(simControl);
+        initSimControlBar({
+          onToggleRun: handleToggleRun,
+          onSpeedChange: handleSpeedChange,
+          onScenarioChange: handleScenarioChange,
+          onEstopToggle: handleEstopToggle
+        });
+      }
+    } catch (err) {
+      console.error("Failed to toggle simulation:", err);
+    }
+  }
+  async function handleSpeedChange(speed) {
+    try {
+      await fetch("/api/hal/sim/speed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ speed })
+      });
+      simControl.speed = speed;
+      const topBar = document.querySelector(".sim-top-bar");
+      if (topBar) {
+        topBar.innerHTML = renderSimControlBar(simControl);
+        initSimControlBar({
+          onToggleRun: handleToggleRun,
+          onSpeedChange: handleSpeedChange,
+          onScenarioChange: handleScenarioChange,
+          onEstopToggle: handleEstopToggle
+        });
+      }
+    } catch (err) {
+      console.error("Failed to change speed:", err);
+    }
+  }
+  async function handleScenarioChange(scenario) {
+    try {
+      await fetch("/api/hal/sim/scenario", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenario })
+      });
+      simControl.scenario = scenario;
+      await refreshSimStatus();
+      refreshSimulationLiveData();
+    } catch (err) {
+      console.error("Failed to change scenario:", err);
+    }
+  }
+  async function handleEstopToggle() {
+    try {
+      if (simControl.estopActive) {
+        await fetch("/api/hal/estop/clear", { method: "POST" });
+        simControl.estopActive = false;
+      } else {
+        await fetch("/api/hal/estop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "operator", reasonText: "Simulation E-Stop" })
+        });
+        simControl.estopActive = true;
+      }
+      const topBar = document.querySelector(".sim-top-bar");
+      if (topBar) {
+        topBar.innerHTML = renderSimControlBar(simControl);
+        initSimControlBar({
+          onToggleRun: handleToggleRun,
+          onSpeedChange: handleSpeedChange,
+          onScenarioChange: handleScenarioChange,
+          onEstopToggle: handleEstopToggle
+        });
+      }
+    } catch (err) {
+      console.error("Failed to toggle E-Stop:", err);
+    }
+  }
+  function attachFaultButtonHandlers() {
+    document.querySelectorAll(".sim-fault-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const device = btn.getAttribute("data-device");
+        const fault = btn.getAttribute("data-fault");
+        if (!device) return;
+        try {
+          if (fault === "clear") {
+            await fetch("/api/hal/sim/fault", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fault: "clear" })
+            });
+          } else {
+            await fetch("/api/hal/sim/fault", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fault, device })
+            });
+          }
+          await refreshSimStatus();
+          refreshSimulationLiveData();
+        } catch (err) {
+          console.error("Failed to inject fault:", err);
+        }
+      });
+    });
+  }
+  var sensorHistory, MAX_HISTORY, DEFAULT_DEVICES, simDevices, simControl, sseSource, refreshInterval2;
+  var init_Simulation = __esm({
+    "src/web/hal-ui/views/Simulation.ts"() {
+      "use strict";
+      init_SimDeviceCard();
+      init_SimNetworkLog();
+      init_SimControlBar();
+      sensorHistory = {
+        temperature: [],
+        humidity: [],
+        co2: [],
+        soil_moisture: [],
+        light: [],
+        water_level: []
+      };
+      MAX_HISTORY = 100;
+      DEFAULT_DEVICES = [
+        { id: "grow_light_main", label: "Grow Light (Main)", protocol: "tasmota", state: "off", power: 600, host: "192.168.1.101" },
+        { id: "exhaust_fan", label: "Exhaust Fan", protocol: "shelly", state: "off", power: 80, host: "192.168.1.102" },
+        { id: "humidifier", label: "Humidifier", protocol: "shelly", state: "off", power: 200, host: "192.168.1.103" },
+        { id: "water_pump", label: "Water Pump", protocol: "tasmota", state: "off", power: 45, host: "192.168.1.104" },
+        { id: "heater_plug", label: "Heater Plug", protocol: "kasa", state: "off", power: 1500, host: "192.168.1.105" },
+        { id: "dehumidifier_plug", label: "Dehumidifier Plug", protocol: "kasa", state: "off", power: 300, host: "192.168.1.106" },
+        { id: "tent_a_temp_1", label: "Tent A Temp #1 (Canopy)", protocol: "mqtt", state: "unknown", host: "mqtt://localhost" },
+        { id: "tent_b_temp_1", label: "Tent B Temp #1 (Canopy)", protocol: "mqtt", state: "unknown", host: "mqtt://localhost" },
+        { id: "tent_a_load_cell_1", label: "Tent A Load Cell #1", protocol: "serial", state: "unknown", host: "/dev/ttyUSB0" },
+        { id: "tent_b_load_cell_1", label: "Tent B Load Cell #1", protocol: "serial", state: "unknown", host: "/dev/ttyUSB1" }
+      ];
+      simDevices = [...DEFAULT_DEVICES];
+      simControl = {
+        running: false,
+        speed: 1,
+        scenario: "normal_day",
+        estopActive: false
+      };
+      sseSource = null;
+      refreshInterval2 = null;
+    }
+  });
+
   // src/web/hal-ui/main.ts
   var main_exports = {};
   __export(main_exports, {
@@ -19086,6 +20163,7 @@ The service will restart after the update.`
       sensors: "Sensors",
       decisions: "Decisions",
       cameras: "Cameras",
+      simulation: "Simulation",
       safety: "Safety",
       system: "System",
       terminal: "Terminal",
@@ -19105,6 +20183,7 @@ The service will restart after the update.`
       "sensors",
       "decisions",
       "cameras",
+      "simulation",
       "safety",
       "system",
       "terminal",
@@ -19127,6 +20206,7 @@ The service will restart after the update.`
       "sensors",
       "decisions",
       "cameras",
+      "simulation",
       "safety",
       "system",
       "terminal",
@@ -19135,7 +20215,7 @@ The service will restart after the update.`
     ];
     return validViews.includes(hash2) ? hash2 : "dashboard";
   }
-  function escapeHtml17(value) {
+  function escapeHtml20(value) {
     return value.replace(
       /[&<>"']/g,
       (ch) => ({
@@ -19165,7 +20245,7 @@ The service will restart after the update.`
         container.innerHTML = `
         <div class="hal-card" style="padding:16px">
           <div class="text-sm font-semibold">View failed to load</div>
-          <div class="text-xs text-secondary">${escapeHtml17(err?.message || "Unknown render error")}</div>
+          <div class="text-xs text-secondary">${escapeHtml20(err?.message || "Unknown render error")}</div>
         </div>
       `;
       } finally {
@@ -19266,7 +20346,7 @@ The service will restart after the update.`
   }
   function scheduleLiveRender() {
     const activeView = getStore().activeView;
-    if (activeView === "settings" || activeView === "terminal") return;
+    if (activeView === "settings" || activeView === "terminal" || activeView === "simulation") return;
     if (liveRenderQueued) return;
     const now = Date.now();
     const delay = Math.max(0, 3e3 - (now - lastLiveRenderAt));
@@ -19345,6 +20425,7 @@ The service will restart after the update.`
       init_Safety();
       init_Calibration();
       init_Settings();
+      init_Simulation();
       init_api();
       init_api_provisioning();
       init_store();
@@ -19354,6 +20435,7 @@ The service will restart after the update.`
         sensors: renderSensors,
         decisions: renderDecisions,
         cameras: renderCameras,
+        simulation: renderSimulation,
         safety: renderSafety,
         system: renderSystemView,
         terminal: renderTerminalView,

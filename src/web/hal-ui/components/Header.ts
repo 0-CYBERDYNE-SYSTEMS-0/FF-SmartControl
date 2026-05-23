@@ -271,11 +271,10 @@ async function setupEstopButton(
     try {
       const status = await halApi.getEstopStatus();
       if (status.estop.active) {
-        // E-Stop is active - try to clear it (will require auth)
-        const operatorId = prompt('Enter operator ID to clear E-Stop:');
-        if (!operatorId) return;
+        // E-Stop is active — confirm before clearing (auth via session cookie)
+        if (!confirm('Clear Emergency Stop? This will resume autonomous control of all devices.')) return;
         try {
-          await halApi.clearEstop(operatorId);
+          await halApi.clearEstop();
           updateEstopUI(false, null);
           onEstopChange?.(false);
         } catch (err: any) {

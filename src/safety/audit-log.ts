@@ -5,7 +5,8 @@
  * No UPDATE or DELETE operations are exposed.
  */
 
-import { getDb } from '../hal/db.js';
+import { getSafetyDb } from '../hal/safety-db.js';
+import { getFaultInjectionController } from '../hal/fault-injection.js';
 
 export type VerifierResult = 'APPROVED' | 'DENIED' | 'DENIED_WITH_REASON';
 export type TriggeredBy =
@@ -13,7 +14,8 @@ export type TriggeredBy =
   | 'manual_ui'
   | 'schedule'
   | 'watchdog'
-  | 'estop_system';
+  | 'estop_system'
+  | 'auto_decision';
 
 export interface AuditLogEntry {
   id: string;
@@ -42,11 +44,11 @@ function genId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-let auditDb: ReturnType<typeof getDb> | null = null;
+let auditDb: ReturnType<typeof getSafetyDb> | null = null;
 
 function getAuditDb() {
   if (!auditDb) {
-    auditDb = getDb();
+    auditDb = getSafetyDb();
   }
   return auditDb;
 }
@@ -73,6 +75,15 @@ export interface CreateAuditEntry {
 }
 
 export function createAuditEntry(entry: CreateAuditEntry): AuditLogEntry {
+  // Protocol-level fault injection: intercept audit log write
+  const fic = getFaultInjectionController();
+  const intercepted = fic.intercept('audit_log_write', { ...entry });
+
+  // Use possibly modified entry
+  const finalEntry: CreateAuditEntry = intercepted.intercepted
+    ? (intercepted.data as CreateAuditEntry)
+    : entry;
+
   const db = getAuditDb();
   const id = genId('aud');
   const now = new Date().toISOString();
@@ -87,19 +98,19 @@ export function createAuditEntry(entry: CreateAuditEntry): AuditLogEntry {
   `,
   ).run(
     id,
-    entry.deviceId ?? null,
-    entry.proposedAction,
-    entry.verifierResult,
-    entry.deniedReason ?? null,
-    entry.conflictingRuleIds ? JSON.stringify(entry.conflictingRuleIds) : null,
-    JSON.stringify(entry.sensorSnapshot),
-    entry.decisionId ?? null,
-    entry.triggeredBy,
-    entry.executed ? 1 : 0,
-    entry.executedState ?? null,
-    entry.interrupted ? 1 : 0,
-    entry.interruptedAtStep ?? null,
-    entry.revertedSteps ?? null,
+    finalEntry.deviceId ?? null,
+    finalEntry.proposedAction,
+    finalEntry.verifierResult,
+    finalEntry.deniedReason ?? null,
+    finalEntry.conflictingRuleIds ? JSON.stringify(finalEntry.conflictingRuleIds) : null,
+    JSON.stringify(finalEntry.sensorSnapshot),
+    finalEntry.decisionId ?? null,
+    finalEntry.triggeredBy,
+    finalEntry.executed ? 1 : 0,
+    finalEntry.executedState ?? null,
+    finalEntry.interrupted ? 1 : 0,
+    finalEntry.interruptedAtStep ?? null,
+    finalEntry.revertedSteps ?? null,
     now,
   );
 

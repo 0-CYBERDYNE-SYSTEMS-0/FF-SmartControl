@@ -149,7 +149,7 @@ export class HalRegistry {
     if (dev.protocol === 'gpio') {
       // Map device id to GPIO pin number (stored in device metadata or use default)
       const pin = parseInt(dev.host || '0');
-      gpio.digitalWrite(pin, action === 'on');
+      await gpio.digitalWrite(pin, action === 'on');
       this.updateState(id, action);
       return;
     }

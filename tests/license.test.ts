@@ -237,83 +237,96 @@ describe('Hardware ID Determinism', () => {
   });
 
   it('should select the same MAC regardless of interface enumeration order', async () => {
-    // This test verifies the critical FIX-4 requirement:
-    // The hardware ID must be deterministic (same interface chosen) even
-    // when os.networkInterfaces() returns interfaces in different orders.
-    // This simulates the scenario where driver load order differs across reboots.
+    // FIX-4: Verify that selectPrimaryMac returns the same MAC even when
+    // os.networkInterfaces() returns interfaces in different orders.
+    // This ensures the hardware ID survives reboots where driver load
+    // order may differ.
 
-    const os = await import('os');
+    const { selectPrimaryMac, isVirtualInterface } =
+      await import('../src/license/hardware-id.js');
 
-    // Create two different enumeration orders of the same interfaces
-    const interfaces = {
+    // Interfaces present on a typical device with WiFi + Ethernet + Docker
+    const allInterfaces = {
       eth0: [{ mac: 'aa:bb:cc:dd:ee:ff', address: '192.168.1.1', family: 'IPv4' }],
       wlan0: [{ mac: '11:22:33:44:55:66', address: '192.168.2.1', family: 'IPv4' }],
       lo: [{ mac: '00:00:00:00:00:00', address: '127.0.0.1', family: 'IPv4' }],
       docker0: [{ mac: 'de:ad:be:ef:00:01', address: '172.17.0.1', family: 'IPv4' }],
     };
 
-    // Save original
-    const originalNetworkInterfaces = os.networkInterfaces;
+    // Order A: wlan0 enumerated first (could happen if WiFi driver loads first)
+    const orderA = {
+      wlan0: allInterfaces.wlan0,
+      docker0: allInterfaces.docker0,
+      eth0: allInterfaces.eth0,
+      lo: allInterfaces.lo,
+    };
 
-    try {
-      // Mock networkInterfaces to return interfaces in order A
-      (os as any).networkInterfaces = () => ({
-        wlan0: interfaces.wlan0,
-        docker0: interfaces.docker0,
-        eth0: interfaces.eth0,
-        lo: interfaces.lo,
-      });
+    // Order B: eth0 enumerated first (Ethernet driver loads first)
+    const orderB = {
+      lo: allInterfaces.lo,
+      eth0: allInterfaces.eth0,
+      docker0: allInterfaces.docker0,
+      wlan0: allInterfaces.wlan0,
+    };
 
-      // Re-import to get fresh module state (module cache means this is the
-      // same instance, but the function reads os.networkInterfaces() each call)
-      const { getHardwareId: getHwId1 } = await import('../src/license/hardware-id.js');
-      const id1 = getHwId1();
+    const id1 = selectPrimaryMac(orderA);
+    const id2 = selectPrimaryMac(orderB);
 
-      // Now mock with order B (different enumeration)
-      (os as any).networkInterfaces = () => ({
-        lo: interfaces.lo,
-        eth0: interfaces.eth0,
-        docker0: interfaces.docker0,
-        wlan0: interfaces.wlan0,
-      });
-
-      const id2 = getHwId1();
-
-      // Both calls must return the same MAC (eth0 since it sorts first alphabetically
-      // after filtering out lo and docker0)
-      assert.ok(id1 === id2,
-        `Hardware ID must be stable across different enumeration orders: "${id1}" vs "${id2}"`);
-      assert.ok(id1 === 'MAC-AABBCCDDEEFF',
-        `Should select eth0 (alphabetically first physical): got "${id1}"`);
-    } finally {
-      // Restore original
-      (os as any).networkInterfaces = originalNetworkInterfaces;
-    }
+    // Both must return eth0 (alphabetically first after filtering:
+    // docker0 excluded as virtual, lo excluded as loopback)
+    assert.ok(id1 === id2,
+      `Hardware ID must be stable across different enumeration orders: "${id1}" vs "${id2}"`);
+    assert.ok(id1 === 'MAC-AABBCCDDEEFF',
+      `Should select eth0 (alphabetically first physical): got "${id1}"`);
   });
 
   it('should filter out virtual interfaces (docker, loopback, tunnel)', async () => {
-    const os = await import('os');
-    const originalNetworkInterfaces = os.networkInterfaces;
+    const { selectPrimaryMac, isVirtualInterface } =
+      await import('../src/license/hardware-id.js');
 
-    try {
-      // Set up interfaces where virtual ones sort alphabetically BEFORE physical ones
-      (os as any).networkInterfaces = () => ({
-        br0: [{ mac: 'aa:aa:aa:aa:aa:aa', address: '10.0.0.1', family: 'IPv4' }],
-        docker0: [{ mac: 'bb:bb:bb:bb:bb:bb', address: '172.17.0.1', family: 'IPv4' }],
-        en0: [{ mac: 'cc:cc:cc:cc:cc:cc', address: '192.168.1.1', family: 'IPv4' }],
-        lo0: [{ mac: '00:00:00:00:00:00', address: '127.0.0.1', family: 'IPv4' }],
-        utun0: [{ mac: 'dd:dd:dd:dd:dd:dd', address: '10.255.0.1', family: 'IPv4' }],
-      });
+    // Verify virtual interface detection
+    assert.ok(isVirtualInterface('lo'), 'lo (loopback) should be virtual');
+    assert.ok(isVirtualInterface('lo0'), 'lo0 (macOS loopback) should be virtual');
+    assert.ok(isVirtualInterface('docker0'), 'docker0 should be virtual');
+    assert.ok(isVirtualInterface('vethabc123'), 'veth should be virtual');
+    assert.ok(isVirtualInterface('br-abc123'), 'br- (bridge) should be virtual');
+    assert.ok(isVirtualInterface('tun0'), 'tun0 should be virtual');
+    assert.ok(isVirtualInterface('utun3'), 'utun (macOS) should be virtual');
+    assert.ok(isVirtualInterface('awdl0'), 'awdl (Apple WDL) should be virtual');
 
-      const { getHardwareId } = await import('../src/license/hardware-id.js');
-      const id = getHardwareId();
+    // Physical interfaces should NOT be filtered
+    assert.ok(!isVirtualInterface('eth0'), 'eth0 should not be virtual');
+    assert.ok(!isVirtualInterface('en0'), 'en0 should not be virtual');
+    assert.ok(!isVirtualInterface('wlan0'), 'wlan0 should not be virtual');
+    assert.ok(!isVirtualInterface('wlx001122334455'), 'wlx should not be virtual');
 
-      // en0 should be selected (only non-virtual interface with real MAC)
-      assert.ok(id === 'MAC-CCCCCCCCCCCC',
-        `Should skip virtual interfaces and select en0: got "${id}"`);
-    } finally {
-      (os as any).networkInterfaces = originalNetworkInterfaces;
-    }
+    // Virtual interfaces that sort before physical ones should be skipped
+    const result = selectPrimaryMac({
+      br0: [{ mac: 'aa:aa:aa:aa:aa:aa', address: '10.0.0.1', family: 'IPv4' }],
+      docker0: [{ mac: 'bb:bb:bb:bb:bb:bb', address: '172.17.0.1', family: 'IPv4' }],
+      en0: [{ mac: 'cc:cc:cc:cc:cc:cc', address: '192.168.1.1', family: 'IPv4' }],
+      lo0: [{ mac: '00:00:00:00:00:00', address: '127.0.0.1', family: 'IPv4' }],
+      utun0: [{ mac: 'dd:dd:dd:dd:dd:dd', address: '10.255.0.1', family: 'IPv4' }],
+    });
+
+    // en0 is the only non-virtual, non-loopback interface with real MAC
+    assert.ok(result === 'MAC-CCCCCCCCCCCC',
+      `Should skip virtual (br0, docker0, lo0, utun0) and select en0: got "${result}"`);
+  });
+
+  it('should return null when no physical interfaces exist', async () => {
+    const { selectPrimaryMac } =
+      await import('../src/license/hardware-id.js');
+
+    // Only virtual interfaces and loopback — no physical MAC
+    const result = selectPrimaryMac({
+      lo: [{ mac: '00:00:00:00:00:00', address: '127.0.0.1', family: 'IPv4' }],
+      docker0: [{ mac: 'de:ad:be:ef:00:01', address: '172.17.0.1', family: 'IPv4' }],
+      utun0: [{ mac: 'aa:bb:cc:dd:ee:ff', address: '10.255.0.1', family: 'IPv4' }],
+    });
+
+    assert.ok(result === null,
+      'Should return null when only virtual interfaces are present');
   });
 });
 

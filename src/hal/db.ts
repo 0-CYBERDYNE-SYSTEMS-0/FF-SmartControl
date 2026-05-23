@@ -145,14 +145,11 @@ export function runMigrations(): void {
     throw new DatabaseCorruptionError(dbPath, failures);
   }
 
-  // Security: Initialize session database tables (VAL-SEC-001, VAL-SEC-004)
-  initSessionDatabase();
-
-  // Security: Initialize rate limit database tables (VAL-SEC-010)
-  initRateLimitDatabase();
-
-  // Update System: Initialize update history table (VAL-UPDT-003, VAL-VERS-003)
-  initUpdateHistoryTable();
+  // Note: Safety/security tables (admin_sessions, login_attempts,
+  // api_rate_limits, security_audit, hal_emergency_stop, hal_safety_rules,
+  // hal_safety_audit, hal_device_safe_states, hal_farm_loop_state,
+  // hal_update_history) are now managed in src/hal/safety-db.ts
+  // in a separate fft_safety.db database.
 }
 
 function repairImpossibleSensorReadings(db: Database.Database): void {
@@ -175,70 +172,4 @@ function repairImpossibleSensorReadings(db: Database.Database): void {
   });
 
   repairMany();
-}
-
-// Session database tables for admin authentication
-function initSessionDatabase(): void {
-  const db = getDb();
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS admin_sessions (
-        id TEXT PRIMARY KEY,
-        token_hash TEXT NOT NULL,
-        operator_id TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL,
-        last_activity_at TEXT NOT NULL,
-        ip_address TEXT,
-        user_agent TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_sessions_token ON admin_sessions(token_hash);
-      CREATE INDEX IF NOT EXISTS idx_sessions_expires ON admin_sessions(expires_at);
-    `);
-  } catch {
-    /* tables may already exist */
-  }
-}
-
-// Rate limit database tables for login attempt tracking (VAL-SEC-010)
-function initRateLimitDatabase(): void {
-  const db = getDb();
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS login_attempts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ip_address TEXT NOT NULL,
-        attempted_at TEXT NOT NULL,
-        success INTEGER NOT NULL DEFAULT 0,
-        user_agent TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip_address, attempted_at);
-    `);
-  } catch {
-    /* tables may already exist */
-  }
-}
-
-// Update System: update history table (VAL-UPDT-003, VAL-VERS-003)
-function initUpdateHistoryTable(): void {
-  const db = getDb();
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS hal_update_history (
-        id TEXT PRIMARY KEY,
-        from_version TEXT NOT NULL,
-        to_version TEXT NOT NULL,
-        triggered_by TEXT NOT NULL,
-        trigger TEXT NOT NULL,
-        status TEXT NOT NULL,
-        error_message TEXT,
-        started_at TEXT NOT NULL,
-        completed_at TEXT
-      )
-    `);
-  } catch {
-    /* table may already exist */
-  }
 }

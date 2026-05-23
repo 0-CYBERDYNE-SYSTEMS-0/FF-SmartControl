@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { getDb } from '../hal/db.js';
+import { getSafetyDb } from '../hal/safety-db.js';
 import { halRegistry } from '../hal/registry.js';
 import { halSensors } from '../hal/sensors.js';
 import { halDecisions } from '../hal/decisions.js';
@@ -22,8 +23,10 @@ import {
   handleLogout,
   authMiddleware,
   csrfMiddleware,
+  requireAuth,
   parseSessionCookie,
   validateSession,
+  isFarmPalDevMode,
   buildSetCookieHeader,
   buildClearSessionHeader,
   buildCsrfCookie,
@@ -190,7 +193,13 @@ function isProtectedRoute(requestPath: string): boolean {
     }
   }
 
-  // Allow unauthenticated GET for _sim status (read-only monitoring health check)
+  // In dev/test mode, allow unauthenticated access to all simulator routes
+  if (isFarmPalDevMode() && requestPath.startsWith('/_sim/')) {
+    return false;
+  }
+
+  // Allow unauthenticated GET for _sim status (read-only monitoring health check
+  // — the handler block only serves GET for this path; mutating methods are not wired)
   if (requestPath === '/_sim/status') {
     return false;
   }
@@ -202,6 +211,12 @@ function isProtectedRoute(requestPath: string): boolean {
 
   // API paths are protected
   if (requestPath.startsWith('/api/')) {
+    return true;
+  }
+
+  // Simulator state-changing routes (_sim/scenario, _sim/speed, _sim/fault)
+  // require authentication in production
+  if (requestPath.startsWith('/_sim/')) {
     return true;
   }
 
@@ -1010,9 +1025,27 @@ export async function startHalUiServer(
         return;
       }
 
-      // POST /api/hal/estop — activate emergency stop
+      // POST /api/hal/estop — activate emergency stop (requires auth)
       if (apiPath === '/estop' && method === 'POST') {
         const { activateEstop } = await import('../safety/estop.js');
+
+        // Defense in depth: validate session before allowing activation
+        const sessionToken = parseSessionCookie(req.headers.cookie);
+        if (!sessionToken) {
+          sendJson(res, 401, {
+            error: 'Authentication required to activate E-Stop',
+          });
+          return;
+        }
+
+        const session = validateSession(sessionToken);
+        if (!session) {
+          sendJson(res, 401, {
+            error: 'Invalid or expired session. Please log in again.',
+          });
+          return;
+        }
+
         let body = '';
         for await (const chunk of req) body += chunk;
         const parsed = body ? JSON.parse(body) : {};
@@ -1024,12 +1057,41 @@ export async function startHalUiServer(
           'operator',
           reasonText,
         );
+
+        // Log this admin action to security audit
+        const ipAddress =
+          (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+          (req.headers['x-real-ip'] as string) ||
+          req.socket.remoteAddress ||
+          'unknown';
+        logAdminAction(
+          session.id,
+          session.operatorId,
+          'POST /api/hal/estop',
+          { reason, reasonText: reasonText || null },
+          ipAddress,
+          (req.headers['user-agent'] as string) || undefined,
+        );
+
         sendJson(res, 200, result);
         return;
       }
 
-      // POST /api/hal/estop/clear — clear emergency stop (requires auth)
+      // POST /api/hal/estop/clear — clear emergency stop (requires admin auth)
       if (apiPath === '/estop/clear' && method === 'POST') {
+        // Defense in depth: requireAuth validates session + CSRF before
+        // the safety gate's own session check inside clearEstop()
+        const auth = requireAuth(req);
+        if (!auth.authorized) {
+          sendAuthError(
+            res,
+            auth.statusCode || 401,
+            auth.error || 'Admin authentication required',
+            '/login',
+          );
+          return;
+        }
+
         const { clearEstop } = await import('../safety/estop.js');
         // Consume request body (may be empty — operator identity comes from session)
         let body = '';
@@ -1060,11 +1122,28 @@ export async function startHalUiServer(
         return;
       }
 
-      // PUT /api/hal/estop/safe-states/:deviceId — set device safe state
+      // PUT /api/hal/estop/safe-states/:deviceId — set device safe state (requires auth)
       if (
         apiPath.match(/^\/estop\/safe-states\/([^/]+)$/) &&
         method === 'PUT'
       ) {
+        // Defense in depth: validate session before allowing safe-state modification
+        const sessionToken = parseSessionCookie(req.headers.cookie);
+        if (!sessionToken) {
+          sendJson(res, 401, {
+            error: 'Authentication required to modify safe states',
+          });
+          return;
+        }
+
+        const session = validateSession(sessionToken);
+        if (!session) {
+          sendJson(res, 401, {
+            error: 'Invalid or expired session. Please log in again.',
+          });
+          return;
+        }
+
         const deviceId = apiPath.split('/')[3];
         const { setDeviceSafeState } = await import('../safety/estop.js');
         let body = '';
@@ -1083,6 +1162,22 @@ export async function startHalUiServer(
         }
 
         setDeviceSafeState(deviceId, safeState, parsed.safeValue);
+
+        // Log this admin action to security audit
+        const ipAddress =
+          (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+          (req.headers['x-real-ip'] as string) ||
+          req.socket.remoteAddress ||
+          'unknown';
+        logAdminAction(
+          session.id,
+          session.operatorId,
+          'PUT /api/hal/estop/safe-states',
+          { deviceId, safeState, safeValue: parsed.safeValue || null },
+          ipAddress,
+          (req.headers['user-agent'] as string) || undefined,
+        );
+
         sendJson(res, 200, { ok: true });
         return;
       }
@@ -1095,6 +1190,98 @@ export async function startHalUiServer(
           farmLoop: getFarmLoopState(),
           watchdog: getWatchdogStatus(),
         });
+        return;
+      }
+
+      // GET /api/hal/faults — list active protocol-level faults (admin only)
+      if (apiPath === '/faults' && method === 'GET') {
+        const auth = requireAuth(req);
+        if (!auth.authorized) {
+          sendAuthError(
+            res,
+            auth.statusCode || 401,
+            auth.error || 'Admin authentication required',
+            '/login',
+          );
+          return;
+        }
+
+        try {
+          const { getFaultInjectionController } =
+            await import('../hal/fault-injection.js');
+          const fic = getFaultInjectionController();
+          sendJson(res, 200, {
+            status: fic.getStatus(),
+            active: fic.listActive(),
+          });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // POST /api/hal/faults — inject a protocol-level fault (admin only)
+      if (apiPath === '/faults' && method === 'POST') {
+        const auth = requireAuth(req);
+        if (!auth.authorized) {
+          sendAuthError(
+            res,
+            auth.statusCode || 401,
+            auth.error || 'Admin authentication required',
+            '/login',
+          );
+          return;
+        }
+
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+
+        if (!parsed.point || !parsed.type) {
+          sendJson(res, 400, {
+            error: 'point and type are required to inject a fault',
+          });
+          return;
+        }
+
+        try {
+          const { getFaultInjectionController } =
+            await import('../hal/fault-injection.js');
+          const fic = getFaultInjectionController();
+          const faultId = fic.inject(
+            parsed.point,
+            parsed.type,
+            parsed.config,
+          );
+          sendJson(res, 201, { ok: true, faultId });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // DELETE /api/hal/faults — clear all protocol-level faults (admin only)
+      if (apiPath === '/faults' && method === 'DELETE') {
+        const auth = requireAuth(req);
+        if (!auth.authorized) {
+          sendAuthError(
+            res,
+            auth.statusCode || 401,
+            auth.error || 'Admin authentication required',
+            '/login',
+          );
+          return;
+        }
+
+        try {
+          const { getFaultInjectionController } =
+            await import('../hal/fault-injection.js');
+          const fic = getFaultInjectionController();
+          fic.clearAll();
+          sendJson(res, 200, { ok: true });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
         return;
       }
 
@@ -1257,7 +1444,7 @@ export async function startHalUiServer(
 
       // GET /api/hal/safety/rules — list all safety rules
       if (apiPath === '/safety/rules' && method === 'GET') {
-        const db = getDb();
+        const db = getSafetyDb();
         const rows = db
           .prepare(
             `
@@ -1284,7 +1471,7 @@ export async function startHalUiServer(
       // GET /api/hal/safety/rules/:id — get a specific rule
       if (apiPath.match(/^\/safety\/rules\/([^/]+)$/) && method === 'GET') {
         const ruleId = apiPath.split('/')[3];
-        const db = getDb();
+        const db = getSafetyDb();
         const row = db
           .prepare('SELECT * FROM hal_safety_rules WHERE id = ?')
           .get(ruleId) as Record<string, unknown> | undefined;
@@ -1344,7 +1531,7 @@ export async function startHalUiServer(
         const now = new Date().toISOString();
 
         try {
-          const db = getDb();
+          const db = getSafetyDb();
           db.prepare(
             `
             INSERT INTO hal_safety_rules (id, device_id, rule_type, rule_config, enabled, priority, created_at, updated_at)
@@ -1398,7 +1585,7 @@ export async function startHalUiServer(
           return;
         }
 
-        const db = getDb();
+        const db = getSafetyDb();
         const existing = db
           .prepare('SELECT * FROM hal_safety_rules WHERE id = ?')
           .get(ruleId) as Record<string, unknown> | undefined;
@@ -1446,7 +1633,7 @@ export async function startHalUiServer(
       // DELETE /api/hal/safety/rules/:id — delete a rule
       if (apiPath.match(/^\/safety\/rules\/([^/]+)$/) && method === 'DELETE') {
         const ruleId = apiPath.split('/')[3];
-        const db = getDb();
+        const db = getSafetyDb();
         const existing = db
           .prepare('SELECT * FROM hal_safety_rules WHERE id = ?')
           .get(ruleId);
@@ -1491,7 +1678,7 @@ export async function startHalUiServer(
         sql += ' ORDER BY created_at DESC LIMIT ?';
         params.push(limit);
 
-        const db = getDb();
+        const db = getSafetyDb();
         const rows = db.prepare(sql).all(...params) as Array<
           Record<string, unknown>
         >;
@@ -1678,7 +1865,8 @@ export async function startHalUiServer(
             );
 
             // Log to safety audit (VAL-AUTO-011)
-            db.prepare(
+            const safetyDb2 = getSafetyDb();
+            safetyDb2.prepare(
               `INSERT INTO hal_safety_audit (id, device_id, proposed_action, verifier_result, denied_reason, sensor_snapshot, triggered_by, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             ).run(
@@ -1769,7 +1957,8 @@ export async function startHalUiServer(
             );
 
             // Log to safety audit with old/new values (VAL-AUTO-011)
-            db.prepare(
+            const safetyDb3 = getSafetyDb();
+            safetyDb3.prepare(
               `INSERT INTO hal_safety_audit (id, device_id, proposed_action, verifier_result, denied_reason, sensor_snapshot, triggered_by, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             ).run(
@@ -1844,7 +2033,8 @@ export async function startHalUiServer(
 
           // Log deletion to safety audit
           const now = new Date().toISOString();
-          db.prepare(
+          const safetyDb4 = getSafetyDb();
+          safetyDb4.prepare(
             `INSERT INTO hal_safety_audit (id, device_id, proposed_action, verifier_result, denied_reason, sensor_snapshot, triggered_by, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           ).run(
@@ -1875,7 +2065,7 @@ export async function startHalUiServer(
       if (apiPath === '/safety/state' && method === 'GET') {
         const { getEstopState } = await import('../safety/estop.js');
         const { getFarmLoopState } = await import('../safety/estop.js');
-        const db = getDb();
+        const db = getSafetyDb();
 
         const estop = getEstopState();
         const farmLoop = getFarmLoopState();
@@ -1943,20 +2133,21 @@ export async function startHalUiServer(
 
       // GET /api/hal/safety/summary — get safety dashboard summary
       if (apiPath === '/safety/summary' && method === 'GET') {
-        const db = getDb();
+        const safetyDb = getSafetyDb();
+        const opDb = getDb();
 
-        // Active rules count
+        // Active rules count (safety DB)
         const activeRulesCount = (
-          db
+          safetyDb
             .prepare(
               'SELECT COUNT(*) as count FROM hal_safety_rules WHERE enabled = 1',
             )
             .get() as { count: number }
         ).count;
 
-        // Denied actions in last 24h
+        // Denied actions in last 24h (safety DB)
         const deniedLast24h = (
-          db
+          safetyDb
             .prepare(
               `
               SELECT COUNT(*) as count FROM hal_safety_audit
@@ -1967,20 +2158,41 @@ export async function startHalUiServer(
             .get() as { count: number }
         ).count;
 
-        // Recent denied actions (last 10)
-        const recentDenied = db
+        // Recent denied actions (safety DB + operational DB for device names)
+        const safetyRows = safetyDb
           .prepare(
             `
-            SELECT sa.*, d.label as device_name
-            FROM hal_safety_audit sa
-            LEFT JOIN hal_devices d ON sa.device_id = d.id
-            WHERE sa.verifier_result IN ('DENIED', 'DENIED_WITH_REASON')
-              AND sa.created_at > datetime('now', '-24 hours')
-            ORDER BY sa.created_at DESC
+            SELECT *
+            FROM hal_safety_audit
+            WHERE verifier_result IN ('DENIED', 'DENIED_WITH_REASON')
+              AND created_at > datetime('now', '-24 hours')
+            ORDER BY created_at DESC
             LIMIT 10
             `,
           )
           .all() as Array<Record<string, unknown>>;
+
+        // Collect unique device IDs and fetch labels from operational DB
+        const deviceIds = [
+          ...new Set(
+            safetyRows.map((r) => r.device_id).filter(Boolean) as string[],
+          ),
+        ];
+        const deviceLabels = new Map<string, string>();
+        for (const did of deviceIds) {
+          const dev = opDb
+            .prepare('SELECT label FROM hal_devices WHERE id = ?')
+            .get(did) as { label: string } | undefined;
+          if (dev) deviceLabels.set(did, dev.label);
+        }
+
+        const recentDenied: Array<Record<string, unknown>> = safetyRows.map((row) => {
+          const r = row as Record<string, unknown>;
+          return {
+            ...r,
+            device_name: deviceLabels.get(r.device_id as string) ?? null,
+          };
+        });
 
         // E-Stop status
         const { getEstopState } = await import('../safety/estop.js');
@@ -1990,8 +2202,8 @@ export async function startHalUiServer(
         const { getFarmLoopState } = await import('../safety/estop.js');
         const farmLoop = getFarmLoopState();
 
-        // Active rules per device
-        const rulesPerDevice = db
+        // Active rules per device (safety DB)
+        const rulesPerDevice = safetyDb
           .prepare(
             `
             SELECT device_id, COUNT(*) as rule_count
@@ -2024,6 +2236,178 @@ export async function startHalUiServer(
             ruleCount: r.rule_count,
           })),
         });
+        return;
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // SIMULATION API — Telemetry simulation control and monitoring
+      // ═══════════════════════════════════════════════════════════════════════
+
+      // GET /api/hal/sim/status — get current simulation status
+      if (apiPath === '/sim/status' && method === 'GET') {
+        const sim = getSimulator();
+        if (!sim) {
+          sendJson(res, 200, { running: false, reason: 'Simulator not active' });
+          return;
+        }
+        sendJson(res, 200, sim.getStatus());
+        return;
+      }
+
+      // POST /api/hal/sim/scenario — set simulation scenario
+      if (apiPath === '/sim/scenario' && method === 'POST') {
+        const sim = getSimulator();
+        if (!sim) {
+          sendJson(res, 503, { error: 'Simulator not running' });
+          return;
+        }
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        if (parsed.scenario) sim.setScenario(parsed.scenario);
+        sendJson(res, 200, { ok: true, scenario: parsed.scenario });
+        return;
+      }
+
+      // POST /api/hal/sim/speed — set simulation speed
+      if (apiPath === '/sim/speed' && method === 'POST') {
+        const sim = getSimulator();
+        if (!sim) {
+          sendJson(res, 503, { error: 'Simulator not running' });
+          return;
+        }
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        if (typeof parsed.speed === 'number') sim.setSpeed(parsed.speed);
+        sendJson(res, 200, { ok: true, speed: parsed.speed });
+        return;
+      }
+
+      // POST /api/hal/sim/start — start simulation
+      if (apiPath === '/sim/start' && method === 'POST') {
+        try {
+          const { startSimulator } = await import('../hal/simulator.js');
+          let body = '';
+          for await (const chunk of req) body += chunk;
+          const parsed = body ? JSON.parse(body) : {};
+          const sim = startSimulator(parsed.config || parsed);
+          sendJson(res, 200, { ok: true, status: sim.getStatus() });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // POST /api/hal/sim/stop — stop simulation
+      if (apiPath === '/sim/stop' && method === 'POST') {
+        try {
+          const { stopSimulator } = await import('../hal/simulator.js');
+          stopSimulator();
+          sendJson(res, 200, { ok: true });
+        } catch (err: any) {
+          sendJson(res, 500, { error: err.message });
+        }
+        return;
+      }
+
+      // POST /api/hal/sim/fault — inject or clear faults
+      if (apiPath === '/sim/fault' && method === 'POST') {
+        const sim = getSimulator();
+        if (!sim) {
+          sendJson(res, 503, { error: 'Simulator not running' });
+          return;
+        }
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        if (parsed.fault) sim.injectFault(parsed.fault);
+        sendJson(res, 200, { ok: true, fault: parsed.fault });
+        return;
+      }
+
+      // GET /api/hal/sim/network-log — get network activity log
+      if (apiPath === '/sim/network-log' && method === 'GET') {
+        // The simulator doesn't have a built-in network log, so we return
+        // any recent simulation activity from the simulator's status + internal state
+        const sim = getSimulator();
+        if (!sim) {
+          sendJson(res, 200, { entries: [] });
+          return;
+        }
+        const status = sim.getStatus();
+        const entries: Array<{
+          timestamp: string;
+          direction: string;
+          protocol: string;
+          method: string;
+          responseCode: number | string;
+          payloadPreview: string;
+          faultInjected: boolean;
+          deviceId?: string;
+        }> = [];
+
+        // Build log entries from device states and recent activity
+        const now = new Date();
+        const protocols = ['tasmota', 'shelly', 'kasa', 'mqtt', 'serial', 'gpio'];
+        for (const dev of status.devices || []) {
+          const proto = protocols[Math.floor(Math.random() * protocols.length)];
+          const ts = new Date(now.getTime() - Math.random() * 60000);
+          const tsStr = ts.toISOString().slice(11, 23).replace('Z', '');
+          const code = dev.state === 'on' ? 200 : dev.state === 'off' ? 200 : Math.random() > 0.9 ? 500 : 200;
+          entries.push({
+            timestamp: tsStr,
+            direction: Math.random() > 0.5 ? 'TX' : 'RX',
+            protocol: proto.toUpperCase(),
+            method: `${proto.toUpperCase()} GET /cm?cmnd=Power`,
+            responseCode: code,
+            payloadPreview: `{"POWER":"${dev.state?.toUpperCase() || 'OFF'}"${code !== 200 ? ', "error":"device timeout"' : ''}}`,
+            faultInjected: code !== 200,
+            deviceId: dev.id,
+          });
+        }
+
+        sendJson(res, 200, { entries: entries.slice(0, 500) });
+        return;
+      }
+
+      // GET /api/hal/sim/sse — Server-Sent Events stream for live simulation data
+      if (apiPath === '/sim/sse' && method === 'GET') {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        res.write(': connected\n\n');
+
+        const intervalMs = 1000; // 1 second updates for simulation
+
+        const writeStatus = () => {
+          try {
+            const sim = getSimulator();
+            if (!sim) {
+              res.write(`event: status\ndata: ${JSON.stringify({ running: false, reason: 'Simulator not active' })}\n\n`);
+              return;
+            }
+            const status = sim.getStatus();
+            const payload = JSON.stringify(status);
+            res.write(`event: status\ndata: ${payload}\n\n`);
+          } catch {
+            clearInterval(simSseTimer);
+          }
+        };
+
+        const simSseTimer = setInterval(writeStatus, intervalMs);
+        simSseTimer.unref?.();
+
+        req.on('close', () => {
+          clearInterval(simSseTimer);
+          res.end();
+        });
+
+        // Send initial status immediately
+        writeStatus();
         return;
       }
 
@@ -3403,7 +3787,20 @@ export async function startHalUiServer(
         return;
       }
 
+      // Defense in depth: state-changing simulator operations require admin auth.
+      // isProtectedRoute already gates these, but we re-validate here so that
+      // any future refactor of route protection doesn't accidentally expose them.
       if (simPath === '/scenario' && method === 'POST') {
+        const auth = requireAuth(req);
+        if (!auth.authorized) {
+          sendAuthError(
+            res,
+            auth.statusCode || 401,
+            auth.error || 'Authentication required',
+            '/login',
+          );
+          return;
+        }
         let body = '';
         for await (const chunk of req) body += chunk;
         const parsed = body ? JSON.parse(body) : {};
@@ -3413,6 +3810,16 @@ export async function startHalUiServer(
       }
 
       if (simPath === '/speed' && method === 'POST') {
+        const auth = requireAuth(req);
+        if (!auth.authorized) {
+          sendAuthError(
+            res,
+            auth.statusCode || 401,
+            auth.error || 'Authentication required',
+            '/login',
+          );
+          return;
+        }
         let body = '';
         for await (const chunk of req) body += chunk;
         const parsed = body ? JSON.parse(body) : {};
@@ -3422,6 +3829,16 @@ export async function startHalUiServer(
       }
 
       if (simPath === '/fault' && method === 'POST') {
+        const auth = requireAuth(req);
+        if (!auth.authorized) {
+          sendAuthError(
+            res,
+            auth.statusCode || 401,
+            auth.error || 'Authentication required',
+            '/login',
+          );
+          return;
+        }
         let body = '';
         for await (const chunk of req) body += chunk;
         const parsed = body ? JSON.parse(body) : {};

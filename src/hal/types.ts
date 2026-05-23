@@ -42,7 +42,7 @@ export type RelayReason =
 
 // Decision types
 export type DecisionType = 'turn_on' | 'turn_off' | 'adjust' | 'alert' | 'noop';
-export type DecisionOutcome = 'success' | 'failure' | 'pending';
+export type DecisionOutcome = 'success' | 'failure' | 'pending' | 'blocked';
 
 export interface HalDevice {
   id: string;

@@ -103,13 +103,15 @@ test('runMigrations repairs impossible historical readings', async () => {
 
 test('HalSimulator tick stores plausible live readings', async () => {
   const { runMigrations, getDb } = await import('../src/hal/db.js');
+  const { runSafetyMigrations } = await import('../src/hal/safety-db.js');
   const { HalSimulator } = await import('../src/hal/simulator.js');
 
   runMigrations();
+  runSafetyMigrations();
   const sim = new HalSimulator({ tickMs: 5000, speed: 60, seed: 7 });
   sim.setDeviceState('grow_light_main', 'on');
   for (let i = 0; i < 20; i++) {
-    sim.runTickForTesting();
+    await sim.runTickForTesting();
   }
 
   const db = getDb();

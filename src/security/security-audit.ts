@@ -11,7 +11,7 @@
  * - ADMIN_ACTION: Administrative action performed
  */
 
-import { getDb } from '../hal/db.js';
+import { getSafetyDb } from '../hal/safety-db.js';
 
 export type SecurityEventType =
   | 'LOGIN_SUCCESS'
@@ -43,7 +43,7 @@ function genId(prefix: string): string {
  * Initialize security audit log database table
  */
 export function initSecurityAuditDatabase(): void {
-  const db = getDb();
+  const db = getSafetyDb();
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS security_audit (
@@ -79,7 +79,7 @@ export function logSecurityEvent(
   userAgent?: string | null,
   endpoint?: string | null,
 ): SecurityAuditEntry {
-  const db = getDb();
+  const db = getSafetyDb();
   const id = genId('sec');
   const now = new Date().toISOString();
 
@@ -274,7 +274,7 @@ export function logAdminAction(
 export function getRecentSecurityAuditEntries(
   limit = 100,
 ): SecurityAuditEntry[] {
-  const db = getDb();
+  const db = getSafetyDb();
   const rows = db
     .prepare(
       `
@@ -293,7 +293,7 @@ export function getSecurityAuditEntriesByType(
   eventType: SecurityEventType,
   limit = 100,
 ): SecurityAuditEntry[] {
-  const db = getDb();
+  const db = getSafetyDb();
   const rows = db
     .prepare(
       `
@@ -315,7 +315,7 @@ export function getSecurityAuditEntriesByIp(
   ipAddress: string,
   limit = 100,
 ): SecurityAuditEntry[] {
-  const db = getDb();
+  const db = getSafetyDb();
   const rows = db
     .prepare(
       `
@@ -337,7 +337,7 @@ export function getSecurityAuditEntriesBySession(
   sessionId: string,
   limit = 100,
 ): SecurityAuditEntry[] {
-  const db = getDb();
+  const db = getSafetyDb();
   const rows = db
     .prepare(
       `
@@ -391,7 +391,7 @@ function getFilteredSecurityAuditEntries(options: {
   ipAddress?: string;
   sessionId?: string;
 }): SecurityAuditEntry[] {
-  const db = getDb();
+  const db = getSafetyDb();
   const conditions: string[] = [];
   const params: unknown[] = [];
 

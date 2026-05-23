@@ -45,6 +45,14 @@ export interface AuthContext {
 }
 
 /**
+ * Check if FarmPal is running in development/test mode.
+ * When true, simulator routes (_sim) are accessible without auth.
+ */
+export function isFarmPalDevMode(): boolean {
+  return process.env.FARMPAL_DEV_MODE === '1' || process.env.NODE_ENV === 'test';
+}
+
+/**
  * Get the admin password hash from the provisioning state
  */
 function getAdminPasswordHash(): string | null {
@@ -177,8 +185,12 @@ export function authMiddleware(req: http.IncomingMessage): {
     '/health',
     '/api/provisioning',
     '/api/auth/login',
-    '/_sim',
   ];
+
+  // In dev/test mode, allow unauthenticated access to simulator routes
+  if (isFarmPalDevMode()) {
+    skipAuthPaths.push('/_sim');
+  }
 
   for (const skip of skipAuthPaths) {
     if (pathname.startsWith(skip)) {
@@ -339,8 +351,12 @@ export function isProtectedPath(pathname: string): boolean {
     '/health',
     '/api/provisioning',
     '/api/auth/login',
-    '/_sim',
   ];
+
+  // In dev/test mode, allow unauthenticated access to simulator routes
+  if (isFarmPalDevMode()) {
+    publicPaths.push('/_sim');
+  }
 
   for (const path of publicPaths) {
     if (pathname.startsWith(path)) {
@@ -354,7 +370,7 @@ export function isProtectedPath(pathname: string): boolean {
   }
 
   // HAL UI static files are protected
-  if (!pathname.startsWith('/api/') && !pathname.startsWith('/_sim/')) {
+  if (!pathname.startsWith('/api/')) {
     return true;
   }
 

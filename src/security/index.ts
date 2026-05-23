@@ -48,6 +48,7 @@ export {
   csrfMiddleware,
   requireAuth,
   isProtectedPath,
+  isFarmPalDevMode,
   buildAuthChallenge,
   buildCsrfError,
   type AuthResult,

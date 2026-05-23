@@ -1,4 +1,5 @@
 import { execSync } from 'child_process';
+import * as net from 'node:net';
 import { halRegistry } from './registry.js';
 import type { DeviceType, DeviceProtocol } from './types.js';
 
@@ -46,14 +47,16 @@ function probeShelly(host: string): boolean {
   }
 }
 
-function probeKasa(host: string): boolean {
-  // Kasa doesn't have a simple HTTP probe — try UDP 9999 or kasa CLI
-  try {
-    execSync(`kasa device ${host} --type plug`, { timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
+function probeKasa(host: string): Promise<boolean> {
+  // Try TCP port 9999 (legacy protocol) — quick SYN check
+  return new Promise<boolean>((resolve) => {
+    const sock = new net.Socket();
+    sock.setTimeout(2000);
+    sock.on('connect', () => { sock.destroy(); resolve(true); });
+    sock.on('error', () => resolve(false));
+    sock.on('timeout', () => { sock.destroy(); resolve(false); });
+    sock.connect(9999, host);
+  });
 }
 
 export interface DiscoveryOptions {
@@ -86,7 +89,7 @@ export async function discoverDevices(
       console.log(`[HAL/Discovery] Found Shelly at ${host}`);
       continue;
     }
-    if (types.includes('kasa') && probeKasa(host)) {
+    if (types.includes('kasa') && (await probeKasa(host))) {
       results.push({ host, type: 'kasa' });
       console.log(`[HAL/Discovery] Found Kasa at ${host}`);
     }

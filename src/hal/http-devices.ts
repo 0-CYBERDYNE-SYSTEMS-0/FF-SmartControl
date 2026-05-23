@@ -1,13 +1,58 @@
 import { halRegistry } from './registry.js';
+import type { DevicePowerResponse } from './kasa-client.js';
 
-export interface DevicePowerResponse {
-  state: 'on' | 'off' | 'unknown';
-  watts?: number;
+// Re-export for downstream consumers
+export type { DevicePowerResponse };
+
+// ── Mock URL resolution ─────────────────────────────────────────────────
+
+/** Base URL of the shared HTTP mock server (set when HAL_SIM_MODE=1). */
+let mockBaseUrl: string | null = null;
+
+/**
+ * Set the mock HTTP server base URL. When set, all Tasmota/Shelly clients
+ * will route requests through the mock server instead of real hardware.
+ */
+export function setMockBaseUrl(url: string | null): void {
+  mockBaseUrl = url;
 }
 
-// Tasmota HTTP API (GET http://<host>/cm?cmnd=Power)
+/** Get the current mock base URL (for debugging). */
+export function getMockBaseUrl(): string | null {
+  return mockBaseUrl;
+}
+
+/**
+ * Resolve a device URL. When mockBaseUrl is set, the URL is rewritten to
+ * target the mock server with the original host as a path prefix.
+ *
+ *   Real:  http://192.168.1.101/cm?cmnd=Power
+ *   Mock:  http://127.0.0.1:5432/192.168.1.101/cm?cmnd=Power
+ */
+function resolveUrl(host: string, path: string, queryParams?: Record<string, string>): string {
+  if (mockBaseUrl) {
+    const url = new URL(`${mockBaseUrl}/${host}${path}`);
+    if (queryParams) {
+      for (const [key, value] of Object.entries(queryParams)) {
+        url.searchParams.set(key, value);
+      }
+    }
+    return url.toString();
+  }
+  // Real device URL
+  const url = new URL(`http://${host}${path}`);
+  if (queryParams) {
+    for (const [key, value] of Object.entries(queryParams)) {
+      url.searchParams.set(key, value);
+    }
+  }
+  return url.toString();
+}
+
+// ── Tasmota HTTP API ─────────────────────────────────────────────────────
+
 async function tasmotaGet(host: string, command: string): Promise<any> {
-  const url = `http://${host}/cm?cmnd=${encodeURIComponent(command)}`;
+  const url = resolveUrl(host, '/cm', { cmnd: command });
   const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
   if (!res.ok) throw new Error(`Tasmota ${host} unreachable`);
   return res.json();
@@ -40,9 +85,10 @@ export class TasmotaClient {
   }
 }
 
-// Shelly HTTP API (GET http://<host>/status)
+// ── Shelly HTTP API ──────────────────────────────────────────────────────
+
 async function shellyGet(host: string, path: string = '/status'): Promise<any> {
-  const url = `http://${host}${path}`;
+  const url = resolveUrl(host, path);
   const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
   if (!res.ok) throw new Error(`Shelly ${host} unreachable`);
   return res.json();
@@ -68,39 +114,13 @@ export class ShellyClient {
   }
 }
 
-// Kasa (TP-Link) HTTP API — requires auth token approach
-// For simplicity: use the unencrypted UDP protocol or cloud API
-// Fallback: use kasa CLI tool if available
-export class KasaClient {
-  constructor(private host: string) {}
+// ── Kasa (TP-Link) ───────────────────────────────────────────────────────
 
-  async getPower(): Promise<DevicePowerResponse> {
-    try {
-      // Try kasa CLI tool (available via `npm install -g kasa` or system install)
-      const { execSync } = await import('child_process');
-      const out = execSync(`kasa device ${this.host}`, {
-        timeout: 5000,
-      }).toString();
-      const on = out.toLowerCase().includes('state: on');
-      const wattsMatch = out.match(/power:\s*([\d.])\s*W/);
-      return {
-        state: on ? 'on' : 'off',
-        watts: wattsMatch ? parseFloat(wattsMatch[1]) : undefined,
-      };
-    } catch {
-      return { state: 'unknown' };
-    }
-  }
+import { KasaClient } from './kasa-client.js';
+export { KasaClient };
 
-  async setPower(on: boolean): Promise<void> {
-    const { execSync } = await import('child_process');
-    execSync(`kasa device ${this.host} --type plug ${on ? 'on' : 'off'}`, {
-      timeout: 5000,
-    });
-  }
-}
+// ── Factory ──────────────────────────────────────────────────────────────
 
-// Factory
 export async function createHttpClient(
   host: string,
   protocol: 'tasmota' | 'shelly' | 'kasa',

@@ -30,6 +30,8 @@ export interface VerifierResult {
   reasoning: string;
   concerns: string[];
   safetyOverride?: boolean;
+  /** FIX-10: true when LLM was unavailable and decision relied on deterministic rules only */
+  deterministicOnly?: boolean;
 }
 
 interface SafetyRule {
@@ -298,6 +300,11 @@ export async function runVerifier(
     };
   }
 
+  // Track whether the LLM verification step ran
+  let llmVerifierRan = false;
+  let llmVerifierUnavailable = false;
+  let llmUnavailableReason = '';
+
   try {
     // Use LLM for additional context-aware validation after deterministic checks.
     const systemPrompt = buildSafetyPrompt(input);
@@ -305,6 +312,7 @@ export async function runVerifier(
       'Evaluate this proposed farm action for safety. Consider device state, recent history, and environmental conditions.',
       { system: systemPrompt, temperature: 0.1, maxTokens: 512 },
     );
+    llmVerifierRan = true;
     const jsonMatch = llmResult.text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
@@ -318,11 +326,19 @@ export async function runVerifier(
       }
     }
   } catch (err) {
-    if (requiresContextVerifier(input.proposedAction.decision)) {
-      concerns.push(
-        `LLM_VERIFIER_UNAVAILABLE: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    llmVerifierUnavailable = true;
+    llmUnavailableReason =
+      err instanceof Error ? err.message : String(err);
+
+    // FIX-10: When LLM is unavailable, fall back to deterministic-only
+    // approval instead of blocking all actuator decisions.
+    // The deterministic safety rules (temperature, humidity, rate limits)
+    // provide a safe baseline — LLM context validation is additive, not
+    // a prerequisite for basic safety.
+    //
+    // We do NOT push to `concerns` here (that would block the action).
+    // Instead we track unavailability via `deterministicOnly` flag so
+    // the caller knows the LLM wasn't consulted.
   }
 
   const approved = concerns.length === 0;
@@ -346,9 +362,12 @@ export async function runVerifier(
   return {
     approved,
     reasoning: approved
-      ? 'All safety checks passed'
+      ? llmVerifierUnavailable
+        ? 'All deterministic safety checks passed (LLM unavailable — deterministic-only approval)'
+        : 'All safety checks passed'
       : concerns.map((c) => `- ${c}`).join('\n'),
     concerns,
+    ...(llmVerifierUnavailable ? { deterministicOnly: true } : {}),
   };
 }
 

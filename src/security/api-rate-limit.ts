@@ -7,7 +7,7 @@
  * - Rate limit hits logged to audit log
  */
 
-import { getDb } from '../hal/db.js';
+import { getSafetyDb } from '../hal/safety-db.js';
 
 // Rate limit configuration
 const MAX_REQUESTS_PER_MINUTE = 100;
@@ -23,7 +23,7 @@ export interface ApiRateLimitResult {
  * Initialize API rate limit database table
  */
 export function initApiRateLimitDatabase(): void {
-  const db = getDb();
+  const db = getSafetyDb();
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS api_rate_limits (
@@ -42,7 +42,7 @@ export function initApiRateLimitDatabase(): void {
  * Check rate limit for a session
  */
 export function checkApiRateLimit(sessionId: string): ApiRateLimitResult {
-  const db = getDb();
+  const db = getSafetyDb();
   const windowStart = new Date(
     Date.now() - WINDOW_SECONDS * 1000,
   ).toISOString();
@@ -101,7 +101,7 @@ export function checkApiRateLimit(sessionId: string): ApiRateLimitResult {
  * Record an API request for rate limiting
  */
 export function recordApiRequest(sessionId: string, endpoint: string): void {
-  const db = getDb();
+  const db = getSafetyDb();
   const now = new Date().toISOString();
 
   db.prepare(
@@ -124,7 +124,7 @@ export function recordApiRequest(sessionId: string, endpoint: string): void {
  * Clear rate limit data for a session (on logout)
  */
 export function clearApiRateLimit(sessionId: string): void {
-  const db = getDb();
+  const db = getSafetyDb();
   db.prepare('DELETE FROM api_rate_limits WHERE session_id = ?').run(sessionId);
 }
 
@@ -135,7 +135,7 @@ export function getApiRateLimitStatus(sessionId: string): {
   remainingRequests: number;
   resetInSeconds: number;
 } {
-  const db = getDb();
+  const db = getSafetyDb();
   const windowStart = new Date(
     Date.now() - WINDOW_SECONDS * 1000,
   ).toISOString();
@@ -180,6 +180,6 @@ export function getApiRateLimitStatus(sessionId: string): {
  * Clear all rate limit data (for testing)
  */
 export function clearAllApiRateLimits(): void {
-  const db = getDb();
+  const db = getSafetyDb();
   db.prepare('DELETE FROM api_rate_limits').run();
 }

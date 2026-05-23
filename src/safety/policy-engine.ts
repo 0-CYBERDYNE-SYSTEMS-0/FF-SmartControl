@@ -12,7 +12,7 @@
  * - dependency: device state depends on another device/sensor condition
  */
 
-import { getDb } from '../hal/db.js';
+import { getSafetyDb } from '../hal/safety-db.js';
 import { HalDevice, MetricType } from '../hal/types.js';
 
 export type RuleType =
@@ -141,7 +141,7 @@ export interface PolicyEngineDeps {
  * Load safety rules from SQLite into memory cache
  */
 export function loadSafetyRules(deps: PolicyEngineDeps = {}): SafetyRule[] {
-  const db = deps.getDb?.() ?? getDb();
+  const db = deps.getDb?.() ?? getSafetyDb();
   const now = Date.now();
 
   // Return cached rules if still fresh
@@ -238,7 +238,7 @@ export interface ThresholdViolation {
  * Load thresholds from SQLite into memory cache
  */
 export function loadThresholds(deps: PolicyEngineDeps = {}): ThresholdEntry[] {
-  const db = deps.getDb?.() ?? getDb();
+  const db = deps.getDb?.() ?? getSafetyDb();
   const now = Date.now();
 
   if (

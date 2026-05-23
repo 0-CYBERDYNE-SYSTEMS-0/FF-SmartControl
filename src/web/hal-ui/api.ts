@@ -419,9 +419,9 @@ export const halApi = {
     return halPost('/estop', { reason: reason || 'operator', reasonText });
   },
 
-  // POST /api/hal/estop/clear — clear emergency stop (requires auth)
-  async clearEstop(operatorId: string): Promise<{ ok: boolean }> {
-    return halPost('/estop/clear', { operatorId });
+  // POST /api/hal/estop/clear — clear emergency stop (uses session cookie for auth)
+  async clearEstop(): Promise<{ ok: boolean; clearedBy?: string }> {
+    return halPost('/estop/clear');
   },
 
   // GET /api/hal/estop/safe-states

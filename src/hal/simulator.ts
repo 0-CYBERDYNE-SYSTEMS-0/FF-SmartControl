@@ -23,6 +23,16 @@ import {
   getMetricUnit,
   normalizeMetricValue,
 } from './telemetry-model.js';
+import {
+  getFaultInjectionController,
+  type FaultInjectionController,
+} from './fault-injection.js';
+import {
+  evaluateDeterministicDecisions,
+  THRESHOLDS,
+} from '../agent/deterministic-rules.js';
+import { verifyAction } from '../safety/verifier.js';
+import type { ProposedAction } from '../safety/policy-engine.js';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CONFIG
@@ -646,7 +656,7 @@ export class HalSimulator {
   private devices: SimDevice[];
   private sensors: SimSensor[];
   private config: SimConfig;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   private tickCount = 0;
   private simTimeMs = Date.now();
   private lightScheduleOn = false;
@@ -723,15 +733,31 @@ export class HalSimulator {
       }
     }
 
-    this.timer = setInterval(() => this.tick(), this.config.tickMs);
+    this.timer = setTimeout(() => this.scheduleTick(), this.config.tickMs);
     console.log(
       `[HAL Sim] Started — scenario: ${this.config.scenario}, speed: ${this.config.speed}x, tick: ${this.config.tickMs}ms`,
     );
   }
 
+  private scheduleTick(): void {
+    this.tick()
+      .catch((err) => {
+        console.error('[HAL Sim] tick error:', err);
+      })
+      .finally(() => {
+        // Schedule next tick only if timer wasn't cleared during this tick
+        if (this.timer !== null) {
+          this.timer = setTimeout(
+            () => this.scheduleTick(),
+            this.config.tickMs,
+          );
+        }
+      });
+  }
+
   stop(): void {
     if (this.timer) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = null;
     }
     console.log('[HAL Sim] Stopped');
@@ -746,13 +772,13 @@ export class HalSimulator {
   setSpeed(speed: number): void {
     this.config.speed = Math.max(0.1, Math.min(100, speed));
     if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = setInterval(() => this.tick(), this.config.tickMs);
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.scheduleTick(), this.config.tickMs);
     }
   }
 
-  runTickForTesting(): void {
-    this.tick();
+  async runTickForTesting(): Promise<void> {
+    await this.tick();
   }
 
   injectFault(
@@ -828,8 +854,35 @@ export class HalSimulator {
         networkFlap: this.faultState.networkFlap,
         delayedTelemetry: this.faultState.delayedTelemetry,
         badCalibration: Array.from(this.faultState.badCalibration),
+        protocolLevel: getFaultInjectionController().getStatus(),
       },
     };
+  }
+
+  /**
+   * Inject a protocol-level fault at a specific injection point.
+   * Delegates to FaultInjectionController.
+   */
+  injectProtocolFault(
+    point: import('./fault-injection.js').InjectionPoint,
+    type: import('./fault-injection.js').FaultType,
+    config?: import('./fault-injection.js').FaultConfig,
+  ): string {
+    return getFaultInjectionController().inject(point, type, config);
+  }
+
+  /**
+   * Clear all protocol-level faults.
+   */
+  clearProtocolFaults(): void {
+    getFaultInjectionController().clearAll();
+  }
+
+  /**
+   * Get the protocol-level fault injection status.
+   */
+  getProtocolFaultStatus(): ReturnType<typeof getFaultInjectionController.prototype.getStatus> {
+    return getFaultInjectionController().getStatus();
   }
 
   private applyScenario(): void {
@@ -866,7 +919,7 @@ export class HalSimulator {
     }
   }
 
-  private tick(): void {
+  private async tick(): Promise<void> {
     const dtSeconds = (this.config.tickMs / 1000) * this.config.speed;
     this.simTimeMs += this.config.tickMs * this.config.speed;
     this.tickCount++;
@@ -939,8 +992,8 @@ export class HalSimulator {
       this.clampZone(zone);
     });
 
-    // 4. Agent-style auto decisions
-    this.runAutoDecisions();
+    // 4. Agent-style auto decisions (passes through safety verifier)
+    await this.runAutoDecisions();
 
     // 5. Read sensors and store to HAL
     this.readAndStoreSensors();
@@ -1045,109 +1098,238 @@ export class HalSimulator {
     zone.weight = normalizeMetricValue('weight', zone.weight);
   }
 
-  private runAutoDecisions(): void {
-    // Simple rule-based agent decisions
+  private async runAutoDecisions(): Promise<void> {
+    // Simple rule-based agent decisions — routed through safety verifier
     const zone = this.zones[0];
     const now = new Date(this.simTimeMs).toISOString();
 
-    // Temperature control
+    // Temperature control — exhaust fan ON if temp > threshold
     if (
-      zone.temperature > 28 &&
+      zone.temperature > THRESHOLDS.temperature.turnOn &&
       this.devices.find((d) => d.id === 'exhaust_fan')!.state === 'off'
     ) {
       if (!this.faultState.deviceOffline.has('exhaust_fan')) {
-        this.setDeviceState('exhaust_fan', 'on');
-        halDecisions.log({
-          device_id: 'exhaust_fan',
+        const action: ProposedAction = {
           decision: 'turn_on',
+          deviceId: 'exhaust_fan',
+          reasoning: `Temperature ${zone.temperature.toFixed(1)}°C exceeded ${THRESHOLDS.temperature.turnOn}°C threshold`,
           confidence: 0.92,
-          reasoning: `Temperature ${zone.temperature.toFixed(1)}°C exceeded 28°C threshold`,
-          sensor_snapshot: {
-            temperature: zone.temperature,
-            humidity: zone.humidity,
-          },
-          outcome: 'success',
+        };
+        const result = await verifyAction({
+          action,
+          triggeredBy: 'auto_decision',
         });
+        if (result.approved) {
+          this.setDeviceState('exhaust_fan', 'on');
+          halDecisions.log({
+            device_id: 'exhaust_fan',
+            decision: 'turn_on',
+            confidence: 0.92,
+            reasoning: action.reasoning!,
+            sensor_snapshot: {
+              temperature: zone.temperature,
+              humidity: zone.humidity,
+            },
+            outcome: 'success',
+          });
+        } else {
+          halDecisions.log({
+            device_id: 'exhaust_fan',
+            decision: 'turn_on',
+            confidence: 0.92,
+            reasoning: `DENIED: ${result.reason ?? 'safety violation'}`,
+            sensor_snapshot: {
+              temperature: zone.temperature,
+              humidity: zone.humidity,
+            },
+            outcome: 'blocked',
+          });
+        }
       }
     } else if (
-      zone.temperature < 23 &&
+      zone.temperature < THRESHOLDS.temperature.turnOff &&
       this.devices.find((d) => d.id === 'exhaust_fan')!.state === 'on'
     ) {
-      this.setDeviceState('exhaust_fan', 'off');
-      halDecisions.log({
-        device_id: 'exhaust_fan',
+      const action: ProposedAction = {
         decision: 'turn_off',
+        deviceId: 'exhaust_fan',
+        reasoning: `Temperature ${zone.temperature.toFixed(1)}°C below ${THRESHOLDS.temperature.turnOff}°C`,
         confidence: 0.88,
-        reasoning: `Temperature ${zone.temperature.toFixed(1)}°C below 23°C`,
-        sensor_snapshot: { temperature: zone.temperature },
-        outcome: 'success',
+      };
+      const result = await verifyAction({
+        action,
+        triggeredBy: 'auto_decision',
       });
+      if (result.approved) {
+        this.setDeviceState('exhaust_fan', 'off');
+        halDecisions.log({
+          device_id: 'exhaust_fan',
+          decision: 'turn_off',
+          confidence: 0.88,
+          reasoning: action.reasoning!,
+          sensor_snapshot: { temperature: zone.temperature },
+          outcome: 'success',
+        });
+      } else {
+        halDecisions.log({
+          device_id: 'exhaust_fan',
+          decision: 'turn_off',
+          confidence: 0.88,
+          reasoning: `DENIED: ${result.reason ?? 'safety violation'}`,
+          sensor_snapshot: { temperature: zone.temperature },
+          outcome: 'blocked',
+        });
+      }
     }
 
     // Humidity control
     if (
-      zone.humidity < 50 &&
+      zone.humidity < THRESHOLDS.humidity.turnOn &&
       this.devices.find((d) => d.id === 'humidifier')!.state === 'off'
     ) {
       if (!this.faultState.deviceOffline.has('humidifier')) {
-        this.setDeviceState('humidifier', 'on');
+        const action: ProposedAction = {
+          decision: 'turn_on',
+          deviceId: 'humidifier',
+          reasoning: `Humidity ${zone.humidity.toFixed(1)}% below ${THRESHOLDS.humidity.turnOn}%`,
+          confidence: 0.9,
+        };
+        const result = await verifyAction({
+          action,
+          triggeredBy: 'auto_decision',
+        });
+        if (result.approved) {
+          this.setDeviceState('humidifier', 'on');
+          halDecisions.log({
+            device_id: 'humidifier',
+            decision: 'turn_on',
+            confidence: 0.9,
+            reasoning: action.reasoning!,
+            sensor_snapshot: { humidity: zone.humidity },
+            outcome: 'success',
+          });
+        } else {
+          halDecisions.log({
+            device_id: 'humidifier',
+            decision: 'turn_on',
+            confidence: 0.9,
+            reasoning: `DENIED: ${result.reason ?? 'safety violation'}`,
+            sensor_snapshot: { humidity: zone.humidity },
+            outcome: 'blocked',
+          });
+        }
+      }
+    } else if (
+      zone.humidity > THRESHOLDS.humidity.turnOff &&
+      this.devices.find((d) => d.id === 'humidifier')!.state === 'on'
+    ) {
+      const action: ProposedAction = {
+        decision: 'turn_off',
+        deviceId: 'humidifier',
+        reasoning: `Humidity ${zone.humidity.toFixed(1)}% above ${THRESHOLDS.humidity.turnOff}%`,
+        confidence: 0.85,
+      };
+      const result = await verifyAction({
+        action,
+        triggeredBy: 'auto_decision',
+      });
+      if (result.approved) {
+        this.setDeviceState('humidifier', 'off');
         halDecisions.log({
           device_id: 'humidifier',
-          decision: 'turn_on',
-          confidence: 0.9,
-          reasoning: `Humidity ${zone.humidity.toFixed(1)}% below 50%`,
+          decision: 'turn_off',
+          confidence: 0.85,
+          reasoning: action.reasoning!,
           sensor_snapshot: { humidity: zone.humidity },
           outcome: 'success',
         });
+      } else {
+        halDecisions.log({
+          device_id: 'humidifier',
+          decision: 'turn_off',
+          confidence: 0.85,
+          reasoning: `DENIED: ${result.reason ?? 'safety violation'}`,
+          sensor_snapshot: { humidity: zone.humidity },
+          outcome: 'blocked',
+        });
       }
-    } else if (
-      zone.humidity > 70 &&
-      this.devices.find((d) => d.id === 'humidifier')!.state === 'on'
-    ) {
-      this.setDeviceState('humidifier', 'off');
-      halDecisions.log({
-        device_id: 'humidifier',
-        decision: 'turn_off',
-        confidence: 0.85,
-        reasoning: `Humidity ${zone.humidity.toFixed(1)}% above 70%`,
-        sensor_snapshot: { humidity: zone.humidity },
-        outcome: 'success',
-      });
     }
 
     // Soil moisture → water pump
     if (
-      zone.soilMoisture < 45 &&
+      zone.soilMoisture < THRESHOLDS.soilMoisture.turnOn &&
       this.devices.find((d) => d.id === 'water_pump')!.state === 'off'
     ) {
       if (!this.faultState.deviceOffline.has('water_pump')) {
-        this.setDeviceState('water_pump', 'on');
+        const action: ProposedAction = {
+          decision: 'turn_on',
+          deviceId: 'water_pump',
+          reasoning: `Soil moisture ${zone.soilMoisture.toFixed(1)}% below ${THRESHOLDS.soilMoisture.turnOn}%`,
+          confidence: 0.85,
+        };
+        const result = await verifyAction({
+          action,
+          triggeredBy: 'auto_decision',
+        });
+        if (result.approved) {
+          this.setDeviceState('water_pump', 'on');
+          halDecisions.log({
+            device_id: 'water_pump',
+            decision: 'turn_on',
+            confidence: 0.85,
+            reasoning: action.reasoning!,
+            sensor_snapshot: { soil_moisture: zone.soilMoisture },
+            outcome: 'success',
+          });
+        } else {
+          halDecisions.log({
+            device_id: 'water_pump',
+            decision: 'turn_on',
+            confidence: 0.85,
+            reasoning: `DENIED: ${result.reason ?? 'safety violation'}`,
+            sensor_snapshot: { soil_moisture: zone.soilMoisture },
+            outcome: 'blocked',
+          });
+        }
+      }
+    } else if (
+      zone.soilMoisture > THRESHOLDS.soilMoisture.turnOff &&
+      this.devices.find((d) => d.id === 'water_pump')!.state === 'on'
+    ) {
+      const action: ProposedAction = {
+        decision: 'turn_off',
+        deviceId: 'water_pump',
+        reasoning: `Soil moisture ${zone.soilMoisture.toFixed(1)}% above ${THRESHOLDS.soilMoisture.turnOff}%`,
+        confidence: 0.82,
+      };
+      const result = await verifyAction({
+        action,
+        triggeredBy: 'auto_decision',
+      });
+      if (result.approved) {
+        this.setDeviceState('water_pump', 'off');
         halDecisions.log({
           device_id: 'water_pump',
-          decision: 'turn_on',
-          confidence: 0.85,
-          reasoning: `Soil moisture ${zone.soilMoisture.toFixed(1)}% below 45%`,
+          decision: 'turn_off',
+          confidence: 0.82,
+          reasoning: action.reasoning!,
           sensor_snapshot: { soil_moisture: zone.soilMoisture },
           outcome: 'success',
         });
+      } else {
+        halDecisions.log({
+          device_id: 'water_pump',
+          decision: 'turn_off',
+          confidence: 0.82,
+          reasoning: `DENIED: ${result.reason ?? 'safety violation'}`,
+          sensor_snapshot: { soil_moisture: zone.soilMoisture },
+          outcome: 'blocked',
+        });
       }
-    } else if (
-      zone.soilMoisture > 65 &&
-      this.devices.find((d) => d.id === 'water_pump')!.state === 'on'
-    ) {
-      this.setDeviceState('water_pump', 'off');
-      halDecisions.log({
-        device_id: 'water_pump',
-        decision: 'turn_off',
-        confidence: 0.82,
-        reasoning: `Soil moisture ${zone.soilMoisture.toFixed(1)}% above 65%`,
-        sensor_snapshot: { soil_moisture: zone.soilMoisture },
-        outcome: 'success',
-      });
     }
 
-    // CO2 alert
-    if (zone.co2 > 1200 && this.tickCount % 12 === 0) {
+    // CO2 alert (doesn't change device state, no verifier needed)
+    if (zone.co2 > THRESHOLDS.co2.alert && this.tickCount % 12 === 0) {
       halDecisions.log({
         decision: 'alert',
         confidence: 0.93,
@@ -1161,13 +1343,24 @@ export class HalSimulator {
   setDeviceState(deviceId: string, state: 'on' | 'off'): void {
     const dev = this.devices.find((d) => d.id === deviceId);
     if (!dev) return;
-    dev.state = state;
-    halRegistry.updateState(dev.id, state, state === 'on' ? dev.powerWatts : 0);
+
+    // Protocol-level fault injection: intercept relay commands
+    const fic = getFaultInjectionController();
+    const cmd = { device_id: deviceId, state, reason: 'auto_rule', triggered_by: 'simulator' };
+    const intercepted = fic.intercept('relay_command', cmd);
+
+    // If fault injection dropped the command, skip
+    if (intercepted.intercepted && intercepted.data === undefined) return;
+
+    const finalCmd = intercepted.data as typeof cmd;
+
+    dev.state = finalCmd.state;
+    halRegistry.updateState(dev.id, finalCmd.state, finalCmd.state === 'on' ? dev.powerWatts : 0);
     halRelays.log({
       device_id: dev.id,
-      state,
-      reason: 'auto_rule',
-      triggered_by: 'simulator',
+      state: finalCmd.state,
+      reason: 'auto_rule' as import('./types.js').RelayReason,
+      triggered_by: finalCmd.triggered_by,
       switched_at: new Date(this.simTimeMs).toISOString(),
     });
   }
@@ -1245,6 +1438,21 @@ export class HalSimulator {
 
       sensor.lastValue = reading;
 
+      // Protocol-level fault injection: intercept sensor readings
+      const fic = getFaultInjectionController();
+      const intercepted = fic.intercept('sensor_reading_to_hal', {
+        device_id: sensor.deviceId,
+        metric: sensor.metric,
+        value: reading,
+        quality: this.faultState.sensorStuck.has(stuckKey) ? 'error' : 'good',
+      });
+
+      // If fault injection dropped the message, skip storage
+      if (intercepted.intercepted && intercepted.data === undefined) continue;
+
+      const finalReading = (intercepted.data as { value: number }).value;
+      const finalQuality = (intercepted.data as { quality: string }).quality || 'good';
+
       // Fault: delayed telemetry (store with past timestamp)
       const readAt =
         this.faultState.delayedTelemetry && this.rng.bool(0.3)
@@ -1258,8 +1466,8 @@ export class HalSimulator {
         device_id: sensor.deviceId,
         metric: sensor.metric,
         unit: getMetricUnit(sensor.metric),
-        value: reading,
-        quality: this.faultState.sensorStuck.has(stuckKey) ? 'error' : 'good',
+        value: finalReading,
+        quality: finalQuality as 'good' | 'stale' | 'error',
         read_at: readAt,
       });
     }

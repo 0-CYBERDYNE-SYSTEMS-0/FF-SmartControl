@@ -687,6 +687,23 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
         throw err; // Re-throw other errors
       }
 
+      // Initialize safety database (separate from operational HAL DB)
+      // Safety tables: hal_safety_rules, hal_safety_audit, hal_emergency_stop,
+      // hal_device_safe_states, hal_farm_loop_state, admin_sessions,
+      // login_attempts, api_rate_limits, security_audit, hal_update_history
+      try {
+        const { runSafetyMigrations } = await import('./hal/safety-db.js');
+        runSafetyMigrations();
+        deps.logger.info?.('[SAFETY] Safety database migrated and integrity verified');
+      } catch (err) {
+        deps.logger.error?.(
+          { err },
+          '[SAFETY] Safety database initialization failed',
+        );
+        // Non-fatal: safety DB failure shouldn't prevent HAL operations,
+        // but safety verifications will be skipped until DB is available
+      }
+
       if (process.env.HAL_SIM_MODE === '1') {
         // Digital Twin Runtime — live simulation, no real hardware
         const { startSimulator } = await import('./hal/simulator.js');

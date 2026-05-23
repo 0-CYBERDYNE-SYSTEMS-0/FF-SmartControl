@@ -9,7 +9,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../logger.js';
-import { getDb } from '../hal/db.js';
+import { getSafetyDb } from '../hal/safety-db.js';
 import type {
   UpdateRelease,
   UpdateProgress,
@@ -853,7 +853,7 @@ function recordRollbackAudit(params: {
   trigger: 'automatic' | 'manual';
 }): void {
   try {
-    const db = getDb();
+    const db = getSafetyDb();
 
     // Get the audit log table exists, we can use it for rollback events
     // If the table doesn't exist, we just skip this
@@ -907,7 +907,7 @@ function recordUpdateHistory(params: {
   errorMessage?: string;
 }): void {
   try {
-    const db = getDb();
+    const db = getSafetyDb();
     const id = genId('hist');
 
     // Ensure table exists
@@ -955,7 +955,7 @@ function recordUpdateHistory(params: {
  */
 export function getUpdateHistory(limit = 20): UpdateHistoryEntry[] {
   try {
-    const db = getDb();
+    const db = getSafetyDb();
 
     // Ensure table exists
     db.exec(`

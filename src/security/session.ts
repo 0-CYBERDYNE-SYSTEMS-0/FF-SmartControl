@@ -10,7 +10,7 @@
  */
 
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
-import { getDb } from '../hal/db.js';
+import { getSafetyDb } from '../hal/safety-db.js';
 import bcrypt from 'bcryptjs';
 
 // Session configuration
@@ -53,7 +53,7 @@ export interface SessionCookie {
  * Initialize session database table
  */
 export function initSessionDatabase(): void {
-  const db = getDb();
+  const db = getSafetyDb();
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS admin_sessions (
@@ -112,7 +112,7 @@ export async function createSession(
   ipAddress?: string,
   userAgent?: string,
 ): Promise<{ session: Session; cookie: SessionCookie }> {
-  const db = getDb();
+  const db = getSafetyDb();
 
   // Generate new session token
   const token = generateSessionToken();
@@ -185,7 +185,7 @@ export function validateSession(token: string): Session | null {
     return null;
   }
 
-  const db = getDb();
+  const db = getSafetyDb();
   const tokenHash = hashToken(token);
 
   const direct = db
@@ -291,7 +291,7 @@ export function invalidateSession(token: string): void {
     return;
   }
 
-  const db = getDb();
+  const db = getSafetyDb();
   const tokenHash = hashToken(token);
   const direct = db
     .prepare('DELETE FROM admin_sessions WHERE token_hash = ?')
@@ -324,7 +324,7 @@ export function invalidateSession(token: string): void {
  * Invalidate all sessions for an operator
  */
 export function invalidateAllSessions(operatorId: string): void {
-  const db = getDb();
+  const db = getSafetyDb();
   db.prepare('DELETE FROM admin_sessions WHERE operator_id = ?').run(
     operatorId,
   );
@@ -334,7 +334,7 @@ export function invalidateAllSessions(operatorId: string): void {
  * Clean up expired sessions
  */
 export function cleanupExpiredSessions(): number {
-  const db = getDb();
+  const db = getSafetyDb();
   const result = db
     .prepare(
       `

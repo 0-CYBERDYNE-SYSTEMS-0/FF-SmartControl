@@ -11,7 +11,7 @@
  * - Admin auth required to clear E-Stop
  */
 
-import { getDb } from '../hal/db.js';
+import { getSafetyDb } from '../hal/safety-db.js';
 import { halRegistry } from '../hal/registry.js';
 import { halRelays } from '../hal/relays.js';
 import { createAuditEntry } from './audit-log.js';
@@ -54,7 +54,7 @@ let estopCacheLoadedAt = 0;
 const ESTOP_CACHE_TTL_MS = 5000;
 
 function getEstopDb() {
-  return getDb();
+  return getSafetyDb();
 }
 
 function genId(): string {

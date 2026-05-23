@@ -24,6 +24,7 @@ export type ViewId =
   | 'sensors'
   | 'decisions'
   | 'cameras'
+  | 'simulation'
   | 'system'
   | 'terminal'
   | 'safety'

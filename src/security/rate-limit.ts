@@ -7,7 +7,7 @@
  * - Per-IP tracking
  */
 
-import { getDb } from '../hal/db.js';
+import { getSafetyDb } from '../hal/safety-db.js';
 
 // Rate limit configuration
 const MAX_FAILED_ATTEMPTS = 5;
@@ -24,7 +24,7 @@ export interface RateLimitResult {
  * Initialize rate limit database table
  */
 export function initRateLimitDatabase(): void {
-  const db = getDb();
+  const db = getSafetyDb();
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS login_attempts (
@@ -43,7 +43,7 @@ export function initRateLimitDatabase(): void {
  * Record a failed login attempt
  */
 export function recordFailedLogin(ipAddress: string, userAgent?: string): void {
-  const db = getDb();
+  const db = getSafetyDb();
   const now = new Date().toISOString();
 
   db.prepare(
@@ -66,7 +66,7 @@ export function recordFailedLogin(ipAddress: string, userAgent?: string): void {
  * Record a successful login (clears failed attempts)
  */
 export function recordSuccessfulLogin(ipAddress: string): void {
-  const db = getDb();
+  const db = getSafetyDb();
   const now = new Date().toISOString();
 
   db.prepare(
@@ -81,7 +81,7 @@ export function recordSuccessfulLogin(ipAddress: string): void {
  * Reset rate limit (on successful login)
  */
 export function resetRateLimit(ipAddress: string): void {
-  const db = getDb();
+  const db = getSafetyDb();
 
   // Delete all failed attempts for this IP
   db.prepare(
@@ -98,7 +98,7 @@ function isLockedOut(ipAddress: string): {
   locked: boolean;
   retryAfterSeconds: number;
 } {
-  const db = getDb();
+  const db = getSafetyDb();
 
   // Find the most recent failed attempt within the lockout window
   const lockoutStart = new Date(
@@ -165,7 +165,7 @@ export function checkRateLimit(ipAddress: string): RateLimitResult {
   }
 
   // Count recent failed attempts
-  const db = getDb();
+  const db = getSafetyDb();
   const windowStart = new Date(
     Date.now() - FAILED_ATTEMPT_WINDOW_SECONDS * 1000,
   ).toISOString();
@@ -205,7 +205,7 @@ export function checkRateLimit(ipAddress: string): RateLimitResult {
  */
 function logLockoutEvent(ipAddress: string, retryAfterSeconds: number): void {
   try {
-    const db = getDb();
+    const db = getSafetyDb();
 
     // Check if we already logged this lockout recently (avoid spam)
     const recentLockout = db
@@ -267,6 +267,6 @@ export function getRateLimitStatus(ipAddress: string): {
  * Clear all rate limit data (for testing)
  */
 export function clearAllRateLimits(): void {
-  const db = getDb();
+  const db = getSafetyDb();
   db.prepare('DELETE FROM login_attempts').run();
 }

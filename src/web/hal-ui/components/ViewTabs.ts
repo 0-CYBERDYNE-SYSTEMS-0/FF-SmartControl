@@ -5,7 +5,8 @@ export type ViewId =
   | 'devices'
   | 'sensors'
   | 'decisions'
-  | 'cameras';
+  | 'cameras'
+  | 'simulation';
 
 const tabs: { id: ViewId; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -13,6 +14,7 @@ const tabs: { id: ViewId; label: string }[] = [
   { id: 'sensors', label: 'Sensors' },
   { id: 'decisions', label: 'Decisions' },
   { id: 'cameras', label: 'Cameras' },
+  { id: 'simulation', label: 'Simulation' },
 ];
 
 export function renderViewTabs(active: ViewId): string {

@@ -1,6 +1,29 @@
 import { callLLM } from './llm.js';
+import {
+  evaluateDeterministicDecisions,
+  deterministicDecisionsToLoopFormat,
+  DEFAULT_DETERMINISTIC_CONFIG,
+} from './deterministic-rules.js';
 
 export type TriggerType = 'message' | 'heartbeat' | 'scheduled_task' | 'manual';
+
+// ── LLM failure tracking for deterministic failover (FIX-10) ──
+
+let consecutiveLLMFailures = 0;
+let totalDeterministicCycles = 0;
+
+export function resetLLMFailureTracking_forTest(): void {
+  consecutiveLLMFailures = 0;
+  totalDeterministicCycles = 0;
+}
+
+export function getLLMFailureCount(): number {
+  return consecutiveLLMFailures;
+}
+
+export function getDeterministicCycleCount(): number {
+  return totalDeterministicCycles;
+}
 
 interface DecisionCycleContext {
   trigger: TriggerType;
@@ -140,6 +163,16 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
   // Call LLM with timeout and error handling (VAL-AUTO-041)
   let llmResult: { text: string; model: string } | null = null;
   let llmError: string | null = null;
+
+  // FIX-10: Initialize parsed early so deterministic failover can set it
+  let parsed: any = {
+    decision: 'noop',
+    reasoning: '',
+    confidence: 0.5,
+    tool_calls: [],
+    device_id: null,
+  };
+
   try {
     llmResult = await callLLM(userPrompt, {
       system: systemPrompt,
@@ -151,20 +184,27 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     console.error('[DecisionLoop] LLM call failed:', llmError);
   }
 
-  // If LLM unavailable in AUTONOMOUS mode → safety hold (VAL-AUTO-041)
+  // If LLM unavailable in AUTONOMOUS mode → deterministic failover (FIX-10)
   if (llmError) {
+    consecutiveLLMFailures++;
+
     const { getAutomationMode } = await import('../automation/modes.js');
     const mode = getAutomationMode();
 
-    // Log llm_unavailable event to safety audit (VAL-AUTO-041)
+    // Log llm_unavailable event to safety audit
     try {
       const { createAuditEntry } = await import('../safety/audit-log.js');
       const { captureSensorSnapshot } = await import('../safety/verifier.js');
       createAuditEntry({
         deviceId: null,
         proposedAction: 'llm_unavailable',
-        verifierResult: 'DENIED',
-        deniedReason: `LLM unavailable: ${llmError}. Autonomous mode suspended until LLM recovers.`,
+        verifierResult: consecutiveLLMFailures >= DEFAULT_DETERMINISTIC_CONFIG.failoverThreshold
+          ? 'APPROVED'
+          : 'DENIED',
+        deniedReason:
+          consecutiveLLMFailures >= DEFAULT_DETERMINISTIC_CONFIG.failoverThreshold
+            ? `LLM unavailable (${consecutiveLLMFailures} consecutive failures). Failover to deterministic rules active.`
+            : `LLM unavailable: ${llmError}. Awaiting recovery (${consecutiveLLMFailures}/${DEFAULT_DETERMINISTIC_CONFIG.failoverThreshold} failures before failover).`,
         conflictingRuleIds: null,
         sensorSnapshot: captureSensorSnapshot(),
         decisionId: null,
@@ -175,27 +215,64 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
       // Non-fatal
     }
 
-    // In AUTONOMOUS mode, suspend hardware actions when LLM is down
+    // In AUTONOMOUS mode, failover to deterministic rules after threshold
     if (mode === 'AUTONOMOUS') {
+      if (
+        consecutiveLLMFailures >= DEFAULT_DETERMINISTIC_CONFIG.failoverThreshold
+      ) {
+        // FIX-10: Active failover — run deterministic rule-based decisions
+        // instead of returning hard noop. These decisions still flow through
+        // the safety verifier for policy enforcement.
+        totalDeterministicCycles++;
+        console.log(
+          `[DecisionLoop] LLM unavailable (${consecutiveLLMFailures} consecutive failures). Running deterministic rules. Cycle #${totalDeterministicCycles}.`,
+        );
+
+        const deterministicResult = deterministicDecisionsToLoopFormat(
+          evaluateDeterministicDecisions(consecutiveLLMFailures),
+        );
+
+        // Continue flow below — deterministic result gets verified
+        // and executed through the normal safety pipeline.
+        parsed = {
+          decision: deterministicResult.decision,
+          reasoning: deterministicResult.reasoning,
+          confidence: deterministicResult.confidence,
+          tool_calls: [],
+          device_id: deterministicResult.deviceId,
+        };
+
+        // Skip the JSON parsing attempt below
+        llmResult = null;
+      } else {
+        // Not enough consecutive failures yet — hold and wait for LLM recovery
+        return {
+          decision: 'noop',
+          reasoning: `LLM unavailable (${llmError}). ${consecutiveLLMFailures}/${DEFAULT_DETERMINISTIC_CONFIG.failoverThreshold} consecutive failures — deterministic failover activates at ${DEFAULT_DETERMINISTIC_CONFIG.failoverThreshold}.`,
+          toolCalls: [],
+        };
+      }
+    } else {
+      // In other modes (SUGGEST, ASSISTED), log and return noop
       return {
         decision: 'noop',
-        reasoning: `LLM unavailable (${llmError}). AUTONOMOUS mode suspended — awaiting LLM recovery.`,
+        reasoning: `LLM unavailable (${llmError}). Mode: ${mode} — deterministic failover only active in AUTONOMOUS mode.`,
         toolCalls: [],
       };
     }
-    // In other modes (SUGGEST, ASSISTED), continue with reasoning available
-    // (parsed will remain empty, decision will be noop)
+  } else {
+    // LLM succeeded — reset failure counter
+    if (consecutiveLLMFailures > 0) {
+      console.log(
+        `[DecisionLoop] LLM recovered after ${consecutiveLLMFailures} failures. Resetting failover counter.`,
+      );
+      consecutiveLLMFailures = 0;
+    }
   }
 
-  // Parse JSON from LLM response
-  let parsed: any = {
-    decision: 'noop',
-    reasoning: llmResult?.text || (llmError ? `LLM error: ${llmError}` : ''),
-    confidence: 0.5,
-    tool_calls: [],
-    device_id: null,
-  };
+  // Parse JSON from LLM response (or use pre-set deterministic result from failover)
   if (llmResult) {
+    parsed.reasoning = llmResult.text;
     try {
       const jsonMatch = llmResult.text.match(/\{[\s\S]*\}/);
       if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);

@@ -11,6 +11,9 @@ import { halRegistry } from '../hal/registry.js';
 import { halSensors } from '../hal/sensors.js';
 import { halRelays } from '../hal/relays.js';
 import {
+  getFaultInjectionController,
+} from '../hal/fault-injection.js';
+import {
   loadSafetyRules,
   evaluateAction,
   computeOutcome,
@@ -28,6 +31,7 @@ import {
   type AuditLogEntry,
 } from './audit-log.js';
 import { MetricType } from '../hal/types.js';
+import { getDb } from '../hal/db.js';
 
 export type { VerifierResult, TriggeredBy };
 
@@ -87,7 +91,6 @@ function getRecentToggles(deviceId: string): RelayToggle[] {
   if (!entries) return [];
 
   // Get from hal_relays table directly
-  const { getDb } = require('../hal/db.js');
   const db = getDb();
   const rows = db
     .prepare(
@@ -136,8 +139,19 @@ function getDeviceState(deviceId: string): DeviceState | null {
 export async function verifyAction(
   params: VerifyParams,
 ): Promise<VerifyResult> {
-  const { action, triggeredBy, decisionId } = params;
+  const { action: rawAction, triggeredBy, decisionId } = params;
   const now = Date.now();
+
+  // Protocol-level fault injection: intercept decision entering verifier
+  const fic = getFaultInjectionController();
+  const interceptedAction = fic.intercept('decision_to_verifier', {
+    ...rawAction,
+    decisionId,
+    triggeredBy,
+  });
+  const action = interceptedAction.intercepted
+    ? (interceptedAction.data as typeof rawAction)
+    : rawAction;
 
   // Capture sensor snapshot at verification time
   const sensorSnapshot = params.sensorSnapshot ?? captureSensorSnapshot();
@@ -188,7 +202,7 @@ export async function verifyAction(
     executed: false, // Will be updated if execution happens
   });
 
-  return {
+  const verifyResult: VerifyResult = {
     approved: outcome.approved,
     result,
     reason: outcome.deniedReason,
@@ -196,6 +210,14 @@ export async function verifyAction(
     auditEntry,
     sensorSnapshot,
   };
+
+  // Protocol-level fault injection: intercept verifier result before execution
+  const interceptedResult = fic.intercept('verifier_to_execution', verifyResult);
+  if (interceptedResult.intercepted) {
+    return interceptedResult.data as VerifyResult;
+  }
+
+  return verifyResult;
 }
 
 /**

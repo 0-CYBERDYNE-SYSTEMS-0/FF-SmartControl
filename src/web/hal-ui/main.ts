@@ -26,6 +26,7 @@ import { renderSetupWizard } from './views/SetupWizard.js';
 import { renderSafety } from './views/Safety.js';
 import { renderCalibration } from './views/Calibration.js';
 import { renderSettings } from './views/Settings.js';
+import { renderSimulation, cleanupSimStream } from './views/Simulation.js';
 
 import { halApi } from './api.js';
 import type { HalState } from './api.js';
@@ -42,6 +43,7 @@ const views: Record<ViewId, AsyncViewRenderer> = {
   sensors: renderSensors,
   decisions: renderDecisions,
   cameras: renderCameras,
+  simulation: renderSimulation,
   safety: renderSafety,
   system: renderSystemView,
   terminal: renderTerminalView,
@@ -439,6 +441,7 @@ function updateHeaderViewLabel(viewId: ViewId): void {
     sensors: 'Sensors',
     decisions: 'Decisions',
     cameras: 'Cameras',
+    simulation: 'Simulation',
     safety: 'Safety',
     system: 'System',
     terminal: 'Terminal',
@@ -460,6 +463,7 @@ function handleHashChange(): void {
     'sensors',
     'decisions',
     'cameras',
+    'simulation',
     'safety',
     'system',
     'terminal',
@@ -492,6 +496,7 @@ function getInitialView(): ViewId {
     'sensors',
     'decisions',
     'cameras',
+    'simulation',
     'safety',
     'system',
     'terminal',
@@ -666,7 +671,7 @@ function startPolling(): void {
 
 function scheduleLiveRender(): void {
   const activeView = getStore().activeView;
-  if (activeView === 'settings' || activeView === 'terminal') return;
+  if (activeView === 'settings' || activeView === 'terminal' || activeView === 'simulation') return;
   if (liveRenderQueued) return;
 
   const now = Date.now();
