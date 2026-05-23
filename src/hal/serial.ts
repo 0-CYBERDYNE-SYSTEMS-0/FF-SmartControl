@@ -32,6 +32,12 @@ export class SerialSensorReader extends EventEmitter {
 
   async open(config: SerialSensorConfig): Promise<void> {
     const { path, baudRate = 9600, protocol } = config;
+
+    // When HAL_SIM_MODE=1, use SerialMock instead of real hardware
+    if (process.env.HAL_SIM_MODE === '1') {
+      return this.openMock(config);
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const SerialPort = require('serialport') as {
       new (path: string, opts: object): any;
@@ -74,6 +80,42 @@ export class SerialSensorReader extends EventEmitter {
         resolve();
       });
     });
+  }
+
+  private async openMock(config: SerialSensorConfig): Promise<void> {
+    const { path, baudRate = 9600, protocol } = config;
+    const { getSerialMock } = await import('./mock-transport/serial-mock.js');
+
+    const mock = getSerialMock({
+      path,
+      protocol: protocol === 'ds18b20' ? 'ds18b20' : protocol,
+      baudRate,
+    });
+
+    await mock.open();
+    console.log(`[HAL/Serial] Opened mock ${path} @ ${baudRate}`);
+
+    this.ports.set(path, mock);
+
+    mock.on('data', (line: string) => {
+      try {
+        if (protocol === 'bme280') {
+          const data = parseBME280(line);
+          if (data) {
+            this.emit('bme280_data', data);
+          }
+        } else if (protocol === 'atlas') {
+          const val = parseAtlas(line);
+          if (val !== null) {
+            this.emit('atlas_data', val);
+          }
+        }
+      } catch {}
+    });
+
+    mock.on('error', (err: Error) =>
+      console.error(`[HAL/Serial] ${path} error:`, err.message),
+    );
   }
 
   async read(

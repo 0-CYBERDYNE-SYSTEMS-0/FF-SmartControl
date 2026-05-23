@@ -7,6 +7,22 @@ const MQTT_BROKER = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
 const MQTT_USERNAME = process.env.MQTT_USERNAME;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
 
+/** Resolve the broker URL — uses mock broker when HAL_SIM_MODE=1. */
+let _resolvedBrokerUrl: string | null = null;
+async function resolveBrokerUrl(): Promise<string> {
+  if (_resolvedBrokerUrl) return _resolvedBrokerUrl;
+  if (process.env.HAL_SIM_MODE === '1') {
+    const { getMqttMock } = await import('./mock-transport/mqtt-mock.js');
+    const mock = getMqttMock({ deviceId: 'hal_sim' });
+    await mock.start();
+    _resolvedBrokerUrl = mock.getUrl();
+    console.log('[HAL/MQTT] Using mock broker at', _resolvedBrokerUrl);
+    return _resolvedBrokerUrl;
+  }
+  _resolvedBrokerUrl = MQTT_BROKER;
+  return _resolvedBrokerUrl;
+}
+
 export interface MQTTSensorConfig {
   topic: string; // e.g. 'sensors/living-room/temperature/c/state'
   device_id: string; // maps to a hal_device id
@@ -19,6 +35,7 @@ export class MQTTSubscriber {
   private subscriptions: MQTTSensorConfig[] = [];
 
   async start(): Promise<void> {
+    const brokerUrl = await resolveBrokerUrl();
     return new Promise((resolve, reject) => {
       const options: any = {
         clientId: `fft_nano_hal_${Date.now()}`,
@@ -30,7 +47,7 @@ export class MQTTSubscriber {
         options.password = MQTT_PASSWORD;
       }
 
-      this.client = connect(MQTT_BROKER, options);
+      this.client = connect(brokerUrl, options);
 
       this.client.on('connect', () => {
         console.log('[HAL/MQTT] Connected to broker');

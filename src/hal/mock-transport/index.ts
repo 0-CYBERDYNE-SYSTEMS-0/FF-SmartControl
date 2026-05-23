@@ -25,3 +25,17 @@ export {
 export { TasmotaMock } from './tasmota-mock.js';
 export { ShellyMock } from './shelly-mock.js';
 export { GpioMock } from './gpio-mock.js';
+export type { MqttMockConfig } from './mqtt-mock.js';
+export {
+  MqttMock,
+  getMqttMock,
+  resetMqttMock,
+} from './mqtt-mock.js';
+export type { SerialMockConfig, SerialProtocol, SerialFault } from './serial-mock.js';
+export {
+  SerialMock,
+  getSerialMock,
+  findSerialMock,
+  removeSerialMock,
+  resetSerialMocks,
+} from './serial-mock.js';
