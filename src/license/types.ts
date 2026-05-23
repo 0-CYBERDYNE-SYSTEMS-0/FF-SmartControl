@@ -31,7 +31,8 @@ export interface LicenseActivationResponse {
     | 'NOT_RECOGNIZED'
     | 'ALREADY_USED'
     | 'REVOKED'
-    | 'EXPIRED';
+    | 'EXPIRED'
+    | 'NOT_CONFIGURED';
 }
 
 export interface LicenseDeactivationRequest {
