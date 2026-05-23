@@ -228,6 +228,15 @@ describe('License Key Format Validation', () => {
   });
 });
 
+describe('Hardware ID Determinism', () => {
+  it('should return the same hardware ID on repeated calls', async () => {
+    const { getHardwareId } = await import('../src/license/hardware-id.js');
+    const id1 = getHardwareId();
+    const id2 = getHardwareId();
+    assert.ok(id1 === id2, `Hardware ID must be deterministic: "${id1}" vs "${id2}"`);
+  });
+});
+
 describe('Cache TTL Validation', () => {
   it('should have 30-day cache TTL', () => {
     const LICENSE_CACHE_TTL_DAYS = 30;
