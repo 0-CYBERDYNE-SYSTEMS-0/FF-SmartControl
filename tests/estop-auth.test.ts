@@ -8,14 +8,14 @@ import test from 'node:test';
 import { createHash, randomBytes } from 'crypto';
 import { clearEstop, getEstopState } from '../src/safety/estop.js';
 import { createSession, initSessionDatabase } from '../src/security/session.js';
-import { getDb, runMigrations } from '../src/hal/db.js';
+import { getSafetyDb, runSafetyMigrations } from '../src/hal/safety-db.js';
 
 test.describe('E-Stop Clearance Authentication', () => {
   test.beforeEach(() => {
-    const db = getDb();
+    const db = getSafetyDb();
 
     // Ensure tables exist
-    runMigrations();
+    runSafetyMigrations();
     initSessionDatabase();
 
     // Clean up test data
@@ -34,8 +34,8 @@ test.describe('E-Stop Clearance Authentication', () => {
     const { cookie } = await createSession('admin');
     const validToken = cookie.value;
 
-    // Activate E-Stop directly in the database
-    const db = getDb();
+    // Activate E-Stop directly in the safety database
+    const db = getSafetyDb();
     const now = new Date().toISOString();
     db.prepare(
       `
@@ -57,8 +57,8 @@ test.describe('E-Stop Clearance Authentication', () => {
   });
 
   test('expired token rejected', () => {
-    // Insert an already-expired session directly into the database
-    const db = getDb();
+    // Insert an already-expired session directly into the safety database
+    const db = getSafetyDb();
     const token = randomBytes(32).toString('hex');
     const tokenHash = `sha256:${createHash('sha256').update(token).digest('hex')}`;
     const pastDate = new Date(
