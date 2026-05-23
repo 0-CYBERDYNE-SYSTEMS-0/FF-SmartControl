@@ -14,7 +14,7 @@ import type {
   LicenseState,
   LicenseStatus,
 } from './types.js';
-import { LICENSE_CACHE_TTL_DAYS, TRIAL_DAYS } from './types.js';
+import { TRIAL_DAYS } from './types.js';
 import { getHardwareId } from './hardware-id.js';
 import {
   cacheLicenseState,
@@ -29,48 +29,9 @@ import {
 const LICENSE_SERVER_URL =
   process.env.LICENSE_SERVER_URL || 'https://license.farmpal.io/api';
 
-// Mock license server for development (when LICENSE_SERVER_URL is not set)
-const MOCK_MODE = !process.env.LICENSE_SERVER_URL;
-
-// Mock license keys for testing
-const MOCK_LICENSE_KEYS: Record<
-  string,
-  {
-    status: LicenseStatus;
-    expiresAt: string | null;
-    trialStartedAt: string | null;
-  }
-> = {
-  'TEST-1234-5678-ABCD': {
-    status: 'LICENSED',
-    expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year
-    trialStartedAt: null,
-  },
-  'TRIAL-0000-0000-0001': {
-    status: 'TRIAL',
-    expiresAt: null,
-    trialStartedAt: new Date().toISOString(), // Starts now
-  },
-  'EXPD-0000-0000-0001': {
-    status: 'EXPIRED',
-    expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Expired yesterday
-    trialStartedAt: new Date(
-      Date.now() - 15 * 24 * 60 * 60 * 1000,
-    ).toISOString(),
-  },
-  // Device-bound key (can only be used on device with hardware ID starting with "PI-")
-  'PIBO-0000-0000-0001': {
-    status: 'LICENSED',
-    expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-    trialStartedAt: null,
-  },
-};
-
-// Track used device-bound keys to simulate server-side enforcement
-const usedDeviceKeys = new Map<string, string>(); // licenseKey -> hardwareId
-
 /**
- * Activate a license key
+ * Activate a license key against the license server.
+ * There is NO mock mode — production and dev both use the real server.
  * VAL-LIC-002, VAL-LIC-006, VAL-LIC-015
  */
 export async function activateLicense(
@@ -91,92 +52,29 @@ export async function activateLicense(
     };
   }
 
-  // If we're online, try the real server
-  if (!MOCK_MODE && (await isOnline())) {
+  // Try the real server
+  if (await isOnline()) {
     return await activateLicenseRemote(normalizedKey, hardwareId);
   }
 
-  // Mock mode for development
-  return activateLicenseMock(normalizedKey, hardwareId);
-}
-
-/**
- * Activate license using mock server (development)
- */
-function activateLicenseMock(
-  licenseKey: string,
-  hardwareId: string,
-): LicenseActivationResponse {
-  const mockData = MOCK_LICENSE_KEYS[licenseKey];
-
-  if (!mockData) {
-    logger.warn(
-      { licenseKey, hardwareId },
-      'Mock activation: unrecognized key',
-    );
+  // Offline — check if we have a cached license for this key
+  const cached = getCachedLicenseState();
+  if (cached && cached.licenseKey === normalizedKey && isCacheValid()) {
+    logger.info('Using cached license while offline');
     return {
-      status: 'UNLICENSED',
-      expiresAt: null,
-      error:
-        'License key not recognized. Please check your license key and try again.',
-      errorCode: 'NOT_RECOGNIZED',
+      status: cached.status,
+      expiresAt: cached.expiresAt,
     };
   }
 
-  // Check device binding for device-bound keys
-  if (licenseKey.startsWith('PIBO-')) {
-    const previousHardware = usedDeviceKeys.get(licenseKey);
-    if (previousHardware && previousHardware !== hardwareId) {
-      logger.warn(
-        { licenseKey, hardwareId, previousHardware },
-        'Mock activation: device-bound violation',
-      );
-      return {
-        status: 'UNLICENSED',
-        expiresAt: null,
-        error:
-          'This license key is already activated on another device. Each license key can only be used on one device.',
-        errorCode: 'ALREADY_USED',
-      };
-    }
-  }
-
-  // Store the activation
-  usedDeviceKeys.set(licenseKey, hardwareId);
-
-  const now = new Date().toISOString();
-  let trialStartedAt = mockData.trialStartedAt;
-  let status = mockData.status;
-
-  // If TRIAL, calculate expiry
-  let expiresAt: string | null = null;
-  if (status === 'TRIAL') {
-    expiresAt = new Date(
-      Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    if (!trialStartedAt) {
-      trialStartedAt = now;
-    }
-  } else if (status === 'LICENSED') {
-    expiresAt = mockData.expiresAt;
-  }
-
-  // Cache the result
-  cacheLicenseState({
-    status,
-    licenseKey,
-    hardwareId,
-    activatedAt: now,
-    expiresAt,
-    trialStartedAt,
-  });
-
-  logger.info(
-    { licenseKey, hardwareId, status, expiresAt },
-    'Mock license activated',
-  );
-
-  return { status, expiresAt };
+  // No server and no valid cache — activation impossible offline
+  return {
+    status: 'UNLICENSED',
+    expiresAt: null,
+    error:
+      'Could not connect to license server. Please check your internet connection and try again.',
+    errorCode: 'NOT_RECOGNIZED',
+  };
 }
 
 /**
@@ -273,7 +171,7 @@ export async function deactivateLicense(): Promise<LicenseDeactivationResponse> 
   const licenseKey = state.licenseKey;
 
   // If online, notify server
-  if (!MOCK_MODE && (await isOnline())) {
+  if (await isOnline()) {
     try {
       const response = await fetch(`${LICENSE_SERVER_URL}/deactivate`, {
         method: 'POST',
@@ -326,7 +224,7 @@ export async function getLicenseStatus(): Promise<LicenseStatusResponse> {
 
   // Try online check if we have a license
   const cached = getCachedLicenseState();
-  if (cached?.licenseKey && !MOCK_MODE && (await isOnline())) {
+  if (cached?.licenseKey && (await isOnline())) {
     try {
       const response = await fetch(`${LICENSE_SERVER_URL}/status`, {
         method: 'POST',
@@ -405,13 +303,9 @@ function buildStatusResponse(
 }
 
 /**
- * Check if we're online
+ * Check if we're online by pinging the license server
  */
 async function isOnline(): Promise<boolean> {
-  if (MOCK_MODE) {
-    return true;
-  }
-
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);

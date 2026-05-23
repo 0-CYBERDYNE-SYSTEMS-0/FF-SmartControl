@@ -235,6 +235,86 @@ describe('Hardware ID Determinism', () => {
     const id2 = getHardwareId();
     assert.ok(id1 === id2, `Hardware ID must be deterministic: "${id1}" vs "${id2}"`);
   });
+
+  it('should select the same MAC regardless of interface enumeration order', async () => {
+    // This test verifies the critical FIX-4 requirement:
+    // The hardware ID must be deterministic (same interface chosen) even
+    // when os.networkInterfaces() returns interfaces in different orders.
+    // This simulates the scenario where driver load order differs across reboots.
+
+    const os = await import('os');
+
+    // Create two different enumeration orders of the same interfaces
+    const interfaces = {
+      eth0: [{ mac: 'aa:bb:cc:dd:ee:ff', address: '192.168.1.1', family: 'IPv4' }],
+      wlan0: [{ mac: '11:22:33:44:55:66', address: '192.168.2.1', family: 'IPv4' }],
+      lo: [{ mac: '00:00:00:00:00:00', address: '127.0.0.1', family: 'IPv4' }],
+      docker0: [{ mac: 'de:ad:be:ef:00:01', address: '172.17.0.1', family: 'IPv4' }],
+    };
+
+    // Save original
+    const originalNetworkInterfaces = os.networkInterfaces;
+
+    try {
+      // Mock networkInterfaces to return interfaces in order A
+      (os as any).networkInterfaces = () => ({
+        wlan0: interfaces.wlan0,
+        docker0: interfaces.docker0,
+        eth0: interfaces.eth0,
+        lo: interfaces.lo,
+      });
+
+      // Re-import to get fresh module state (module cache means this is the
+      // same instance, but the function reads os.networkInterfaces() each call)
+      const { getHardwareId: getHwId1 } = await import('../src/license/hardware-id.js');
+      const id1 = getHwId1();
+
+      // Now mock with order B (different enumeration)
+      (os as any).networkInterfaces = () => ({
+        lo: interfaces.lo,
+        eth0: interfaces.eth0,
+        docker0: interfaces.docker0,
+        wlan0: interfaces.wlan0,
+      });
+
+      const id2 = getHwId1();
+
+      // Both calls must return the same MAC (eth0 since it sorts first alphabetically
+      // after filtering out lo and docker0)
+      assert.ok(id1 === id2,
+        `Hardware ID must be stable across different enumeration orders: "${id1}" vs "${id2}"`);
+      assert.ok(id1 === 'MAC-AABBCCDDEEFF',
+        `Should select eth0 (alphabetically first physical): got "${id1}"`);
+    } finally {
+      // Restore original
+      (os as any).networkInterfaces = originalNetworkInterfaces;
+    }
+  });
+
+  it('should filter out virtual interfaces (docker, loopback, tunnel)', async () => {
+    const os = await import('os');
+    const originalNetworkInterfaces = os.networkInterfaces;
+
+    try {
+      // Set up interfaces where virtual ones sort alphabetically BEFORE physical ones
+      (os as any).networkInterfaces = () => ({
+        br0: [{ mac: 'aa:aa:aa:aa:aa:aa', address: '10.0.0.1', family: 'IPv4' }],
+        docker0: [{ mac: 'bb:bb:bb:bb:bb:bb', address: '172.17.0.1', family: 'IPv4' }],
+        en0: [{ mac: 'cc:cc:cc:cc:cc:cc', address: '192.168.1.1', family: 'IPv4' }],
+        lo0: [{ mac: '00:00:00:00:00:00', address: '127.0.0.1', family: 'IPv4' }],
+        utun0: [{ mac: 'dd:dd:dd:dd:dd:dd', address: '10.255.0.1', family: 'IPv4' }],
+      });
+
+      const { getHardwareId } = await import('../src/license/hardware-id.js');
+      const id = getHardwareId();
+
+      // en0 should be selected (only non-virtual interface with real MAC)
+      assert.ok(id === 'MAC-CCCCCCCCCCCC',
+        `Should skip virtual interfaces and select en0: got "${id}"`);
+    } finally {
+      (os as any).networkInterfaces = originalNetworkInterfaces;
+    }
+  });
 });
 
 describe('Cache TTL Validation', () => {
@@ -263,5 +343,68 @@ describe('Cache TTL Validation', () => {
     const cached29DaysAgo = Date.now() - (29 * 24 * 60 * 60 * 1000);
     const isValid29Days = (Date.now() - cached29DaysAgo) < LICENSE_CACHE_TTL_MS;
     assert.ok(isValid29Days, '29 days old cache should be valid');
+  });
+});
+
+describe('No Mock License Keys in Production', () => {
+  it('should reject previously hardcoded mock license keys', async () => {
+    // VAL-LIC-SEC: Verify that mock license keys have been removed.
+    // The old mock keys ('TEST-1234-5678-ABCD', 'TRIAL-0000-0000-0001',
+    // 'EXPD-0000-0000-0001', 'PIBO-0000-0000-0001') must NOT appear anywhere
+    // in the production client source.
+
+    const fs = await import('fs');
+    const path = await import('path');
+    const { fileURLToPath } = await import('url');
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const clientSource = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'license', 'client.ts'),
+      'utf-8',
+    );
+
+    // None of the old mock keys should appear in source
+    const oldMockKeys = [
+      'TEST-1234-5678-ABCD',
+      'TRIAL-0000-0000-0001',
+      'EXPD-0000-0000-0001',
+      'PIBO-0000-0000-0001',
+    ];
+
+    for (const key of oldMockKeys) {
+      assert.ok(
+        !clientSource.includes(key),
+        `Mock license key "${key}" must not appear in client.ts`,
+      );
+    }
+
+    // Verify no MOCK_MODE or MOCK_LICENSE_KEYS references remain
+    assert.ok(
+      !clientSource.includes('MOCK_LICENSE_KEYS'),
+      'MOCK_LICENSE_KEYS must not appear in client.ts',
+    );
+    assert.ok(
+      !clientSource.includes('MOCK_MODE'),
+      'MOCK_MODE must not appear in client.ts',
+    );
+    assert.ok(
+      !clientSource.includes('activateLicenseMock'),
+      'activateLicenseMock must not appear in client.ts',
+    );
+
+    // Verify no FAKE/DEMO/TEST license constants remain
+    assert.ok(
+      !clientSource.includes('FAKE_LICENSE'),
+      'No FAKE_LICENSE references',
+    );
+    assert.ok(
+      !clientSource.includes('DEMO_LICENSE'),
+      'No DEMO_LICENSE references',
+    );
+    assert.ok(
+      !clientSource.includes('hardcoded'),
+      'No "hardcoded" references (mock key indicator)',
+    );
   });
 });
