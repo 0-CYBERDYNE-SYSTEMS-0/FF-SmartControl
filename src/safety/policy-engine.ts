@@ -624,8 +624,14 @@ function checkScheduleWindows(
   if (action.decision !== 'turn_on') return [];
 
   const now = new Date(nowMs);
-  const currentHour = now.getHours();
-  const currentDay = now.getDay();
+  // Evaluate against UTC by default. `nowMs` comes from the verifier, which
+  // serializes its captured sensor snapshot to ISO-8601 (UTC) before logging
+  // to SQLite. Mixing local-time evaluation here would desync the rule from
+  // the audit trail on any device not in UTC. Operators who want a
+  // wall-clock schedule window can pre-bake it (subtract UTC offset from
+  // their startHour/endHour) or add a per-rule `timezone` field later.
+  const currentHour = now.getUTCHours();
+  const currentDay = now.getUTCDay();
 
   for (const window of config.windows) {
     // Check if current time is within window

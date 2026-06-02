@@ -235,9 +235,13 @@ function getDatePartsForTimezone(
   timezone?: string,
 ): { minute: number; day: number } {
   if (!timezone) {
+    // Default to UTC so that ISO-8601 timestamps (which serialize as UTC)
+    // and the caller-supplied `now` agree on minute-of-day / day-of-week.
+    // Operators can still pin a wall-clock window via the `@Region/City`
+    // suffix on the heartbeat config (e.g. "09:00-17:00@America/New_York").
     return {
-      minute: now.getHours() * 60 + now.getMinutes(),
-      day: now.getDay(),
+      minute: now.getUTCHours() * 60 + now.getUTCMinutes(),
+      day: now.getUTCDay(),
     };
   }
 
