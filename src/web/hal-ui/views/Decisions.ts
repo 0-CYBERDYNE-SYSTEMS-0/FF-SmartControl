@@ -9,12 +9,48 @@ import {
   type DecisionBarPoint,
   injectChartKitStyles,
 } from '../components/ChartKit.js';
+import {
+  type AuditMatch,
+  summarizeReasoning,
+  shouldAutoSurface,
+  autoSurfaceChip,
+  renderReasoningDetail,
+  renderReasoningBlock,
+  injectReasoningStyles,
+} from '../components/ReasoningBlock.js';
 
 const expandedDecisionIds = new Set<string>();
 let statusFilter: 'all' | 'success' | 'failure' | 'pending' = 'all';
+let auditByDecision = new Map<string, AuditMatch>();
 
 export async function renderDecisions(container: HTMLElement): Promise<void> {
   const store = getStore();
+
+  // Verifier transparency: index recent safety-audit entries by decision id.
+  auditByDecision = new Map();
+  try {
+    const audit = await halApi.getSafetyAudit({ limit: 100 });
+    for (const a of audit) {
+      if (!a.decisionId) continue;
+      const existing = auditByDecision.get(a.decisionId);
+      if (!existing || a.verifierResult.startsWith('DENIED')) {
+        auditByDecision.set(a.decisionId, {
+          verifierResult: a.verifierResult,
+          deniedReason: a.deniedReason,
+        });
+      }
+    }
+  } catch {
+    // Audit unavailable; reasoning still renders without verifier rows.
+  }
+
+  // Auto-surface the decisions a user most wants to see (low confidence,
+  // blocked by safety, failed) — start them expanded regardless of verbosity.
+  for (const d of store.decisions) {
+    if (shouldAutoSurface(d, auditByDecision.get(d.id))) {
+      expandedDecisionIds.add(d.id);
+    }
+  }
 
   // Pending decisions section (from store)
   const pendingDecisions = store.pendingDecisions || [];
@@ -70,6 +106,7 @@ export async function renderDecisions(container: HTMLElement): Promise<void> {
 
   injectDecisionsStyles();
   injectChartKitStyles();
+  injectReasoningStyles();
   attachDecisionHandlers();
   attachFilterHandlers();
   attachPendingHandlers();
@@ -98,11 +135,17 @@ function renderPendingDecisionsSection(
       const countdown = isAssisted
         ? `<span class="pending-countdown" data-deadline="${p.veto_deadline || ''}">${remaining}s</span>`
         : '';
-      const decisionText =
-        p.decision?.reasoning || p.decision?.decision || 'No description';
-      const confidence = p.decision?.confidence
-        ? `${(p.decision.confidence * 100).toFixed(0)}%`
-        : '--';
+      const pd = p.decision!;
+      const asDecision: HalDecision = {
+        id: pd.id,
+        timestamp: '',
+        trigger: '',
+        decision: pd.decision,
+        confidence: pd.confidence ?? 0,
+        reasoning: pd.reasoning ?? undefined,
+      };
+      const confidence =
+        pd.confidence != null ? `${(pd.confidence * 100).toFixed(0)}%` : '--';
       return `
     <div class="pending-decision-item" data-decision-id="${p.decision_id}">
       <div class="pending-decision-left">
@@ -110,7 +153,7 @@ function renderPendingDecisionsSection(
         ${countdown}
       </div>
       <div class="pending-decision-middle">
-        <span class="pending-decision-text">${escapeHtml(decisionText)}</span>
+        ${renderReasoningBlock(asDecision)}
         <span class="pending-decision-confidence text-mono text-xs">${confidence}</span>
       </div>
       <div class="pending-decision-right">
@@ -241,6 +284,10 @@ function renderDecisionList(decisions: HalDecision[]): string {
         </div>
         <div class="decision-middle">
           <span class="decision-trigger-text text-sm">${escapeHtml(d.trigger)}</span>
+          <div class="decision-reasoning-row">
+            <span class="reasoning-summary" title="${escapeHtml(d.reasoning || summarizeReasoning(d))}">${escapeHtml(summarizeReasoning(d))}</span>
+            ${shouldAutoSurface(d, auditByDecision.get(d.id)) ? autoSurfaceChip(d, auditByDecision.get(d.id)) : ''}
+          </div>
         </div>
         <div class="decision-right">
           <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
@@ -265,6 +312,22 @@ function renderDecisionList(decisions: HalDecision[]): string {
           <span class="decision-detail-label">Confidence</span>
           <span class="decision-detail-value text-mono">${(d.confidence * 100).toFixed(1)}%</span>
         </div>
+        ${
+          d.reasoning || auditByDecision.get(d.id)
+            ? `<div class="decision-detail-row decision-detail-reasoning">
+          <span class="decision-detail-label">Reasoning</span>
+          <div class="decision-detail-value">${renderReasoningDetail(d, auditByDecision.get(d.id))}</div>
+        </div>`
+            : ''
+        }
+        ${
+          d.model
+            ? `<div class="decision-detail-row">
+          <span class="decision-detail-label">Decided by</span>
+          <span class="decision-detail-value text-mono">${escapeHtml(d.model)}</span>
+        </div>`
+            : ''
+        }
         <div class="decision-detail-row">
           <span class="decision-detail-label">Timestamp</span>
           <span class="decision-detail-value text-mono">${d.timestamp}</span>
@@ -424,8 +487,16 @@ function injectDecisionsStyles(): void {
 .decision-status-dot.success { background: var(--success); }
 .decision-status-dot.failure { background: var(--danger); }
 .decision-status-dot.pending { background: var(--warning); }
-.decision-middle { flex: 1; }
+.decision-middle { flex: 1; min-width: 0; }
 .decision-trigger-text { color: var(--text-primary); }
+.decision-reasoning-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-top: 2px;
+}
+.decision-detail-reasoning .decision-detail-value { flex: 1; min-width: 0; }
 .decision-right {
   display: flex;
   align-items: center;

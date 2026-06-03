@@ -252,6 +252,13 @@ function renderSettingsPage(): string {
                 <button type="button" class="settings-segment ${store.timeFormat === '24h' ? 'active' : ''}" data-time-format="24h">24H</button>
               </div>
             </div>
+            <div class="settings-field">
+              <p class="settings-label">Reasoning Detail</p>
+              <div class="settings-segmented" id="reasoning-verbosity-control">
+                <button type="button" class="settings-segment ${store.reasoningVerbosity === 'quiet' ? 'active' : ''}" data-reasoning-verbosity="quiet">Quiet</button>
+                <button type="button" class="settings-segment ${store.reasoningVerbosity === 'detailed' ? 'active' : ''}" data-reasoning-verbosity="detailed">Detailed</button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -659,6 +666,27 @@ function attachSettingsEvents(): void {
           b.classList.toggle('active', b === btn);
         });
         showToast(`Time format: ${timeFormat.toUpperCase()}`, 'info', 1600);
+      });
+    });
+
+  document
+    .querySelectorAll<HTMLButtonElement>('[data-reasoning-verbosity]')
+    .forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const reasoningVerbosity = btn.dataset.reasoningVerbosity as
+          | 'quiet'
+          | 'detailed';
+        setStore({ reasoningVerbosity });
+        document
+          .querySelectorAll('[data-reasoning-verbosity]')
+          .forEach((b) => {
+            b.classList.toggle('active', b === btn);
+          });
+        showToast(
+          `Reasoning detail: ${reasoningVerbosity === 'quiet' ? 'Quiet' : 'Detailed'}`,
+          'info',
+          1600,
+        );
       });
     });
 
