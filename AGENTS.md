@@ -1,14 +1,21 @@
 # Repository Guidelines
 
+> **v1.0 direction (locked):** This is a *software product* sold as a license ($299) or a pre-flashed SD card ($449).
+> The Pi, smart plugs, and sensors are the customer's hardware. If a change moves the product off this direction,
+> update [`DIRECTION.md`](DIRECTION.md) in the same PR. See also [`market-research-2026.md`](market-research-2026.md)
+> and [`ship-gate-spec.md`](ship-gate-spec.md).
+
 ## Project Overview
 
-FarmPal is a hardware-first smart garden controller built on top of the older FFT_nano host. The current checkout is a hybrid:
+FarmPal is a **software product** that ships as an SD card image for the Raspberry Pi (or any Linux box). It controls
+the customer's existing Tasmota / Shelly / Kasa smart plugs, MQTT sensors, GPIO relays, and 1-Wire / serial sensors
+through a verifier-gated safety policy engine. The current checkout is a hybrid:
 
 - The full FFT_nano host still owns startup, service lifecycle, SQLite state, chat/session routing, TUI gateway, web server, scheduler, heartbeat, and legacy Pi-based agent runs.
 - The FarmPal product surface is the HAL, simulator, hardware control APIs, HAL UI, and a newer lightweight farm-controller agent loop under `src/agent/`.
 - The newer `src/agent/decision-loop.ts` path calls an LLM directly, reads HAL state, logs decisions, and can execute HAL tool calls without going through the full Pi/container agent loop.
 
-Treat this as a 99% hardware product. Prioritize customer out-of-box reliability for local host execution, HAL device state, simulator/demo clarity, TUI testing, and safe control of real relays/sensors/cameras.
+Treat this as a **software product**. The moat is the verifier-gated control plane, the discovery wizard, and the operator experience — not the hardware. The Pi is the customer's hardware; we ship an SD card image and a license key. Prioritize correctness, customer out-of-box reliability, the safety policy engine, the discovery wizard, and the operator dashboard.
 
 Current important reality:
 

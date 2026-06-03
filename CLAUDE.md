@@ -4,6 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # FarmPal / FFT_nano — Project Instructions
 
+> **v1.0 direction (locked):** This is a *software product* sold as a license ($299) or a pre-flashed SD card ($449).
+> The Pi, smart plugs, and sensors are the customer's hardware. If a change moves the product off this direction,
+> update [`DIRECTION.md`](DIRECTION.md) in the same PR. See also [`market-research-2026.md`](market-research-2026.md) and [`ship-gate-spec.md`](ship-gate-spec.md).
+
 ## Architecture
 
 Single Node.js host process: receives chat messages (Telegram/WhatsApp), runs a `pi` agent subprocess inside an isolated container, returns responses. SQLite for persistence.

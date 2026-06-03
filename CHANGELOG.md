@@ -5,7 +5,51 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] — v1.0.0 direction
+
+> **Product direction locked:** FF_SmartControl is a *software product* sold as a license
+> ($299) or a pre-flashed SD card ($449). The Pi, smart plugs, and sensors are the customer's
+> hardware. See [`DIRECTION.md`](DIRECTION.md) for the v1.0 direction,
+> [`market-research-2026.md`](market-research-2026.md) for pricing rationale, and
+> [`ship-gate-spec.md`](ship-gate-spec.md) for the engineering ship-gate.
+
+### Added
+- `DIRECTION.md` — single source of truth for the v1.0 product direction.
+- `market-research-2026.md` — competitor pricing, license-model benchmarks, SDK/OEM monetization
+  play, Pacific Northwest garden-center partnership angle.
+- `ship-gate-spec.md` — the v1.0 engineering ship-gate: 3 UTC test fixes already landed,
+  7-day calendar to launch, per-SKU pricing, Eugene channel opener.
+
+### Fixed
+- **Safety policy engine UTC bug.** `checkScheduleWindows` in
+  `src/safety/policy-engine.ts` was using `Date#getHours` / `getDay` (local time), so on any
+  Pi not in UTC the `allowed_schedule_windows` rule drifted relative to the ISO-8601 (UTC)
+  audit log. Defaulted to `getUTCHours` / `getUTCDay`. Test was
+  `evaluateAction: denies outside allowed_schedule_windows` and
+  `evaluateAction: schedule windows with days of week` — both green after the fix.
+- **Heartbeat active-hours UTC bug.** `getDatePartsForTimezone` in `src/heartbeat-policy.ts`
+  returned local time when no `@Region/City` suffix was set. Same fix: default to UTC.
+  Test was `parseHeartbeatActiveHours and isWithinHeartbeatActiveHours support day ranges` —
+  green after the fix.
+
+### Changed
+- `src/heartbeat-policy.ts` — `getDatePartsForTimezone` now defaults to UTC; timezone
+  parameter still wins when supplied (`@Region/City` suffix).
+- `src/safety/policy-engine.ts` — `checkScheduleWindows` now evaluates against UTC.
+  Operators who want wall-clock schedule windows can pre-bake the UTC offset into their
+  `startHour` / `endHour` values, or we will add a per-rule `timezone` field in v1.1.
+- README and repo guidance updated to lead with the *software product* framing, the new
+  v1.0 SKU table, and links to `DIRECTION.md` / `market-research-2026.md` / `ship-gate-spec.md`.
+- AGENTS.md and CLAUDE.md now reference the v1.0 direction lock at the top of each file.
+
+### Behavior change to flag in release notes
+Schedule windows in `allowed_schedule_windows` rules and the heartbeat active-hours
+window now evaluate against UTC by default. For a customer in PDT with a `06:00-22:00`
+rule on their grow lights, the lights will now turn on at 06:00 UTC (10:00 PM PDT the
+night before) instead of 06:00 PDT. This is the correct behavior long-term — the
+audit log, dashboard, Telegram messages, and SQLite rows are all UTC. For the first
+release, walk operators through "subtract your UTC offset from `startHour` /
+`endHour`" if they need wall-clock semantics.
 
 ## [1.7.2] - 2026-04-22
 

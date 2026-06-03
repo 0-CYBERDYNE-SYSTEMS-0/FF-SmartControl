@@ -1,6 +1,16 @@
 # FarmPal Commercialization
 
-This document summarizes the work completed during the FarmPal commercialization mission, which transformed FarmPal from a developer-centric system into a production-ready, sellable appliance for Raspberry Pi.
+> **This is a software product.** The Pi, smart plugs, and sensors are the customer's hardware.
+> See **[`DIRECTION.md`](DIRECTION.md)** for the v1.0 direction, **[`market-research-2026.md`](market-research-2026.md)** for pricing rationale, and **[`ship-gate-spec.md`](ship-gate-spec.md)** for the engineering plan.
+
+This document summarizes the work completed during the FarmPal commercialization mission, which transformed FarmPal from a developer-centric system into a **production-ready, software product that ships as an SD card image** for Raspberry Pi (or any Linux box).
+
+The product is sold as one of two SKUs at v1.0:
+
+- **FarmPal Software License** — $299 one-time. Customer brings their own Pi.
+- **FarmPal Edition Pre-flashed SD Card** — $449 one-time. We ship a pre-burned card.
+
+Hardware kits (Pi 5 + Tasmotas + sensors) become a separate SKU line in Q3 2026, sold as a *fulfillment partnership* — not a core product line. The moat is the **software**, not the BOM.
 
 ---
 

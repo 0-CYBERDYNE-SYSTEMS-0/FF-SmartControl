@@ -1,52 +1,78 @@
-![FFT_nano Logo](logo.png)
+![FF_SmartControl Logo](logo.png)
 
-# FFT_nano
+# FF_SmartControl
 
 [![Release](https://img.shields.io/github/v/release/0-CYBERDYNE-SYSTEMS-0/FFT_nano)](https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano/releases)
 [![Release Readiness](https://img.shields.io/github/actions/workflow/status/0-CYBERDYNE-SYSTEMS-0/FFT_nano/release-readiness.yml?branch=main&label=release%20readiness)](https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano/actions/workflows/release-readiness.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/github/license/0-CYBERDYNE-SYSTEMS-0/FFT_nano)](LICENSE)
 
-An autonomous AI coworker that runs on your farm's hardware. It learns your operation, texts you updates, writes code to automate your equipment, and gets smarter every season. No subscriptions. No cloud dependency. MIT licensed.
+> **This is a software product.** The Raspberry Pi, smart plugs, and sensors are the *customer's* hardware.
+> We sell a license ($299) or a pre-flashed SD card ($449). See **[`DIRECTION.md`](DIRECTION.md)** for the v1.0 direction.
 
-## Quick Start
+**FF_SmartControl** is the local-first, autonomous farm control plane that runs on a Raspberry Pi 5 (or any Linux box) and turns a customer's existing smart plugs, MQTT sensors, and GPIO relays into a verifier-gated, AI-controlled farm. Operator brand: **FarmPal**. Parent host: **FFT_nano**.
 
-```bash
-git clone https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano.git
-cd FFT_nano
-./scripts/onboard-all.sh
-```
+It discovers Tasmota / Shelly / Kasa smart plugs on the LAN, subscribes to MQTT sensor topics, evaluates LLM-proposed actions against a deterministic safety policy engine, and only ever flips a relay when the **verifier** approves. Operator gets a Telegram chat surface, a HAL UI dashboard at `farmpal.local`, four automation modes, and an emergency stop.
 
-Runs on Raspberry Pi, your own server, or local hardware. Chat via Telegram or WhatsApp.
+No subscriptions. No cloud dependency. MIT licensed core, commercial license for the autonomous control plane.
+
+## What we sell
+
+| SKU | Price | What's in the box | Buy it because… |
+|---|---|---|---|
+| **FarmPal Software License** | **$299** one-time | License key, full source access, MIT core + commercial license for the verifier-gated control plane. Customer brings their own Pi. | You already have a Pi and you're comfortable flashing a card. |
+| **FarmPal Edition Pre-flashed SD Card** | **$449** one-time | 64GB SanDisk Industrial card with the image pre-burned, boot wizard waiting, license pre-registered. | You want to plug, browse to `farmpal.local`, and start using it. |
+| **FarmPal Pro Kit** *(Q3 2026)* | **$899** one-time | Pi 5 8GB + case + PSU + 2× Tasmota + 1× BME280 + 1× soil moisture sensor + pre-flashed card + license | You want one cart, one shipping box, zero soldering. |
+
+Pricing rationale and competitor comparison: see **[`market-research-2026.md`](market-research-2026.md)**. Ship-gate plan and the 1-week engineering calendar: see **[`ship-gate-spec.md`](ship-gate-spec.md)**.
 
 ## Key Capabilities
 
-| Persistent Memory | Equipment Control | Multi-Provider AI |
-|-------------------|-------------------|-------------------|
-| Carries context across sessions. Learns your operation over time. | Discovers and controls equipment via Telegram. Writes automation code automatically. | OpenAI, Anthropic, Gemini, OpenRouter, Ollama, LM Studio. Local-first. |
+| Local-First Control | Verifier-Gated Safety | Multi-Provider AI |
+|---|---|---|
+| Discovers Tasmota / Shelly / Kasa smart plugs, MQTT sensors, and 1-Wire / serial sensors on the LAN. No cloud roundtrip. Every relay flip is on the operator's own network. | A pure deterministic policy engine (`max_on_duration`, `min_off_duration`, `max_activations_per_hour`, `allowed_schedule_windows`, `dependency`, `threshold`) is the **only** path to hardware. LLM proposes → verifier approves/denies → hardware only on `APPROVED`. Emergency stop sets per-device safe states. | OpenAI, Anthropic, Gemini, OpenRouter, Ollama, LM Studio, ZAI, MiniMax, Kimi. The Pi can run a local Ollama model offline; cloud providers are optional. |
 
 ## Farm-Proven
 
-Built by a farmer with 24 years of field experience. Three years of real operational testing. Designed for real farms running real equipment.
+Built by a farmer with 24 years of field experience and 3+ years of real operational testing on a working farm. Designed for real equipment running real loads — not a marketing demo.
 
-## Project Status
-
-- Official distribution: **GitHub Releases**
-- `npm install` is not the primary install path yet
-- See `docs/RELEASE.md` for current release process
-
-**Links:** [Releases](https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano/releases) | [Security](.github/SECURITY.md) | [Contributing](CONTRIBUTING.md) | [Docs](docs/)
+**Links:** [Releases](https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano/releases) · [Security](.github/SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Operator Docs](docs/) · [Direction](DIRECTION.md) · [Market Research](market-research-2026.md) · [Ship Gate](ship-gate-spec.md)
 - Support: `SUPPORT.md`
 - Changelog: `CHANGELOG.md`
 
-## Quickstart (Primary UX Path)
+## Quick Start
 
-This is the canonical install-and-run flow.
+The product ships in two ways. Pick the one that matches your hardware situation.
 
-### 1. Clone and run guided onboarding
+### A. You already have a Raspberry Pi 5 (or a Linux box)
+
+```bash
+# 1. Get the image
+# Either download the latest .img.xz from
+#   https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano/releases
+# Or, from this repo, build the image yourself:
+./build-docker.sh
+
+# 2. Flash it
+#   - Raspberry Pi Imager → "Use custom image" → select the .img.xz
+#   - Or:  balenaEtcher
+#   - Or:  dd if=image.img of=/dev/rdiskN bs=4m
+
+# 3. Boot the Pi, plug it into your LAN, then from any device on the same LAN:
+#    Browse to  http://farmpal.local
+#    (or  http://<pi-ip-address>  if mDNS doesn't resolve)
+
+# 4. Walk through the 6-step wizard:
+#    admin password → farm name → timezone → WiFi → LLM provider + API key → Telegram (optional)
+```
+
+The wizard is where you do everything. By the end of it you have a working dashboard and a license activation.
+
+### B. You're starting from this repository (developer / customizer)
 
 ```bash
 git clone https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano.git
 cd FFT_nano
+npm ci
 ./scripts/onboard-all.sh
 ```
 

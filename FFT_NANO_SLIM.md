@@ -1,14 +1,19 @@
 # FFT_nano-slim — Project Overview
 
+> **v1.0 product direction:** FF_SmartControl is a *software product* sold as a license ($299)
+> or a pre-flashed SD card ($449). The Pi, smart plugs, and sensors are the customer's hardware.
+> See [`DIRECTION.md`](DIRECTION.md) for the locked v1.0 direction.
+
 ## What It Is
 
 FFT_nano-slim is a lightweight, self-contained smart farm controller that runs on a single Raspberry Pi 5 with no cloud dependencies, no Docker, and no HomeAssistant. Where the original FFT_nano relies on a Docker container and HomeAssistant to talk to hardware, FFT_nano-slim puts the agent directly in charge of every device — it is the Hardware Abstraction Layer.
 
 **Product names:**
-- **FarmPal** — the consumer/standalone product (FFT_nano-slim)
-- **FFT_nano** — the commercial product that runs on HomeAssistant (unchanged, stays on `main`)
+- **FarmPal** — the operator-facing product surface (the dashboard, the wizard, the safety UI, the Telegram surface). The thing a customer buys.
+- **FFT_nano-slim** — the runtime that powers FarmPal on a Pi. What we actually ship in the SD card image.
+- **FFT_nano** — the full agent host (legacy / dev path). Same codebase, more agent capability, more complexity. Used for development, customization, and the GitHub source distribution.
 
-They run side by side. They are not the same thing.
+They all run from the same checkout. The v1.0 product ships FFT_nano-slim (the runtime) branded as FarmPal (the operator UX).
 
 ---
 
