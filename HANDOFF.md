@@ -1,7 +1,12 @@
 # FarmPal — Development Handoff
 
-**Last updated:** 2026-05-01  
-**Status:** FarmPal service installed from `~/farmpal` as `com.farmpal`; HAL UI live-data/auth/performance incident in progress
+**Last updated:** 2026-06-02
+**Status:** v1.0 direction locked in. See [`DIRECTION.md`](DIRECTION.md).
+
+> **Direction for v1.0:** this is a *software product* sold as a license ($299) or a pre-flashed SD card ($449).
+> The Pi, smart plugs, and sensors are the customer's hardware. Hardware kits (Pro Kit, $899) become a Q3 2026
+> fulfillment-partnership SKU, not a core product line. Pricing, ship-gate spec, and 1-week engineering calendar:
+> **[`market-research-2026.md`](market-research-2026.md)**, **[`ship-gate-spec.md`](ship-gate-spec.md)**.
 
 ---
 
