@@ -7,6 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > **v1.0 direction (locked):** This is a *software product* sold as a license ($299) or a pre-flashed SD card ($449).
 > The Pi, smart plugs, and sensors are the customer's hardware. If a change moves the product off this direction,
 > update [`DIRECTION.md`](DIRECTION.md) in the same PR. See also [`market-research-2026.md`](market-research-2026.md) and [`ship-gate-spec.md`](ship-gate-spec.md).
+>
+> Other planning docs: [`SPEC.md`](SPEC.md) (product spec), [`DESIGN.md`](DESIGN.md) (design system), [`EXPERIENCE_PLAN.md`](EXPERIENCE_PLAN.md) (UX roadmap), [`AGENTS.md`](AGENTS.md) (agent contributor guide), [`HANDOFF.md`](HANDOFF.md) (session handoff notes).
 
 ## Architecture
 
@@ -50,10 +52,10 @@ Four modes in `src/automation/modes.ts`, persisted to SQLite, survive restarts:
 npm run build          # TypeScript → dist/
 npm run dev            # Run src/index.ts via tsx (no build step)
 npm run start          # Run compiled host from dist/index.js
-npm test               # All tests via node --test
+npm test               # All tests; globs every tests/**/*.test.ts via find
 npm run typecheck      # Type-check without emitting
 
-# Single test file
+# Single test file (bypass the npm test glob)
 node --import tsx --test tests/<name>.test.ts
 
 npm run format         # Prettier write
@@ -109,7 +111,7 @@ For chart toggle changes, verify both `dashboard` and `sensors` views: default z
 | `src/config.ts` | All configuration constants |
 | `src/hal/` | HAL registries, sensors, relays, MQTT, simulator |
 | `src/hal/db.ts` | HAL-specific SQLite (separate from main `src/db.ts`) |
-| `src/agent/` | Multi-agent pipeline: generator, verifier, reflector, diagnostic, decision-loop |
+| `src/agent/` | Multi-agent pipeline: generator, verifier, reflector, diagnostic, decision-loop; `turn.ts` (single agent turn execution), `tool-executor.ts` (tool dispatch) |
 | `src/safety/` | Deterministic policy engine, estop, audit-log |
 | `src/license/` | License key client/cache, hardware-id binding, `feature-gates.ts` (gates the $299/$449 v1.0 product tiers) |
 | `src/automation/modes.ts` | Four automation modes and their transitions |
