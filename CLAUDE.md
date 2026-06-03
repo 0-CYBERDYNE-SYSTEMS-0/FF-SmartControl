@@ -98,7 +98,7 @@ For chart toggle changes, verify both `dashboard` and `sensors` views: default z
 
 | File | Role |
 |---|---|
-| `src/index.ts` | Remaining orchestrator logic (~5700 lines, being decomposed) |
+| `src/index.ts` | Remaining orchestrator logic (~6600 lines, being decomposed) |
 | `src/app-state.ts` | All global mutable state and types |
 | `src/app.ts` | Startup, shutdown, WhatsApp connection, HAL initialization |
 | `src/message-dispatch.ts` | Message processing, session turns, queue logic |
@@ -111,6 +111,7 @@ For chart toggle changes, verify both `dashboard` and `sensors` views: default z
 | `src/hal/db.ts` | HAL-specific SQLite (separate from main `src/db.ts`) |
 | `src/agent/` | Multi-agent pipeline: generator, verifier, reflector, diagnostic, decision-loop |
 | `src/safety/` | Deterministic policy engine, estop, audit-log |
+| `src/license/` | License key client/cache, hardware-id binding, `feature-gates.ts` (gates the $299/$449 v1.0 product tiers) |
 | `src/automation/modes.ts` | Four automation modes and their transitions |
 | `src/cron/service.ts` | Scheduled task runner with exponential backoff |
 | `src/farm-action-gateway.ts` | Home Assistant dashboard and canvas action gateway |
@@ -147,6 +148,9 @@ import { state, activeChatRuns, ... } from './app-state.js';
   ```
 - HAL UI env knobs: `HAL_UI_ENABLED`, `HAL_UI_HOST`, `HAL_UI_PORT`, `HAL_UI_AUTO_OPEN`
 - HAL simulator env knobs: `HAL_SIM_MODE=1`, `HAL_SIM_TICK_MS`, `HAL_SIM_SPEED`, `HAL_SIM_SEED`, `HAL_SIM_SCENARIO`
+  - `HAL_SIM_AUTOPILOT=0` disables the simulator's *internal* rule-based controller and light-schedule actuation, so the real agent (`runDecisionCycle`, via `HAL_AUTO_DECISIONS=true`) is the sole decision-maker driving the twin. Default (`1`) keeps the legacy self-playing behavior. Sim-only; the real-hardware path is unaffected.
+  - Efficacy scorecard: `npx tsx scripts/sim-efficacy.ts [--scenario --seed --ticks --decide-every --mode --fault | --plumbing]` runs the real agent against the twin, grades it against ground truth, and writes a SIMULATION-labeled report to `reports/efficacy/` (gitignored). `--plumbing` validates the pipeline with no LLM cost.
+- Agent LLM provider (`src/agent/llm.ts`): `LLM_PROVIDER` selects ollama/anthropic/openai/zai/lm-studio. `ANTHROPIC_BASE_URL` + `ANTHROPIC_MODEL` override the Anthropic endpoint/model for any Anthropic-compatible provider (e.g. MiniMax: `LLM_PROVIDER=anthropic ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic ANTHROPIC_MODEL=MiniMax-M3`). The provider appends `/v1/messages` — do not include it. Reasoning-model responses (thinking + text blocks) are parsed correctly.
 - Telegram enabled when `TELEGRAM_BOT_TOKEN` is set; WhatsApp auth via `npm run auth`
 
 ## Development Workflow

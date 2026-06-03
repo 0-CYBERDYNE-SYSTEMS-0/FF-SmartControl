@@ -131,8 +131,14 @@ async function callAnthropic(
   options: LLMOptions,
 ): Promise<LLMResponse> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const model = options.model || 'claude-3-5-haiku-20241022';
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const model =
+    options.model || process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-20241022';
+  // Base URL override enables any Anthropic-compatible provider (MiniMax,
+  // Kimi, etc.). The provider appends /v1/messages — do not include it here.
+  const baseUrl = (
+    process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com'
+  ).replace(/\/+$/, '');
+  const res = await fetch(`${baseUrl}/v1/messages`, {
     method: 'POST',
     headers: {
       'x-api-key': apiKey!,
@@ -150,12 +156,19 @@ async function callAnthropic(
   if (!res.ok)
     throw new Error(`Anthropic API error: ${res.status} ${await res.text()}`);
   const data = (await res.json()) as {
-    content?: Array<{ text?: string }>;
+    content?: Array<{ type?: string; text?: string }>;
     model?: string;
     stop_reason?: string;
   };
+  // Concatenate text blocks, skipping thinking/reasoning blocks. Reasoning
+  // models (MiniMax-M3, Claude extended thinking) emit a thinking block at
+  // content[0] and the answer in a later text block.
+  const text = (data.content ?? [])
+    .filter((b) => b.type === 'text' || (b.type === undefined && b.text))
+    .map((b) => b.text ?? '')
+    .join('');
   return {
-    text: data.content?.[0]?.text || '',
+    text,
     model: data.model || model,
     finishReason: data.stop_reason,
   };
