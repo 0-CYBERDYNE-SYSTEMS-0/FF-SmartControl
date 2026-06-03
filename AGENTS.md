@@ -197,19 +197,22 @@ npm run hal:ui:build
 - HAL simulator environment knobs:
   - `HAL_SIM_MODE=1` enables the HAL simulator loop instead of periodic HAL polling.
   - `HAL_SIM_TICK_MS`, `HAL_SIM_SPEED`, `HAL_SIM_SEED`, and `HAL_SIM_SCENARIO` tune simulator runtime behavior.
+  - `HAL_SIM_AUTOPILOT=0` disables the simulator's internal rule-based controller and its light-schedule actuation, so the real agent (`runDecisionCycle`, via `HAL_AUTO_DECISIONS=true`) is the sole decision-maker driving the twin. Default (`1`) preserves the legacy self-playing twin. Sim-only — the real-hardware path is unaffected. In sim mode the simulator mirrors relay state from `halRegistry` each tick, and `halRegistry.control()` short-circuits the real HTTP/GPIO call (records state only) so agent/manual actuation closes the physics loop without hardware.
+- Efficacy scorecard (`scripts/sim-efficacy.ts`): runs the real agent against the twin, grades against ground truth (`HalSimulator.getGroundTruth()`), and writes a SIMULATION-labeled report to `reports/efficacy/` (gitignored). `--plumbing` validates the pipeline with no LLM cost. Reports are real software behavior on simulated physics — never present them as real-hardware results.
 - Simplified FarmPal agent knobs:
   - `HAL_AUTO_MODE=true` plus a message starting with `!auto ` triggers `src/agent/decision-loop.ts` from message dispatch.
   - `HAL_AUTO_DECISIONS=true` triggers the decision loop from periodic HAL heartbeat/poll paths.
   - `LLM_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `LMSTUDIO_BASE_URL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `ZAI_API_KEY` affect `src/agent/llm.ts`.
+  - `ANTHROPIC_BASE_URL` and `ANTHROPIC_MODEL` override the Anthropic provider endpoint/model, enabling any Anthropic-compatible provider (e.g. MiniMax `https://api.minimax.io/anthropic` + model `MiniMax-M3`, Kimi, etc.). The provider appends `/v1/messages` — do not include it. The Anthropic response parser concatenates `text` blocks and skips `thinking` blocks, so reasoning models (MiniMax-M3, Claude extended thinking) return their answer rather than empty output.
 - Telegram is enabled when `TELEGRAM_BOT_TOKEN` is set. WhatsApp auth uses `npm run auth`.
 - Avoid starting foreground host commands when Telegram polling is already active in the service; polling conflicts can occur before the lock or upstream channel state makes the issue obvious.
 
 ## Simplified Farm Agent State
 
 - The active simplified farm loop is `runDecisionCycle()` in `src/agent/decision-loop.ts`.
-- It reads devices from `halRegistry`, sensor readings from `halSensors`, recent decisions from `halDecisions`, then asks the LLM for a strict JSON decision.
-- It can execute HAL tool calls through `src/agent/tool-executor.ts` and can directly call `halRegistry.control()` for `turn_on`/`turn_off` decisions.
-- `src/agent/generator.ts` and `src/agent/verifier.ts` are present, but they are not currently wired as the default control path. Do not assume Generator/Verifier safety checks run unless you verify the call site.
+- It reads devices from `halRegistry`, sensor readings from `halSensors`, recent decisions from `halDecisions`, then asks the LLM for a strict JSON decision. The device list in the prompt includes each device's exact `id="..."`, and the model is instructed to emit `device_id` matching one of those ids (not the human label) — otherwise the `hal_decision_log` foreign key rejects it.
+- A guard in `runDecisionCycle` nulls an unregistered `device_id` (treats it as a safe no-op) before logging, so a hallucinated id cannot throw a foreign-key error and kill the cycle.
+- It can execute HAL tool calls through `src/agent/tool-executor.ts` and, for `turn_on`/`turn_off` decisions with a valid `device_id`, actuates via `halRegistry.control()` **through the safety verifier** (`src/safety/verifier.ts`): the action is verified, executed, re-verified for mid-action violations, and logged to `halRelays`/audit. Actuation does not require `tool_calls`.
 - The TUI does not bypass the host. TUI messages still enter through the gateway/session/message-dispatch path. For no-Telegram development, verify the TUI session/bootstrap path before assuming a message can reach the simplified farm loop.
 - The old Pi runner still exists and is still used by the legacy/general chat route. Host runtime means that path spawns local `pi`; it does not mean the simplified FarmPal agent is running standalone.
 

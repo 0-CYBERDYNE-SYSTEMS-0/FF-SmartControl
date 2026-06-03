@@ -146,6 +146,16 @@ export class HalRegistry {
     const dev = this.get(id);
     if (!dev) throw new Error(`Device ${id} not found`);
 
+    // Digital Twin: in sim mode there is no real hardware behind the device.
+    // Record the commanded state directly; the simulator reads it back to
+    // drive zone physics. Real-hardware behavior is unchanged when the flag
+    // is unset (this branch is never taken). Also fixes manual UI relay
+    // toggles, which would otherwise attempt a real HTTP/GPIO call in sim mode.
+    if (process.env.HAL_SIM_MODE === '1') {
+      this.updateState(id, action);
+      return;
+    }
+
     if (dev.protocol === 'gpio') {
       // Map device id to GPIO pin number (stored in device metadata or use default)
       const pin = parseInt(dev.host || '0');

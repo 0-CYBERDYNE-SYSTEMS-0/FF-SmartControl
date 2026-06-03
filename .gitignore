@@ -89,3 +89,7 @@ node_modules_old/\ncompiled/\n
 
 # Stray local screenshots
 system-height-fixed.png
+
+# Generated efficacy scorecards (SIMULATION artifacts)
+reports/efficacy/*.json
+reports/efficacy/*.md

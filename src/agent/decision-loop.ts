@@ -105,7 +105,7 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     devices
       .map(
         (d: any) =>
-          `  - ${d.label || d.id}: ${d.type} (${d.protocol}) at ${d.host || 'gpio'}, state=${d.last_state}, value=${d.last_value}`,
+          `  - id="${d.id}"${d.label ? ` (${d.label})` : ''}: ${d.type} (${d.protocol}) at ${d.host || 'gpio'}, state=${d.last_state}, value=${d.last_value}`,
       )
       .join('\n'),
     '',
@@ -130,6 +130,7 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     `Trigger: ${ctx.trigger}`,
     ctx.message ? `User message: ${ctx.message}` : '',
     '',
+    'device_id MUST be one of the exact id="..." values listed above, or null. Do not use the human label.',
     'Respond ONLY with a valid JSON object: {"reasoning":"string","decision":"turn_on|turn_off|adjust|alert|noop","device_id":"string|null","confidence":0.0-1.0,"tool_calls":[]}',
   ].join('\n');
 
@@ -203,6 +204,16 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     } catch {
       parsed.reasoning = llmResult.text;
     }
+  }
+
+  // Guard against a hallucinated device_id: hal_decision_log has a foreign key
+  // on device_id, so an unregistered id throws and kills the whole cycle.
+  // Treat an unknown id as a safe no-action instead of crashing.
+  if (parsed.device_id && !halRegistry.get(parsed.device_id)) {
+    parsed.reasoning =
+      `${parsed.reasoning || ''} [device_id "${parsed.device_id}" is not a registered device — no action taken]`.trim();
+    parsed.device_id = null;
+    parsed.decision = 'noop';
   }
 
   // Convert sensor snapshot to flat format for decision log (backward compatible)

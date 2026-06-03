@@ -650,6 +650,12 @@ export class HalSimulator {
   private tickCount = 0;
   private simTimeMs = Date.now();
   private lightScheduleOn = false;
+  // When false (HAL_SIM_AUTOPILOT=0), the simulator stops making control
+  // decisions and stops its internal light-schedule actuation. The twin
+  // becomes a pure world (physics + sensor emission), and relay state is
+  // driven by whatever wrote halRegistry — i.e. the real agent or manual UI.
+  // Default true preserves legacy self-playing behavior exactly.
+  private autopilot = process.env.HAL_SIM_AUTOPILOT !== '0';
   private faultState: {
     sensorStuck: Set<string>; // deviceId:metric
     deviceOffline: Set<string>; // deviceId
@@ -832,6 +838,28 @@ export class HalSimulator {
     };
   }
 
+  // Read-only full ground-truth zone vector. The twin knows the EXACT physical
+  // state; sensors only ever report a noisy/drifted/lagged view of it. The
+  // efficacy scorecard grades the agent against this oracle. Sim-only.
+  getGroundTruth(): Array<ZoneState & { name: string }> {
+    return this.zones.map((z) => ({ ...z }));
+  }
+
+  // Agent-driven mode: pull authoritative relay state from halRegistry into the
+  // sim's device model so physics responds to the real agent / manual UI.
+  private syncDeviceStatesFromRegistry(): void {
+    for (const dev of this.devices) {
+      if (this.faultState.deviceOffline.has(dev.id)) continue;
+      const reg = halRegistry.get(dev.id);
+      const regState = reg?.last_state;
+      if (regState === 'on' || regState === 'off') {
+        dev.state = regState;
+      }
+    }
+    this.lightScheduleOn =
+      this.devices.find((d) => d.id === 'grow_light_main')?.state === 'on';
+  }
+
   private applyScenario(): void {
     switch (this.config.scenario) {
       case 'heat_wave':
@@ -871,25 +899,38 @@ export class HalSimulator {
     this.simTimeMs += this.config.tickMs * this.config.speed;
     this.tickCount++;
 
-    // 1. Update light schedule (18/6 cycle)
-    const simDate = new Date(this.simTimeMs);
-    const hour = simDate.getHours() + simDate.getMinutes() / 60;
-    const shouldBeLightOn = hour >= 6 && hour < 24; // 18h on, 6h off
-    if (
-      shouldBeLightOn !== this.lightScheduleOn &&
-      !this.faultState.deviceOffline.has('grow_light_main')
-    ) {
-      this.lightScheduleOn = shouldBeLightOn;
-      const lightDev = this.devices.find((d) => d.id === 'grow_light_main')!;
-      lightDev.state = shouldBeLightOn ? 'on' : 'off';
-      halRegistry.updateState(lightDev.id, lightDev.state, lightDev.powerWatts);
-      halRelays.log({
-        device_id: lightDev.id,
-        state: lightDev.state,
-        reason: 'schedule',
-        triggered_by: 'simulator',
-        switched_at: new Date(this.simTimeMs).toISOString(),
-      });
+    // 0. Agent-driven mode: relay state lives in halRegistry (written by the
+    //    real agent or manual UI). Mirror it into the sim's device model so
+    //    physics responds to whoever is actually in control.
+    if (!this.autopilot) {
+      this.syncDeviceStatesFromRegistry();
+    }
+
+    // 1. Update light schedule (18/6 cycle) — internal actuation, autopilot only
+    if (this.autopilot) {
+      const simDate = new Date(this.simTimeMs);
+      const hour = simDate.getHours() + simDate.getMinutes() / 60;
+      const shouldBeLightOn = hour >= 6 && hour < 24; // 18h on, 6h off
+      if (
+        shouldBeLightOn !== this.lightScheduleOn &&
+        !this.faultState.deviceOffline.has('grow_light_main')
+      ) {
+        this.lightScheduleOn = shouldBeLightOn;
+        const lightDev = this.devices.find((d) => d.id === 'grow_light_main')!;
+        lightDev.state = shouldBeLightOn ? 'on' : 'off';
+        halRegistry.updateState(
+          lightDev.id,
+          lightDev.state,
+          lightDev.powerWatts,
+        );
+        halRelays.log({
+          device_id: lightDev.id,
+          state: lightDev.state,
+          reason: 'schedule',
+          triggered_by: 'simulator',
+          switched_at: new Date(this.simTimeMs).toISOString(),
+        });
+      }
     }
 
     // 2. Apply device effects to zone physics
@@ -939,8 +980,11 @@ export class HalSimulator {
       this.clampZone(zone);
     });
 
-    // 4. Agent-style auto decisions
-    this.runAutoDecisions();
+    // 4. Agent-style auto decisions — internal controller, autopilot only.
+    //    With HAL_SIM_AUTOPILOT=0 the real agent is the sole decision-maker.
+    if (this.autopilot) {
+      this.runAutoDecisions();
+    }
 
     // 5. Read sensors and store to HAL
     this.readAndStoreSensors();
