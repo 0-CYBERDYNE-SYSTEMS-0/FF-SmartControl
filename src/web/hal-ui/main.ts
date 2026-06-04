@@ -187,6 +187,7 @@ async function init(): Promise<void> {
     handleSettingsClick,
     handleModeChange,
     handleManualTrigger,
+    handleReasoningToggle,
   );
 
   // Init sidebar
@@ -390,6 +391,12 @@ function handleLayoutChange(layout: DashboardLayout): void {
   showToast(`Layout: ${layout.toUpperCase()}`, 'info', 2000);
   // Re-render dashboard when layout changes
   render();
+}
+
+function handleReasoningToggle(): void {
+  // Store already updated by the header control; re-render decision surfaces.
+  const view = getStore().activeView;
+  if (view === 'decisions' || view === 'dashboard') render();
 }
 
 function handleModeChange(mode: string): void {

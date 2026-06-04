@@ -902,6 +902,65 @@ export async function startHalUiServer(
         return;
       }
 
+      // Batched history — one request for many device/metric series. The views
+      // need a series per device×metric; fanning out one request each blows the
+      // 100/min per-session rate limit (VAL-SEC-061) and the loads 429. This
+      // collapses them into a single call. Must be matched before the single
+      // /sensors/history route (which is a prefix of this path).
+      if (apiPath.startsWith('/sensors/history-batch') && method === 'GET') {
+        const metricList = (url.searchParams.get('metrics') || '')
+          .split(',')
+          .map((m) => m.trim())
+          .filter(Boolean);
+        if (metricList.length === 0) {
+          sendJson(res, 400, { error: 'metrics are required' });
+          return;
+        }
+        const devicesParam = url.searchParams.get('devices') || 'all';
+        const deviceIds =
+          devicesParam === 'all'
+            ? halRegistry
+                .list()
+                .filter((d: any) => d.type === 'sensor')
+                .map((d: any) => d.id)
+            : devicesParam
+                .split(',')
+                .map((d) => d.trim())
+                .filter(Boolean);
+        const from =
+          url.searchParams.get('from') ||
+          new Date(Date.now() - 86400000).toISOString();
+        const to = url.searchParams.get('to') || new Date().toISOString();
+        const series: Array<{
+          device_id: string;
+          metric: string;
+          points: unknown[];
+        }> = [];
+        for (const deviceId of deviceIds) {
+          const device = halRegistry.get(deviceId);
+          const calibrationOffset = device?.calibration_offset ?? 0;
+          for (const metric of metricList) {
+            const rawHistory = halSensors.history(
+              deviceId,
+              metric as MetricType,
+              from,
+              to,
+            );
+            if (rawHistory.length === 0) continue;
+            series.push({
+              device_id: deviceId,
+              metric,
+              points: rawHistory.map((reading) => ({
+                ...reading,
+                value: reading.value + calibrationOffset,
+              })),
+            });
+          }
+        }
+        sendJson(res, 200, series);
+        return;
+      }
+
       if (apiPath.startsWith('/sensors/history') && method === 'GET') {
         const deviceId = url.searchParams.get('device');
         const metric = url.searchParams.get('metric');
@@ -2996,7 +3055,7 @@ export async function startHalUiServer(
           // VAL-IMG-019: Atomic .env write - no partial file left on failure
           // The generateEnv method uses write-to-temp-then-rename
           await mgr.generateEnv(parsed);
-          const state = mgr.completeProvisioning();
+          const state = mgr.completeProvisioning(parsed.adminPasswordHash);
           sendJson(res, 200, { ok: true, state: state.state });
         } catch (err: any) {
           // VAL-IMG-019: If write fails, clear error shown, no redirect

@@ -7,8 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > **v1.0 direction (locked):** This is a *software product* sold as a license ($299) or a pre-flashed SD card ($449).
 > The Pi, smart plugs, and sensors are the customer's hardware. If a change moves the product off this direction,
 > update [`DIRECTION.md`](DIRECTION.md) in the same PR. See also [`market-research-2026.md`](market-research-2026.md) and [`ship-gate-spec.md`](ship-gate-spec.md).
+>
+> Other planning docs: [`SPEC.md`](SPEC.md) (product spec), [`DESIGN.md`](DESIGN.md) (design system), [`EXPERIENCE_PLAN.md`](EXPERIENCE_PLAN.md) (UX roadmap), [`AGENTS.md`](AGENTS.md) (agent contributor guide), [`HANDOFF.md`](HANDOFF.md) (session handoff notes).
 
 ## Architecture
+
+> **Naming:** the npm package is still named `fft_nano` (v1.7.2) and `FFT_NANO_*` env vars / a leftover `launchd/com.fft_nano.plist` carry that prefix — this is lineage only. The product is **FarmPal**, a self-contained app. It does **not** require or spawn the separate `~/FFT_nano` or `nano-core` programs; the agent is the bundled `@mariozechner/pi-*` npm dependency. FF-SmartControl = the FFT_nano host runtime evolved + the HAL/safety control plane.
 
 Single Node.js host process: receives chat messages (Telegram/WhatsApp), runs a `pi` agent subprocess inside an isolated container, returns responses. SQLite for persistence.
 
@@ -41,7 +45,7 @@ Four modes in `src/automation/modes.ts`, persisted to SQLite, survive restarts:
 
 `src/safety/` is a pure deterministic gate — no LLM calls — that runs before any relay action:
 - `policy-engine.ts` — evaluates rules: `max_on_duration`, `min_off_duration`, `max_activations_per_hour`, `allowed_schedule_windows`, `dependency`, `threshold`
-- `estop.ts` — emergency stop flag; checked by cron service before task execution
+- `estop.ts` — emergency stop flag (checked by cron service before task execution) plus the farm-loop hang watchdog. A hang latches `safety_mode` **and** fires an E-Stop together; `isAutonomousAllowed()` blocks the decision loop (returns `noop`) while either is set. Clearing the E-Stop (`clearEstop()`) also clears `safety_mode`, so recovery is operator-gated and the controller resumes after a hang/crash.
 - `audit-log.ts` — append-only record of all safety decisions
 
 ## Build & Test
@@ -50,10 +54,10 @@ Four modes in `src/automation/modes.ts`, persisted to SQLite, survive restarts:
 npm run build          # TypeScript → dist/
 npm run dev            # Run src/index.ts via tsx (no build step)
 npm run start          # Run compiled host from dist/index.js
-npm test               # All tests via node --test
+npm test               # All tests; globs every tests/**/*.test.ts via find
 npm run typecheck      # Type-check without emitting
 
-# Single test file
+# Single test file (bypass the npm test glob)
 node --import tsx --test tests/<name>.test.ts
 
 npm run format         # Prettier write
@@ -109,7 +113,7 @@ For chart toggle changes, verify both `dashboard` and `sensors` views: default z
 | `src/config.ts` | All configuration constants |
 | `src/hal/` | HAL registries, sensors, relays, MQTT, simulator |
 | `src/hal/db.ts` | HAL-specific SQLite (separate from main `src/db.ts`) |
-| `src/agent/` | Multi-agent pipeline: generator, verifier, reflector, diagnostic, decision-loop |
+| `src/agent/` | Multi-agent pipeline: generator, verifier, reflector, diagnostic, decision-loop; `turn.ts` (single agent turn execution), `tool-executor.ts` (tool dispatch) |
 | `src/safety/` | Deterministic policy engine, estop, audit-log |
 | `src/license/` | License key client/cache, hardware-id binding, `feature-gates.ts` (gates the $299/$449 v1.0 product tiers) |
 | `src/automation/modes.ts` | Four automation modes and their transitions |
@@ -141,6 +145,14 @@ import { state, activeChatRuns, ... } from './app-state.js';
 
 - Singleton lock at `data/farmpal.lock` — do not run a second foreground host while the installed service is active.
 - **Port policy**: do not use `28995` or any `289xx` port. Use the FarmPal local block `3390`–`3399` unless explicitly told otherwise.
+- **Container runtime required to boot**: `npm run dev`/`start` exits at startup with `No supported runtime found` unless Docker is present. For local dev on macOS (no Pi/Docker), run the agent unisolated on the host: prefix with `CONTAINER_RUNTIME=host FFT_NANO_ALLOW_HOST_RUNTIME=1`. (Note: provisioning bakes these same two vars into the generated `.env` — i.e. the shipped default runs the agent **on the host, not isolated**.)
+- **Provisioning gate**: a fresh checkout is unprovisioned — HAL UI data APIs return `{"error":"System not provisioned"}` and redirect to `/login` until setup completes. Setup runs via the HAL UI wizard or `npm run onboard`; it writes `.env`, `data/provisioned`, and `data/provisioning-state.json` (see `src/first-boot.ts` `generateEnv`/`completeProvisioning`). Admin login user is always `admin`; the password is set during setup (bcrypt hash, no default). If the wizard hangs on "Saving…", the host process isn't running to receive the POST (often the container-runtime exit above) — verify a listener on `3392` and that no `.env`/`provisioned` marker means `/complete` never ran.
+- **HAL UI smoke test (no LLM cost)**: boot the twin and serve the dashboard without real hardware:
+  ```bash
+  CONTAINER_RUNTIME=host FFT_NANO_ALLOW_HOST_RUNTIME=1 \
+    HAL_UI_ENABLED=1 HAL_UI_PORT=3392 HAL_SIM_MODE=1 HAL_SIM_TICK_MS=400 HAL_SIM_SCENARIO=heat_wave npm run dev
+  ```
+  The sim autopilot logs real decisions (with reasoning) into `hal_decision_log`; WhatsApp connection errors in the log are unrelated (no auth).
 - Service management:
   ```bash
   ./scripts/service.sh restart

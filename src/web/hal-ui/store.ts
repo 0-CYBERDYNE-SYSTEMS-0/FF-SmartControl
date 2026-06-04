@@ -38,6 +38,7 @@ export interface HalStore {
   activeView: ViewId;
   unitSystem: UnitSystem;
   timeFormat: TimeFormat;
+  reasoningVerbosity: 'quiet' | 'detailed';
   sidebarCollapsed: boolean;
 
   // HAL data
@@ -105,7 +106,10 @@ const themeNames: ThemeName[] = [
 const dashboardLayouts: DashboardLayout[] = ['calm', 'operator', 'diagnostic'];
 
 function loadStoredPreferences(): Partial<
-  Pick<HalStore, 'unitSystem' | 'timeFormat' | 'theme' | 'layout'>
+  Pick<
+    HalStore,
+    'unitSystem' | 'timeFormat' | 'theme' | 'layout' | 'reasoningVerbosity'
+  >
 > {
   try {
     const raw = localStorage.getItem(preferencesStorageKey);
@@ -126,6 +130,11 @@ function loadStoredPreferences(): Partial<
       layout: dashboardLayouts.includes(parsed.layout as DashboardLayout)
         ? (parsed.layout as DashboardLayout)
         : undefined,
+      reasoningVerbosity:
+        parsed.reasoningVerbosity === 'quiet' ||
+        parsed.reasoningVerbosity === 'detailed'
+          ? parsed.reasoningVerbosity
+          : undefined,
     };
   } catch {
     return {};
@@ -141,6 +150,7 @@ function persistPreferences(next: HalStore): void {
         timeFormat: next.timeFormat,
         theme: next.theme,
         layout: next.layout,
+        reasoningVerbosity: next.reasoningVerbosity,
       }),
     );
   } catch {
@@ -154,6 +164,7 @@ let state: HalStore = {
   activeView: 'dashboard',
   unitSystem: 'imperial',
   timeFormat: '24h',
+  reasoningVerbosity: 'quiet',
   sidebarCollapsed: false,
   devices: [],
   decisions: [],
@@ -186,7 +197,8 @@ export function setStore(partial: Partial<HalStore>): void {
     partial.unitSystem ||
     partial.timeFormat ||
     partial.theme ||
-    partial.layout
+    partial.layout ||
+    partial.reasoningVerbosity
   ) {
     persistPreferences(state);
   }

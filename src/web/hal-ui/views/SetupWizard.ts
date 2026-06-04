@@ -698,10 +698,19 @@ function attachWizardEvents(
     if (!validateCurrentStep(currentStep)) return;
 
     isSubmitting = true;
-    render(container); // show loading state
+    // Lightweight loading state — do NOT re-render here: a full render would
+    // wipe the value just typed before saveCurrentStep reads it from the DOM.
+    const submitBtn = document.getElementById(
+      'wizard-next',
+    ) as HTMLButtonElement | null;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Saving...';
+    }
 
     try {
       await saveCurrentStep(currentIndex, currentStep);
+      isSubmitting = false; // reset before rendering the next step's button
 
       if (currentIndex < effectiveSteps.length - 1) {
         // Advance to next step
@@ -709,14 +718,13 @@ function attachWizardEvents(
         wizardData = loadStepData(currentStep);
         render(container);
       } else {
-        // Complete wizard
+        // Complete wizard (reloads the page on success)
         await completeWizard(container);
       }
     } catch (err: any) {
+      isSubmitting = false;
       showStepError(currentStep, err.message || 'An error occurred');
       render(container);
-    } finally {
-      isSubmitting = false;
     }
   });
 }
@@ -924,19 +932,12 @@ async function completeWizard(container: HTMLElement): Promise<void> {
     telegramBotToken: wizardData.telegramBotToken,
   };
 
-  try {
-    await provisioningApi.complete(completeData);
-    // Store operatorId in session for authenticated actions (factory reset, etc.)
-    sessionStorage.setItem('operatorId', 'admin');
-    // Redirect to dashboard
-    window.location.hash = '#dashboard';
-    window.location.reload();
-  } catch (err: any) {
-    showStepError(
-      6,
-      err.message || 'Setup could not be saved — please try again.',
-    );
-  }
+  // Let errors propagate to the caller so it can clear the submitting state
+  // and re-render; on success the page reloads into the dashboard.
+  await provisioningApi.complete(completeData);
+  sessionStorage.setItem('operatorId', 'admin');
+  window.location.hash = '#dashboard';
+  window.location.reload();
 }
 
 // ---------------------------------------------------------------------------

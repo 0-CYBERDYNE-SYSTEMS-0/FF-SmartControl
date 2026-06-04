@@ -2,15 +2,19 @@
  * API Rate Limiting
  *
  * Features:
- * - 100 authenticated API requests per minute per session
+ * - 600 authenticated API requests per minute per session
  * - 429 response with Retry-After header when limit exceeded
  * - Rate limit hits logged to audit log
  */
 
 import { getDb } from '../hal/db.js';
 
-// Rate limit configuration
-const MAX_REQUESTS_PER_MINUTE = 100;
+// Rate limit configuration.
+// The live dashboard legitimately polls (10s) and each render fans out several
+// reads across its panels, so a single operator session easily exceeds 100/min
+// in normal use. 600/min (10 req/s) still bounds runaway loops / abuse on this
+// localhost single-operator panel while leaving headroom for legitimate polling.
+const MAX_REQUESTS_PER_MINUTE = 600;
 const WINDOW_SECONDS = 60; // 60 second rolling window
 
 export interface ApiRateLimitResult {

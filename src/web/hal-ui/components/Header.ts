@@ -5,6 +5,7 @@ import {
   type ThemeName,
   type DashboardLayout,
   getStore,
+  setStore,
   formatTimeValue,
 } from '../store.js';
 import { halApi } from '../api.js';
@@ -115,6 +116,10 @@ export function renderHeader(theme: ThemeName): string {
             </button>
           </div>
         </div>
+        <button class="reasoning-toggle-btn ${store.reasoningVerbosity === 'detailed' ? 'active' : ''}" id="reasoning-toggle-btn" aria-label="Reasoning detail" title="Toggle reasoning detail">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="reasoning-toggle-label">${store.reasoningVerbosity === 'detailed' ? 'Detailed' : 'Quiet'}</span>
+        </button>
       </div>
       <div class="hal-header-right">
         <button class="settings-btn" id="settings-btn" aria-label="Settings" title="Settings">
@@ -161,16 +166,62 @@ export function initHeader(
   onSettingsClick?: () => void,
   onModeChange?: (mode: string) => void,
   onManualTrigger?: () => void,
+  onReasoningChange?: () => void,
 ): void {
   injectHeaderStyles();
   injectAutoModeStyles();
+  injectReasoningToggleStyles();
   startClock();
   setupThemeButtons(onThemeChange);
   setupEstopButton(onEstopChange);
   setupLayoutButtons(onLayoutChange);
   setupSettingsButton(onSettingsClick);
   setupAutoModeSelector(onModeChange, onManualTrigger);
+  setupReasoningToggle(onReasoningChange);
   refreshEstopStatus();
+}
+
+function setupReasoningToggle(onReasoningChange?: () => void): void {
+  const btn = document.getElementById('reasoning-toggle-btn');
+  btn?.addEventListener('click', () => {
+    const next =
+      getStore().reasoningVerbosity === 'detailed' ? 'quiet' : 'detailed';
+    setStore({ reasoningVerbosity: next });
+    btn.classList.toggle('active', next === 'detailed');
+    const label = btn.querySelector('.reasoning-toggle-label');
+    if (label) label.textContent = next === 'detailed' ? 'Detailed' : 'Quiet';
+    onReasoningChange?.();
+  });
+}
+
+function injectReasoningToggleStyles(): void {
+  if (document.getElementById('hal-reasoning-toggle-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'hal-reasoning-toggle-styles';
+  style.textContent = `
+.reasoning-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.reasoning-toggle-btn:hover { color: var(--text-primary); border-color: var(--accent); }
+.reasoning-toggle-btn.active { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+@media (max-width: 767px) {
+  .reasoning-toggle-label { display: none; }
+  .reasoning-toggle-btn { padding: 0 var(--space-1); }
+}
+`;
+  document.head.appendChild(style);
 }
 
 // Refresh E-Stop status and safety state periodically

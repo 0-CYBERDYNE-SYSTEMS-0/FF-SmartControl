@@ -349,32 +349,35 @@ async function loadData(
 
   try {
     const layers: SeriesLayer[] = [];
-    const [decisions] = await Promise.all([
+    const [decisions, historyMap] = await Promise.all([
       halApi.getDecisions(50).catch(() => [] as HalDecision[]),
-      ...selectedDevices.flatMap((device) =>
-        activeMetricConfigs.map(async (metric) => {
-          const data = await halApi.getSensorHistory(
-            device.id,
-            metric.key,
-            from,
-            to,
-          );
-          if (data.length > 0) {
-            layers.push({
-              deviceId: device.id,
-              deviceName: device.name,
-              zoneName: resolveZoneName(
-                device.id,
-                device.name,
-                (device as any).zone,
-              ),
-              metric,
-              data,
-            });
-          }
-        }),
-      ),
+      halApi
+        .getSensorHistoryBatch(
+          selectedDevices.map((d) => d.id),
+          activeMetricConfigs.map((m) => m.key),
+          from,
+          to,
+        )
+        .catch(() => new Map<string, HalSensorReading[]>()),
     ]);
+    for (const device of selectedDevices) {
+      for (const metric of activeMetricConfigs) {
+        const data = historyMap.get(`${device.id}|${metric.key}`) ?? [];
+        if (data.length > 0) {
+          layers.push({
+            deviceId: device.id,
+            deviceName: device.name,
+            zoneName: resolveZoneName(
+              device.id,
+              device.name,
+              (device as any).zone,
+            ),
+            metric,
+            data,
+          });
+        }
+      }
+    }
 
     if (sequence !== loadSequence) return;
 

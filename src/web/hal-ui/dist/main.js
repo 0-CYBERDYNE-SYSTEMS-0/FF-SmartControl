@@ -78,7 +78,8 @@
         unitSystem: parsed.unitSystem === "metric" || parsed.unitSystem === "imperial" ? parsed.unitSystem : void 0,
         timeFormat: parsed.timeFormat === "12h" || parsed.timeFormat === "24h" ? parsed.timeFormat : void 0,
         theme: themeNames.includes(parsed.theme) ? parsed.theme : void 0,
-        layout: dashboardLayouts.includes(parsed.layout) ? parsed.layout : void 0
+        layout: dashboardLayouts.includes(parsed.layout) ? parsed.layout : void 0,
+        reasoningVerbosity: parsed.reasoningVerbosity === "quiet" || parsed.reasoningVerbosity === "detailed" ? parsed.reasoningVerbosity : void 0
       };
     } catch {
       return {};
@@ -92,7 +93,8 @@
           unitSystem: next.unitSystem,
           timeFormat: next.timeFormat,
           theme: next.theme,
-          layout: next.layout
+          layout: next.layout,
+          reasoningVerbosity: next.reasoningVerbosity
         })
       );
     } catch {
@@ -103,7 +105,7 @@
   }
   function setStore(partial) {
     state = { ...state, ...partial };
-    if (partial.unitSystem || partial.timeFormat || partial.theme || partial.layout) {
+    if (partial.unitSystem || partial.timeFormat || partial.theme || partial.layout || partial.reasoningVerbosity) {
       persistPreferences(state);
     }
     listeners.forEach((l) => l());
@@ -235,6 +237,7 @@
         activeView: "dashboard",
         unitSystem: "imperial",
         timeFormat: "24h",
+        reasoningVerbosity: "quiet",
         sidebarCollapsed: false,
         devices: [],
         decisions: [],
@@ -898,6 +901,26 @@
           });
           return readings.map(normalizeSensorReading).filter((reading) => Boolean(reading));
         },
+        // GET /api/hal/sensors/history-batch — many device/metric series in one call.
+        // Returns a map keyed by `${device}|${metric}` so callers can avoid firing one
+        // request per series (which trips the 100/min rate limit and 429s the views).
+        async getSensorHistoryBatch(devices, metrics2, from, to) {
+          const result = /* @__PURE__ */ new Map();
+          if (devices.length === 0 || metrics2.length === 0) return result;
+          const series = await halGet("/sensors/history-batch", {
+            devices: devices.join(","),
+            metrics: metrics2.join(","),
+            ...from ? { from } : {},
+            ...to ? { to } : {}
+          });
+          for (const s of series) {
+            result.set(
+              `${s.device_id}|${s.metric}`,
+              s.points.map(normalizeSensorReading).filter((r) => Boolean(r))
+            );
+          }
+          return result;
+        },
         // GET /api/hal/decisions
         async getDecisions(limit = 20) {
           const decisions = await halGet("/decisions", {
@@ -1261,6 +1284,10 @@
             </button>
           </div>
         </div>
+        <button class="reasoning-toggle-btn ${store.reasoningVerbosity === "detailed" ? "active" : ""}" id="reasoning-toggle-btn" aria-label="Reasoning detail" title="Toggle reasoning detail">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="reasoning-toggle-label">${store.reasoningVerbosity === "detailed" ? "Detailed" : "Quiet"}</span>
+        </button>
       </div>
       <div class="hal-header-right">
         <button class="settings-btn" id="settings-btn" aria-label="Settings" title="Settings">
@@ -1297,16 +1324,58 @@
     };
     return labels[location.hash.slice(1) || "dashboard"] || "Overview";
   }
-  function initHeader(theme, onThemeChange, onEstopChange, onLayoutChange, onSettingsClick, onModeChange, onManualTrigger) {
+  function initHeader(theme, onThemeChange, onEstopChange, onLayoutChange, onSettingsClick, onModeChange, onManualTrigger, onReasoningChange) {
     injectHeaderStyles();
     injectAutoModeStyles();
+    injectReasoningToggleStyles();
     startClock();
     setupThemeButtons(onThemeChange);
     setupEstopButton(onEstopChange);
     setupLayoutButtons(onLayoutChange);
     setupSettingsButton(onSettingsClick);
     setupAutoModeSelector(onModeChange, onManualTrigger);
+    setupReasoningToggle(onReasoningChange);
     refreshEstopStatus();
+  }
+  function setupReasoningToggle(onReasoningChange) {
+    const btn = document.getElementById("reasoning-toggle-btn");
+    btn?.addEventListener("click", () => {
+      const next = getStore().reasoningVerbosity === "detailed" ? "quiet" : "detailed";
+      setStore({ reasoningVerbosity: next });
+      btn.classList.toggle("active", next === "detailed");
+      const label = btn.querySelector(".reasoning-toggle-label");
+      if (label) label.textContent = next === "detailed" ? "Detailed" : "Quiet";
+      onReasoningChange?.();
+    });
+  }
+  function injectReasoningToggleStyles() {
+    if (document.getElementById("hal-reasoning-toggle-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-reasoning-toggle-styles";
+    style.textContent = `
+.reasoning-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.reasoning-toggle-btn:hover { color: var(--text-primary); border-color: var(--accent); }
+.reasoning-toggle-btn.active { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+@media (max-width: 767px) {
+  .reasoning-toggle-label { display: none; }
+  .reasoning-toggle-btn { padding: 0 var(--space-1); }
+}
+`;
+    document.head.appendChild(style);
   }
   function refreshEstopStatus() {
     if (estopRefreshInterval) clearInterval(estopRefreshInterval);
@@ -2498,6 +2567,122 @@ ${result.failures.join("\n")}`
     }
   });
 
+  // src/web/hal-ui/components/ReasoningBlock.ts
+  function escapeHtml2(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function summarizeReasoning(d) {
+    const text = (d.reasoning || "").trim();
+    if (!text) return d.decision;
+    return text.split(/(?<=[.!?])\s+/)[0].trim() || d.decision;
+  }
+  function shouldAutoSurface(d, audit) {
+    if (typeof d.confidence === "number" && d.confidence < 0.5) return true;
+    if (d.outcome === "failure" || d.status === "failure") return true;
+    if (audit?.verifierResult?.startsWith("DENIED")) return true;
+    return false;
+  }
+  function autoSurfaceChip(d, audit) {
+    if (audit?.verifierResult?.startsWith("DENIED"))
+      return `<span class="reasoning-chip reasoning-chip-danger">Blocked by safety</span>`;
+    if (d.outcome === "failure" || d.status === "failure")
+      return `<span class="reasoning-chip reasoning-chip-danger">Action failed</span>`;
+    if (typeof d.confidence === "number" && d.confidence < 0.5)
+      return `<span class="reasoning-chip reasoning-chip-warning">Low confidence</span>`;
+    return "";
+  }
+  function renderVerifierRow(audit) {
+    const denied = audit.verifierResult.startsWith("DENIED");
+    return `
+    <div class="reasoning-verifier">
+      <span class="reasoning-verifier-badge ${denied ? "denied" : "approved"}">${escapeHtml2(audit.verifierResult)}</span>
+      ${audit.deniedReason ? `<span class="reasoning-verifier-reason">${escapeHtml2(audit.deniedReason)}</span>` : ""}
+    </div>
+  `;
+  }
+  function renderReasoningDetail(d, audit) {
+    const full = (d.reasoning || "").trim();
+    return `
+    ${full ? `<div class="reasoning-full">${escapeHtml2(full)}</div>` : ""}
+    ${audit ? renderVerifierRow(audit) : ""}
+  `;
+  }
+  function renderReasoningBlock(d, audit) {
+    const summary = summarizeReasoning(d);
+    const full = (d.reasoning || "").trim();
+    const auto = shouldAutoSurface(d, audit);
+    const showFull = (getStore().reasoningVerbosity === "detailed" || auto) && !!full && full !== summary;
+    return `
+    <div class="reasoning-block">
+      <div class="reasoning-summary-row">
+        <span class="reasoning-summary" title="${escapeHtml2(full || summary)}">${escapeHtml2(summary)}</span>
+        ${auto ? autoSurfaceChip(d, audit) : ""}
+      </div>
+      ${showFull ? `<div class="reasoning-full">${escapeHtml2(full)}</div>` : ""}
+      ${audit ? renderVerifierRow(audit) : ""}
+    </div>
+  `;
+  }
+  function injectReasoningStyles() {
+    if (document.getElementById("hal-reasoning-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hal-reasoning-styles";
+    style.textContent = `
+.reasoning-block { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.reasoning-summary-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.reasoning-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+.reasoning-full {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  margin-top: var(--space-1);
+}
+.reasoning-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+}
+.reasoning-chip-danger { color: var(--danger); background: color-mix(in srgb, var(--danger) 15%, transparent); }
+.reasoning-chip-warning { color: var(--warning); background: color-mix(in srgb, var(--warning) 15%, transparent); }
+.reasoning-verifier { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-1); }
+.reasoning-verifier-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.reasoning-verifier-badge.approved { color: var(--success); background: color-mix(in srgb, var(--success) 15%, transparent); }
+.reasoning-verifier-badge.denied { color: var(--danger); background: color-mix(in srgb, var(--danger) 15%, transparent); }
+.reasoning-verifier-reason { font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
+`;
+    document.head.appendChild(style);
+  }
+  var init_ReasoningBlock = __esm({
+    "src/web/hal-ui/components/ReasoningBlock.ts"() {
+      "use strict";
+      init_store();
+    }
+  });
+
   // src/web/hal-ui/components/LatestDecision.ts
   function renderLatestDecision() {
     const store = getStore();
@@ -2520,8 +2705,9 @@ ${result.failures.join("\n")}`
         <span class="latest-decision-time text-mono text-xs text-secondary">${formatTime(latest.timestamp)}</span>
       </div>
       <div class="latest-decision-body">
-        <div class="latest-decision-trigger text-sm text-secondary">${escapeHtml2(latest.trigger)}</div>
-        <div class="latest-decision-action font-semibold text-sm">${escapeHtml2(latest.decision)}</div>
+        <div class="latest-decision-trigger text-sm text-secondary">${escapeHtml3(latest.trigger)}</div>
+        <div class="latest-decision-action font-semibold text-sm">${escapeHtml3(latest.decision)}</div>
+        <div class="latest-decision-reasoning">${renderReasoningBlock(latest)}</div>
         <div class="latest-decision-footer">
           <span class="latest-decision-status" style="color: ${statusColor}; background: color-mix(in srgb, ${statusColor} 15%, transparent)"
             >${latest.status || "pending"}</span
@@ -2546,10 +2732,11 @@ ${result.failures.join("\n")}`
     if (conf >= 0.5) return "var(--warning)";
     return "var(--danger)";
   }
-  function escapeHtml2(s) {
+  function escapeHtml3(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectLatestDecisionStyles() {
+    injectReasoningStyles();
     if (document.getElementById("hal-latest-decision-styles")) return;
     const style = document.createElement("style");
     style.id = "hal-latest-decision-styles";
@@ -2585,6 +2772,10 @@ ${result.failures.join("\n")}`
 .latest-decision-action {
   color: var(--text-primary);
 }
+.latest-decision-reasoning {
+  margin-top: var(--space-1);
+  min-width: 0;
+}
 .latest-decision-footer {
   display: flex;
   align-items: center;
@@ -2608,11 +2799,12 @@ ${result.failures.join("\n")}`
     "src/web/hal-ui/components/LatestDecision.ts"() {
       "use strict";
       init_store();
+      init_ReasoningBlock();
     }
   });
 
   // src/web/hal-ui/components/ChartKit.ts
-  function escapeHtml3(s) {
+  function escapeHtml4(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function hexToHsl(hex) {
@@ -2762,7 +2954,7 @@ ${result.failures.join("\n")}`
     }).join("");
     const xLabels = points.map((p, i) => {
       const x = pad.l + i * groupW + groupW / 2;
-      return `<text x="${x.toFixed(1)}" y="${H - 10}" text-anchor="middle" fill="var(--text-tertiary)" font-size="9" font-family="var(--font-mono)">${escapeHtml3(p.label)}</text>`;
+      return `<text x="${x.toFixed(1)}" y="${H - 10}" text-anchor="middle" fill="var(--text-tertiary)" font-size="9" font-family="var(--font-mono)">${escapeHtml4(p.label)}</text>`;
     }).join("");
     const legend = `
     <div class="dbt-legend">
@@ -3282,28 +3474,31 @@ ${result.failures.join("\n")}`
     const to = (/* @__PURE__ */ new Date()).toISOString();
     const from = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
     const layers = [];
-    const [decisions] = await Promise.all([
+    const [decisions, historyMap] = await Promise.all([
       halApi.getDecisions(50).catch(() => []),
-      ...sensors.flatMap(
-        (s) => HERO_METRIC_KEYS.map(async (m) => {
-          try {
-            const data = await halApi.getSensorHistory(s.id, m, from, to);
-            if (data.length > 0) {
-              const cfg = metricConfig[m];
-              layers.push({
-                deviceId: s.id,
-                deviceName: s.name,
-                zoneName: resolveZoneName(s.id, s.name),
-                metric: m,
-                color: cfg?.color || "#888",
-                data
-              });
-            }
-          } catch {
-          }
-        })
-      )
+      halApi.getSensorHistoryBatch(
+        sensors.map((s) => s.id),
+        [...HERO_METRIC_KEYS],
+        from,
+        to
+      ).catch(() => /* @__PURE__ */ new Map())
     ]);
+    for (const s of sensors) {
+      for (const m of HERO_METRIC_KEYS) {
+        const data = historyMap.get(`${s.id}|${m}`) ?? [];
+        if (data.length > 0) {
+          const cfg = metricConfig[m];
+          layers.push({
+            deviceId: s.id,
+            deviceName: s.name,
+            zoneName: resolveZoneName(s.id, s.name),
+            metric: m,
+            color: cfg?.color || "#888",
+            data
+          });
+        }
+      }
+    }
     return { layers, decisions };
   }
   function injectHeroChartStyles() {
@@ -3590,8 +3785,14 @@ ${result.failures.join("\n")}`
     const from = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
     const to = (/* @__PURE__ */ new Date()).toISOString();
     try {
+      const historyMap = await halApi.getSensorHistoryBatch(
+        sensors.map((s) => s.id),
+        [metric],
+        from,
+        to
+      );
       for (const s of sensors) {
-        const data = await halApi.getSensorHistory(s.id, metric, from, to);
+        const data = historyMap.get(`${s.id}|${metric}`) ?? [];
         if (data.length > 1) {
           const step = Math.max(1, Math.floor(data.length / buckets));
           return Array.from(
@@ -3609,8 +3810,14 @@ ${result.failures.join("\n")}`
     const to = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
     const from = new Date(Date.now() - 48 * 60 * 60 * 1e3).toISOString();
     try {
+      const historyMap = await halApi.getSensorHistoryBatch(
+        sensors.map((s) => s.id),
+        [metric],
+        from,
+        to
+      );
       for (const s of sensors) {
-        const data = await halApi.getSensorHistory(s.id, metric, from, to);
+        const data = historyMap.get(`${s.id}|${metric}`) ?? [];
         if (data.length > 1) {
           const step = Math.max(1, Math.floor(data.length / buckets));
           return Array.from(
@@ -3638,7 +3845,11 @@ ${result.failures.join("\n")}`
     style.textContent = `
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  /* Exactly 6 KPIs \u2014 use divisor-of-6 column counts (6/3/2/1) so every row is
+     always full at every width: no orphaned card, no blank trailing cells.
+     minmax(0,1fr) lets tracks shrink below content (which wraps) instead of
+     content forcing a wider track and collapsing the column count. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   grid-auto-rows: minmax(80px, auto);
   align-items: stretch;
   gap: var(--space-2);
@@ -3655,6 +3866,7 @@ ${result.failures.join("\n")}`
   align-items: stretch;
   gap: var(--space-1);
   min-height: 80px;
+  min-width: 0;
   transition: border-color var(--transition-fast);
 }
 .kpi-card:hover {
@@ -3718,8 +3930,14 @@ ${result.failures.join("\n")}`
 .kpi-sparkline-empty {
   height: 28px;
 }
-@media (max-width: 767px) {
-  .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+@media (max-width: 1100px) {
+  .kpi-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 380px) {
+  .kpi-strip { grid-template-columns: 1fr; }
 }
 `;
     document.head.appendChild(style);
@@ -3735,11 +3953,11 @@ ${result.failures.join("\n")}`
   });
 
   // src/web/hal-ui/components/EnvironmentCharts.ts
-  function escapeHtml4(s) {
+  function escapeHtml5(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function escapeAttr(s) {
-    return escapeHtml4(s);
+    return escapeHtml5(s);
   }
   function metricMeta(key) {
     return METRIC_META[key] ?? {
@@ -3850,7 +4068,7 @@ ${result.failures.join("\n")}`
     }).join("");
     const labels = [minT, minT + tSpan / 2, maxT].map((t, index) => {
       const label = formatChartTime(t);
-      return `<text class="env-axis-label" x="${x(t).toFixed(1)}" y="${height - 8}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml4(label)}</text>`;
+      return `<text class="env-axis-label" x="${x(t).toFixed(1)}" y="${height - 8}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml5(label)}</text>`;
     }).join("");
     const defs = metrics2.map(
       (metric) => `
@@ -3915,8 +4133,8 @@ ${result.failures.join("\n")}`
       return `
         <div class="env-gauge-row">
           <span class="env-gauge-dot" style="background:${metric.color}"></span>
-          <span>${escapeHtml4(metricMeta(metric.key).shortLabel)}</span>
-          <strong style="color:${metric.color}">${value == null ? "No data" : escapeHtml4(formatMetricValue(metric, value))}</strong>
+          <span>${escapeHtml5(metricMeta(metric.key).shortLabel)}</span>
+          <strong style="color:${metric.color}">${value == null ? "No data" : escapeHtml5(formatMetricValue(metric, value))}</strong>
         </div>
       `;
     }).join("");
@@ -3977,7 +4195,7 @@ ${result.failures.join("\n")}`
       const y1 = pad.t + index * laneHeight + laneHeight / 2;
       return `
         <line x1="${pad.l}" x2="${width - pad.r}" y1="${y1.toFixed(1)}" y2="${y1.toFixed(1)}" class="env-field-lane"/>
-        <text x="${pad.l + 8}" y="${(y1 - 9).toFixed(1)}" class="env-field-label" fill="${metric.color}">${escapeHtml4(metricMeta(metric.key).shortLabel)}</text>
+        <text x="${pad.l + 8}" y="${(y1 - 9).toFixed(1)}" class="env-field-label" fill="${metric.color}">${escapeHtml5(metricMeta(metric.key).shortLabel)}</text>
       `;
     }).join("");
     const ribbons = metrics2.map((metric, index) => {
@@ -3993,12 +4211,12 @@ ${result.failures.join("\n")}`
         <path d="${line}" class="env-field-ribbon-shadow" stroke="${metric.color}"/>
         <path d="${line}" class="env-field-ribbon" stroke="url(#env-field-grad-${metric.key})" filter="url(#env-field-glow-${metric.key})"/>
         <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="5.5" fill="${metric.color}" stroke="var(--bg-secondary)" stroke-width="2"/>
-        <text x="${(last.x - 8).toFixed(1)}" y="${(last.y - 12).toFixed(1)}" text-anchor="end" class="env-field-value" fill="${metric.color}">${value == null ? "" : escapeHtml4(formatMetricValue(metric, value))}</text>
+        <text x="${(last.x - 8).toFixed(1)}" y="${(last.y - 12).toFixed(1)}" text-anchor="end" class="env-field-value" fill="${metric.color}">${value == null ? "" : escapeHtml5(formatMetricValue(metric, value))}</text>
       `;
     }).join("");
     const tickLabels = [minT, minT + tSpan / 2, maxT].map((t, index) => {
       const label = formatChartTime(t);
-      return `<text class="env-field-time" x="${x(t).toFixed(1)}" y="${height - 10}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml4(label)}</text>`;
+      return `<text class="env-field-time" x="${x(t).toFixed(1)}" y="${height - 10}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml5(label)}</text>`;
     }).join("");
     return `
     <svg class="env-field-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Farm telemetry field for ${escapeAttr(zoneName)}">
@@ -4008,7 +4226,7 @@ ${result.failures.join("\n")}`
       ${canopy}
       ${lanes}
       ${ribbons}
-      <text x="${pad.l}" y="23" class="env-field-title">${escapeHtml4(zoneName)}</text>
+      <text x="${pad.l}" y="23" class="env-field-title">${escapeHtml5(zoneName)}</text>
       <text x="${width - pad.r}" y="23" text-anchor="end" class="env-field-caption">live environmental ribbons</text>
       ${tickLabels}
     </svg>
@@ -4033,7 +4251,7 @@ ${result.failures.join("\n")}`
       if (values.length === 0) {
         return `
           <tr>
-            <td><span class="env-table-dot" style="background:${metric.color}"></span>${escapeHtml4(metric.label)}</td>
+            <td><span class="env-table-dot" style="background:${metric.color}"></span>${escapeHtml5(metric.label)}</td>
             <td colspan="4" class="env-muted-cell">No data</td>
           </tr>
         `;
@@ -4044,11 +4262,11 @@ ${result.failures.join("\n")}`
       const current = values[values.length - 1];
       return `
         <tr>
-          <td><span class="env-table-dot" style="background:${metric.color}"></span>${escapeHtml4(metric.label)}</td>
-          <td>${escapeHtml4(formatMetricValue(metric, current))}</td>
-          <td>${escapeHtml4(formatMetricValue(metric, min))}</td>
-          <td>${escapeHtml4(formatMetricValue(metric, avg))}</td>
-          <td>${escapeHtml4(formatMetricValue(metric, max))}</td>
+          <td><span class="env-table-dot" style="background:${metric.color}"></span>${escapeHtml5(metric.label)}</td>
+          <td>${escapeHtml5(formatMetricValue(metric, current))}</td>
+          <td>${escapeHtml5(formatMetricValue(metric, min))}</td>
+          <td>${escapeHtml5(formatMetricValue(metric, avg))}</td>
+          <td>${escapeHtml5(formatMetricValue(metric, max))}</td>
         </tr>
       `;
     }).join("");
@@ -4073,11 +4291,11 @@ ${result.failures.join("\n")}`
       const cells = values.map(({ key, metric, value }) => {
         const meta = metricMeta(key);
         const display = metric && value != null ? formatMetricValue(metric, value) : "No data";
-        return `<td style="color:${metric?.color ?? meta.color}">${escapeHtml4(display)}</td>`;
+        return `<td style="color:${metric?.color ?? meta.color}">${escapeHtml5(display)}</td>`;
       }).join("");
       return `
         <tr class="${activeZone === zone.zoneName ? "active" : ""}" data-zone="${escapeAttr(zone.zoneName)}">
-          <td>${escapeHtml4(zone.zoneName)}</td>
+          <td>${escapeHtml5(zone.zoneName)}</td>
           ${cells}
           <td><span class="env-zone-state ${state2.toLowerCase().replace(/\s+/g, "-")}">${state2}</span></td>
         </tr>
@@ -4129,14 +4347,14 @@ ${result.failures.join("\n")}`
       const meta = metricMeta(key);
       const enabled = availableKeys.has(key);
       const active = activeKeys.has(key);
-      return `<button class="env-toggle ${active ? "active" : ""}" ${enabled ? "" : "disabled"} data-metric="${key}" style="--toggle-color:${meta.color}">${escapeHtml4(meta.label)}</button>`;
+      return `<button class="env-toggle ${active ? "active" : ""}" ${enabled ? "" : "disabled"} data-metric="${key}" style="--toggle-color:${meta.color}">${escapeHtml5(meta.label)}</button>`;
     }).join("");
     container.innerHTML = `
     <section class="env-overview-card">
       <div class="env-overview-head">
         <div>
           <div class="env-title">Environmental Overview</div>
-          <div class="env-subtitle">${escapeHtml4(selectedZone.zoneName)} \xB7 SVG telemetry field plus precision traces</div>
+          <div class="env-subtitle">${escapeHtml5(selectedZone.zoneName)} \xB7 SVG telemetry field plus precision traces</div>
         </div>
         <div class="env-toggles">${toggleHtml}</div>
       </div>
@@ -4198,10 +4416,10 @@ ${result.failures.join("\n")}`
       const latest = latestValue(metric);
       return `
         <g>
-          <text x="8" y="${(yBase + 24).toFixed(1)}" class="env-axis-label">${escapeHtml4(metricMeta(metric.key).shortLabel)}</text>
+          <text x="8" y="${(yBase + 24).toFixed(1)}" class="env-axis-label">${escapeHtml5(metricMeta(metric.key).shortLabel)}</text>
           ${cells}
           <line x1="${pad.l}" x2="${width - pad.r}" y1="${(yBase + rowHeight - 6).toFixed(1)}" y2="${(yBase + rowHeight - 6).toFixed(1)}" class="env-grid"/>
-          <text x="${width - pad.r}" y="${(yBase + 24).toFixed(1)}" class="env-axis-label" text-anchor="end">${latest == null ? "No data" : escapeHtml4(formatMetricValue(metric, latest))}</text>
+          <text x="${width - pad.r}" y="${(yBase + 24).toFixed(1)}" class="env-axis-label" text-anchor="end">${latest == null ? "No data" : escapeHtml5(formatMetricValue(metric, latest))}</text>
         </g>
       `;
     }).join("");
@@ -4280,7 +4498,7 @@ ${result.failures.join("\n")}`
     }).join("");
     const labels = [minT, minT + tSpan / 2, maxT].map((t, index) => {
       const label = formatChartTime(t);
-      return `<text class="env-axis-label" x="${x(t).toFixed(1)}" y="${height - 8}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml4(label)}</text>`;
+      return `<text class="env-axis-label" x="${x(t).toFixed(1)}" y="${height - 8}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml5(label)}</text>`;
     }).join("");
     return `
     <svg class="env-stack-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Stacked environmental pressure chart">
@@ -4310,14 +4528,14 @@ ${result.failures.join("\n")}`
       return `
         <div class="env-bullet-row">
           <div>
-            <div class="env-bullet-label">${escapeHtml4(meta.label)}</div>
-            <div class="env-bullet-target">${escapeHtml4(formatMetricValue(metric, targetMin))} - ${escapeHtml4(formatMetricValue(metric, targetMax))}</div>
+            <div class="env-bullet-label">${escapeHtml5(meta.label)}</div>
+            <div class="env-bullet-target">${escapeHtml5(formatMetricValue(metric, targetMin))} - ${escapeHtml5(formatMetricValue(metric, targetMax))}</div>
           </div>
           <div class="env-bullet-track">
             <span class="env-bullet-target-band" style="left:${targetStart.toFixed(1)}%;width:${targetWidth.toFixed(1)}%;background:${metric.color}"></span>
             <span class="env-bullet-value" style="width:${currentPct.toFixed(1)}%;background:${metric.color}"></span>
           </div>
-          <strong style="color:${metric.color}">${current == null ? "No data" : escapeHtml4(formatMetricValue(metric, current))}</strong>
+          <strong style="color:${metric.color}">${current == null ? "No data" : escapeHtml5(formatMetricValue(metric, current))}</strong>
         </div>
       `;
     }).join("");
@@ -4333,7 +4551,7 @@ ${result.failures.join("\n")}`
       return;
     }
     const title = drawableMetrics.map(
-      (metric) => `<span style="color:${metric.color}">${escapeHtml4(metric.label)}</span>`
+      (metric) => `<span style="color:${metric.color}">${escapeHtml5(metric.label)}</span>`
     ).join(' <span style="color:var(--text-secondary)">+</span> ');
     container.innerHTML = `
     <section class="env-sensor-stack">
@@ -4341,7 +4559,7 @@ ${result.failures.join("\n")}`
         <div class="env-sensor-panel-head">
           <div>
             <div class="env-title">${title}</div>
-            <div class="env-subtitle">${escapeHtml4(opts.subtitle ?? "Selected sensor history")}</div>
+            <div class="env-subtitle">${escapeHtml5(opts.subtitle ?? "Selected sensor history")}</div>
           </div>
           <span class="env-panel-kicker">Multi-line focus</span>
         </div>
@@ -4474,14 +4692,14 @@ ${result.failures.join("\n")}`
       return `
         <div class="env-bullet-row env-threshold-row" data-threshold-id="${escapeAttr(threshold.id)}">
           <div>
-            <div class="env-bullet-label">${escapeHtml4(threshold.label)}</div>
-            <div class="env-bullet-target">${escapeHtml4(threshold.scope)}</div>
+            <div class="env-bullet-label">${escapeHtml5(threshold.label)}</div>
+            <div class="env-bullet-target">${escapeHtml5(threshold.scope)}</div>
           </div>
           <div class="env-bullet-track">
             <span class="env-bullet-target-band" style="left:${minPct.toFixed(1)}%;width:${(maxPct - minPct).toFixed(1)}%;background:${threshold.color}"></span>
             <span class="env-bullet-value" style="width:${currentPct.toFixed(1)}%;background:${threshold.color}"></span>
           </div>
-          <strong style="color:${threshold.color}">${current == null ? "No data" : `${current.toFixed(Math.abs(current) >= 100 ? 0 : 1)}${escapeHtml4(threshold.unit)}`}</strong>
+          <strong style="color:${threshold.color}">${current == null ? "No data" : `${current.toFixed(Math.abs(current) >= 100 ? 0 : 1)}${escapeHtml5(threshold.unit)}`}</strong>
           <span class="env-zone-state ${state2 === "Out" ? "partial" : state2 === "No data" ? "no-data" : ""}">${state2}</span>
         </div>
       `;
@@ -4632,13 +4850,13 @@ ${result.failures.join("\n")}`
           x="${n.x.toFixed(1)}" y="${(n.y + R + 12).toFixed(1)}"
           text-anchor="middle" class="env-force-label"
           opacity="${n.online ? 0.88 : 0.38}"
-        >${escapeHtml4(n.label.length > 14 ? n.label.slice(0, 13) + "\u2026" : n.label)}</text>
+        >${escapeHtml5(n.label.length > 14 ? n.label.slice(0, 13) + "\u2026" : n.label)}</text>
       `;
     }).join("");
     const typeLegend = ["sensor", "relay", "camera", "smart_plug"].filter((t) => nodes.some((n) => n.type === t)).map(
-      (t) => `<span class="env-force-legend-item"><span class="env-force-legend-dot" style="background:${deviceTypeColor(t)}"></span>${escapeHtml4(t)}</span>`
+      (t) => `<span class="env-force-legend-item"><span class="env-force-legend-dot" style="background:${deviceTypeColor(t)}"></span>${escapeHtml5(t)}</span>`
     ).join("");
-    const zoneLegend = zones2.slice(0, 5).map((z) => `<span class="env-force-legend-item">${escapeHtml4(z)}</span>`).join("");
+    const zoneLegend = zones2.slice(0, 5).map((z) => `<span class="env-force-legend-item">${escapeHtml5(z)}</span>`).join("");
     container.innerHTML = `
     <div class="env-force-card">
       <div class="env-sensor-panel-head">
@@ -4680,10 +4898,10 @@ ${result.failures.join("\n")}`
         const online = circle.dataset.online === "true";
         const zone = circle.dataset.zone || "";
         tooltip.innerHTML = `
-        <div class="env-force-tip-name">${escapeHtml4(label)}</div>
-        <div class="env-force-tip-row"><span>Type</span><strong>${escapeHtml4(type)}</strong></div>
+        <div class="env-force-tip-name">${escapeHtml5(label)}</div>
+        <div class="env-force-tip-row"><span>Type</span><strong>${escapeHtml5(type)}</strong></div>
         <div class="env-force-tip-row"><span>Status</span><strong style="color:${online ? "var(--success)" : "var(--danger)"}">${online ? "Online" : "Offline"}</strong></div>
-        ${zone ? `<div class="env-force-tip-row"><span>Zone</span><strong>${escapeHtml4(zone)}</strong></div>` : ""}
+        ${zone ? `<div class="env-force-tip-row"><span>Zone</span><strong>${escapeHtml5(zone)}</strong></div>` : ""}
       `;
         const rect = e.target.closest("svg").getBoundingClientRect();
         const cx = parseFloat(circle.getAttribute("cx"));
@@ -4779,14 +4997,14 @@ ${result.failures.join("\n")}`
       }).join("");
       const metricLabel = `
       <text x="${PAD.l - 10}" y="${(yBase + ROW_H / 2 + 4).toFixed(1)}"
-        text-anchor="end" class="env-force-label" fill="${color}" opacity="0.9">${escapeHtml4(label)}</text>
+        text-anchor="end" class="env-force-label" fill="${color}" opacity="0.9">${escapeHtml5(label)}</text>
     `;
       const dots = pts.map((pt) => {
         const x = xMap(pt.offset);
         const stackIdx = stackMap.get(`${pt.deviceId}:${pt.metric}`) ?? 0;
         const y = CENTER_Y + (stackIdx - 2) * STACK_GAP;
         const dotColor = pt.offset > 1e-3 ? "var(--warning)" : pt.offset < -1e-3 ? "var(--info)" : "var(--border)";
-        const title = `${escapeHtml4(pt.deviceName)}
+        const title = `${escapeHtml5(pt.deviceName)}
 offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R}" fill="${dotColor}" opacity="0.85" stroke="${color}" stroke-width="1.5"><title>${title}</title></circle>`;
       }).join("");
@@ -5470,7 +5688,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     <div class="op-device-cell ${r.online ? "online" : "offline"}" data-device-id="${r.id}">
       <div class="op-device-icon">${r.type === "relay" ? "RLY" : "PLG"}</div>
       <div class="op-device-info">
-        <span class="op-device-name">${escapeHtml5(r.name)}</span>
+        <span class="op-device-name">${escapeHtml6(r.name)}</span>
         <span class="op-device-protocol text-xs text-secondary">${r.protocol}</span>
       </div>
       <div class="op-device-toggle ${r.state === "on" ? "on" : ""}" data-device-id="${r.id}">
@@ -5583,7 +5801,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       (a) => `
           <div class="op-alert ${a.level}">
             <span class="op-alert-dot"></span>
-            <span class="op-alert-text">${escapeHtml5(a.text)}</span>
+            <span class="op-alert-text">${escapeHtml6(a.text)}</span>
             <span class="op-alert-time text-xs text-secondary">${a.time}</span>
           </div>
         `
@@ -5617,7 +5835,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         <div class="op-camera-frame">
           <div class="op-camera-placeholder">
             <span class="op-camera-icon">CAM</span>
-            <span class="op-camera-name">${escapeHtml5(cam.name)}</span>
+            <span class="op-camera-name">${escapeHtml6(cam.name)}</span>
           </div>
         </div>
       </div>
@@ -5666,7 +5884,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     if (mins < 60) return `${mins}m`;
     return `${Math.floor(mins / 60)}h`;
   }
-  function escapeHtml5(s) {
+  function escapeHtml6(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectOperatorPanelStyles() {
@@ -5943,8 +6161,8 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       (e) => `
     <div class="terminal-line ${e.level}">
       <span class="terminal-time text-mono">${formatTime2(e.timestamp)}</span>
-      <span class="terminal-source">${escapeHtml6(e.source)}</span>
-      <span class="terminal-msg">${escapeHtml6(e.message)}</span>
+      <span class="terminal-source">${escapeHtml7(e.source)}</span>
+      <span class="terminal-msg">${escapeHtml7(e.message)}</span>
     </div>
   `
     ).join("");
@@ -6001,7 +6219,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       return "--:--:--";
     }
   }
-  function escapeHtml6(s) {
+  function escapeHtml7(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectTerminalStyles() {
@@ -6178,7 +6396,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       (d) => `
     <div class="calm-device-item ${d.online ? "online" : "offline"}">
       <span class="calm-device-dot"></span>
-      <span class="calm-device-name">${escapeHtml7(d.name)}</span>
+      <span class="calm-device-name">${escapeHtml8(d.name)}</span>
       <span class="calm-device-type text-xs text-secondary">${d.type}</span>
     </div>
   `
@@ -6417,7 +6635,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       return `
       <div class="diag-snapshot hal-card">
         <div class="diag-snapshot-header">
-          <span class="text-sm font-semibold">${escapeHtml7(device?.name || deviceId)}</span>
+          <span class="text-sm font-semibold">${escapeHtml8(device?.name || deviceId)}</span>
           <span class="text-xs text-secondary">${device?.protocol || "unknown"}</span>
         </div>
         <div class="diag-snapshot-body">
@@ -6546,7 +6764,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     <div class="device-mini-card ${d.online ? "online" : "offline"}" data-device-id="${d.id}">
       <div class="device-mini-icon">${deviceIcon(d.type)}</div>
       <div class="device-mini-info">
-        <div class="device-mini-name">${escapeHtml7(d.name)}</div>
+        <div class="device-mini-name">${escapeHtml8(d.name)}</div>
         <div class="device-mini-meta text-xs text-secondary">${d.protocol} \xB7 ${d.online ? "online" : "offline"}</div>
       </div>
       ${d.type === "relay" || d.type === "smart_plug" ? `
@@ -6566,8 +6784,8 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       (d) => `
     <div class="decision-row ${d.status || "pending"}">
       <div class="decision-time text-mono text-xs text-secondary">${formatTime3(d.timestamp)}</div>
-      <div class="decision-trigger text-sm">${escapeHtml7(d.trigger)}</div>
-      <div class="decision-text text-sm font-semibold">${escapeHtml7(d.decision)}</div>
+      <div class="decision-trigger text-sm">${escapeHtml8(d.trigger)}</div>
+      <div class="decision-text text-sm font-semibold">${escapeHtml8(d.decision)}</div>
       <div class="decision-footer">
         <span class="decision-status ${d.status || "pending"}">${d.status || "pending"}</span>
         <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor2(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
@@ -6614,7 +6832,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     if (conf >= 0.5) return "var(--warning)";
     return "var(--danger)";
   }
-  function escapeHtml7(s) {
+  function escapeHtml8(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function deviceIcon(type) {
@@ -7335,7 +7553,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         <span class="dw-device-checkmark"></span>
       </label>
       <div class="dw-device-info">
-        <div class="dw-device-name">${escapeHtml8(d.label)}</div>
+        <div class="dw-device-name">${escapeHtml9(d.label)}</div>
         <div class="dw-device-meta">
           ${d.host} \xB7 ${d.protocol} \xB7 ${d.type}
         </div>
@@ -7367,7 +7585,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   }
   function renderStep4_Assign() {
     const zoneOptions = zones.map(
-      (z) => `<option value="${escapeHtml8(z.name)}">${escapeHtml8(z.name)} (${z.deviceCount})</option>`
+      (z) => `<option value="${escapeHtml9(z.name)}">${escapeHtml9(z.name)} (${z.deviceCount})</option>`
     ).join("");
     const roleOptions = `
     <option value="sensor">Sensor</option>
@@ -7379,13 +7597,13 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       (d, i) => `
     <div class="dw-assign-row">
       <div class="dw-assign-device-info">
-        <div class="dw-assign-device-name">${escapeHtml8(d.label)}</div>
+        <div class="dw-assign-device-name">${escapeHtml9(d.label)}</div>
         <div class="dw-assign-device-meta">${d.protocol} \xB7 ${d.type}</div>
       </div>
       <div class="dw-assign-form">
         <input class="dw-input" type="text"
           id="dw-name-${i}"
-          value="${escapeHtml8(d.label || "")}"
+          value="${escapeHtml9(d.label || "")}"
           placeholder="Device name (1-64 chars)"
           maxlength="64" data-index="${i}" data-field="name">
         <select class="dw-select" id="dw-zone-${i}" data-index="${i}" data-field="zone">
@@ -7415,9 +7633,9 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     const rows = selectedDevices.map(
       (d) => `
     <div class="dw-confirm-row">
-      <div class="dw-confirm-name">${escapeHtml8(d.label || d.name || d.host)}</div>
+      <div class="dw-confirm-name">${escapeHtml9(d.label || d.name || d.host)}</div>
       <div class="dw-confirm-meta">
-        ${d.zone ? `<span class="dw-zone-tag">${escapeHtml8(d.zone)}</span>` : ""}
+        ${d.zone ? `<span class="dw-zone-tag">${escapeHtml9(d.zone)}</span>` : ""}
         <span class="dw-protocol-badge">${d.protocol}</span>
         <span class="dw-role-badge">${d.role || d.type}</span>
       </div>
@@ -7670,7 +7888,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   }
   function renderManualAddForm() {
     const zoneOptions = zones.map(
-      (z) => `<option value="${escapeHtml8(z.name)}">${escapeHtml8(z.name)}</option>`
+      (z) => `<option value="${escapeHtml9(z.name)}">${escapeHtml9(z.name)}</option>`
     ).join("");
     return `
     <div class="dw-step-content">
@@ -7761,7 +7979,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         closeWizard();
       } catch (err) {
         if (validationEl)
-          validationEl.innerHTML = `<span class="dw-validation-error">${escapeHtml8(err.message)}</span>`;
+          validationEl.innerHTML = `<span class="dw-validation-error">${escapeHtml9(err.message)}</span>`;
         if (saveBtn) {
           saveBtn.disabled = false;
           saveBtn.textContent = "Add Device";
@@ -8065,7 +8283,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
 `;
     document.head.appendChild(style);
   }
-  function escapeHtml8(s) {
+  function escapeHtml9(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   var PROTOCOLS, currentStep, selectedProtocol, discoveredDevices, selectedDevices, zones, isScanning, scanAbortController, scanTimeout, wizardOverlay;
@@ -8134,7 +8352,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     } catch {
     }
     const zoneOptions = zones2.map(
-      (z) => `<option value="${escapeHtml9(z.name)}">${escapeHtml9(z.name)}</option>`
+      (z) => `<option value="${escapeHtml10(z.name)}">${escapeHtml10(z.name)}</option>`
     ).join("");
     container.innerHTML = `
     <div class="page-header">
@@ -8235,16 +8453,16 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       <div class="device-card hal-card" data-device-id="${d.id}" style="border-left: 3px solid ${state2 === "online" ? "var(--accent)" : "var(--danger)"}">
         <div class="device-card-header">
           <div class="device-card-icon">${deviceIcon2(d.type)}</div>
-          <div class="device-card-title" id="dev-name-${d.id}">${escapeHtml9(d.name)}</div>
+          <div class="device-card-title" id="dev-name-${d.id}">${escapeHtml10(d.name)}</div>
           <span class="hal-badge hal-badge-slate">${d.protocol}</span>
           <button class="device-rename-btn" data-device-id="${d.id}" title="Rename device">\u270F\uFE0F</button>
         </div>
         <div class="device-card-meta">
           <span class="text-xs text-secondary">${d.type} \xB7 ${state2}</span>
-          ${zone ? `<span class="device-zone-tag">${escapeHtml9(zone)}</span>` : ""}
+          ${zone ? `<span class="device-zone-tag">${escapeHtml10(zone)}</span>` : ""}
           ${d.lastSeen ? `<span class="text-xs text-mono text-secondary">${formatRelativeTime(d.lastSeen)}</span>` : ""}
         </div>
-        ${description ? `<div class="device-description text-xs text-secondary">${escapeHtml9(description)}</div>` : ""}
+        ${description ? `<div class="device-description text-xs text-secondary">${escapeHtml10(description)}</div>` : ""}
         ${d.type === "sensor" ? `<div class="device-chart-wrap" id="${chartId}"></div>` : ""}
         ${d.type === "relay" ? `
           <div class="device-card-relay-info">
@@ -8417,13 +8635,13 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     }
     const zoneOptions = zones2.map((z) => {
       const selected = device.zone === z.name ? "selected" : "";
-      return `<option value="${escapeHtml9(z.name)}" ${selected}>${escapeHtml9(z.name)}</option>`;
+      return `<option value="${escapeHtml10(z.name)}" ${selected}>${escapeHtml10(z.name)}</option>`;
     }).join("");
     const currentZone = device.zone || "";
     nameEl.innerHTML = `
     <div class="inline-rename-form">
       <input class="dw-input inline-rename-input" type="text" id="rename-input-${deviceId}"
-        value="${escapeHtml9(currentName)}" maxlength="64" placeholder="Device name">
+        value="${escapeHtml10(currentName)}" maxlength="64" placeholder="Device name">
       <select class="dw-select inline-rename-zone" id="rename-zone-${deviceId}">
         <option value="">No Zone</option>
         ${zoneOptions}
@@ -8481,7 +8699,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       return "--";
     }
   }
-  function escapeHtml9(s) {
+  function escapeHtml10(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function deviceIcon2(type) {
@@ -8712,7 +8930,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         <div class="sensors-hero-controls">
           <select class="hal-input" id="sensor-device-select">
             <option value="all" ${viewState.deviceId === "all" ? "selected" : ""}>All Devices</option>
-            ${sensors.map((s) => `<option value="${s.id}" ${viewState.deviceId === s.id ? "selected" : ""}>${escapeHtml10(s.name)}</option>`).join("")}
+            ${sensors.map((s) => `<option value="${s.id}" ${viewState.deviceId === s.id ? "selected" : ""}>${escapeHtml11(s.name)}</option>`).join("")}
           </select>
           <div class="time-range-group" role="group">
             ${["1H", "6H", "24H", "7D", "30D"].map(
@@ -8737,7 +8955,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
               aria-pressed="${active ? "true" : "false"}"
             >
               <span class="pill-dot"></span>
-              <span class="pill-label">${escapeHtml10(m.shortLabel)}</span>
+              <span class="pill-label">${escapeHtml11(m.shortLabel)}</span>
               <span class="pill-value" id="pill-${m.key}">--</span>
             </button>
           `;
@@ -8873,32 +9091,33 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
     try {
       const layers = [];
-      const [decisions] = await Promise.all([
+      const [decisions, historyMap] = await Promise.all([
         halApi.getDecisions(50).catch(() => []),
-        ...selectedDevices2.flatMap(
-          (device) => activeMetricConfigs.map(async (metric) => {
-            const data = await halApi.getSensorHistory(
-              device.id,
-              metric.key,
-              from,
-              to
-            );
-            if (data.length > 0) {
-              layers.push({
-                deviceId: device.id,
-                deviceName: device.name,
-                zoneName: resolveZoneName2(
-                  device.id,
-                  device.name,
-                  device.zone
-                ),
-                metric,
-                data
-              });
-            }
-          })
-        )
+        halApi.getSensorHistoryBatch(
+          selectedDevices2.map((d) => d.id),
+          activeMetricConfigs.map((m) => m.key),
+          from,
+          to
+        ).catch(() => /* @__PURE__ */ new Map())
       ]);
+      for (const device of selectedDevices2) {
+        for (const metric of activeMetricConfigs) {
+          const data = historyMap.get(`${device.id}|${metric.key}`) ?? [];
+          if (data.length > 0) {
+            layers.push({
+              deviceId: device.id,
+              deviceName: device.name,
+              zoneName: resolveZoneName2(
+                device.id,
+                device.name,
+                device.zone
+              ),
+              metric,
+              data
+            });
+          }
+        }
+      }
       if (sequence !== loadSequence) return;
       const zones2 = [...new Set(layers.map((l) => l.zoneName).filter(Boolean))];
       renderZoneToggles(zones2);
@@ -8946,7 +9165,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       `<button class="zone-pill ${viewState.activeZone ? "" : "active"}" data-zone="__all__">All Zones</button>`,
       ...sortedZones.map((z) => {
         const isActive = z === viewState.activeZone;
-        return `<button class="zone-pill ${isActive ? "active" : ""}" data-zone="${escapeAttr2(z)}">${escapeHtml10(z)}</button>`;
+        return `<button class="zone-pill ${isActive ? "active" : ""}" data-zone="${escapeAttr2(z)}">${escapeHtml11(z)}</button>`;
       })
     ].join("");
     container.querySelectorAll(".zone-pill").forEach((btn) => {
@@ -9155,8 +9374,8 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       (r) => `
     <tr style="--metric-color:${r.color}">
       <td class="text-mono text-xs">${formatDateTimeValue(new Date(r.time), store.timeFormat)}</td>
-      <td>${escapeHtml10(r.device)}</td>
-      <td><span class="history-dot"></span>${escapeHtml10(r.metric)}</td>
+      <td>${escapeHtml11(r.device)}</td>
+      <td><span class="history-dot"></span>${escapeHtml11(r.metric)}</td>
       <td class="text-mono metric-value">${r.value}</td>
     </tr>
   `
@@ -9184,7 +9403,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     const precision = Math.abs(value) >= 100 ? 0 : value % 1 === 0 ? 0 : 1;
     return `${value.toFixed(precision)}${unit}`;
   }
-  function escapeHtml10(s) {
+  function escapeHtml11(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectSensorStyles() {
@@ -9946,48 +10165,47 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       for (const m of systemMetrics) {
         metricBuckets.set(m.key, /* @__PURE__ */ new Map());
       }
-      await Promise.all(
-        sensors.flatMap(
-          (device) => systemMetrics.map(async (metric) => {
-            const data = await halApi.getSensorHistory(
-              device.id,
+      const historyMap = await halApi.getSensorHistoryBatch(
+        sensors.map((d) => d.id),
+        systemMetrics.map((m) => m.key),
+        from,
+        to
+      ).catch(() => /* @__PURE__ */ new Map());
+      for (const device of sensors) {
+        for (const metric of systemMetrics) {
+          const data = historyMap.get(`${device.id}|${metric.key}`) ?? [];
+          if (data.length === 0) continue;
+          const latest = data[data.length - 1];
+          const prevTs = metricLatestTs.get(metric.key) ?? "";
+          if (latest.timestamp > prevTs) {
+            metricLatestTs.set(metric.key, latest.timestamp);
+            const cv = formatSensorValue(
+              latest.value,
               metric.key,
-              from,
-              to
+              store.unitSystem
             );
-            if (data.length === 0) return;
-            const latest = data[data.length - 1];
-            const prevTs = metricLatestTs.get(metric.key) ?? "";
-            if (latest.timestamp > prevTs) {
-              metricLatestTs.set(metric.key, latest.timestamp);
-              const cv = formatSensorValue(
-                latest.value,
-                metric.key,
-                store.unitSystem
-              );
-              metricLatestVal.set(metric.key, cv.value);
-              const pill = document.getElementById(`sys-pill-${metric.key}`);
-              if (pill)
-                pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
-            }
-            const buckets = metricBuckets.get(metric.key);
-            for (const d of data) {
-              const t = new Date(d.timestamp).getTime();
-              if (!Number.isFinite(t)) continue;
-              const bucket = Math.floor(t / 6e4) * 6e4;
-              const val = formatSensorValue(
-                d.value,
-                metric.key,
-                store.unitSystem
-              ).value;
-              const acc = buckets.get(bucket) ?? { sum: 0, count: 0 };
-              acc.sum += val;
-              acc.count += 1;
-              buckets.set(bucket, acc);
-            }
-          })
-        )
-      );
+            metricLatestVal.set(metric.key, cv.value);
+            const pill = document.getElementById(`sys-pill-${metric.key}`);
+            if (pill)
+              pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
+          }
+          const buckets = metricBuckets.get(metric.key);
+          for (const d of data) {
+            const t = new Date(d.timestamp).getTime();
+            if (!Number.isFinite(t)) continue;
+            const bucket = Math.floor(t / 6e4) * 6e4;
+            const val = formatSensorValue(
+              d.value,
+              metric.key,
+              store.unitSystem
+            ).value;
+            const acc = buckets.get(bucket) ?? { sum: 0, count: 0 };
+            acc.sum += val;
+            acc.count += 1;
+            buckets.set(bucket, acc);
+          }
+        }
+      }
       const chartMetrics = systemMetrics.filter((m) => metricLatestVal.has(m.key)).map((m) => {
         const minCv = formatSensorValue(m.minAxis, m.key, store.unitSystem);
         return {
@@ -10102,6 +10320,26 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   // src/web/hal-ui/views/Decisions.ts
   async function renderDecisions(container) {
     const store = getStore();
+    auditByDecision = /* @__PURE__ */ new Map();
+    try {
+      const audit = await halApi.getSafetyAudit({ limit: 100 });
+      for (const a of audit) {
+        if (!a.decisionId) continue;
+        const existing = auditByDecision.get(a.decisionId);
+        if (!existing || a.verifierResult.startsWith("DENIED")) {
+          auditByDecision.set(a.decisionId, {
+            verifierResult: a.verifierResult,
+            deniedReason: a.deniedReason
+          });
+        }
+      }
+    } catch {
+    }
+    for (const d of store.decisions) {
+      if (shouldAutoSurface(d, auditByDecision.get(d.id))) {
+        expandedDecisionIds.add(d.id);
+      }
+    }
     const pendingDecisions = store.pendingDecisions || [];
     const filtered = statusFilter === "all" ? store.decisions : store.decisions.filter((d) => (d.status || "pending") === statusFilter);
     container.innerHTML = `
@@ -10147,6 +10385,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   `;
     injectDecisionsStyles();
     injectChartKitStyles();
+    injectReasoningStyles();
     attachDecisionHandlers();
     attachFilterHandlers();
     attachPendingHandlers();
@@ -10167,8 +10406,16 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       };
       const color = modeColor[p.mode] || "#388BFD";
       const countdown = isAssisted ? `<span class="pending-countdown" data-deadline="${p.veto_deadline || ""}">${remaining}s</span>` : "";
-      const decisionText = p.decision?.reasoning || p.decision?.decision || "No description";
-      const confidence = p.decision?.confidence ? `${(p.decision.confidence * 100).toFixed(0)}%` : "--";
+      const pd = p.decision;
+      const asDecision = {
+        id: pd.id,
+        timestamp: "",
+        trigger: "",
+        decision: pd.decision,
+        confidence: pd.confidence ?? 0,
+        reasoning: pd.reasoning ?? void 0
+      };
+      const confidence = pd.confidence != null ? `${(pd.confidence * 100).toFixed(0)}%` : "--";
       return `
     <div class="pending-decision-item" data-decision-id="${p.decision_id}">
       <div class="pending-decision-left">
@@ -10176,7 +10423,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         ${countdown}
       </div>
       <div class="pending-decision-middle">
-        <span class="pending-decision-text">${escapeHtml11(decisionText)}</span>
+        ${renderReasoningBlock(asDecision)}
         <span class="pending-decision-confidence text-mono text-xs">${confidence}</span>
       </div>
       <div class="pending-decision-right">
@@ -10283,7 +10530,11 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           <span class="decision-time text-mono text-xs text-secondary">${formatTime4(d.timestamp)}</span>
         </div>
         <div class="decision-middle">
-          <span class="decision-trigger-text text-sm">${escapeHtml11(d.trigger)}</span>
+          <span class="decision-trigger-text text-sm">${escapeHtml12(d.trigger)}</span>
+          <div class="decision-reasoning-row">
+            <span class="reasoning-summary" title="${escapeHtml12(d.reasoning || summarizeReasoning(d))}">${escapeHtml12(summarizeReasoning(d))}</span>
+            ${shouldAutoSurface(d, auditByDecision.get(d.id)) ? autoSurfaceChip(d, auditByDecision.get(d.id)) : ""}
+          </div>
         </div>
         <div class="decision-right">
           <span class="decision-confidence text-mono text-xs" style="color:${confidenceColor3(d.confidence)}">${(d.confidence * 100).toFixed(0)}%</span>
@@ -10293,17 +10544,25 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       <div class="decision-detail" ${expandedDecisionIds.has(d.id) ? "" : "hidden"}>
         <div class="decision-detail-row">
           <span class="decision-detail-label">Decision</span>
-          <span class="decision-detail-value font-semibold">${escapeHtml11(d.decision)}</span>
+          <span class="decision-detail-value font-semibold">${escapeHtml12(d.decision)}</span>
         </div>
         ${d.outcome ? `
         <div class="decision-detail-row">
           <span class="decision-detail-label">Outcome</span>
-          <span class="decision-detail-value">${escapeHtml11(d.outcome)}</span>
+          <span class="decision-detail-value">${escapeHtml12(d.outcome)}</span>
         </div>` : ""}
         <div class="decision-detail-row">
           <span class="decision-detail-label">Confidence</span>
           <span class="decision-detail-value text-mono">${(d.confidence * 100).toFixed(1)}%</span>
         </div>
+        ${d.reasoning || auditByDecision.get(d.id) ? `<div class="decision-detail-row decision-detail-reasoning">
+          <span class="decision-detail-label">Reasoning</span>
+          <div class="decision-detail-value">${renderReasoningDetail(d, auditByDecision.get(d.id))}</div>
+        </div>` : ""}
+        ${d.model ? `<div class="decision-detail-row">
+          <span class="decision-detail-label">Decided by</span>
+          <span class="decision-detail-value text-mono">${escapeHtml12(d.model)}</span>
+        </div>` : ""}
         <div class="decision-detail-row">
           <span class="decision-detail-label">Timestamp</span>
           <span class="decision-detail-value text-mono">${d.timestamp}</span>
@@ -10400,7 +10659,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       return "--";
     }
   }
-  function escapeHtml11(s) {
+  function escapeHtml12(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectDecisionsStyles() {
@@ -10437,8 +10696,16 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
 .decision-status-dot.success { background: var(--success); }
 .decision-status-dot.failure { background: var(--danger); }
 .decision-status-dot.pending { background: var(--warning); }
-.decision-middle { flex: 1; }
+.decision-middle { flex: 1; min-width: 0; }
 .decision-trigger-text { color: var(--text-primary); }
+.decision-reasoning-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-top: 2px;
+}
+.decision-detail-reasoning .decision-detail-value { flex: 1; min-width: 0; }
 .decision-right {
   display: flex;
   align-items: center;
@@ -10644,15 +10911,17 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
 `;
     document.head.appendChild(style);
   }
-  var expandedDecisionIds, statusFilter, countdownInterval;
+  var expandedDecisionIds, statusFilter, auditByDecision, countdownInterval;
   var init_Decisions = __esm({
     "src/web/hal-ui/views/Decisions.ts"() {
       "use strict";
       init_store();
       init_api();
       init_ChartKit();
+      init_ReasoningBlock();
       expandedDecisionIds = /* @__PURE__ */ new Set();
       statusFilter = "all";
+      auditByDecision = /* @__PURE__ */ new Map();
       countdownInterval = null;
     }
   });
@@ -10722,7 +10991,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       return `
     <div class="camera-card hal-card ${c.online ? "" : "camera-offline"}" data-camera-id="${c.id}">
       <div class="camera-thumbnail" id="thumb-${c.id}">
-        ${demoImg && c.online ? `<img src="${demoImg}" alt="${escapeHtml12(c.name)}" class="camera-img" />` : `
+        ${demoImg && c.online ? `<img src="${demoImg}" alt="${escapeHtml13(c.name)}" class="camera-img" />` : `
         <div class="camera-placeholder">
           <span class="camera-icon">CAM</span>
           <span class="text-secondary text-sm">${c.online ? "No preview" : "Offline"}</span>
@@ -10733,7 +11002,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         </div>
       </div>
       <div class="camera-info">
-        <div class="camera-name">${escapeHtml12(c.name)}</div>
+        <div class="camera-name">${escapeHtml13(c.name)}</div>
         <div class="camera-meta text-xs text-secondary">
           ${c.protocol}
           ${c.online ? '<span class="camera-status-online">\xB7 online</span>' : '<span class="camera-status-offline">\xB7 offline</span>'}
@@ -10775,7 +11044,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
               <div class="capture-meta">
                 <div class="capture-meta-row">
                   <span class="text-secondary text-xs">Path</span>
-                  <span class="text-mono text-xs">${escapeHtml12(result.path)}</span>
+                  <span class="text-mono text-xs">${escapeHtml13(result.path)}</span>
                 </div>
                 <div class="capture-meta-row">
                   <span class="text-secondary text-xs">Size</span>
@@ -10799,7 +11068,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       });
     });
   }
-  function escapeHtml12(s) {
+  function escapeHtml13(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectCamerasStyles() {
@@ -12913,7 +13182,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
             id="password"
             class="form-input"
             placeholder="Minimum 8 characters"
-            value="${escapeHtml13(wizardData.adminPassword)}"
+            value="${escapeHtml14(wizardData.adminPassword)}"
             minlength="8"
             autocomplete="new-password"
           />
@@ -12969,7 +13238,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           id="farm-name"
           class="form-input"
           placeholder="My Farm"
-          value="${escapeHtml13(wizardData.farmName)}"
+          value="${escapeHtml14(wizardData.farmName)}"
           maxlength="64"
           autocomplete="off"
         />
@@ -13010,7 +13279,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         <select id="timezone" class="form-select">
           ${regionOptions}
         </select>
-        <div class="form-hint">Detected: <strong id="detected-timezone">${escapeHtml13(currentTz)}</strong></div>
+        <div class="form-hint">Detected: <strong id="detected-timezone">${escapeHtml14(currentTz)}</strong></div>
       </div>
     </div>
   `;
@@ -13028,13 +13297,13 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           id="wifi-ssid"
           class="form-input"
           placeholder="Enter network name or select below"
-          value="${escapeHtml13(wizardData.wifiSsid)}"
+          value="${escapeHtml14(wizardData.wifiSsid)}"
           maxlength="32"
           autocomplete="off"
           list="wifi-networks-list"
         />
         <datalist id="wifi-networks-list">
-          ${wifiNetworks.map((n) => `<option value="${escapeHtml13(n.ssid)}">`).join("")}
+          ${wifiNetworks.map((n) => `<option value="${escapeHtml14(n.ssid)}">`).join("")}
         </datalist>
       </div>
 
@@ -13089,7 +13358,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           id="llm-endpoint"
           class="form-input"
           placeholder="http://localhost:11434"
-          value="${escapeHtml13(wizardData.llmEndpoint)}"
+          value="${escapeHtml14(wizardData.llmEndpoint)}"
         />
         <div class="form-hint">${wizardData.llmProvider === "ollama" ? "Ollama must be running on your device." : "LM Studio server address."}</div>
       </div>
@@ -13104,7 +13373,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
             id="llm-api-key"
             class="form-input"
             placeholder="sk-..."
-            value="${escapeHtml13(wizardData.llmApiKey)}"
+            value="${escapeHtml14(wizardData.llmApiKey)}"
             autocomplete="off"
           />
           <button type="button" class="input-toggle" id="toggle-api-key" aria-label="Show API key">
@@ -13123,7 +13392,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           id="llm-model"
           class="form-input"
           placeholder="${wizardData.llmProvider === "ollama" ? "llama3.2, mistral, etc." : "e.g., llama3.2"}"
-          value="${escapeHtml13(wizardData.llmModel)}"
+          value="${escapeHtml14(wizardData.llmModel)}"
           autocomplete="off"
         />
         <div class="form-hint">Must match an installed model in your Ollama/LM Studio.</div>
@@ -13159,7 +13428,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
             id="telegram-token"
             class="form-input"
             placeholder="123456789:ABCdefGHI..."
-            value="${escapeHtml13(wizardData.telegramBotToken)}"
+            value="${escapeHtml14(wizardData.telegramBotToken)}"
             autocomplete="off"
           />
           <button type="button" class="input-toggle" id="toggle-telegram-token" aria-label="Show token">
@@ -13182,7 +13451,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       <div class="wizard-card wizard-error">
         <div class="error-icon">\u26A0</div>
         <h2>Setup Error</h2>
-        <p>${escapeHtml13(message)}</p>
+        <p>${escapeHtml14(message)}</p>
         <button class="wizard-btn wizard-btn-next" onclick="location.reload()">Refresh</button>
       </div>
     </div>
@@ -13251,9 +13520,16 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     nextBtn?.addEventListener("click", async () => {
       if (!validateCurrentStep(currentStep2)) return;
       isSubmitting = true;
-      render(container);
+      const submitBtn = document.getElementById(
+        "wizard-next"
+      );
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Saving...";
+      }
       try {
         await saveCurrentStep(currentIndex, currentStep2);
+        isSubmitting = false;
         if (currentIndex < effectiveSteps.length - 1) {
           currentStep2 = effectiveSteps[currentIndex + 1];
           wizardData = loadStepData(currentStep2);
@@ -13262,10 +13538,9 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           await completeWizard(container);
         }
       } catch (err) {
+        isSubmitting = false;
         showStepError(currentStep2, err.message || "An error occurred");
         render(container);
-      } finally {
-        isSubmitting = false;
       }
     });
   }
@@ -13384,7 +13659,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     if (body) {
       body.innerHTML = `
       <div class="wizard-step-content">
-        <div class="step-error">${escapeHtml13(message)}</div>
+        <div class="step-error">${escapeHtml14(message)}</div>
       </div>
     `;
     }
@@ -13416,17 +13691,10 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       telegramEnabled: wizardData.telegramEnabled,
       telegramBotToken: wizardData.telegramBotToken
     };
-    try {
-      await provisioningApi.complete(completeData);
-      sessionStorage.setItem("operatorId", "admin");
-      window.location.hash = "#dashboard";
-      window.location.reload();
-    } catch (err) {
-      showStepError(
-        6,
-        err.message || "Setup could not be saved \u2014 please try again."
-      );
-    }
+    await provisioningApi.complete(completeData);
+    sessionStorage.setItem("operatorId", "admin");
+    window.location.hash = "#dashboard";
+    window.location.reload();
   }
   function updatePasswordStrength(pwd) {
     const bars = document.querySelectorAll(".strength-bar");
@@ -13458,7 +13726,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       );
     });
   }
-  function escapeHtml13(str) {
+  function escapeHtml14(str) {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
   function injectWizardStyles2() {
@@ -14415,7 +14683,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     const devices = store.devices.filter(
       (d) => d.type === "relay" || d.type === "smart_plug"
     );
-    const options = devices.map((d) => `<option value="${d.id}">${escapeHtml14(d.name)}</option>`).join("");
+    const options = devices.map((d) => `<option value="${d.id}">${escapeHtml15(d.name)}</option>`).join("");
     selectEl.innerHTML = `<option value="">All Devices</option>${options}`;
     selectEl.addEventListener("change", () => {
     });
@@ -14451,10 +14719,10 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     return `
     <div class="rule-card ${rule.enabled ? "" : "disabled"}" data-device-id="${rule.deviceId}">
       <div class="rule-header">
-        <div class="rule-device">${escapeHtml14(deviceName)}</div>
+        <div class="rule-device">${escapeHtml15(deviceName)}</div>
         <div class="rule-type-badge">${ruleLabel}</div>
       </div>
-      <div class="rule-config">${escapeHtml14(configDisplay)}</div>
+      <div class="rule-config">${escapeHtml15(configDisplay)}</div>
       <div class="rule-meta">
         Priority: ${rule.priority} \xB7 Updated ${formatRelativeTime2(rule.updatedAt)}
       </div>
@@ -14512,7 +14780,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     const deviceName = device?.name || deviceId;
     openModal(
       "Delete Safety Rule",
-      `<p>Are you sure you want to delete this safety rule for <strong>${escapeHtml14(deviceName)}</strong>?</p>
+      `<p>Are you sure you want to delete this safety rule for <strong>${escapeHtml15(deviceName)}</strong>?</p>
      <p class="text-danger">This action cannot be undone. The device will no longer be protected by this rule.</p>`,
       `<button class="btn btn-secondary" onclick="window.__closeModal && window.__closeModal()">Cancel</button>
      <button class="btn btn-danger" id="confirm-delete-rule-btn">Delete Rule</button>`
@@ -14536,7 +14804,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     const devices = store.devices.filter(
       (d) => d.type === "relay" || d.type === "smart_plug"
     );
-    const deviceOptions = devices.map((d) => `<option value="${d.id}">${escapeHtml14(d.name)}</option>`).join("");
+    const deviceOptions = devices.map((d) => `<option value="${d.id}">${escapeHtml15(d.name)}</option>`).join("");
     const ruleTypeOptions = Object.entries(RULE_TYPE_LABELS).map(([key, label]) => `<option value="${key}">${label}</option>`).join("");
     openModal(
       "Add Safety Rule",
@@ -14629,7 +14897,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       case "dependency":
         const store = getStore();
         const sensorDevices = store.devices.filter((d) => d.type === "sensor");
-        const sensorOptions = sensorDevices.map((d) => `<option value="${d.id}">${escapeHtml14(d.name)}</option>`).join("");
+        const sensorOptions = sensorDevices.map((d) => `<option value="${d.id}">${escapeHtml15(d.name)}</option>`).join("");
         fieldsHtml = `
         <div class="form-group">
           <label for="config-trigger-device">When this sensor...</label>
@@ -14803,12 +15071,12 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     const deviceName = device?.name || rule.deviceId;
     const ruleLabel = RULE_TYPE_LABELS[rule.ruleType] || rule.ruleType;
     openModal(
-      `Edit Safety Rule: ${escapeHtml14(deviceName)}`,
+      `Edit Safety Rule: ${escapeHtml15(deviceName)}`,
       `
     <form id="edit-rule-form" class="add-rule-form">
       <div class="form-group">
         <label>Device</label>
-        <div class="form-static">${escapeHtml14(deviceName)}</div>
+        <div class="form-static">${escapeHtml15(deviceName)}</div>
       </div>
 
       <div class="form-group">
@@ -14904,7 +15172,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         const store = getStore();
         const sensorDevices = store.devices.filter((d) => d.type === "sensor");
         const sensorOptions = sensorDevices.map(
-          (d) => `<option value="${d.id}" ${d.id === ruleConfig.triggerDeviceId ? "selected" : ""}>${escapeHtml14(d.name)}</option>`
+          (d) => `<option value="${d.id}" ${d.id === ruleConfig.triggerDeviceId ? "selected" : ""}>${escapeHtml15(d.name)}</option>`
         ).join("");
         return `
         <div class="form-group">
@@ -14940,7 +15208,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       `;
       }
       default:
-        return `<p class="text-secondary text-sm">Unknown rule type: ${escapeHtml14(ruleType)}</p>`;
+        return `<p class="text-secondary text-sm">Unknown rule type: ${escapeHtml15(ruleType)}</p>`;
     }
   }
   async function saveEditedRule(ruleId) {
@@ -15104,7 +15372,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     return `
     <div class="threshold-card ${threshold.enabled ? "" : "disabled"}" data-threshold-id="${threshold.id}">
       <div class="threshold-header">
-        <div class="threshold-device">${escapeHtml14(deviceName)}</div>
+        <div class="threshold-device">${escapeHtml15(deviceName)}</div>
         <div class="threshold-metric-badge">${metricLabel}</div>
       </div>
       <div class="threshold-bounds">
@@ -15174,10 +15442,10 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       ...new Set(store.devices.map((d) => d.zone).filter(Boolean))
     ];
     const deviceOptions = `<option value="">All Devices (global)</option>` + sensorDevices.map(
-      (d) => `<option value="${d.id}">${escapeHtml14(d.name || d.id)}</option>`
+      (d) => `<option value="${d.id}">${escapeHtml15(d.name || d.id)}</option>`
     ).join("");
     const zoneOptions = zones2.length > 0 ? `<option value="">All Zones</option>` + zones2.map(
-      (z) => `<option value="${escapeHtml14(z)}">${escapeHtml14(z)}</option>`
+      (z) => `<option value="${escapeHtml15(z)}">${escapeHtml15(z)}</option>`
     ).join("") : "";
     const metricOptions = Object.entries(METRIC_LABELS).map(([key, label]) => `<option value="${key}">${label}</option>`).join("");
     openModal(
@@ -15311,10 +15579,10 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     if (threshold.deviceId) scope = "device";
     else if (threshold.zone) scope = "zone";
     const deviceOptions = `<option value="">All Devices (global)</option>` + sensorDevices.map(
-      (d) => `<option value="${d.id}" ${d.id === threshold.deviceId ? "selected" : ""}>${escapeHtml14(d.name || d.id)}</option>`
+      (d) => `<option value="${d.id}" ${d.id === threshold.deviceId ? "selected" : ""}>${escapeHtml15(d.name || d.id)}</option>`
     ).join("");
     const zoneOptions = zones2.length > 0 ? `<option value="">All Zones</option>` + zones2.map(
-      (z) => `<option value="${escapeHtml14(z)}" ${z === threshold.zone ? "selected" : ""}>${escapeHtml14(z)}</option>`
+      (z) => `<option value="${escapeHtml15(z)}" ${z === threshold.zone ? "selected" : ""}>${escapeHtml15(z)}</option>`
     ).join("") : "";
     const metricOptions = Object.entries(METRIC_LABELS).map(
       ([key, label]) => `<option value="${key}" ${key === threshold.metric ? "selected" : ""}>${label}</option>`
@@ -15458,7 +15726,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       return isoString;
     }
   }
-  function escapeHtml14(text) {
+  function escapeHtml15(text) {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function injectSafetyStyles() {
@@ -15949,11 +16217,11 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       <div class="cal-card-header">
         <div class="cal-device-icon">${getDeviceIcon(device)}</div>
         <div class="cal-device-info">
-          <div class="cal-device-name">${escapeHtml15(device.name)}</div>
+          <div class="cal-device-name">${escapeHtml16(device.name)}</div>
           <div class="cal-device-meta">
-            <span class="hal-badge hal-badge-slate">${escapeHtml15(metricLabel)}</span>
+            <span class="hal-badge hal-badge-slate">${escapeHtml16(metricLabel)}</span>
             <span class="hal-badge hal-badge-slate">${device.protocol}</span>
-            ${device.zone ? `<span class="cal-zone-tag">${escapeHtml15(device.zone)}</span>` : ""}
+            ${device.zone ? `<span class="cal-zone-tag">${escapeHtml16(device.zone)}</span>` : ""}
           </div>
         </div>
         <div class="cal-status ${offset !== 0 ? "calibrated" : ""}">
@@ -16139,7 +16407,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     }
     return value;
   }
-  function escapeHtml15(s) {
+  function escapeHtml16(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function injectCalibrationStyles() {
@@ -16602,7 +16870,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
                 type="text"
                 id="farm-name"
                 class="form-input"
-                value="${escapeHtml16(settingsData.farmName)}"
+                value="${escapeHtml17(settingsData.farmName)}"
                 maxlength="64"
                 placeholder="My Farm"
               />
@@ -16659,6 +16927,13 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
                 <button type="button" class="settings-segment ${store.timeFormat === "24h" ? "active" : ""}" data-time-format="24h">24H</button>
               </div>
             </div>
+            <div class="settings-field">
+              <p class="settings-label">Reasoning Detail</p>
+              <div class="settings-segmented" id="reasoning-verbosity-control">
+                <button type="button" class="settings-segment ${store.reasoningVerbosity === "quiet" ? "active" : ""}" data-reasoning-verbosity="quiet">Quiet</button>
+                <button type="button" class="settings-segment ${store.reasoningVerbosity === "detailed" ? "active" : ""}" data-reasoning-verbosity="detailed">Detailed</button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -16689,7 +16964,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
                 type="text"
                 id="llm-endpoint"
                 class="form-input"
-                value="${escapeHtml16(settingsData.llmEndpoint)}"
+                value="${escapeHtml17(settingsData.llmEndpoint)}"
                 placeholder="http://localhost:11434"
               />
               <p class="settings-hint">${settingsData.llmProvider === "ollama" ? "Ollama server address." : "LM Studio server address."}</p>
@@ -16703,7 +16978,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
                 type="password"
                 id="llm-api-key"
                 class="form-input"
-                value="${escapeHtml16(settingsData.llmApiKey)}"
+                value="${escapeHtml17(settingsData.llmApiKey)}"
                 placeholder="sk-..."
                 autocomplete="off"
               />
@@ -16716,7 +16991,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
                 type="text"
                 id="llm-model"
                 class="form-input"
-                value="${escapeHtml16(settingsData.llmModel)}"
+                value="${escapeHtml17(settingsData.llmModel)}"
                 placeholder="${settingsData.llmProvider === "ollama" ? "llama3.2, mistral, etc." : "e.g., llama3.2"}"
                 autocomplete="off"
               />
@@ -17044,6 +17319,20 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           b.classList.toggle("active", b === btn);
         });
         showToast(`Time format: ${timeFormat.toUpperCase()}`, "info", 1600);
+      });
+    });
+    document.querySelectorAll("[data-reasoning-verbosity]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const reasoningVerbosity = btn.dataset.reasoningVerbosity;
+        setStore({ reasoningVerbosity });
+        document.querySelectorAll("[data-reasoning-verbosity]").forEach((b) => {
+          b.classList.toggle("active", b === btn);
+        });
+        showToast(
+          `Reasoning detail: ${reasoningVerbosity === "quiet" ? "Quiet" : "Detailed"}`,
+          "info",
+          1600
+        );
       });
     });
     document.querySelectorAll(".provider-card").forEach((btn) => {
@@ -17781,7 +18070,7 @@ The service will restart after the update.`
     });
     confirmInput?.focus();
   }
-  function escapeHtml16(str) {
+  function escapeHtml17(str) {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
   function injectSettingsStyles() {
@@ -18430,7 +18719,7 @@ The service will restart after the update.`
     modal.innerHTML = `
     <div class="modal-panel" style="max-width:420px;">
       <div class="modal-header">
-        <h2>Installing FF_SmartControl v${escapeHtml16(version)}</h2>
+        <h2>Installing FF_SmartControl v${escapeHtml17(version)}</h2>
       </div>
       <div class="modal-body">
         <div class="update-progress-steps">
@@ -18634,9 +18923,9 @@ The service will restart after the update.`
     const historyRows = history2.length === 0 ? '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-tertiary);">No update history yet</td></tr>' : history2.map(
       (entry) => `
         <tr>
-          <td class="mono">v${escapeHtml16(entry.fromVersion)} \u2192 v${escapeHtml16(entry.toVersion)}</td>
+          <td class="mono">v${escapeHtml17(entry.fromVersion)} \u2192 v${escapeHtml17(entry.toVersion)}</td>
           <td><span class="badge ${entry.status === "success" ? "badge-green" : entry.status === "rolled_back" ? "badge-amber" : "badge-red"}">${entry.status}</span></td>
-          <td>${escapeHtml16(entry.triggeredBy)}</td>
+          <td>${escapeHtml17(entry.triggeredBy)}</td>
           <td>${new Date(entry.startedAt).toLocaleDateString()}</td>
         </tr>
       `
@@ -18867,7 +19156,8 @@ The service will restart after the update.`
       handleLayoutChange,
       handleSettingsClick,
       handleModeChange,
-      handleManualTrigger
+      handleManualTrigger,
+      handleReasoningToggle
     );
     initSidebar(handleViewChange);
     window.addEventListener("hashchange", handleHashChange);
@@ -19050,6 +19340,10 @@ The service will restart after the update.`
     showToast(`Layout: ${layout.toUpperCase()}`, "info", 2e3);
     render2();
   }
+  function handleReasoningToggle() {
+    const view = getStore().activeView;
+    if (view === "decisions" || view === "dashboard") render2();
+  }
   function handleModeChange(mode) {
     showToast(`Automation mode: ${mode}`, "info", 2e3);
     refreshHALData();
@@ -19135,7 +19429,7 @@ The service will restart after the update.`
     ];
     return validViews.includes(hash2) ? hash2 : "dashboard";
   }
-  function escapeHtml17(value) {
+  function escapeHtml18(value) {
     return value.replace(
       /[&<>"']/g,
       (ch) => ({
@@ -19165,7 +19459,7 @@ The service will restart after the update.`
         container.innerHTML = `
         <div class="hal-card" style="padding:16px">
           <div class="text-sm font-semibold">View failed to load</div>
-          <div class="text-xs text-secondary">${escapeHtml17(err?.message || "Unknown render error")}</div>
+          <div class="text-xs text-secondary">${escapeHtml18(err?.message || "Unknown render error")}</div>
         </div>
       `;
       } finally {
