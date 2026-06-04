@@ -10,6 +10,7 @@
 import { halRegistry } from '../hal/registry.js';
 import { halSensors } from '../hal/sensors.js';
 import { halRelays } from '../hal/relays.js';
+import { getDb } from '../hal/db.js';
 import {
   loadSafetyRules,
   evaluateAction,
@@ -87,7 +88,6 @@ function getRecentToggles(deviceId: string): RelayToggle[] {
   if (!entries) return [];
 
   // Get from hal_relays table directly
-  const { getDb } = require('../hal/db.js');
   const db = getDb();
   const rows = db
     .prepare(
