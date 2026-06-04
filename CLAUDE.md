@@ -12,6 +12,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
+> **Naming:** the npm package is still named `fft_nano` (v1.7.2) and `FFT_NANO_*` env vars / a leftover `launchd/com.fft_nano.plist` carry that prefix — this is lineage only. The product is **FarmPal**, a self-contained app. It does **not** require or spawn the separate `~/FFT_nano` or `nano-core` programs; the agent is the bundled `@mariozechner/pi-*` npm dependency. FF-SmartControl = the FFT_nano host runtime evolved + the HAL/safety control plane.
+
 Single Node.js host process: receives chat messages (Telegram/WhatsApp), runs a `pi` agent subprocess inside an isolated container, returns responses. SQLite for persistence.
 
 Additional surfaces:
@@ -143,6 +145,14 @@ import { state, activeChatRuns, ... } from './app-state.js';
 
 - Singleton lock at `data/farmpal.lock` — do not run a second foreground host while the installed service is active.
 - **Port policy**: do not use `28995` or any `289xx` port. Use the FarmPal local block `3390`–`3399` unless explicitly told otherwise.
+- **Container runtime required to boot**: `npm run dev`/`start` exits at startup with `No supported runtime found` unless Docker is present. For local dev on macOS (no Pi/Docker), run the agent unisolated on the host: prefix with `CONTAINER_RUNTIME=host FFT_NANO_ALLOW_HOST_RUNTIME=1`. (Note: provisioning bakes these same two vars into the generated `.env` — i.e. the shipped default runs the agent **on the host, not isolated**.)
+- **Provisioning gate**: a fresh checkout is unprovisioned — HAL UI data APIs return `{"error":"System not provisioned"}` and redirect to `/login` until setup completes. Setup runs via the HAL UI wizard or `npm run onboard`; it writes `.env`, `data/provisioned`, and `data/provisioning-state.json` (see `src/first-boot.ts` `generateEnv`/`completeProvisioning`). Admin login user is always `admin`; the password is set during setup (bcrypt hash, no default). If the wizard hangs on "Saving…", the host process isn't running to receive the POST (often the container-runtime exit above) — verify a listener on `3392` and that no `.env`/`provisioned` marker means `/complete` never ran.
+- **HAL UI smoke test (no LLM cost)**: boot the twin and serve the dashboard without real hardware:
+  ```bash
+  CONTAINER_RUNTIME=host FFT_NANO_ALLOW_HOST_RUNTIME=1 \
+    HAL_UI_ENABLED=1 HAL_UI_PORT=3392 HAL_SIM_MODE=1 HAL_SIM_TICK_MS=400 HAL_SIM_SCENARIO=heat_wave npm run dev
+  ```
+  The sim autopilot logs real decisions (with reasoning) into `hal_decision_log`; WhatsApp connection errors in the log are unrelated (no auth).
 - Service management:
   ```bash
   ./scripts/service.sh restart
