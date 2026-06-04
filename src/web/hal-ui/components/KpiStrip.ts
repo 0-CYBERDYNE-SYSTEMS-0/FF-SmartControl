@@ -380,7 +380,11 @@ export function injectKpiStyles(): void {
   style.textContent = `
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  /* Exactly 6 KPIs — use divisor-of-6 column counts (6/3/2/1) so every row is
+     always full at every width: no orphaned card, no blank trailing cells.
+     minmax(0,1fr) lets tracks shrink below content (which wraps) instead of
+     content forcing a wider track and collapsing the column count. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   grid-auto-rows: minmax(80px, auto);
   align-items: stretch;
   gap: var(--space-2);
@@ -397,6 +401,7 @@ export function injectKpiStyles(): void {
   align-items: stretch;
   gap: var(--space-1);
   min-height: 80px;
+  min-width: 0;
   transition: border-color var(--transition-fast);
 }
 .kpi-card:hover {
@@ -460,8 +465,14 @@ export function injectKpiStyles(): void {
 .kpi-sparkline-empty {
   height: 28px;
 }
-@media (max-width: 767px) {
-  .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+@media (max-width: 1100px) {
+  .kpi-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 380px) {
+  .kpi-strip { grid-template-columns: 1fr; }
 }
 `;
   document.head.appendChild(style);
