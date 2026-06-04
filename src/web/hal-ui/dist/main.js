@@ -13474,9 +13474,16 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     nextBtn?.addEventListener("click", async () => {
       if (!validateCurrentStep(currentStep2)) return;
       isSubmitting = true;
-      render(container);
+      const submitBtn = document.getElementById(
+        "wizard-next"
+      );
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Saving...";
+      }
       try {
         await saveCurrentStep(currentIndex, currentStep2);
+        isSubmitting = false;
         if (currentIndex < effectiveSteps.length - 1) {
           currentStep2 = effectiveSteps[currentIndex + 1];
           wizardData = loadStepData(currentStep2);
@@ -13485,10 +13492,9 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           await completeWizard(container);
         }
       } catch (err) {
+        isSubmitting = false;
         showStepError(currentStep2, err.message || "An error occurred");
         render(container);
-      } finally {
-        isSubmitting = false;
       }
     });
   }
@@ -13639,17 +13645,10 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       telegramEnabled: wizardData.telegramEnabled,
       telegramBotToken: wizardData.telegramBotToken
     };
-    try {
-      await provisioningApi.complete(completeData);
-      sessionStorage.setItem("operatorId", "admin");
-      window.location.hash = "#dashboard";
-      window.location.reload();
-    } catch (err) {
-      showStepError(
-        6,
-        err.message || "Setup could not be saved \u2014 please try again."
-      );
-    }
+    await provisioningApi.complete(completeData);
+    sessionStorage.setItem("operatorId", "admin");
+    window.location.hash = "#dashboard";
+    window.location.reload();
   }
   function updatePasswordStrength(pwd) {
     const bars = document.querySelectorAll(".strength-bar");
