@@ -1,7 +1,7 @@
 // KPI Strip — 6 cards with big numbers, inline sparklines from real sensor history
 
 import { getStore, formatSensorValue } from '../store.js';
-import { halApi } from '../api.js';
+import { halApi, type HalSensorReading } from '../api.js';
 import { renderSparkline } from './HeroChart.js';
 import { injectHeroChartStyles } from './HeroChart.js';
 
@@ -306,8 +306,14 @@ async function fetchMetricSparkline(
   const to = new Date().toISOString();
 
   try {
+    const historyMap = await halApi.getSensorHistoryBatch(
+      sensors.map((s) => s.id),
+      [metric],
+      from,
+      to,
+    );
     for (const s of sensors) {
-      const data = await halApi.getSensorHistory(s.id, metric, from, to);
+      const data = historyMap.get(`${s.id}|${metric}`) ?? [];
       if (data.length > 1) {
         const step = Math.max(1, Math.floor(data.length / buckets));
         return Array.from(
@@ -332,8 +338,14 @@ async function fetchMetricSparklinePrev(
   const from = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
   try {
+    const historyMap = await halApi.getSensorHistoryBatch(
+      sensors.map((s) => s.id),
+      [metric],
+      from,
+      to,
+    );
     for (const s of sensors) {
-      const data = await halApi.getSensorHistory(s.id, metric, from, to);
+      const data = historyMap.get(`${s.id}|${metric}`) ?? [];
       if (data.length > 1) {
         const step = Math.max(1, Math.floor(data.length / buckets));
         return Array.from(

@@ -901,6 +901,26 @@
           });
           return readings.map(normalizeSensorReading).filter((reading) => Boolean(reading));
         },
+        // GET /api/hal/sensors/history-batch — many device/metric series in one call.
+        // Returns a map keyed by `${device}|${metric}` so callers can avoid firing one
+        // request per series (which trips the 100/min rate limit and 429s the views).
+        async getSensorHistoryBatch(devices, metrics2, from, to) {
+          const result = /* @__PURE__ */ new Map();
+          if (devices.length === 0 || metrics2.length === 0) return result;
+          const series = await halGet("/sensors/history-batch", {
+            devices: devices.join(","),
+            metrics: metrics2.join(","),
+            ...from ? { from } : {},
+            ...to ? { to } : {}
+          });
+          for (const s of series) {
+            result.set(
+              `${s.device_id}|${s.metric}`,
+              s.points.map(normalizeSensorReading).filter((r) => Boolean(r))
+            );
+          }
+          return result;
+        },
         // GET /api/hal/decisions
         async getDecisions(limit = 20) {
           const decisions = await halGet("/decisions", {
@@ -3454,28 +3474,31 @@ ${result.failures.join("\n")}`
     const to = (/* @__PURE__ */ new Date()).toISOString();
     const from = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
     const layers = [];
-    const [decisions] = await Promise.all([
+    const [decisions, historyMap] = await Promise.all([
       halApi.getDecisions(50).catch(() => []),
-      ...sensors.flatMap(
-        (s) => HERO_METRIC_KEYS.map(async (m) => {
-          try {
-            const data = await halApi.getSensorHistory(s.id, m, from, to);
-            if (data.length > 0) {
-              const cfg = metricConfig[m];
-              layers.push({
-                deviceId: s.id,
-                deviceName: s.name,
-                zoneName: resolveZoneName(s.id, s.name),
-                metric: m,
-                color: cfg?.color || "#888",
-                data
-              });
-            }
-          } catch {
-          }
-        })
-      )
+      halApi.getSensorHistoryBatch(
+        sensors.map((s) => s.id),
+        [...HERO_METRIC_KEYS],
+        from,
+        to
+      ).catch(() => /* @__PURE__ */ new Map())
     ]);
+    for (const s of sensors) {
+      for (const m of HERO_METRIC_KEYS) {
+        const data = historyMap.get(`${s.id}|${m}`) ?? [];
+        if (data.length > 0) {
+          const cfg = metricConfig[m];
+          layers.push({
+            deviceId: s.id,
+            deviceName: s.name,
+            zoneName: resolveZoneName(s.id, s.name),
+            metric: m,
+            color: cfg?.color || "#888",
+            data
+          });
+        }
+      }
+    }
     return { layers, decisions };
   }
   function injectHeroChartStyles() {
@@ -3762,8 +3785,14 @@ ${result.failures.join("\n")}`
     const from = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
     const to = (/* @__PURE__ */ new Date()).toISOString();
     try {
+      const historyMap = await halApi.getSensorHistoryBatch(
+        sensors.map((s) => s.id),
+        [metric],
+        from,
+        to
+      );
       for (const s of sensors) {
-        const data = await halApi.getSensorHistory(s.id, metric, from, to);
+        const data = historyMap.get(`${s.id}|${metric}`) ?? [];
         if (data.length > 1) {
           const step = Math.max(1, Math.floor(data.length / buckets));
           return Array.from(
@@ -3781,8 +3810,14 @@ ${result.failures.join("\n")}`
     const to = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
     const from = new Date(Date.now() - 48 * 60 * 60 * 1e3).toISOString();
     try {
+      const historyMap = await halApi.getSensorHistoryBatch(
+        sensors.map((s) => s.id),
+        [metric],
+        from,
+        to
+      );
       for (const s of sensors) {
-        const data = await halApi.getSensorHistory(s.id, metric, from, to);
+        const data = historyMap.get(`${s.id}|${metric}`) ?? [];
         if (data.length > 1) {
           const step = Math.max(1, Math.floor(data.length / buckets));
           return Array.from(
@@ -9045,32 +9080,33 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       heroChart.innerHTML = '<div class="chart-empty">Loading...</div>';
     try {
       const layers = [];
-      const [decisions] = await Promise.all([
+      const [decisions, historyMap] = await Promise.all([
         halApi.getDecisions(50).catch(() => []),
-        ...selectedDevices2.flatMap(
-          (device) => activeMetricConfigs.map(async (metric) => {
-            const data = await halApi.getSensorHistory(
-              device.id,
-              metric.key,
-              from,
-              to
-            );
-            if (data.length > 0) {
-              layers.push({
-                deviceId: device.id,
-                deviceName: device.name,
-                zoneName: resolveZoneName2(
-                  device.id,
-                  device.name,
-                  device.zone
-                ),
-                metric,
-                data
-              });
-            }
-          })
-        )
+        halApi.getSensorHistoryBatch(
+          selectedDevices2.map((d) => d.id),
+          activeMetricConfigs.map((m) => m.key),
+          from,
+          to
+        ).catch(() => /* @__PURE__ */ new Map())
       ]);
+      for (const device of selectedDevices2) {
+        for (const metric of activeMetricConfigs) {
+          const data = historyMap.get(`${device.id}|${metric.key}`) ?? [];
+          if (data.length > 0) {
+            layers.push({
+              deviceId: device.id,
+              deviceName: device.name,
+              zoneName: resolveZoneName2(
+                device.id,
+                device.name,
+                device.zone
+              ),
+              metric,
+              data
+            });
+          }
+        }
+      }
       if (sequence !== loadSequence) return;
       const zones2 = [...new Set(layers.map((l) => l.zoneName).filter(Boolean))];
       renderZoneToggles(zones2);
@@ -10118,48 +10154,47 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       for (const m of systemMetrics) {
         metricBuckets.set(m.key, /* @__PURE__ */ new Map());
       }
-      await Promise.all(
-        sensors.flatMap(
-          (device) => systemMetrics.map(async (metric) => {
-            const data = await halApi.getSensorHistory(
-              device.id,
+      const historyMap = await halApi.getSensorHistoryBatch(
+        sensors.map((d) => d.id),
+        systemMetrics.map((m) => m.key),
+        from,
+        to
+      ).catch(() => /* @__PURE__ */ new Map());
+      for (const device of sensors) {
+        for (const metric of systemMetrics) {
+          const data = historyMap.get(`${device.id}|${metric.key}`) ?? [];
+          if (data.length === 0) continue;
+          const latest = data[data.length - 1];
+          const prevTs = metricLatestTs.get(metric.key) ?? "";
+          if (latest.timestamp > prevTs) {
+            metricLatestTs.set(metric.key, latest.timestamp);
+            const cv = formatSensorValue(
+              latest.value,
               metric.key,
-              from,
-              to
+              store.unitSystem
             );
-            if (data.length === 0) return;
-            const latest = data[data.length - 1];
-            const prevTs = metricLatestTs.get(metric.key) ?? "";
-            if (latest.timestamp > prevTs) {
-              metricLatestTs.set(metric.key, latest.timestamp);
-              const cv = formatSensorValue(
-                latest.value,
-                metric.key,
-                store.unitSystem
-              );
-              metricLatestVal.set(metric.key, cv.value);
-              const pill = document.getElementById(`sys-pill-${metric.key}`);
-              if (pill)
-                pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
-            }
-            const buckets = metricBuckets.get(metric.key);
-            for (const d of data) {
-              const t = new Date(d.timestamp).getTime();
-              if (!Number.isFinite(t)) continue;
-              const bucket = Math.floor(t / 6e4) * 6e4;
-              const val = formatSensorValue(
-                d.value,
-                metric.key,
-                store.unitSystem
-              ).value;
-              const acc = buckets.get(bucket) ?? { sum: 0, count: 0 };
-              acc.sum += val;
-              acc.count += 1;
-              buckets.set(bucket, acc);
-            }
-          })
-        )
-      );
+            metricLatestVal.set(metric.key, cv.value);
+            const pill = document.getElementById(`sys-pill-${metric.key}`);
+            if (pill)
+              pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
+          }
+          const buckets = metricBuckets.get(metric.key);
+          for (const d of data) {
+            const t = new Date(d.timestamp).getTime();
+            if (!Number.isFinite(t)) continue;
+            const bucket = Math.floor(t / 6e4) * 6e4;
+            const val = formatSensorValue(
+              d.value,
+              metric.key,
+              store.unitSystem
+            ).value;
+            const acc = buckets.get(bucket) ?? { sum: 0, count: 0 };
+            acc.sum += val;
+            acc.count += 1;
+            buckets.set(bucket, acc);
+          }
+        }
+      }
       const chartMetrics = systemMetrics.filter((m) => metricLatestVal.has(m.key)).map((m) => {
         const minCv = formatSensorValue(m.minAxis, m.key, store.unitSystem);
         return {
