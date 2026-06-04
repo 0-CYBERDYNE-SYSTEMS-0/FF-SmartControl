@@ -50,6 +50,10 @@ export interface AuthContext {
 function getAdminPasswordHash(): string | null {
   try {
     const mgr = getProvisioningManager();
+    // Durable state survives the wizard-session clear on completion; fall back
+    // to the in-progress wizard session (provisioning not yet completed).
+    const state = mgr.loadState();
+    if (state?.adminPasswordHash) return state.adminPasswordHash;
     const session = mgr.loadWizardSession();
     return session?.adminPasswordHash || null;
   } catch {

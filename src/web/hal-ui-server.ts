@@ -2996,7 +2996,7 @@ export async function startHalUiServer(
           // VAL-IMG-019: Atomic .env write - no partial file left on failure
           // The generateEnv method uses write-to-temp-then-rename
           await mgr.generateEnv(parsed);
-          const state = mgr.completeProvisioning();
+          const state = mgr.completeProvisioning(parsed.adminPasswordHash);
           sendJson(res, 200, { ok: true, state: state.state });
         } catch (err: any) {
           // VAL-IMG-019: If write fails, clear error shown, no redirect

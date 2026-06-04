@@ -100,6 +100,7 @@ export interface ProvisioningState {
   llmProvider?: string;
   errorMessage?: string;
   retryCount?: number;
+  adminPasswordHash?: string; // bcrypt — durable credential read by login (survives wizard-session clear)
 }
 
 export interface WizardSession {
@@ -579,7 +580,7 @@ export class ProvisioningManager {
   // Provisioning Completion
   // -------------------------------------------------------------------------
 
-  completeProvisioning(): ProvisioningState {
+  completeProvisioning(adminPasswordHash?: string): ProvisioningState {
     const current = this.loadState();
     if (current?.state === 'completed') {
       return current;
@@ -609,6 +610,9 @@ export class ProvisioningManager {
       state: 'completed',
       completedAt: new Date().toISOString(),
     };
+    // Persist the admin credential durably — the wizard session (its other home)
+    // is cleared below, so login must read the hash from state.
+    if (adminPasswordHash) updated.adminPasswordHash = adminPasswordHash;
     this.saveState(updated);
 
     this.clearWizardSession();
