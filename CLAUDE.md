@@ -45,7 +45,7 @@ Four modes in `src/automation/modes.ts`, persisted to SQLite, survive restarts:
 
 `src/safety/` is a pure deterministic gate — no LLM calls — that runs before any relay action:
 - `policy-engine.ts` — evaluates rules: `max_on_duration`, `min_off_duration`, `max_activations_per_hour`, `allowed_schedule_windows`, `dependency`, `threshold`
-- `estop.ts` — emergency stop flag; checked by cron service before task execution
+- `estop.ts` — emergency stop flag (checked by cron service before task execution) plus the farm-loop hang watchdog. A hang latches `safety_mode` **and** fires an E-Stop together; `isAutonomousAllowed()` blocks the decision loop (returns `noop`) while either is set. Clearing the E-Stop (`clearEstop()`) also clears `safety_mode`, so recovery is operator-gated and the controller resumes after a hang/crash.
 - `audit-log.ts` — append-only record of all safety decisions
 
 ## Build & Test
