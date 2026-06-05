@@ -54,6 +54,27 @@ const MODE = arg('mode', 'AUTONOMOUS');
 const FAULT = arg('fault', '');
 const PLUMBING = flag('plumbing');
 
+// Historical replay: a recorded real-world ambient-temperature trace (CSV) that
+// drives the enclosure forcing each tick, so the controller fights REAL weather
+// instead of a procedural scenario. Resolve + load BEFORE the harness chdirs to
+// its sandbox (relative paths would otherwise break). Column 2 if present, else
+// column 1; a non-numeric header row is skipped automatically.
+const FORCING_CSV = arg('forcing-csv', '');
+const FORCING_CSV_ABS = FORCING_CSV
+  ? path.resolve(process.cwd(), FORCING_CSV)
+  : '';
+function loadForcingTrace(file: string): number[] {
+  const out: number[] = [];
+  for (const line of fs.readFileSync(file, 'utf-8').trim().split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const cols = line.split(',');
+    const v = parseFloat(cols.length > 1 ? cols[1] : cols[0]);
+    if (!Number.isNaN(v)) out.push(v);
+  }
+  return out;
+}
+const forcingTrace = FORCING_CSV_ABS ? loadForcingTrace(FORCING_CSV_ABS) : null;
+
 // ── Safe bands + danger thresholds graded against ground truth ──────────────
 // Bands = "in spec" for a controlled grow tent. Danger = the line a competent
 // controller must never let the TRUE value cross.
@@ -101,6 +122,24 @@ process.env.HAL_SIM_AUTOPILOT = PLUMBING ? '1' : '0';
 // HAL modules open it at import time — so chdir BEFORE any dynamic import.
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'farmpal-efficacy-'));
 process.chdir(sandbox);
+
+// Always remove the throwaway sandbox on exit (incl. errors) — these are full
+// SQLite DBs and pile up fast across batch runs, exhausting a small /tmp.
+function cleanupSandbox() {
+  try {
+    process.chdir(repoRoot);
+    fs.rmSync(sandbox, { recursive: true, force: true });
+  } catch {
+    /* best effort */
+  }
+}
+process.on('exit', cleanupSandbox);
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(sig, () => {
+    cleanupSandbox();
+    process.exit(1);
+  });
+}
 
 async function main() {
   if (!PLUMBING && !(await llmConfigured())) {
@@ -171,6 +210,16 @@ async function main() {
 
   const simStartMs = Date.now();
   for (let t = 0; t < TICKS; t++) {
+    // 0) Historical replay: drive ambient from the recorded trace, spread
+    //    evenly across the run so the whole trace is traversed.
+    if (forcingTrace && forcingTrace.length) {
+      const idx = Math.min(
+        forcingTrace.length - 1,
+        Math.floor((t / TICKS) * forcingTrace.length),
+      );
+      sim.setExternalAmbient(forcingTrace[idx]);
+    }
+
     // 1) Advance physics + emit sensor readings.
     sim.runTickForTesting();
 

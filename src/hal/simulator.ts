@@ -768,6 +768,13 @@ export class HalSimulator {
     this.tick();
   }
 
+  // Drive the ambient the zone is pulled toward from an external source (e.g. a
+  // recorded real-world weather trace during historical replay). `ambientC` is
+  // the absolute outdoor temperature; pass null to clear and return to defaults.
+  setExternalAmbient(ambientC: number | null): void {
+    this.envForcingTemp = ambientC === null ? 0 : ambientC - 20;
+  }
+
   injectFault(
     fault:
       | 'sensor_stuck'

@@ -36,6 +36,7 @@ const SEED = arg('seed', '3');
 const TICKS = arg('ticks', '120');
 const TICK_MS = arg('tick-ms', '30000');
 const DECIDE_EVERY = arg('decide-every', '12');
+const FORCING_CSV = arg('forcing-csv', '');
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), '..');
@@ -71,6 +72,7 @@ function runPass(name: string, extra: string[]): PassResult {
     `--ticks=${TICKS}`,
     `--tick-ms=${TICK_MS}`,
     `--decide-every=${DECIDE_EVERY}`,
+    ...(FORCING_CSV ? [`--forcing-csv=${FORCING_CSV}`] : []),
     ...extra,
   ];
   process.stderr.write(`\n▶ ${name}: npx ${args.join(' ')}\n`);
