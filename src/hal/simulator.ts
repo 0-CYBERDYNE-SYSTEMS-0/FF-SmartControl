@@ -39,6 +39,8 @@ export type SimScenario =
   | 'normal_day'
   | 'heat_wave'
   | 'cold_snap'
+  | 'heat_sustained'
+  | 'cold_sustained'
   | 'pump_failure'
   | 'sensor_fault'
   | 'light_cycle_fault'
@@ -650,6 +652,11 @@ export class HalSimulator {
   private tickCount = 0;
   private simTimeMs = Date.now();
   private lightScheduleOn = false;
+  // Sustained external temperature forcing (°C added to the ambient the zone
+  // drifts toward). 0 for transient/normal scenarios; nonzero for the
+  // *_sustained scenarios where doing nothing must fail and only active
+  // control keeps the zone in band. Set in applyScenario().
+  private envForcingTemp = 0;
   // When false (HAL_SIM_AUTOPILOT=0), the simulator stops making control
   // decisions and stops its internal light-schedule actuation. The twin
   // becomes a pure world (physics + sensor emission), and relay state is
@@ -861,6 +868,8 @@ export class HalSimulator {
   }
 
   private applyScenario(): void {
+    // Reset sustained forcing; only the *_sustained scenarios set it nonzero.
+    this.envForcingTemp = 0;
     switch (this.config.scenario) {
       case 'heat_wave':
         this.zones.forEach((z) => {
@@ -872,6 +881,26 @@ export class HalSimulator {
         this.zones.forEach((z) => {
           z.temperature -= 10;
           z.humidity += 20;
+        });
+        break;
+      // Sustained heat: ambient is held ~34°C continuously. With NO control the
+      // zone settles ~34°C (past the 32°C danger line); only an active exhaust
+      // fan (which pulls toward ~21°C) drags it back into the 20-28°C band.
+      // This is the scenario that makes the agent-vs-baseline delta meaningful.
+      case 'heat_sustained':
+        this.envForcingTemp = 14;
+        this.zones.forEach((z) => {
+          z.temperature = 31;
+          z.humidity -= 10;
+        });
+        break;
+      // Sustained cold: ambient held ~12°C (below the 15°C danger-low). Only an
+      // active heater keeps the zone in band.
+      case 'cold_sustained':
+        this.envForcingTemp = -8;
+        this.zones.forEach((z) => {
+          z.temperature = 13;
+          z.humidity += 10;
         });
         break;
       case 'pump_failure':
@@ -944,8 +973,10 @@ export class HalSimulator {
       const zoneSoilEvaporation = zoneIndex === 0 ? 0.005 : 0.0042;
       const zoneWaterDrain = zoneIndex === 0 ? 0.0022 : 0.0017;
 
-      // Temperature drifts toward ambient (20°C) + light heat
-      const ambientTemp = 20 + (this.lightScheduleOn ? 2 : 0) + zoneTempOffset;
+      // Temperature drifts toward ambient (20°C) + light heat + sustained
+      // external forcing (nonzero only in the *_sustained scenarios).
+      const ambientTemp =
+        20 + this.envForcingTemp + (this.lightScheduleOn ? 2 : 0) + zoneTempOffset;
       zone.temperature += (ambientTemp - zone.temperature) * 0.001 * dtSeconds;
 
       // Humidity drifts toward ambient (50%) + plant transpiration
