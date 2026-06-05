@@ -37,23 +37,13 @@ export class GPIOController {
     }
   }
 
-  // Read DHT22 temperature/humidity sensor
-  // Returns { temperature: number (C), humidity: number (%) }
-  // Uses pigpio's built-in DHT22 support via `pigs dht22 <pin>`
-  readDHT22(pin: number): { temperature: number; humidity: number } | null {
-    try {
-      const out = execSync(`pigs dht22 ${pin}`, { timeout: 5000 })
-        .toString()
-        .trim();
-      // Format: "0 24.1 48.2" = status humidity temperature
-      const parts = out.split(' ').map(Number);
-      if (parts[0] === 0 && !isNaN(parts[1]) && !isNaN(parts[2])) {
-        return { temperature: parts[2], humidity: parts[1] };
-      }
-      return null;
-    } catch {
-      return null;
-    }
+  // DHT22 is NOT readable through the `pigs` CLI (no such command). The DHT
+  // 1-wire protocol needs microsecond pulse-width capture via the pigpio C
+  // library (gpioSetAlertFunc) or a dedicated daemon. The supported sensor
+  // paths in this HAL are MQTT, serial (BME280/Atlas), and 1-Wire DS18B20.
+  // Returning null keeps callers honest instead of shipping a bad command.
+  readDHT22(_pin: number): { temperature: number; humidity: number } | null {
+    return null;
   }
 }
 

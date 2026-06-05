@@ -32,14 +32,16 @@ export class SerialSensorReader extends EventEmitter {
 
   async open(config: SerialSensorConfig): Promise<void> {
     const { path, baudRate = 9600, protocol } = config;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const SerialPort = require('serialport') as {
-      new (path: string, opts: object): any;
+    // serialport v10+ takes an options object ({ path, baudRate }); the legacy
+    // positional `new SerialPort(path, opts)` form was removed.
+    const { SerialPort } = (await import('serialport')) as {
+      SerialPort: new (opts: {
+        path: string;
+        baudRate: number;
+        autoOpen?: boolean;
+      }) => any;
     };
-    const port = new SerialPort(path, {
-      baudRate,
-      autoOpen: false,
-    });
+    const port = new SerialPort({ path, baudRate, autoOpen: false });
 
     const parser = port.pipe(new ReadlineParser({ delimiter: '\r\n' }));
 

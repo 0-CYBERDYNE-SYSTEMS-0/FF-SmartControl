@@ -21,11 +21,15 @@ export class TasmotaClient {
       const data = await tasmotaGet(this.host, 'Power');
       const state = data?.POWER?.toLowerCase();
       if (state === 'on' || state === 'off') {
-        // Try to get wattage
+        // Wattage lives in `Status 8` under (Status)SNS.ENERGY.Power. Only
+        // power-monitoring plugs report it; absence is normal.
         let watts: number | undefined;
         try {
-          const energy = await tasmotaGet(this.host, 'EnergyConfig');
-          watts = energy?.ENERGY?.Power;
+          const s8 = await tasmotaGet(this.host, 'Status 8');
+          watts =
+            s8?.StatusSNS?.ENERGY?.Power ??
+            s8?.ENERGY?.Power ??
+            s8?.Power;
         } catch {}
         return { state, watts };
       }
@@ -51,9 +55,21 @@ async function shellyGet(host: string, path: string = '/status'): Promise<any> {
 export class ShellyClient {
   constructor(private host: string) {}
 
+  // Gen2+ (Plus/Pro) speak JSON-RPC over GET /rpc/<Method>; Gen1 uses the
+  // legacy REST /status + /relay/0. Try Gen2 first, fall back to Gen1.
   async getPower(): Promise<DevicePowerResponse> {
     try {
-      const data = await shellyGet(this.host);
+      const g2 = await shellyGet(this.host, '/rpc/Switch.GetStatus?id=0');
+      if (g2 && typeof g2.output === 'boolean') {
+        const watts = g2.apower;
+        return {
+          state: g2.output ? 'on' : 'off',
+          watts: typeof watts === 'number' ? Math.round(watts) : undefined,
+        };
+      }
+    } catch {}
+    try {
+      const data = await shellyGet(this.host, '/status');
       const relay = data?.relays?.[0];
       const state = relay?.ison ? 'on' : 'off';
       const watts = data?.meters?.[0]?.power;
@@ -64,6 +80,10 @@ export class ShellyClient {
   }
 
   async setPower(on: boolean): Promise<void> {
+    try {
+      await shellyGet(this.host, `/rpc/Switch.Set?id=0&on=${on}`);
+      return;
+    } catch {}
     await shellyGet(this.host, `/relay/0?turn=${on ? 'on' : 'off'}`);
   }
 }
