@@ -165,5 +165,19 @@ fs.mkdirSync(reportDir, { recursive: true });
 const outPath = path.join(reportDir, `COMPARE-${SCENARIO}-seed${SEED}-${stamp}.md`);
 fs.writeFileSync(outPath, lines.join('\n'));
 
+// Machine-readable sidecar for the scorecard aggregator.
+const sidecar = {
+  label: 'SIMULATION',
+  scenario: SCENARIO,
+  seed: SEED,
+  forcingCsv: FORCING_CSV || null,
+  tempDelta,
+  breachDelta,
+  ai: ai.temperature,
+  noControl: noControl.temperature,
+  thermostat: thermostat.temperature,
+};
+fs.writeFileSync(outPath.replace(/\.md$/, '.json'), JSON.stringify(sidecar, null, 2));
+
 process.stdout.write('\n' + lines.join('\n') + '\n');
 process.stdout.write(`\n[compare] report written: ${path.relative(repoRoot, outPath)}\n`);

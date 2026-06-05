@@ -901,12 +901,15 @@ export class HalSimulator {
           z.humidity -= 10;
         });
         break;
-      // Sustained cold: ambient held ~12°C (below the 15°C danger-low). Only an
-      // active heater keeps the zone in band.
+      // Sustained cold: ambient held ~14°C (below the 15°C danger-low). Without
+      // heat the zone sits ~14°C (breaching danger-low); the heater (which pulls
+      // toward 25.5°C) lifts the equilibrium to ~20.7°C — back into the 20-28°C
+      // band. Calibrated winnable: a stronger -8 forcing capped the heater below
+      // the 20°C band floor, making the scenario impossible to pass.
       case 'cold_sustained':
-        this.envForcingTemp = -8;
+        this.envForcingTemp = -6;
         this.zones.forEach((z) => {
-          z.temperature = 13;
+          z.temperature = 14;
           z.humidity += 10;
         });
         break;
