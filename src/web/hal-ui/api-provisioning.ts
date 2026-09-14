@@ -1,5 +1,7 @@
 // Provisioning API client — calls to /api/provisioning/*
 
+import { setCsrfToken } from './api.js';
+
 const BASE = '/api/provisioning';
 
 async function provGet<T>(path: string): Promise<T> {
@@ -15,7 +17,7 @@ async function provGet<T>(path: string): Promise<T> {
 async function provPost<T>(path: string, body?: object): Promise<T> {
   const res = await fetch(BASE + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withCsrfHeader({ 'Content-Type': 'application/json' }),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok)
@@ -28,7 +30,7 @@ async function provPost<T>(path: string, body?: object): Promise<T> {
 async function provPut<T>(path: string, body?: object): Promise<T> {
   const res = await fetch(BASE + path, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withCsrfHeader({ 'Content-Type': 'application/json' }),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok)
@@ -36,6 +38,23 @@ async function provPut<T>(path: string, body?: object): Promise<T> {
       `Provisioning API ${path} failed: ${res.status} ${res.statusText}`,
     );
   return res.json() as Promise<T>;
+}
+
+// Provisioning endpoints require an admin session + CSRF token once the system
+// is provisioned, so mutating calls echo the captured double-submit token.
+let csrfTokenValue: string | null = null;
+
+function withCsrfHeader(
+  headers: Record<string, string>,
+): Record<string, string> {
+  return csrfTokenValue
+    ? { ...headers, 'X-CSRF-Token': csrfTokenValue }
+    : headers;
+}
+
+export function setProvisioningCsrfToken(token: string | null): void {
+  csrfTokenValue = token;
+  setCsrfToken(token);
 }
 
 export interface ProvisioningStatus {

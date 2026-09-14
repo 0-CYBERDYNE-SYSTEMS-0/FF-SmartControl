@@ -11,6 +11,8 @@
  * - ADMIN_ACTION: Administrative action performed
  */
 
+import { createHash } from 'node:crypto';
+
 import { getDb } from '../hal/db.js';
 
 export type SecurityEventType =
@@ -116,6 +118,10 @@ export function logSecurityEvent(
 
 /**
  * Log successful login
+ *
+ * The sessionId argument here is the raw session cookie token. It is hashed
+ * before storage: the security_audit.session_id column stores a token hash,
+ * never the raw token.
  */
 export function logLoginSuccess(
   sessionId: string,
@@ -123,10 +129,11 @@ export function logLoginSuccess(
   ipAddress: string,
   userAgent?: string,
 ): SecurityAuditEntry {
+  const tokenHash = `sha256:${createHash('sha256').update(sessionId).digest('hex')}`;
   return logSecurityEvent(
     'LOGIN_SUCCESS',
     {},
-    sessionId,
+    tokenHash,
     operatorId,
     ipAddress,
     userAgent,

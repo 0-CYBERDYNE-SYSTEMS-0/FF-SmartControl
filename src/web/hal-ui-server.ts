@@ -12,6 +12,7 @@ import { mqttSubscriber } from '../hal/mqtt.js';
 import type { MetricType } from '../hal/types.js';
 import { logger } from '../logger.js';
 import { getSimulator } from '../hal/simulator.js';
+import { getProvisionedFlagFile } from '../first-boot.js';
 import {
   generateSelfSignedCert,
   getCertFingerprint,
@@ -173,17 +174,23 @@ function applySecurityHeaders(res: http.ServerResponse): void {
 }
 
 /**
+ * SECURITY CONSTRAINT: provisioning endpoints are public ONLY while the system
+ * is not yet provisioned. Once the provisioning-complete flag exists, every
+ * /api/provisioning/* request falls through to normal session auth (401/403).
+ * The flag file is removed by /api/provisioning/reset, which re-opens the
+ * wizard. The check is a cheap sync existsSync so it can run inside the
+ * synchronous isProtectedRoute() gate.
+ */
+function isProvisioningPublic(): boolean {
+  return !fs.existsSync(getProvisionedFlagFile());
+}
+
+/**
  * Check if request is for a protected route
  */
 function isProtectedRoute(requestPath: string): boolean {
   // Public paths that don't require authentication
-  const publicPaths = [
-    '/health',
-    '/api/provisioning',
-    '/api/auth/login',
-    '/_sim',
-    '/login',
-  ];
+  const publicPaths = ['/health', '/api/auth/login', '/_sim', '/login'];
 
   for (const p of publicPaths) {
     if (requestPath.startsWith(p)) {
@@ -191,8 +198,8 @@ function isProtectedRoute(requestPath: string): boolean {
     }
   }
 
-  // Development bypass: skip auth when HAL_UI_AUTH_BYPASS=1 env var is set
-  if (process.env.HAL_UI_AUTH_BYPASS === '1') {
+  // Provisioning endpoints: public only pre-provisioning (see above)
+  if (requestPath.startsWith('/api/provisioning') && isProvisioningPublic()) {
     return false;
   }
 
@@ -510,15 +517,20 @@ export async function startHalUiServer(
         res.end(JSON.stringify({ authenticated: false }));
         return;
       }
+      // Double-submit CSRF: the cookie is HttpOnly, so page JS cannot read it.
+      // The rotated token is returned in the body so the client can echo it
+      // back in the X-CSRF-Token header on mutating requests.
+      const csrfToken = generateCsrfToken();
       res.writeHead(200, {
         'Content-Type': 'application/json',
-        'Set-Cookie': buildCsrfCookie(generateCsrfToken()),
+        'Set-Cookie': buildCsrfCookie(csrfToken),
       });
       res.end(
         JSON.stringify({
           authenticated: true,
           operatorId: session.operatorId,
           expiresAt: session.expiresAt,
+          csrfToken,
         }),
       );
       return;
@@ -2868,7 +2880,8 @@ export async function startHalUiServer(
     }
     // ═══════════════════════════════════════════════════════════════════════
     // PROVISIONING API — Used by the setup wizard
-    // All /api/provisioning/* routes are unauthenticated
+    // Public only while unprovisioned; after provisioning these routes require
+    // an admin session (see isProtectedRoute/isProvisioningPublic).
     // ═══════════════════════════════════════════════════════════════════════
     if (requestPath.startsWith('/api/provisioning/')) {
       // Lazy import to avoid circular deps and allow this module to work standalone

@@ -27,14 +27,18 @@ import { renderSafety } from './views/Safety.js';
 import { renderCalibration } from './views/Calibration.js';
 import { renderSettings } from './views/Settings.js';
 
-import { halApi } from './api.js';
+import { halApi, setCsrfToken } from './api.js';
 import type { HalState } from './api.js';
 import { provisioningApi } from './api-provisioning.js';
 import { getStore, setStore, applyTheme, type HalStore } from './store.js';
 import type { ThemeName, ViewId, DashboardLayout } from './store.js';
 
 type AsyncViewRenderer = (container: HTMLElement) => Promise<void>;
-type AuthSessionResponse = { authenticated: boolean; operatorId?: string };
+type AuthSessionResponse = {
+  authenticated: boolean;
+  operatorId?: string;
+  csrfToken?: string;
+};
 
 const views: Record<ViewId, AsyncViewRenderer> = {
   dashboard: renderDashboard,
@@ -217,7 +221,12 @@ async function ensureAuthenticated(app: HTMLElement): Promise<boolean> {
     });
     if (response.ok) {
       const data = (await response.json()) as AuthSessionResponse;
-      if (data.authenticated) return true;
+      if (data.authenticated) {
+        // Double-submit CSRF: capture the token the server rotated into the
+        // HttpOnly cookie so mutating requests can echo it in X-CSRF-Token.
+        setCsrfToken(data.csrfToken);
+        return true;
+      }
     }
   } catch {
     // Render login below.
@@ -277,6 +286,8 @@ function renderLogin(app: HTMLElement): void {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || 'Sign in failed');
       }
+      const body = await response.json().catch(() => ({}));
+      setCsrfToken(body.csrfToken);
       history.replaceState(null, '', '#dashboard');
       await init();
     } catch (err: any) {

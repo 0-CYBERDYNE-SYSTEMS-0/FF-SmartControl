@@ -2,6 +2,30 @@
 
 const BASE = '/api/hal';
 
+// Double-submit CSRF: the farmpal_csrf cookie is HttpOnly, so the token is
+// captured from the JSON body of /api/auth/login and /api/auth/session and
+// echoed back in the X-CSRF-Token header on mutating requests.
+let csrfToken: string | null = null;
+
+export function setCsrfToken(token: string | null | undefined): void {
+  csrfToken = token || null;
+}
+
+function isMutatingMethod(method: string): boolean {
+  return method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
+}
+
+function buildHeaders(
+  method: string,
+  extra?: Record<string, string>,
+): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  if (isMutatingMethod(method) && csrfToken) {
+    headers['X-CSRF-Token'] = csrfToken;
+  }
+  return headers;
+}
+
 async function halGet<T>(
   path: string,
   params?: Record<string, string>,
@@ -23,7 +47,7 @@ async function halGet<T>(
 async function halPost<T>(path: string, body?: object): Promise<T> {
   const res = await fetch(BASE + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildHeaders('POST', { 'Content-Type': 'application/json' }),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 401) {
@@ -37,8 +61,21 @@ async function halPost<T>(path: string, body?: object): Promise<T> {
 async function halPut<T>(path: string, body?: object): Promise<T> {
   const res = await fetch(BASE + path, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildHeaders('PUT', { 'Content-Type': 'application/json' }),
     body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) {
+    redirectToLogin();
+  }
+  if (!res.ok)
+    throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
+  return res.json() as Promise<T>;
+}
+
+async function halDelete<T>(path: string): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'DELETE',
+    headers: buildHeaders('DELETE'),
   });
   if (res.status === 401) {
     redirectToLogin();
@@ -537,10 +574,7 @@ export const halApi = {
 
   // DELETE /api/hal/safety/rules/:id — delete a rule
   async deleteSafetyRule(id: string): Promise<{ ok: boolean }> {
-    const res = await fetch(BASE + `/safety/rules/${id}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) throw new Error(`Failed to delete rule: ${res.status}`);
+    await halDelete(`/safety/rules/${id}`);
     return { ok: true };
   },
 
@@ -698,10 +732,7 @@ export const halApi = {
 
   // DELETE /api/hal/thresholds/:id — delete a threshold
   async deleteThreshold(id: string): Promise<{ ok: boolean }> {
-    const res = await fetch(BASE + `/thresholds/${id}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) throw new Error(`Failed to delete threshold: ${res.status}`);
+    await halDelete(`/thresholds/${id}`);
     return { ok: true };
   },
 
@@ -860,8 +891,7 @@ export const halApi = {
 
   // DELETE /api/hal/devices/:id — remove device
   async removeDevice(id: string): Promise<{ ok: boolean }> {
-    const res = await fetch(BASE + `/devices/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error(`Failed to remove device: ${res.status}`);
+    await halDelete(`/devices/${id}`);
     return { ok: true };
   },
 
@@ -1025,7 +1055,7 @@ export const halApi = {
   }> {
     const res = await fetch('/api/license/activate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildHeaders('POST', { 'Content-Type': 'application/json' }),
       body: JSON.stringify({ licenseKey }),
     });
     const data = await res.json();
@@ -1039,7 +1069,7 @@ export const halApi = {
   async deactivateLicense(): Promise<{ ok: boolean }> {
     const res = await fetch('/api/license/deactivate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildHeaders('POST', { 'Content-Type': 'application/json' }),
       body: JSON.stringify({}),
     });
     if (!res.ok) throw new Error(`License deactivation failed: ${res.status}`);

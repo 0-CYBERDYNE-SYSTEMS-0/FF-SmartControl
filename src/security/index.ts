@@ -48,6 +48,7 @@ export {
   csrfMiddleware,
   requireAuth,
   isProtectedPath,
+  isProvisioningPublic,
   buildAuthChallenge,
   buildCsrfError,
   type AuthResult,

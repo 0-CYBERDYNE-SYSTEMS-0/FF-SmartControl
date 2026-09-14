@@ -453,17 +453,13 @@ export function parseCsrfCookie(
 
 /**
  * Validate CSRF token using double-submit pattern
- * Compares X-CSRF-Token header with the cookie value
+ * Compares X-CSRF-Token header with the cookie value (timing-safe)
  */
 export function validateCsrfToken(
   headerToken: string | undefined,
   cookieToken: string | null,
 ): boolean {
   if (!headerToken || !cookieToken) {
-    return false;
-  }
-
-  if (headerToken !== cookieToken) {
     return false;
   }
 
@@ -477,5 +473,9 @@ export function validateCsrfToken(
     return false;
   }
 
-  return true;
+  if (headerToken.length !== cookieToken.length) {
+    return false;
+  }
+
+  return timingSafeEqual(Buffer.from(headerToken), Buffer.from(cookieToken));
 }
