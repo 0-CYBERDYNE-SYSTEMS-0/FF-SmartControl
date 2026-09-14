@@ -319,11 +319,18 @@ export async function runFarmPalTurn(
   if (intent === 'emergency_stop') {
     try {
       const estop = await activateEstop('operator', 'operator', message);
+      // Count only devices whose safe state was actually applied ('on'/'off');
+      // 'unknown'/'no_change' entries must not inflate the moved count.
+      const movedCount = estop.appliedSafeStates.filter(
+        (s) => s.safeState === 'on' || s.safeState === 'off',
+      ).length;
+      const outcome = estop.failures.length > 0 ? 'failure' : 'success';
+      const summary = `${movedCount} device(s) moved to safe state, ${estop.failures.length} failure(s)`;
       halDecisions.log({
         decision: 'alert',
         confidence: 1,
-        reasoning: `Emergency stop activated by operator: ${estop.appliedSafeStates.length} device(s) safed, ${estop.failures.length} failure(s).`,
-        outcome: 'success',
+        reasoning: `Emergency stop activated by operator: ${summary}.`,
+        outcome,
       });
       const failureLines =
         estop.failures.length > 0
@@ -332,7 +339,7 @@ export async function runFarmPalTurn(
       return {
         ok: true,
         streamed: false,
-        result: `EMERGENCY STOP ACTIVE. ${estop.appliedSafeStates.length} device(s) moved to their safe state.${failureLines}\nAutonomous control is suspended until the E-stop is cleared from the dashboard.`,
+        result: `EMERGENCY STOP ACTIVE. ${summary}.${failureLines}\nAutonomous control is suspended until the E-stop is cleared from the dashboard.`,
       };
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);

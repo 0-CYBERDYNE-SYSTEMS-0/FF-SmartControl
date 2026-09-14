@@ -26,7 +26,10 @@ export function isValidHost(host: string): boolean {
 
 // Pure parser: kasa CLI power line, e.g. "Power: 12.34 W". Returns null when absent.
 export function parseKasaPower(output: string): number | null {
-  const match = output.match(/power:\s*([\d.]+)\s*W/i);
+  // Strip thousands separators ("1,234.5 W" -> "1234.5 W") before matching so
+  // grouped digits are not truncated at the comma by the [\d.]+ capture.
+  const normalized = output.replace(/,(?=\d{3})/g, '');
+  const match = normalized.match(/power:\s*([\d.]+)\s*W/i);
   if (!match) return null;
   const watts = Number.parseFloat(match[1]);
   return Number.isFinite(watts) ? watts : null;

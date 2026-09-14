@@ -577,12 +577,20 @@ export function handleDecisionBasedOnMode(
       };
 
     case 'AUTONOMOUS':
-    default:
       return {
         mode,
         decisionId,
         executed: true,
         reason: 'autonomous - executing immediately',
+      };
+
+    default:
+      // Fail closed: unknown/legacy mode strings must never execute hardware.
+      return {
+        mode,
+        decisionId,
+        executed: false,
+        reason: 'unknown automation mode',
       };
   }
 }

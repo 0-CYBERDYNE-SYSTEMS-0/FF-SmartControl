@@ -35,6 +35,10 @@ test('parseKasaPower extracts watts case-insensitively and returns null without 
   assert.equal(parseKasaPower('State: ON\npower:0.75W'), 0.75);
   assert.equal(parseKasaPower('State: ON'), null);
   assert.equal(parseKasaPower(''), null);
+  // Thousands separators must be stripped before matching, not truncated at
+  // the comma ('1,234.5 W' used to parse as 1 W).
+  assert.equal(parseKasaPower('power: 1,234.5 W'), 1234.5);
+  assert.equal(parseKasaPower('POWER: 2,000W'), 2000);
 });
 
 test('parseTasmotaEnergy reads StatusSNS.ENERGY with legacy ENERGY fallback', async () => {
@@ -99,6 +103,11 @@ test('fresh DB defaults automation mode to OBSERVE_ONLY (no row until first read
     await import('../src/automation/modes.js');
 
   runMigrations();
+
+  // Order-independence: another test may have written a mode row earlier in
+  // the file, so clear the table and cache before asserting the self-seed.
+  getDb().exec('DELETE FROM hal_automation_mode');
+  invalidateModeCache();
 
   const countBefore = (
     getDb().prepare('SELECT COUNT(*) AS n FROM hal_automation_mode').get() as {

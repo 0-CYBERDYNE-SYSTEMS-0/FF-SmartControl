@@ -39,16 +39,33 @@ async function pingScan(subnet: string): Promise<string[]> {
   const candidates: string[] = [];
   for (let i = 1; i <= 254; i++) candidates.push(`${prefix}${i}`);
 
-  const probes = candidates.map(async (ip) => {
-    try {
-      await execFileAsync('ping', ['-c1', '-W1', ip], { timeout: 3000 });
-      return ip;
-    } catch {
-      return null; // unreachable host — skip
+  // macOS ping takes -W in milliseconds while Linux takes seconds, so darwin
+  // needs -W1000 for the same 1s per-host budget (macOS silently discovers
+  // nothing with -W1).
+  const waitArg = process.platform === 'darwin' ? '-W1000' : '-W1';
+
+  // Probe in sequential batches: 254 concurrent child processes can hit
+  // EAGAIN on a Pi, and the per-host catch would swallow those failures as
+  // "unreachable" without this pool.
+  const alive: string[] = [];
+  const BATCH_SIZE = 32;
+  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+    const batch = candidates.slice(i, i + BATCH_SIZE);
+    const settled = await Promise.all(
+      batch.map(async (ip) => {
+        try {
+          await execFileAsync('ping', ['-c1', waitArg, ip], { timeout: 3000 });
+          return ip;
+        } catch {
+          return null; // unreachable host — skip
+        }
+      }),
+    );
+    for (const ip of settled) {
+      if (ip !== null) alive.push(ip);
     }
-  });
-  const settled = await Promise.all(probes);
-  return settled.filter((ip): ip is string => ip !== null);
+  }
+  return alive;
 }
 
 async function probeTasmota(host: string): Promise<boolean> {
