@@ -708,10 +708,19 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
         deps.logger.info?.('[HAL] Initial device poll complete');
       }
 
-      // Seed static demo data for history/charts (idempotent — won't duplicate)
-      const { seedHalDemoData } = await import('./hal/seed-data.js');
-      seedHalDemoData();
-      deps.logger.info?.('[HAL] Demo data seeded');
+      // Seed static demo data for history/charts (idempotent — won't duplicate).
+      // Only in simulator/demo mode: real deployments must stay fiction-free.
+      // Tests seed explicitly by importing seedHalDemoData directly.
+      if (
+        process.env.HAL_SIM_MODE === '1' ||
+        process.env.HAL_SEED_DEMO_DATA === '1'
+      ) {
+        const { seedHalDemoData } = await import('./hal/seed-data.js');
+        seedHalDemoData();
+        deps.logger.info?.(
+          '[HAL] Demo data seeded (HAL_SIM_MODE/HAL_SEED_DEMO_DATA)',
+        );
+      }
 
       // Initialize Emergency Stop system and start watchdog
       try {

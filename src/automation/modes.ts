@@ -66,12 +66,14 @@ export function getAutomationMode(): AutomationMode {
     .get('global') as { mode: string } | undefined;
 
   if (!row) {
-    // Initialize with AUTONOMOUS as default
+    // Safety rule: autonomy must be earned, never default. Factory default is
+    // OBSERVE_ONLY; an operator must explicitly promote the mode before any
+    // hardware action can execute.
     const nowIso = new Date().toISOString();
     db.prepare(
       `INSERT INTO hal_automation_mode (id, mode, updated_at) VALUES ('global', ?, ?)`,
-    ).run('AUTONOMOUS', nowIso);
-    modeCache = 'AUTONOMOUS';
+    ).run('OBSERVE_ONLY', nowIso);
+    modeCache = 'OBSERVE_ONLY';
   } else {
     modeCache = row.mode as AutomationMode;
   }
