@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -18,8 +18,22 @@ export class V4L2Camera {
     const tmpPath = join(tmpdir(), `hal_cam_${Date.now()}.jpg`);
 
     try {
-      execSync(
-        `ffmpeg -y -f v4l2 -video_size ${width}x${height} -i ${device} -frames:v 1 -q:v 2 ${tmpPath}`,
+      execFileSync(
+        'ffmpeg',
+        [
+          '-y',
+          '-f',
+          'v4l2',
+          '-video_size',
+          `${width}x${height}`,
+          '-i',
+          device,
+          '-frames:v',
+          '1',
+          '-q:v',
+          '2',
+          tmpPath,
+        ],
         { timeout: 10000 },
       );
       const buf = readFileSync(tmpPath);
@@ -37,9 +51,11 @@ export class V4L2Camera {
   isAvailable(): boolean {
     try {
       const { device } = this.config;
-      execSync(`ffprobe -v error -select_streams v:0 -i ${device}`, {
-        timeout: 3000,
-      });
+      execFileSync(
+        'ffprobe',
+        ['-v', 'error', '-select_streams', 'v:0', '-i', device],
+        { timeout: 3000 },
+      );
       return true;
     } catch {
       return false;

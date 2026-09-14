@@ -71,6 +71,7 @@ A factory reset permanently deletes:
 | **Network settings** | ✅ Yes | WiFi, Ethernet, access mode reset to defaults |
 | **Admin password** | ✅ Yes | You must create a new password |
 | **Backup archives** | ✅ Yes | All local backups are deleted |
+| **Control Center token** | ✅ Yes | The `web-control-center-token` file is deleted; a new token is generated on next start |
 | **Licenses** | ⚠️ Partial | License key is removed, but hardware binding remains |
 
 ### What Is Preserved

@@ -417,7 +417,7 @@ export function App(): JSX.Element {
       const res = await fetch('/api/runtime/status', { headers: authHeaders });
       if (!res.ok) {
         if (res.status === 401) {
-          throw new Error('Unauthorized. Enter a valid token for this access mode.');
+          throw new Error('Unauthorized. Enter the bearer token from the server token file — it is required for control actions in every access mode.');
         }
         throw new Error(`Runtime status failed: HTTP ${res.status}`);
       }
@@ -1014,7 +1014,7 @@ export function App(): JSX.Element {
             type="password"
             value={tokenInput}
             onChange={(event) => setTokenInput(event.target.value)}
-            placeholder="Bearer token for lan/remote"
+            placeholder="Bearer token (required for control actions)"
           />
           <button type="button" onClick={onApplyToken}>Apply</button>
         </div>

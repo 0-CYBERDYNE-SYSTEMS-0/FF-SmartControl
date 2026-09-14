@@ -246,9 +246,9 @@
         halStatus: "online",
         mqttStatus: "connected",
         dbStatus: "healthy",
-        autoMode: true,
-        automationMode: "AUTONOMOUS",
-        automationModeColor: { bg: "#F85149", text: "#F0F6FC", label: "AUTO" },
+        autoMode: false,
+        automationMode: "OBSERVE_ONLY",
+        automationModeColor: { bg: "#238636", text: "#F0F6FC", label: "OBSERVE" },
         pendingDecisions: [],
         safetyState: "NORMAL",
         safetyActiveRulesCount: 0,
@@ -705,6 +705,9 @@
   // src/web/hal-ui/api.ts
   function setCsrfToken(token) {
     csrfToken = token || null;
+  }
+  function getCsrfToken() {
+    return csrfToken || void 0;
   }
   function isMutatingMethod(method) {
     return method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
@@ -11026,15 +11029,15 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     return res.json();
   }
   function withCsrfHeader(headers) {
-    return csrfTokenValue ? { ...headers, "X-CSRF-Token": csrfTokenValue } : headers;
+    const token = getCsrfToken();
+    return token ? { ...headers, "X-CSRF-Token": token } : headers;
   }
-  var BASE2, csrfTokenValue, provisioningApi;
+  var BASE2, provisioningApi;
   var init_api_provisioning = __esm({
     "src/web/hal-ui/api-provisioning.ts"() {
       "use strict";
       init_api();
       BASE2 = "/api/provisioning";
-      csrfTokenValue = null;
       provisioningApi = {
         // GET /api/provisioning/status
         async getStatus() {
@@ -19211,8 +19214,8 @@ The service will restart after the update.`
       const [halState, modeData, pendingData] = await Promise.all([
         halApi.getState(),
         halApi.getAutomationMode().catch(() => ({
-          mode: "AUTONOMOUS",
-          color: { bg: "#F85149", text: "#F0F6FC", label: "AUTO" }
+          mode: "OBSERVE_ONLY",
+          color: { bg: "#238636", text: "#F0F6FC", label: "OBSERVE" }
         })),
         halApi.getAutomationPending().catch(() => [])
       ]);

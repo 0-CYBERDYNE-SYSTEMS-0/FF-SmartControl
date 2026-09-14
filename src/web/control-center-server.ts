@@ -449,10 +449,10 @@ function isAuthorized(
  */
 async function resolveControlCenterAuthToken(
   provided: string,
-): Promise<string> {
-  if (provided) return provided;
+): Promise<{ token: string; tokenFile: string }> {
   const { getFarmPalDataDir } = await import('../first-boot.js');
   const tokenFile = path.join(getFarmPalDataDir(), 'web-control-center-token');
+  if (provided) return { token: provided, tokenFile };
   let token = '';
   try {
     token = fs.readFileSync(tokenFile, 'utf-8').trim();
@@ -461,12 +461,21 @@ async function resolveControlCenterAuthToken(
   }
   if (!token) {
     token = randomBytes(32).toString('hex');
-    fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
-    fs.writeFileSync(tokenFile, `${token}\n`, { mode: 0o600 });
-    logger.info(
-      { tokenFile },
-      'No FFT_NANO_WEB_AUTH_TOKEN configured; generated Control Center token for mutating routes',
-    );
+    try {
+      fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
+      fs.writeFileSync(tokenFile, `${token}\n`, { mode: 0o600 });
+      logger.info(
+        { tokenFile },
+        'No FFT_NANO_WEB_AUTH_TOKEN configured; generated Control Center token for mutating routes',
+      );
+    } catch (err) {
+      // Persistence is best-effort: keep the in-memory token so mutations
+      // still work for callers that have it (e.g. read-only data dir).
+      logger.warn(
+        { tokenFile, err: err instanceof Error ? err.message : String(err) },
+        'Could not persist Control Center token file; using in-memory token only',
+      );
+    }
   } else {
     logger.info(
       { tokenFile },
@@ -478,7 +487,7 @@ async function resolveControlCenterAuthToken(
   } catch {
     // Best-effort permission tightening
   }
-  return token;
+  return { token, tokenFile };
 }
 
 export async function startWebControlCenterServer(
@@ -487,9 +496,8 @@ export async function startWebControlCenterServer(
 ): Promise<WebControlCenterServer> {
   // Mutating routes always require a bearer token; generate + persist one when
   // the operator has not configured FFT_NANO_WEB_AUTH_TOKEN.
-  const authToken = await resolveControlCenterAuthToken(
-    options.authToken.trim(),
-  );
+  const { token: authToken, tokenFile: ccTokenFile } =
+    await resolveControlCenterAuthToken(options.authToken.trim());
   const authRequired = options.accessMode !== 'localhost';
 
   const staticDir = path.resolve(options.staticDir);
@@ -922,7 +930,10 @@ export async function startWebControlCenterServer(
         method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
       if (!isAuthorized(req, isMutatingMethod || authRequired, authToken)) {
         res.setHeader('WWW-Authenticate', 'Bearer');
-        sendJson(res, 401, { ok: false, error: 'Unauthorized' });
+        sendJson(res, 401, {
+          ok: false,
+          error: `Unauthorized. Bearer token required for mutating requests. Token file: ${ccTokenFile}`,
+        });
         return;
       }
       const path = requestPath.slice('/api/hal'.length);

@@ -11,6 +11,10 @@ export function setCsrfToken(token: string | null | undefined): void {
   csrfToken = token || null;
 }
 
+export function getCsrfToken(): string | undefined {
+  return csrfToken || undefined;
+}
+
 function isMutatingMethod(method: string): boolean {
   return method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
 }

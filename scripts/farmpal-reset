@@ -46,6 +46,7 @@ STATE_FILE="${DATA_DIR}/provisioning-state.json"
 DB_PATH="${DATA_DIR}/fft_nano.db"
 LOCK_FILE="${DATA_DIR}/farmpal.lock"
 WIZARD_SESSION="${DATA_DIR}/wizard-session.json"
+CC_TOKEN_FILE="${DATA_DIR}/web-control-center-token"
 RESET_AUDIT_LOG="${DATA_DIR}/reset-audit.log"
 
 echo ""
@@ -145,6 +146,11 @@ remove_config() {
   # Remove wizard session
   if [[ -f "${WIZARD_SESSION}" ]]; then
     rm -f "${WIZARD_SESSION}"
+  fi
+
+  # Remove Control Center bearer token
+  if [[ -f "${CC_TOKEN_FILE}" ]]; then
+    rm -f "${CC_TOKEN_FILE}"
   fi
 
   # Remove lock file

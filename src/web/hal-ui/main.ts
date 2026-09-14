@@ -566,8 +566,8 @@ export async function refreshHALData(
     const [halState, modeData, pendingData] = await Promise.all([
       halApi.getState(),
       halApi.getAutomationMode().catch(() => ({
-        mode: 'AUTONOMOUS',
-        color: { bg: '#F85149', text: '#F0F6FC', label: 'AUTO' },
+        mode: 'OBSERVE_ONLY',
+        color: { bg: '#238636', text: '#F0F6FC', label: 'OBSERVE' },
       })),
       halApi.getAutomationPending().catch(() => []),
     ]);

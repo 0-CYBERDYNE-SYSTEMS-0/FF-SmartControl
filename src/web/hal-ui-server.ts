@@ -2,8 +2,10 @@ import http from 'http';
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { execFile, execSync } from 'child_process';
+import { promisify } from 'util';
 import { getDb } from '../hal/db.js';
+import { isValidHost } from '../hal/discovery.js';
 import { halRegistry } from '../hal/registry.js';
 import { halSensors } from '../hal/sensors.js';
 import { halDecisions } from '../hal/decisions.js';
@@ -2655,20 +2657,28 @@ export async function startHalUiServer(
           sendJson(res, 400, { error: 'host and protocol are required' });
           return;
         }
+        if (!isValidHost(host)) {
+          sendJson(res, 400, { error: 'invalid host' });
+          return;
+        }
         // Validate connectivity by attempting HTTP request for HTTP protocols
         let reachable = false;
         if (protocol === 'tasmota' || protocol === 'shelly') {
-          const { execSync } = await import('child_process');
+          const execFileAsync = promisify(execFile);
           try {
-            execSync(`curl -s --max-time 3 http://${host}/cm?cmnd=Status`, {
-              timeout: 4000,
-            });
+            await execFileAsync(
+              'curl',
+              ['-s', '--max-time', '3', `http://${host}/cm?cmnd=Status`],
+              { timeout: 4000 },
+            );
             reachable = true;
           } catch {
             try {
-              execSync(`curl -s --max-time 3 http://${host}/shelly`, {
-                timeout: 4000,
-              });
+              await execFileAsync(
+                'curl',
+                ['-s', '--max-time', '3', `http://${host}/shelly`],
+                { timeout: 4000 },
+              );
               reachable = true;
             } catch {
               /* not reachable */

@@ -1,6 +1,6 @@
 // Provisioning API client — calls to /api/provisioning/*
 
-import { setCsrfToken } from './api.js';
+import { getCsrfToken } from './api.js';
 
 const BASE = '/api/provisioning';
 
@@ -41,20 +41,13 @@ async function provPut<T>(path: string, body?: object): Promise<T> {
 }
 
 // Provisioning endpoints require an admin session + CSRF token once the system
-// is provisioned, so mutating calls echo the captured double-submit token.
-let csrfTokenValue: string | null = null;
-
+// is provisioned, so mutating calls echo the shared double-submit token captured
+// by the HAL API client (set at login/session time).
 function withCsrfHeader(
   headers: Record<string, string>,
 ): Record<string, string> {
-  return csrfTokenValue
-    ? { ...headers, 'X-CSRF-Token': csrfTokenValue }
-    : headers;
-}
-
-export function setProvisioningCsrfToken(token: string | null): void {
-  csrfTokenValue = token;
-  setCsrfToken(token);
+  const token = getCsrfToken();
+  return token ? { ...headers, 'X-CSRF-Token': token } : headers;
 }
 
 export interface ProvisioningStatus {
