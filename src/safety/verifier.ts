@@ -27,6 +27,7 @@ import {
   type TriggeredBy,
   type AuditLogEntry,
 } from './audit-log.js';
+import { getDb } from '../hal/db.js';
 import { MetricType } from '../hal/types.js';
 
 export type { VerifierResult, TriggeredBy };
@@ -86,8 +87,6 @@ function getRecentToggles(deviceId: string): RelayToggle[] {
 
   if (!entries) return [];
 
-  // Get from hal_relays table directly
-  const { getDb } = require('../hal/db.js');
   const db = getDb();
   const rows = db
     .prepare(
