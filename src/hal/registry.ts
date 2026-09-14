@@ -1,7 +1,7 @@
 import { getDb } from './db.js';
 import { HalDevice, DeviceType, DeviceProtocol, DeviceState } from './types.js';
 import { createHttpClient } from './http-devices.js';
-import { gpio } from './gpio.js';
+import { gpio, isWritableGpioPin, isValidGpioPin } from './gpio.js';
 
 function genId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -157,8 +157,19 @@ export class HalRegistry {
     }
 
     if (dev.protocol === 'gpio') {
-      // Map device id to GPIO pin number (stored in device metadata or use default)
-      const pin = parseInt(dev.host || '0');
+      // The GPIO pin is stored in dev.host. Parse strictly: an empty or
+      // garbage host must fail loudly rather than silently write pin 0
+      // (parseInt('') === NaN guarded by regex, parseInt('17abc') === 17).
+      const host = dev.host ?? '';
+      if (!/^\d+$/.test(host)) {
+        throw new Error(`invalid gpio pin for device ${id}`);
+      }
+      const pin = Number.parseInt(host, 10);
+      // control() is always a write action, so the pin must also be writable
+      // (not a reserved I2C/UART pin).
+      if (!isValidGpioPin(pin) || !isWritableGpioPin(pin)) {
+        throw new Error(`invalid gpio pin for device ${id}`);
+      }
       gpio.digitalWrite(pin, action === 'on');
       this.updateState(id, action);
       return;

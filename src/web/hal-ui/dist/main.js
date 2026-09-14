@@ -249,9 +249,9 @@
         halStatus: "online",
         mqttStatus: "connected",
         dbStatus: "healthy",
-        autoMode: true,
-        automationMode: "AUTONOMOUS",
-        automationModeColor: { bg: "#F85149", text: "#F0F6FC", label: "AUTO" },
+        autoMode: false,
+        automationMode: "OBSERVE_ONLY",
+        automationModeColor: { bg: "#238636", text: "#F0F6FC", label: "OBSERVE" },
         pendingDecisions: [],
         safetyState: "NORMAL",
         safetyActiveRulesCount: 0,
@@ -706,6 +706,22 @@
   });
 
   // src/web/hal-ui/api.ts
+  function setCsrfToken(token) {
+    csrfToken = token || null;
+  }
+  function getCsrfToken() {
+    return csrfToken || void 0;
+  }
+  function isMutatingMethod(method) {
+    return method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+  }
+  function buildHeaders(method, extra) {
+    const headers = { ...extra };
+    if (isMutatingMethod(method) && csrfToken) {
+      headers["X-CSRF-Token"] = csrfToken;
+    }
+    return headers;
+  }
   async function halGet(path, params) {
     let url = BASE + path;
     if (params) {
@@ -723,7 +739,7 @@
   async function halPost(path, body) {
     const res = await fetch(BASE + path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: buildHeaders("POST", { "Content-Type": "application/json" }),
       body: body ? JSON.stringify(body) : void 0
     });
     if (res.status === 401) {
@@ -736,8 +752,20 @@
   async function halPut(path, body) {
     const res = await fetch(BASE + path, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: buildHeaders("PUT", { "Content-Type": "application/json" }),
       body: body ? JSON.stringify(body) : void 0
+    });
+    if (res.status === 401) {
+      redirectToLogin();
+    }
+    if (!res.ok)
+      throw new Error(`HAL API ${path} failed: ${res.status} ${res.statusText}`);
+    return res.json();
+  }
+  async function halDelete(path) {
+    const res = await fetch(BASE + path, {
+      method: "DELETE",
+      headers: buildHeaders("DELETE")
     });
     if (res.status === 401) {
       redirectToLogin();
@@ -844,11 +872,12 @@
       recentDecisions: (state2.recentDecisions || []).map(normalizeDecision)
     };
   }
-  var BASE, SETTINGS_BASE, halApi;
+  var BASE, csrfToken, SETTINGS_BASE, halApi;
   var init_api = __esm({
     "src/web/hal-ui/api.ts"() {
       "use strict";
       BASE = "/api/hal";
+      csrfToken = null;
       SETTINGS_BASE = "/api/settings";
       halApi = {
         // GET /api/hal/state
@@ -985,10 +1014,7 @@
         },
         // DELETE /api/hal/safety/rules/:id — delete a rule
         async deleteSafetyRule(id) {
-          const res = await fetch(BASE + `/safety/rules/${id}`, {
-            method: "DELETE"
-          });
-          if (!res.ok) throw new Error(`Failed to delete rule: ${res.status}`);
+          await halDelete(`/safety/rules/${id}`);
           return { ok: true };
         },
         // GET /api/hal/safety/audit — get recent audit log entries
@@ -1024,10 +1050,7 @@
         },
         // DELETE /api/hal/thresholds/:id — delete a threshold
         async deleteThreshold(id) {
-          const res = await fetch(BASE + `/thresholds/${id}`, {
-            method: "DELETE"
-          });
-          if (!res.ok) throw new Error(`Failed to delete threshold: ${res.status}`);
+          await halDelete(`/thresholds/${id}`);
           return { ok: true };
         },
         // ══════════════════════════════════════════════════════════════════════════════
@@ -1087,8 +1110,7 @@
         },
         // DELETE /api/hal/devices/:id — remove device
         async removeDevice(id) {
-          const res = await fetch(BASE + `/devices/${id}`, { method: "DELETE" });
-          if (!res.ok) throw new Error(`Failed to remove device: ${res.status}`);
+          await halDelete(`/devices/${id}`);
           return { ok: true };
         },
         // GET /api/hal/zones — list all zones (VAL-DISC-050, VAL-DISC-051)
@@ -1160,7 +1182,7 @@
         async activateLicense(licenseKey) {
           const res = await fetch("/api/license/activate", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: buildHeaders("POST", { "Content-Type": "application/json" }),
             body: JSON.stringify({ licenseKey })
           });
           const data = await res.json();
@@ -1173,7 +1195,7 @@
         async deactivateLicense() {
           const res = await fetch("/api/license/deactivate", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: buildHeaders("POST", { "Content-Type": "application/json" }),
             body: JSON.stringify({})
           });
           if (!res.ok) throw new Error(`License deactivation failed: ${res.status}`);
@@ -11254,7 +11276,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   async function provPost(path, body) {
     const res = await fetch(BASE2 + path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: withCsrfHeader({ "Content-Type": "application/json" }),
       body: body ? JSON.stringify(body) : void 0
     });
     if (!res.ok)
@@ -11266,7 +11288,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   async function provPut(path, body) {
     const res = await fetch(BASE2 + path, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: withCsrfHeader({ "Content-Type": "application/json" }),
       body: body ? JSON.stringify(body) : void 0
     });
     if (!res.ok)
@@ -11275,10 +11297,15 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       );
     return res.json();
   }
+  function withCsrfHeader(headers) {
+    const token = getCsrfToken();
+    return token ? { ...headers, "X-CSRF-Token": token } : headers;
+  }
   var BASE2, provisioningApi;
   var init_api_provisioning = __esm({
     "src/web/hal-ui/api-provisioning.ts"() {
       "use strict";
+      init_api();
       BASE2 = "/api/provisioning";
       provisioningApi = {
         // GET /api/provisioning/status
@@ -19174,7 +19201,10 @@ The service will restart after the update.`
       });
       if (response.ok) {
         const data = await response.json();
-        if (data.authenticated) return true;
+        if (data.authenticated) {
+          setCsrfToken(data.csrfToken);
+          return true;
+        }
       }
     } catch {
     }
@@ -19227,9 +19257,11 @@ The service will restart after the update.`
           })
         });
         if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          throw new Error(body.error || "Sign in failed");
+          const body2 = await response.json().catch(() => ({}));
+          throw new Error(body2.error || "Sign in failed");
         }
+        const body = await response.json().catch(() => ({}));
+        setCsrfToken(body.csrfToken);
         history.replaceState(null, "", "#dashboard");
         await init();
       } catch (err) {
@@ -19476,8 +19508,8 @@ The service will restart after the update.`
       const [halState, modeData, pendingData] = await Promise.all([
         halApi.getState(),
         halApi.getAutomationMode().catch(() => ({
-          mode: "AUTONOMOUS",
-          color: { bg: "#F85149", text: "#F0F6FC", label: "AUTO" }
+          mode: "OBSERVE_ONLY",
+          color: { bg: "#238636", text: "#F0F6FC", label: "OBSERVE" }
         })),
         halApi.getAutomationPending().catch(() => [])
       ]);

@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { mkdirSync, readFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { METRIC_SPECS } from './telemetry-model.js';
 
@@ -32,9 +32,20 @@ export class DatabaseCorruptionError extends Error {
   }
 }
 
+/**
+ * Resolve the SQLite database path. Tests may override FFT_NANO_DB_PATH to
+ * isolate the database without process.chdir (which races worker-thread
+ * module resolution). Must match the path used by runMigrations().
+ */
+export function resolveDbPath(): string {
+  return process.env.FFT_NANO_DB_PATH
+    ? resolve(process.env.FFT_NANO_DB_PATH)
+    : join(process.cwd(), 'data', 'fft_nano.db');
+}
+
 export function getDb(): Database.Database {
   if (!_db) {
-    const dbPath = join(process.cwd(), 'data', 'fft_nano.db');
+    const dbPath = resolveDbPath();
     mkdirSync(dirname(dbPath), { recursive: true });
     _db = new Database(dbPath);
     _db.pragma('journal_mode = WAL');
@@ -86,7 +97,7 @@ export function checkDbIntegrity(): string[] {
 
 export function runMigrations(): void {
   const db = getDb();
-  const dbPath = join(process.cwd(), 'data', 'fft_nano.db');
+  const dbPath = resolveDbPath();
   const migrationPath = join(__dirname, 'migration.sql');
   const sql = readFileSync(migrationPath, 'utf-8');
   db.exec(sql);

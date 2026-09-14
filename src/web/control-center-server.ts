@@ -1,6 +1,7 @@
 import fs from 'fs';
 import http from 'http';
 import path from 'path';
+import { randomBytes, timingSafeEqual } from 'crypto';
 
 import type { WebAccessMode } from '../config.js';
 import { logger } from '../logger.js';
@@ -434,20 +435,70 @@ function isAuthorized(
   if (!authRequired) return true;
   const header = req.headers.authorization || '';
   if (!header.toLowerCase().startsWith('bearer ')) return false;
-  return header.slice(7).trim() === authToken;
+  const presented = header.slice(7).trim();
+  if (presented.length !== authToken.length) return false;
+  return timingSafeEqual(Buffer.from(presented), Buffer.from(authToken));
+}
+
+/**
+ * Resolve the bearer token used for mutating routes. When no token is
+ * configured, generate a cryptographically random one at server startup and
+ * persist it to a 0600 file in the FarmPal data dir. The file path is logged —
+ * never the token itself. Operators paste this token into the Control Center
+ * frontend token input.
+ */
+async function resolveControlCenterAuthToken(
+  provided: string,
+): Promise<{ token: string; tokenFile: string }> {
+  const { getFarmPalDataDir } = await import('../first-boot.js');
+  const tokenFile = path.join(getFarmPalDataDir(), 'web-control-center-token');
+  if (provided) return { token: provided, tokenFile };
+  let token = '';
+  try {
+    token = fs.readFileSync(tokenFile, 'utf-8').trim();
+  } catch {
+    token = '';
+  }
+  if (!token) {
+    token = randomBytes(32).toString('hex');
+    try {
+      fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
+      fs.writeFileSync(tokenFile, `${token}\n`, { mode: 0o600 });
+      logger.info(
+        { tokenFile },
+        'No FFT_NANO_WEB_AUTH_TOKEN configured; generated Control Center token for mutating routes',
+      );
+    } catch (err) {
+      // Persistence is best-effort: keep the in-memory token so mutations
+      // still work for callers that have it (e.g. read-only data dir).
+      logger.warn(
+        { tokenFile, err: err instanceof Error ? err.message : String(err) },
+        'Could not persist Control Center token file; using in-memory token only',
+      );
+    }
+  } else {
+    logger.info(
+      { tokenFile },
+      'Using existing Control Center token file for mutating routes',
+    );
+  }
+  try {
+    fs.chmodSync(tokenFile, 0o600);
+  } catch {
+    // Best-effort permission tightening
+  }
+  return { token, tokenFile };
 }
 
 export async function startWebControlCenterServer(
   adapters: WebControlCenterAdapters,
   options: WebControlCenterServerOptions,
 ): Promise<WebControlCenterServer> {
-  const authToken = options.authToken.trim();
+  // Mutating routes always require a bearer token; generate + persist one when
+  // the operator has not configured FFT_NANO_WEB_AUTH_TOKEN.
+  const { token: authToken, tokenFile: ccTokenFile } =
+    await resolveControlCenterAuthToken(options.authToken.trim());
   const authRequired = options.accessMode !== 'localhost';
-  if (authRequired && !authToken) {
-    throw new Error(
-      'FFT_NANO_WEB_ACCESS_MODE is lan/remote but FFT_NANO_WEB_AUTH_TOKEN is empty.',
-    );
-  }
 
   const staticDir = path.resolve(options.staticDir);
   const logsDir = path.resolve(options.logsDir);
@@ -496,7 +547,12 @@ export async function startWebControlCenterServer(
       return;
     }
 
-    if (requestPath.startsWith('/api/')) {
+    // Note: /api/hal/* routes are handled in their own block below (with
+    // mandatory bearer auth on mutating methods), so they are excluded here.
+    if (
+      requestPath.startsWith('/api/') &&
+      !requestPath.startsWith('/api/hal/')
+    ) {
       if (!isAuthorized(req, authRequired, authToken)) {
         res.setHeader('WWW-Authenticate', 'Bearer');
         sendJson(res, 401, { ok: false, error: 'Unauthorized' });
@@ -867,6 +923,19 @@ export async function startWebControlCenterServer(
 
     // HAL API routes
     if (requestPath.startsWith('/api/hal/')) {
+      // SECURITY: mutating HAL routes drive real hardware (relays, discovery,
+      // cameras) and always require bearer auth regardless of accessMode.
+      // Read-only GETs may stay auth-free in localhost mode.
+      const isMutatingMethod =
+        method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
+      if (!isAuthorized(req, isMutatingMethod || authRequired, authToken)) {
+        res.setHeader('WWW-Authenticate', 'Bearer');
+        sendJson(res, 401, {
+          ok: false,
+          error: `Unauthorized. Bearer token required for mutating requests. Token file: ${ccTokenFile}`,
+        });
+        return;
+      }
       const path = requestPath.slice('/api/hal'.length);
 
       // GET /api/hal/state — full HAL snapshot

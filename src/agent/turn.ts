@@ -6,6 +6,7 @@ import {
   runReflector,
 } from './reflector.js';
 import { executeVerifiedAction, runVerifier } from './verifier.js';
+import { activateEstop } from '../safety/estop.js';
 import { halRegistry } from '../hal/registry.js';
 import { halSensors } from '../hal/sensors.js';
 import { halDecisions } from '../hal/decisions.js';
@@ -316,19 +317,44 @@ export async function runFarmPalTurn(
   const intent = classifyIntent(message);
 
   if (intent === 'emergency_stop') {
-    halDecisions.log({
-      decision: 'alert',
-      confidence: 1,
-      reasoning:
-        'Emergency stop requested. Automatic control is blocked until the operator reviews active relays.',
-      outcome: 'pending',
-    });
-    return {
-      ok: true,
-      streamed: false,
-      result:
-        'Emergency stop noted. I did not issue broad relay commands automatically; review active devices and use explicit manual controls for each circuit.',
-    };
+    try {
+      const estop = await activateEstop('operator', 'operator', message);
+      // Count only devices whose safe state was actually applied ('on'/'off');
+      // 'unknown'/'no_change' entries must not inflate the moved count.
+      const movedCount = estop.appliedSafeStates.filter(
+        (s) => s.safeState === 'on' || s.safeState === 'off',
+      ).length;
+      const outcome = estop.failures.length > 0 ? 'failure' : 'success';
+      const summary = `${movedCount} device(s) moved to safe state, ${estop.failures.length} failure(s)`;
+      halDecisions.log({
+        decision: 'alert',
+        confidence: 1,
+        reasoning: `Emergency stop activated by operator: ${summary}.`,
+        outcome,
+      });
+      const failureLines =
+        estop.failures.length > 0
+          ? `\nFailures:\n${estop.failures.map((f) => `- ${f}`).join('\n')}`
+          : '';
+      return {
+        ok: true,
+        streamed: false,
+        result: `EMERGENCY STOP ACTIVE. ${summary}.${failureLines}\nAutonomous control is suspended until the E-stop is cleared from the dashboard.`,
+      };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      halDecisions.log({
+        decision: 'alert',
+        confidence: 1,
+        reasoning: `Emergency stop activation FAILED: ${reason}`,
+        outcome: 'failure',
+      });
+      return {
+        ok: false,
+        streamed: false,
+        result: `Emergency stop activation FAILED (${reason}). Use the dashboard E-stop immediately.`,
+      };
+    }
   }
 
   if (intent === 'status') {

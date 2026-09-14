@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS hal_farm_loop_state (
 -- Automation Mode: persistent automation mode (VAL-AUTO-001, VAL-AUTO-002, VAL-AUTO-003)
 CREATE TABLE IF NOT EXISTS hal_automation_mode (
   id                TEXT PRIMARY KEY DEFAULT 'global',
-  mode              TEXT NOT NULL DEFAULT 'AUTONOMOUS',  -- 'OBSERVE_ONLY' | 'SUGGEST' | 'ASSISTED_CONTROL' | 'AUTONOMOUS'
+  mode              TEXT NOT NULL DEFAULT 'OBSERVE_ONLY',  -- 'OBSERVE_ONLY' | 'SUGGEST' | 'ASSISTED_CONTROL' | 'AUTONOMOUS'
   updated_at        TEXT NOT NULL
 );
 

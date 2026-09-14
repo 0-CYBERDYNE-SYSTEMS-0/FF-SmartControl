@@ -22,7 +22,7 @@ Current important reality:
 - The local direction is host runtime, not Docker-first, for normal FarmPal development (`CONTAINER_RUNTIME=host` with `FFT_NANO_ALLOW_HOST_RUNTIME=1`).
 - Docker may still appear in old release/demo scripts and the legacy Pi isolation story, but it is not the desired blocker for the simpler FarmPal host-runtime path.
 - Telegram may be absent during development. The TUI is the active test surface, but the TUI still attaches to the host gateway and existing chat/session machinery.
-- Do not assume the simplified farm agent is the default message path. It currently runs only where it is explicitly wired/configured.
+- The simplified farm agent can be the default message path. When the farm profile is active (`FEATURE_FARM=1`, `FFT_PROFILE=farm`, or auto-detected farm signals) and `FARMPAL_PRIMARY_AGENT` is not disabled (it defaults to on), plain user messages route through `src/agent/turn.ts` (`runFarmPalTurn`) instead of the legacy Pi agent. A message starting with `/legacy` escapes to the old Pi agent loop.
 
 ## Project Structure
 
@@ -34,10 +34,11 @@ Current important reality:
   - `src/telegram-commands.ts` — Telegram command handling, settings panels, callback queries.
   - `src/pi-runner.ts` — Agent subprocess spawning, snapshots, runtime event emission.
   - `src/agent/` — Lightweight FarmPal agent modules:
-    - `decision-loop.ts` — Active simplified farm decision cycle, wired behind HAL auto paths.
+    - `turn.ts` — `runFarmPalTurn()`, the per-message FarmPal turn orchestrator. Resolves intent (status/diagnostic/reflection/control/emergency_stop) and routes to diagnostic, reflector, generator, or verifier paths.
+    - `decision-loop.ts` — Simplified farm decision cycle, wired behind HAL auto paths (`HAL_AUTO_MODE`, `HAL_AUTO_DECISIONS`).
     - `llm.ts` — Direct provider selection/calls for the simplified farm agent.
     - `tool-executor.ts` — HAL tool execution for control/sensor/camera actions.
-    - `generator.ts` and `verifier.ts` — Newer Generator/Verifier pattern, present but not yet the default active control path.
+    - `generator.ts` and `verifier.ts` — Generator/Verifier control path; wired inside `turn.ts` (and there only), not inside `decision-loop.ts`.
     - `diagnostic.ts` and `reflector.ts` — Support/self-analysis agents exposed through command paths.
   - `src/cron/` — Cron v2 compatibility, scheduling adapters, and scheduler service types.
   - `src/hal/` — Hardware abstraction layer (sensors, relays, MQTT, serial, GPIO, camera, discovery, decisions, simulator).
@@ -151,7 +152,7 @@ npm run hal:ui:build
 
 ### HAL UI SVG Visuals
 
-- The current HAL UI dashboard/sensor/system/safety visualizations are intentionally implemented as first-party SVG renderers in `src/web/hal-ui/components/EnvironmentCharts.ts` and `src/web/hal-ui/components/LakeTankChart.ts`.
+- The current HAL UI dashboard/sensor/system/safety visualizations are intentionally implemented as first-party SVG renderers in `src/web/hal-ui/components/` — `EnvironmentCharts.ts` and `LakeTankChart.ts` for per-view environment/tank charts, plus the newer `HeroChart.ts` (dashboard/sensors hero charts), `FarmPalCharts.ts`, and `VegaChart.ts`.
 - Keep new FarmPal telemetry visuals in source components, not in `src/web/hal-ui/dist/`. Rebuild with `npm run hal:ui:build` after edits so the served bundle matches source.
 - Dashboard environmental overview state lives in `src/web/hal-ui/views/Dashboard.ts`: active metrics default to temperature, humidity, and CO₂, and the default zone is **All Zones** until a zone row is selected.
 - Live HAL UI state is streamed from `GET /api/hal/stream` as server-sent events and falls back to `GET /api/hal/state` polling when the stream is unavailable.
@@ -197,11 +198,15 @@ npm run hal:ui:build
 - HAL simulator environment knobs:
   - `HAL_SIM_MODE=1` enables the HAL simulator loop instead of periodic HAL polling.
   - `HAL_SIM_TICK_MS`, `HAL_SIM_SPEED`, `HAL_SIM_SEED`, and `HAL_SIM_SCENARIO` tune simulator runtime behavior.
+  - Demo seeding (`seedHalDemoData()`) runs only when `HAL_SIM_MODE=1` or `HAL_SEED_DEMO_DATA=1`. Real deployments must never contain seeded "Tent A" demo rows; treat their presence as a bug.
   - `HAL_SIM_AUTOPILOT=0` disables the simulator's internal rule-based controller and its light-schedule actuation, so the real agent (`runDecisionCycle`, via `HAL_AUTO_DECISIONS=true`) is the sole decision-maker driving the twin. Default (`1`) preserves the legacy self-playing twin. Sim-only — the real-hardware path is unaffected. In sim mode the simulator mirrors relay state from `halRegistry` each tick, and `halRegistry.control()` short-circuits the real HTTP/GPIO call (records state only) so agent/manual actuation closes the physics loop without hardware.
 - Efficacy scorecard (`scripts/sim-efficacy.ts`): runs the real agent against the twin, grades against ground truth (`HalSimulator.getGroundTruth()`), and writes a SIMULATION-labeled report to `reports/efficacy/` (gitignored). `--plumbing` validates the pipeline with no LLM cost. Reports are real software behavior on simulated physics — never present them as real-hardware results.
+- Safety defaults (see SPEC.md): the factory automation mode is `OBSERVE_ONLY`; autonomy is an explicit operator action. The chat `emergency_stop` intent trips the real E-stop (`src/safety/estop.ts` `activateEstop`), same as the dashboard button.
+- HAL UI security invariants: `HAL_UI_AUTH_BYPASS` no longer exists (auth cannot be disabled by env var); mutating HAL UI requests require a CSRF double-submit token (frontend obtains it from the session/login response and sends `X-CSRF-Token`); `/api/provisioning/*` is public only while the system is unprovisioned; Control Center mutating `/api/hal/*` routes require bearer auth in every access mode (per-install token stored `0600` in the data dir when unset); `security_audit` stores session-token hashes, never raw tokens; all `src/hal` external command execution uses argv arrays with validated inputs.
 - Simplified FarmPal agent knobs:
   - `HAL_AUTO_MODE=true` plus a message starting with `!auto ` triggers `src/agent/decision-loop.ts` from message dispatch.
   - `HAL_AUTO_DECISIONS=true` triggers the decision loop from periodic HAL heartbeat/poll paths.
+  - `FEATURE_FARM` / `FFT_PROFILE` enable the farm profile; `FARMPAL_PRIMARY_AGENT=0` (or `false`/`no`/`off`) forces the legacy Pi agent back as the primary message path. Profile detection lives in `src/profile.ts`.
   - `LLM_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `LMSTUDIO_BASE_URL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `ZAI_API_KEY` affect `src/agent/llm.ts`.
   - `ANTHROPIC_BASE_URL` and `ANTHROPIC_MODEL` override the Anthropic provider endpoint/model, enabling any Anthropic-compatible provider (e.g. MiniMax `https://api.minimax.io/anthropic` + model `MiniMax-M3`, Kimi, etc.). The provider appends `/v1/messages` — do not include it. The Anthropic response parser concatenates `text` blocks and skips `thinking` blocks, so reasoning models (MiniMax-M3, Claude extended thinking) return their answer rather than empty output.
 - Telegram is enabled when `TELEGRAM_BOT_TOKEN` is set. WhatsApp auth uses `npm run auth`.
@@ -209,12 +214,15 @@ npm run hal:ui:build
 
 ## Simplified Farm Agent State
 
-- The active simplified farm loop is `runDecisionCycle()` in `src/agent/decision-loop.ts`.
-- It reads devices from `halRegistry`, sensor readings from `halSensors`, recent decisions from `halDecisions`, then asks the LLM for a strict JSON decision. The device list in the prompt includes each device's exact `id="..."`, and the model is instructed to emit `device_id` matching one of those ids (not the human label) — otherwise the `hal_decision_log` foreign key rejects it.
+- There are two FarmPal agent entry points, do not conflate them:
+  - `runFarmPalTurn()` in `src/agent/turn.ts` — the per-message turn path. Gated by `farmPalPrimaryAgent` (see `src/index.ts`): enabled when `FEATURE_FARM` is active and `FARMPAL_PRIMARY_AGENT` is not disabled. When enabled, it is the default message path and `/legacy` escapes to the Pi agent.
+  - `runDecisionCycle()` in `src/agent/decision-loop.ts` — the autonomous decision cycle behind `HAL_AUTO_MODE` (`!auto ` messages) and `HAL_AUTO_DECISIONS` (heartbeat/poll paths).
+- `runDecisionCycle()` reads devices from `halRegistry`, sensor readings from `halSensors`, recent decisions from `halDecisions`, then asks the LLM for a strict JSON decision. The device list in the prompt includes each device's exact `id="..."`, and the model is instructed to emit `device_id` matching one of those ids (not the human label) — otherwise the `hal_decision_log` foreign key rejects it.
 - A guard in `runDecisionCycle` nulls an unregistered `device_id` (treats it as a safe no-op) before logging, so a hallucinated id cannot throw a foreign-key error and kill the cycle.
-- It can execute HAL tool calls through `src/agent/tool-executor.ts` and, for `turn_on`/`turn_off` decisions with a valid `device_id`, actuates via `halRegistry.control()` **through the safety verifier** (`src/safety/verifier.ts`): the action is verified, executed, re-verified for mid-action violations, and logged to `halRelays`/audit. Actuation does not require `tool_calls`.
-- The TUI does not bypass the host. TUI messages still enter through the gateway/session/message-dispatch path. For no-Telegram development, verify the TUI session/bootstrap path before assuming a message can reach the simplified farm loop.
-- The old Pi runner still exists and is still used by the legacy/general chat route. Host runtime means that path spawns local `pi`; it does not mean the simplified FarmPal agent is running standalone.
+- The decision cycle can execute HAL tool calls through `src/agent/tool-executor.ts` and, for `turn_on`/`turn_off` decisions with a valid `device_id`, actuates via `halRegistry.control()` **through the safety verifier** (`src/safety/verifier.ts`): the action is verified, executed, re-verified for mid-action violations, and logged to `halRelays`/audit. Actuation does not require `tool_calls`.
+- Do not conflate the two verifiers: `src/safety/verifier.ts` gates decision-loop actuation (policy engine + audit), while the Generator/Verifier pattern (`src/agent/generator.ts`, `src/agent/verifier.ts`) runs only inside the `turn.ts` path.
+- The TUI does not bypass the host. TUI messages still enter through the gateway/session/message-dispatch path. For no-Telegram development, verify the TUI session/bootstrap path before assuming a message can reach the farm agent.
+- The old Pi runner still exists and is used by the `/legacy` escape hatch, non-farm profiles, and routes the farm turn does not claim (e.g. coding worker). Host runtime means that path spawns local `pi`.
 
 ## Agent, Memory, and Skills Notes
 
@@ -271,14 +279,14 @@ When investigating runtime behavior, first identify which checkout the active se
 ## Current Local State Notes
 
 - This checkout may be on a HAL UI feature branch even when `main` points at the same commit. Check `git status --short --branch` before assuming local state.
-- Recent local work has focused on HAL UI environment charts, SVG visual systems, and multi-agent farm-controller commits.
+- Recent local work has focused on HAL UI environment charts (including the `HeroChart` hero visualizations), SVG visual systems, and multi-agent farm-controller commits.
 - Current local HAL UI incident findings:
   - "No data" was caused by HAL UI auth/session handling, not absent telemetry.
   - "Pages not loading" was caused by slow authenticated request handling: missing `hal_sensors` indexes plus bcrypt-scanning active admin sessions on every request.
   - `com.farmpal` is the current LaunchAgent for this checkout; old `com.fft_nano` may still exist for another checkout and should not be treated as this runtime unless explicitly selected.
 - `HANDOFF.md` tracks local service port-conflict investigation and `better-sqlite3` ABI fallback notes; treat it as machine-local handoff state, not release documentation.
 - Current architecture should be described as hybrid: full FFT_nano host plus simplified FarmPal HAL agent modules.
-- For customer/OOTB readiness reviews, explicitly check the host-runtime path, TUI/no-Telegram path, HAL hardware path, demo-data behavior, and whether `HAL_AUTO_MODE`/`HAL_AUTO_DECISIONS` are actually enabled.
+- For customer/OOTB readiness reviews, explicitly check the host-runtime path, TUI/no-Telegram path, HAL hardware path, demo-data behavior, the active agent route (`FFT_PROFILE`/`FEATURE_FARM`/`FARMPAL_PRIMARY_AGENT`), and whether `HAL_AUTO_MODE`/`HAL_AUTO_DECISIONS` are actually enabled.
 - `node_modules_old/`, `compiled/`, `store/`, `data/`, `groups/`, and other generated/runtime artifacts should not be committed.
 - Before treating the checkout as release-ready, run `npm run typecheck`, `npm test`, `npm run secret-scan`, `npm run validate:skills`, `npm run pack-check`, and `git diff --check`.
 

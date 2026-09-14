@@ -43,9 +43,10 @@ if [[ -n "$CHAT_ID_MATCHES" ]]; then
 fi
 
 # Run gitleaks scan if available (mirrors CI behavior).
+# --exit-code 1 makes findings fail this scan (0 would always pass).
 if command -v gitleaks &>/dev/null; then
   echo "Running gitleaks scan..."
-  if ! gitleaks detect --source . --redact --exit-code 0; then
+  if ! gitleaks detect --source . --redact --exit-code 1; then
     echo "ERROR: Gitleaks found leaks."
     exit 1
   fi

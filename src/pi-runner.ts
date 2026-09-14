@@ -662,15 +662,14 @@ function buildPiArgs(params: {
 
   const model = input.model || secrets.PI_MODEL || process.env.PI_MODEL;
   const provider = input.provider || secrets.PI_API || process.env.PI_API;
-  const apiKey = getPiApiKeyOverride(
-    { provider: input.provider },
-    { ...process.env, ...secrets },
-  );
 
   if (provider) args.push('--provider', provider);
   if (model) args.push('--model', model);
   if (input.thinkLevel) args.push('--thinking', input.thinkLevel);
-  if (apiKey) args.push('--api-key', apiKey);
+
+  // SECURITY: never place API keys on argv (visible in `ps`). The resolved
+  // key is passed to the child via the PI_API_KEY environment variable in the
+  // spawn env instead.
 
   args.push('--append-system-prompt', systemPrompt);
 
@@ -1170,9 +1169,16 @@ export async function runContainerAgent(
         const v = process.env[key];
         if (v) hostPassthrough[key] = v;
       }
+
+      // Resolve the provider API key and pass it via env only (never argv).
+      const piApiKey = getPiApiKeyOverride(
+        { provider: payload.provider },
+        { ...process.env, ...secrets },
+      );
       const env: NodeJS.ProcessEnv = {
         ...hostPassthrough,
         ...secrets,
+        ...(piApiKey ? { PI_API_KEY: piApiKey } : {}),
         PI_CODING_AGENT_DIR: wp.piAgentDir,
         FFT_NANO_CHAT_JID: input.chatJid,
         FFT_NANO_REQUEST_ID: input.requestId || '',

@@ -693,7 +693,7 @@ Stale data is different from no data. The UI should distinguish them.
    - Test empty DB, stale DB, simulator mode, and real hardware/MQTT data when possible.
 
 10. Do not forget auth/network settings.
-    - Local development often uses `HAL_UI_AUTH_BYPASS=1`.
+    - Authenticate by signing in through the HAL UI login page (operator account created by the setup wizard); there is no auth bypass.
     - LAN/HTTPS settings can affect browser access.
 
 11. Do not start duplicate host runtimes casually.
@@ -726,13 +726,12 @@ env \
   FFT_NANO_ALLOW_HOST_RUNTIME=1 \
   WHATSAPP_ENABLED=0 \
   TELEGRAM_BOT_TOKEN= \
-  HAL_UI_AUTH_BYPASS=1 \
   HAL_UI_AUTO_OPEN=0 \
   FFT_NANO_TUI_ENABLED=0 \
   npm run start
 ```
 
-Then open:
+Then sign in through the HAL UI login page (there is no auth bypass) and open:
 
 ```text
 http://127.0.0.1:3392/#sensors

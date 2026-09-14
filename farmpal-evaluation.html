@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FarmPal — Full Product & Engineering Evaluation</title>
+<style>
+  :root{
+    --bg:#0a0e14; --bg2:#0d131c; --panel:#111827; --panel2:#151d2b; --line:#1f2a3a; --line2:#2a3850;
+    --txt:#e8edf4; --txt2:#9aa8bc; --txt3:#64748b;
+    --green:#34d399; --green-d:#065f46; --amber:#fbbf24; --amber-d:#78350f; --red:#f87171; --red-d:#7f1d1d;
+    --blue:#60a5fa; --purple:#a78bfa; --cyan:#22d3ee; --orange:#fb923c;
+    --serif:Georgia,'Times New Roman',serif;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--txt);font-family:var(--sans);line-height:1.6;overflow-x:hidden}
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+    background-image:linear-gradient(rgba(96,165,250,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(96,165,250,.025) 1px,transparent 1px);
+    background-size:44px 44px}
+  ::selection{background:#2563eb55}
+  a{color:var(--blue);text-decoration:none}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 28px;position:relative;z-index:1}
+
+  /* ---------- nav ---------- */
+  #progress{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--green),var(--cyan),var(--blue));width:0;z-index:99;transition:width .1s}
+  nav{position:sticky;top:0;z-index:90;background:rgba(10,14,20,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;gap:20px;height:52px;font-size:12.5px;overflow-x:auto;scrollbar-width:none}
+  nav .wrap::-webkit-scrollbar{display:none}
+  nav .brand{font-weight:700;letter-spacing:.04em;white-space:nowrap;color:var(--txt)}
+  nav .brand span{color:var(--green)}
+  nav a.nl{color:var(--txt3);white-space:nowrap;padding:4px 2px;border-bottom:2px solid transparent;transition:color .15s}
+  nav a.nl:hover{color:var(--txt)}
+
+  /* ---------- hero ---------- */
+  header{padding:84px 0 64px;position:relative;overflow:hidden}
+  header::after{content:'';position:absolute;top:-220px;right:-160px;width:560px;height:560px;border-radius:50%;
+    background:radial-gradient(circle,rgba(52,211,153,.09),transparent 65%);pointer-events:none}
+  .kicker{font-family:var(--mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--green);margin-bottom:18px}
+  h1{font-family:var(--serif);font-size:clamp(34px,5vw,56px);line-height:1.12;font-weight:400;max-width:880px}
+  h1 em{font-style:italic;color:var(--green)}
+  .verdict-lede{font-family:var(--serif);font-size:clamp(17px,2.2vw,21px);color:var(--txt2);max-width:780px;margin-top:26px;font-style:italic}
+  .meta-chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:32px}
+  .chip{font-family:var(--mono);font-size:11.5px;color:var(--txt2);border:1px solid var(--line2);border-radius:99px;padding:5px 13px;background:var(--bg2)}
+  .chip b{color:var(--txt);font-weight:600}
+  .hero-grid{display:grid;grid-template-columns:1fr auto;gap:48px;align-items:center;margin-top:8px}
+  .overall{display:flex;flex-direction:column;align-items:center;gap:10px;padding:26px 30px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2))}
+  .overall .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--txt3)}
+  .gauge{position:relative;width:168px;height:168px}
+  .gauge svg{transform:rotate(-90deg)}
+  .gauge .val{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .gauge .val b{font-size:42px;font-weight:700;line-height:1}
+  .gauge .val span{font-family:var(--mono);font-size:11px;color:var(--txt3);margin-top:4px}
+  .overall .sub{font-size:12px;color:var(--txt2);text-align:center;max-width:190px}
+
+  /* ---------- sections ---------- */
+  section{padding:74px 0;border-top:1px solid var(--line)}
+  .sec-head{display:flex;align-items:baseline;gap:18px;margin-bottom:14px}
+  .sec-num{font-family:var(--mono);font-size:13px;color:var(--green);letter-spacing:.1em}
+  h2{font-family:var(--serif);font-size:clamp(25px,3.4vw,36px);font-weight:400;line-height:1.2}
+  .sec-sub{color:var(--txt2);max-width:820px;font-size:15.5px;margin-bottom:38px}
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
+  .reveal.on{opacity:1;transform:none}
+
+  /* cards & grids */
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px}
+  .card h4{font-size:14px;font-weight:700;letter-spacing:.02em;margin-bottom:10px;display:flex;align-items:center;gap:9px}
+  .card p,.card li{font-size:13.5px;color:var(--txt2)}
+  .card ul{list-style:none;margin-top:4px}
+  .card li{padding:5px 0 5px 16px;position:relative}
+  .card li::before{content:'▸';position:absolute;left:0;color:var(--txt3);font-size:11px;top:7px}
+  .dot{width:9px;height:9px;border-radius:3px;flex-shrink:0;display:inline-block}
+
+  /* real / scaffold / fiction */
+  .verdict-band{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .vb{border-radius:14px;padding:26px 24px;border:1px solid var(--line);position:relative;overflow:hidden}
+  .vb::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+  .vb.real::before{background:var(--green)} .vb.scaffold::before{background:var(--amber)} .vb.fiction::before{background:var(--red)}
+  .vb h4{font-size:15px;font-weight:700;margin-bottom:4px;display:flex;gap:10px;align-items:center}
+  .vb .tagline{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:16px}
+  .vb.real .tagline{color:var(--green)} .vb.scaffold .tagline{color:var(--amber)} .vb.fiction .tagline{color:var(--red)}
+  .vb ul{list-style:none}
+  .vb li{font-size:13px;color:var(--txt2);padding:6px 0 6px 18px;position:relative;border-bottom:1px dashed var(--line)}
+  .vb li:last-child{border-bottom:0}
+  .vb li::before{content:'●';position:absolute;left:0;top:7px;font-size:8px}
+  .vb.real li::before{color:var(--green)} .vb.scaffold li::before{color:var(--amber)} .vb.fiction li::before{color:var(--red)}
+  .vb li b{color:var(--txt);font-weight:600}
+  .vb li code{font-family:var(--mono);font-size:11px;color:var(--cyan)}
+
+  /* thesis quote */
+  .thesis{border-left:3px solid var(--green);background:linear-gradient(90deg,rgba(52,211,153,.06),transparent 70%);
+    padding:30px 34px;border-radius:0 14px 14px 0;margin:44px 0 8px}
+  .thesis p{font-family:var(--serif);font-size:clamp(18px,2.4vw,24px);line-height:1.5;font-style:italic;color:var(--txt)}
+  .thesis .who{font-family:var(--mono);font-size:11.5px;color:var(--txt3);margin-top:14px;letter-spacing:.1em}
+
+  /* stats wall */
+  .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+  .stat{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:18px 16px}
+  .stat b{display:block;font-size:30px;font-weight:700;letter-spacing:-.02em}
+  .stat span{font-family:var(--mono);font-size:10.5px;color:var(--txt3);text-transform:uppercase;letter-spacing:.1em;display:block;margin-top:5px;line-height:1.5}
+  .stat.good b{color:var(--green)} .stat.warn b{color:var(--amber)} .stat.bad b{color:var(--red)}
+  .stat .vs{font-size:11px;color:var(--txt3);margin-top:6px;font-family:var(--mono)}
+
+  /* score bars */
+  .score-row{display:grid;grid-template-columns:210px 1fr 64px;gap:16px;align-items:center;padding:11px 0;border-bottom:1px dashed var(--line)}
+  .score-row:last-child{border-bottom:0}
+  .score-row .nm{font-size:13.5px;font-weight:600}
+  .score-row .nm small{display:block;font-weight:400;color:var(--txt3);font-size:11.5px}
+  .bar{height:9px;background:var(--bg2);border:1px solid var(--line);border-radius:99px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0;border-radius:99px;transition:width 1.2s cubic-bezier(.2,.7,.2,1)}
+  .score-row .sc{font-family:var(--mono);font-size:15px;font-weight:700;text-align:right}
+
+  /* matrix table */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--txt3);text-align:left;padding:10px 14px;border-bottom:1px solid var(--line2)}
+  td{padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--txt2)}
+  td:first-child{color:var(--txt);font-weight:600;white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  .badge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;padding:3px 9px;border-radius:99px;white-space:nowrap;display:inline-block}
+  .b-real{background:rgba(52,211,153,.12);color:var(--green);border:1px solid rgba(52,211,153,.35)}
+  .b-scaf{background:rgba(251,191,36,.1);color:var(--amber);border:1px solid rgba(251,191,36,.35)}
+  .b-broken{background:rgba(248,113,113,.1);color:var(--red);border:1px solid rgba(248,113,113,.35)}
+  .b-miss{background:rgba(100,116,139,.15);color:var(--txt3);border:1px solid var(--line2)}
+  .receipt{font-family:var(--mono);font-size:10.5px;color:var(--txt3);display:block;margin-top:5px}
+  .receipt code{color:var(--cyan)}
+
+  /* callout */
+  .callout{border-radius:14px;padding:24px 26px;margin:26px 0;border:1px solid;display:grid;grid-template-columns:44px 1fr;gap:18px;align-items:start}
+  .callout .ico{font-size:26px;line-height:1}
+  .callout h5{font-size:14.5px;font-weight:700;margin-bottom:6px}
+  .callout p{font-size:13.5px;color:var(--txt2)}
+  .callout p code{font-family:var(--mono);font-size:11.5px;color:var(--cyan)}
+  .c-red{background:rgba(248,113,113,.05);border-color:rgba(248,113,113,.3)}
+  .c-red h5{color:var(--red)}
+  .c-amber{background:rgba(251,191,36,.04);border-color:rgba(251,191,36,.3)}
+  .c-amber h5{color:var(--amber)}
+  .c-green{background:rgba(52,211,153,.04);border-color:rgba(52,211,153,.3)}
+  .c-green h5{color:var(--green)}
+  .c-blue{background:rgba(96,165,250,.05);border-color:rgba(96,165,250,.3)}
+  .c-blue h5{color:var(--blue)}
+
+  /* findings list */
+  .finding{display:grid;grid-template-columns:92px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--line);align-items:start}
+  .finding:last-child{border-bottom:0}
+  .sev{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em;padding:4px 0;text-align:center;border-radius:6px;height:fit-content}
+  .s-crit{background:var(--red-d);color:#fecaca;border:1px solid var(--red)}
+  .s-high{background:rgba(248,113,113,.14);color:var(--red);border:1px solid rgba(248,113,113,.4)}
+  .s-med{background:rgba(251,191,36,.1);color:var(--amber);border:1px solid rgba(251,191,36,.4)}
+  .s-low{background:rgba(100,116,139,.15);color:var(--txt2);border:1px solid var(--line2)}
+  .finding h6{font-size:14px;font-weight:600;margin-bottom:4px}
+  .finding p{font-size:13px;color:var(--txt2)}
+  .finding p code{font-family:var(--mono);font-size:11px;color:var(--cyan)}
+
+  /* agent flow diagram */
+  .flow{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:30px 22px;overflow-x:auto}
+  .flow svg{min-width:860px;width:100%;height:auto;display:block}
+
+  /* uncomfortable truths */
+  .truths{counter-reset:truth}
+  .truth{display:grid;grid-template-columns:64px 1fr;gap:20px;padding:26px 0;border-bottom:1px solid var(--line);counter-increment:truth}
+  .truth:last-child{border-bottom:0}
+  .truth::before{content:counter(truth,decimal-leading-zero);font-family:var(--serif);font-size:34px;color:var(--txt3);line-height:1;font-style:italic}
+  .truth h5{font-size:16.5px;font-weight:700;margin-bottom:7px;font-family:var(--serif);font-weight:400}
+  .truth p{font-size:13.5px;color:var(--txt2);max-width:900px}
+  .truth p code{font-family:var(--mono);font-size:11.5px;color:var(--cyan)}
+  .truth p b{color:var(--txt)}
+
+  /* roadmap */
+  .phase{display:grid;grid-template-columns:150px 1fr;gap:26px;padding:30px 0;border-bottom:1px solid var(--line);position:relative}
+  .phase:last-child{border-bottom:0}
+  .phase .ph-meta .ph-id{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:6px;display:block}
+  .phase .ph-meta .ph-name{font-family:var(--serif);font-size:21px;font-weight:400}
+  .phase .ph-meta .ph-time{font-family:var(--mono);font-size:11.5px;color:var(--txt3);margin-top:7px;display:block}
+  .phase .ph-body p{font-size:13.5px;color:var(--txt2);margin-bottom:12px}
+  .phase .ph-body ul{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:6px 26px}
+  .phase .ph-body li{font-size:13px;color:var(--txt2);padding-left:18px;position:relative}
+  .phase .ph-body li::before{content:'☐';position:absolute;left:0;color:var(--txt3);font-size:12px}
+  .phase .exit{margin-top:14px;font-size:12.5px;color:var(--txt);background:var(--bg2);border:1px dashed var(--line2);border-radius:9px;padding:10px 15px;font-family:var(--mono)}
+  .phase .exit b{color:var(--green)}
+  .p0 .ph-id{color:var(--red)} .p1 .ph-id{color:var(--orange)} .p2 .ph-id{color:var(--amber)}
+  .p3 .ph-id{color:var(--cyan)} .p4 .ph-id{color:var(--blue)} .p5 .ph-id{color:var(--purple)}
+
+  /* fixes checklist */
+  .fix{display:grid;grid-template-columns:56px 1fr auto;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);align-items:baseline}
+  .fix:last-child{border-bottom:0}
+  .fix .prio{font-family:var(--mono);font-size:10.5px;font-weight:700;text-align:center;padding:3px 0;border-radius:5px}
+  .fx-p0{background:var(--red-d);color:#fecaca}
+  .fx-p1{background:rgba(251,146,60,.14);color:var(--orange)}
+  .fx-p2{background:rgba(96,165,250,.12);color:var(--blue)}
+  .fix p{font-size:13.5px;color:var(--txt2)}
+  .fix p b{color:var(--txt);font-weight:600}
+  .fix p code{font-family:var(--mono);font-size:11px;color:var(--cyan)}
+  .fix .area{font-family:var(--mono);font-size:10.5px;color:var(--txt3);white-space:nowrap}
+
+  /* market table */
+  .comp td:first-child{white-space:normal}
+  .pos{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:26px}
+
+  /* radar */
+  .radar-flex{display:grid;grid-template-columns:1fr 1fr;gap:34px;align-items:center}
+  .legend{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;margin-top:18px}
+  .legend div{display:flex;gap:9px;align-items:center;font-size:12.5px;color:var(--txt2)}
+  .legend b{color:var(--txt);font-weight:600}
+
+  /* final */
+  .final-grade{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin:34px 0}
+  .fg{border-radius:16px;padding:30px;text-align:center;border:1px solid var(--line)}
+  .fg .big{font-family:var(--serif);font-size:52px;line-height:1}
+  .fg .cap{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--txt3);margin-top:12px}
+  .fg .note{font-size:13px;color:var(--txt2);margin-top:10px}
+  footer{border-top:1px solid var(--line);padding:44px 0 64px;color:var(--txt3);font-size:12px}
+  footer .wrap p{max-width:900px}
+
+  @media (max-width:960px){
+    .hero-grid,.radar-flex,.grid2{grid-template-columns:1fr}
+    .grid3,.grid4,.verdict-band,.stats,.pos,.final-grade{grid-template-columns:repeat(2,1fr)}
+    .phase{grid-template-columns:1fr;gap:10px}
+    .phase .ph-body ul{grid-template-columns:1fr}
+    .score-row{grid-template-columns:130px 1fr 52px}
+  }
+  @media (max-width:600px){
+    .grid3,.grid4,.verdict-band,.stats,.pos,.final-grade{grid-template-columns:1fr}
+    .finding{grid-template-columns:1fr}
+    .truth{grid-template-columns:44px 1fr;gap:12px}
+  }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<nav>
+  <div class="wrap">
+    <div class="brand">Farm<span>Pal</span>·EVAL</div>
+    <a class="nl" href="#verdict">Verdict</a>
+    <a class="nl" href="#evidence">Evidence</a>
+    <a class="nl" href="#truths">Truths</a>
+    <a class="nl" href="#hardware">Hardware</a>
+    <a class="nl" href="#agent">AI Stack</a>
+    <a class="nl" href="#safety">Safety</a>
+    <a class="nl" href="#security">Security</a>
+    <a class="nl" href="#product">Product</a>
+    <a class="nl" href="#market">Potential</a>
+    <a class="nl" href="#roadmap">Roadmap</a>
+    <a class="nl" href="#fixes">Fix List</a>
+  </div>
+</nav>
+
+<!-- ================= HERO ================= -->
+<header>
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <div class="kicker">Independent Engineering Evaluation · 2026-09-12</div>
+        <h1>You built an excellent flight simulator and a credible flight-management system.<br><em>The airplane hasn't flown yet.</em></h1>
+        <p class="verdict-lede">FarmPal is not a bad product in progress — it's a genuinely well-engineered digital twin and management plane for an autonomous farm controller, wrapped around a hardware seam that has barely touched copper. The foundation is a 7. The shippable product is a 3. The gap between them is specific, known, and closable.</p>
+        <div class="meta-chips">
+          <div class="chip">Scope: <b>full static audit</b> — src/hal, src/agent, src/safety, src/web, docs, CI</div>
+          <div class="chip">Codebase: <b>88,643 LOC</b> TypeScript + 18,311 LOC tests</div>
+          <div class="chip">History: <b>404 commits</b> · Jan 31 → May 16 2026</div>
+          <div class="chip">Method: <b>file:line receipts</b> throughout</div>
+        </div>
+      </div>
+      <div class="overall">
+        <div class="lbl">Product Readiness</div>
+        <div class="gauge">
+          <svg width="168" height="168" viewBox="0 0 168 168">
+            <circle cx="84" cy="84" r="74" fill="none" stroke="#1f2a3a" stroke-width="11"/>
+            <circle id="gauge-arc" cx="84" cy="84" r="74" fill="none" stroke="url(#gg)" stroke-width="11" stroke-linecap="round"
+              stroke-dasharray="465" stroke-dashoffset="465" style="transition:stroke-dashoffset 1.6s cubic-bezier(.2,.7,.2,1)"/>
+            <defs><linearGradient id="gg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#f87171"/><stop offset=".55" stop-color="#fbbf24"/><stop offset="1" stop-color="#34d399"/>
+            </linearGradient></defs>
+          </svg>
+          <div class="val"><b>4.5</b><span>/ 10</span></div>
+        </div>
+        <div class="sub">As a customer-shippable hardware product today.<br><b style="color:var(--green)">Foundation quality: 7/10.</b></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ================= VERDICT ================= -->
+<section id="verdict">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">01</span><h2>What you've actually created</h2></div>
+    <p class="sec-sub reveal">Strip away the branding and look at what the 404 commits bought you. Three categories — and the honest breakdown matters more than any score.</p>
+
+    <div class="thesis reveal">
+      <p>"This is a convincing digital twin wearing a hardware product's clothes. The persistence, telemetry, alerting, decision-audit, and simulation layers are genuinely production-shaped. The hardware layer is thin, largely unexercised, and in places cannot work as written — yet the docs describe it as Tier-1 tested."</p>
+      <div class="who">— HARDWARE AUDIT VERDICT, src/hal, THIS EVALUATION</div>
+    </div>
+
+    <div class="verdict-band reveal" style="margin-top:40px">
+      <div class="vb real">
+        <h4><span class="dot" style="background:var(--green)"></span>Real &amp; well-built</h4>
+        <div class="tagline">Works as designed today</div>
+        <ul>
+          <li><b>SQLite persistence layer</b> — 15 hal_* tables, WAL, FK integrity gate that refuses to boot on corruption <code>hal/db.ts</code></li>
+          <li><b>Telemetry &amp; alerting engine</b> — threshold rules, cooldowns, ack flow, quality-gated readings <code>hal/alerts.ts</code></li>
+          <li><b>The digital twin</b> — 1,289-line simulator: physics, sensor faults, 6 scenarios, same API path as real hardware <code>hal/simulator.ts</code></li>
+          <li><b>HAL UI + TUI</b> — ~30k LOC of operator surface with real chart/SVG investment</li>
+          <li><b>Auth primitives</b> — bcrypt cost-10, SHA-256 indexed tokens, timing-safe compare, rate limits <code>security/session.ts</code></li>
+          <li><b>Tasmota &amp; Shelly-gen1 HTTP control</b> — the one hardware path that would likely work on a live LAN today <code>hal/http-devices.ts</code></li>
+          <li><b>Release CI</b> — typecheck, tests, secret scan, pack check on every PR</li>
+        </ul>
+      </div>
+      <div class="vb scaffold">
+        <h4><span class="dot" style="background:var(--amber)"></span>Scaffolding</h4>
+        <div class="tagline">Written, but never proven — or broken as written</div>
+        <ul>
+          <li><b>GPIO/relay path</b> — never sets pin mode; calls a <code>pigs dht22</code> command that doesn't exist in pigpio; readers are dead code</li>
+          <li><b>MQTT</b> — connects, subscribes to an empty list (zero callers of <code>addSubscription</code>), payload parser drops every real-world JSON payload</li>
+          <li><b>Serial</b> — the <code>serialport</code> package isn't in dependencies; first open throws. Your own UI calls it "a placeholder"</li>
+          <li><b>Discovery</b> — a bash ping sweep via <code>execSync</code>; auto-registers every hit as an unlabeled smart_plug</li>
+          <li><b>Autonomous decision loop</b> — right architecture, fatal defaults (see §06)</li>
+          <li><b>Verifier</b> — contains a <code>require()</code> in an ESM package that crashes once relay history exists <code>safety/verifier.ts:90</code></li>
+          <li><b>QA matrix</b> — 41 authored test cases, zero executed results</li>
+        </ul>
+      </div>
+      <div class="vb fiction">
+        <h4><span class="dot" style="background:var(--red)"></span>Fiction</h4>
+        <div class="tagline">Documented but does not exist</div>
+        <ul>
+          <li><b><code>farmpal-image.img.xz</code></b> — Quickstart step 1 points to a download page and image that no pipeline produces</li>
+          <li><b>"Tier-1 fully tested"</b> USB relay boards, Pi Camera Module 3, BME280-over-I2C — no code path touches any of them</li>
+          <li><b>License server</b> — hardware-bound keys + 14-day trials described, server nowhere in the repo; contradicts the MIT "no subscriptions" README</li>
+          <li><b><code>farmpal.io</code> support</b> — a domain with business hours that exists only in operator docs</li>
+          <li><b>CE / FCC / RoHS compliance</b> — aspirational copy in the safety doc</li>
+          <li><b>"Verifier is the only path to hardware"</b> — at least four paths bypass it <code>safety/verifier.ts:7</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout c-blue reveal">
+      <div class="ico">🧭</div>
+      <div>
+        <h5>The identity crisis is itself a risk</h5>
+        <p>The repo is three products in one checkout: <b>FFT_nano</b> (the legacy Telegram/Docker host that owns startup, chat, sessions), <b>FarmPal</b> (the Pi appliance), and <b>FF_SmartControl</b> (a third name introduced by the May 15 rebrand commit). Two conflicting onboarding flows, a changelog that only covers the legacy product, a stub SPEC.md. Every week this persists, docs, marketing, and code drift further apart. Pick one name and one story before writing another feature.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= EVIDENCE ================= -->
+<section id="evidence">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">02</span><h2>The evidence wall</h2></div>
+    <p class="sec-sub reveal">Numbers from the repo itself — the impressive ones and the indicting ones, side by side. That contrast <em>is</em> the evaluation.</p>
+
+    <div class="stats reveal">
+      <div class="stat good"><b data-count="88643">0</b><span>Lines of TypeScript</span><div class="vs">+ 18,311 LOC of tests</div></div>
+      <div class="stat good"><b data-count="404">0</b><span>Commits</span><div class="vs">in ~106 days, solo</div></div>
+      <div class="stat good"><b data-count="76">0</b><span>Test files (node --test)</span><div class="vs">CI-enforced on every PR</div></div>
+      <div class="stat bad"><b data-count="0">0</b><span>Tests touching real GPIO / serial / MQTT / camera</span><div class="vs">simulator math only</div></div>
+      <div class="stat bad"><b data-count="41">0</b><span>Authored QA cases</span><div class="vs">executed: 0 — empty Pass/Fail columns</div></div>
+      <div class="stat bad"><b data-count="26">0</b><span>k rows of fake telemetry seeded into REAL installs</span><div class="vs">60 days of "Tent A" · app.ts:710</div></div>
+    </div>
+
+    <div class="radar-flex reveal" style="margin-top:52px">
+      <div>
+        <svg width="100%" viewBox="0 0 480 360" style="max-width:560px">
+          <g stroke="#1f2a3a" fill="none">
+            <polygon points="240,30 346.1,73.9 390,180 346.1,286.1 240,330 133.9,286.1 90,180 133.9,73.9"/>
+            <polygon points="240,67.5 319.6,100.4 352.5,180 319.6,259.6 240,292.5 160.4,259.6 127.5,180 160.4,100.4"/>
+            <polygon points="240,105 293,126.9 315,180 293,233.1 240,255 187,233.1 165,180 187,126.9"/>
+            <polygon points="240,142.5 266.5,153.5 277.5,180 266.5,206.5 240,217.5 213.5,206.5 202.5,180 213.5,153.5"/>
+            <line x1="240" y1="180" x2="240" y2="30"/><line x1="240" y1="180" x2="346.1" y2="73.9"/>
+            <line x1="240" y1="180" x2="390" y2="180"/><line x1="240" y1="180" x2="346.1" y2="286.1"/>
+            <line x1="240" y1="180" x2="240" y2="330"/><line x1="240" y1="180" x2="133.9" y2="286.1"/>
+            <line x1="240" y1="180" x2="90" y2="180"/><line x1="240" y1="180" x2="133.9" y2="73.9"/>
+          </g>
+          <polygon id="radar-shape" points="240,67.5 324.9,95.1 319.6,180 303.6,243.6 240,255 197.6,222.4 208.2,180 208.2,148.1"
+            fill="rgba(52,211,153,.13)" stroke="#34d399" stroke-width="2" stroke-linejoin="round" style="opacity:0;transition:opacity 1s .4s"/>
+          <g fill="#34d399"><circle cx="240" cy="67.5" r="3.5"/><circle cx="324.9" cy="95.1" r="3.5"/><circle cx="319.6" cy="180" r="3.5"/><circle cx="303.6" cy="243.6" r="3.5"/><circle cx="240" cy="255" r="3.5"/><circle cx="197.6" cy="222.4" r="3.5"/><circle cx="208.2" cy="180" r="3.5"/><circle cx="208.2" cy="148.1" r="3.5"/></g>
+          <g font-family="ui-monospace,Menlo,monospace" font-size="12.5" fill="#9aa8bc">
+            <text x="240" y="18" text-anchor="middle">Foundation 7.5</text>
+            <text x="352" y="68" text-anchor="start">Simulation 8.0</text>
+            <text x="396" y="184" text-anchor="start">Ops UI 7.5</text>
+            <text x="352" y="300" text-anchor="start">AI architecture 6.0</text>
+            <text x="240" y="350" text-anchor="middle">Security 5.0</text>
+            <text x="128" y="300" text-anchor="end">Physical safety 4.0</text>
+            <text x="84" y="184" text-anchor="end">Hardware 3.0</text>
+            <text x="128" y="68" text-anchor="end">Product/docs 3.0</text>
+          </g>
+        </svg>
+      </div>
+      <div>
+        <div class="score-row"><div class="nm">Code foundation<small>structure, boundaries, TS discipline, tests</small></div><div class="bar"><i data-w="75%" style="background:var(--green)"></i></div><div class="sc" style="color:var(--green)">7.5</div></div>
+        <div class="score-row"><div class="nm">Simulation &amp; demo<small>digital twin, fault injection, seed data</small></div><div class="bar"><i data-w="80%" style="background:var(--green)"></i></div><div class="sc" style="color:var(--green)">8.0</div></div>
+        <div class="score-row"><div class="nm">Operator surfaces<small>HAL UI, TUI, control center</small></div><div class="bar"><i data-w="75%" style="background:var(--green)"></i></div><div class="sc" style="color:var(--green)">7.5</div></div>
+        <div class="score-row"><div class="nm">AI agent architecture<small>multi-agent pattern, tools, providers</small></div><div class="bar"><i data-w="60%" style="background:var(--cyan)"></i></div><div class="sc" style="color:var(--cyan)">6.0</div></div>
+        <div class="score-row"><div class="nm">Security<small>auth stack good; wiring betrays it</small></div><div class="bar"><i data-w="50%" style="background:var(--amber)"></i></div><div class="sc" style="color:var(--amber)">5.0</div></div>
+        <div class="score-row"><div class="nm">Physical safety<small>right bones, fatal defaults</small></div><div class="bar"><i data-w="40%" style="background:var(--orange)"></i></div><div class="sc" style="color:var(--orange)">4.0</div></div>
+        <div class="score-row"><div class="nm">Hardware integration<small>one credible path: HTTP smart plugs</small></div><div class="bar"><i data-w="30%" style="background:var(--red)"></i></div><div class="sc" style="color:var(--red)">3.0</div></div>
+        <div class="score-row"><div class="nm">Product &amp; docs readiness<small>no image, no QA runs, 3 names</small></div><div class="bar"><i data-w="30%" style="background:var(--red)"></i></div><div class="sc" style="color:var(--red)">3.0</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= TRUTHS ================= -->
+<section id="truths">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">03</span><h2>Five uncomfortable truths</h2></div>
+    <p class="sec-sub reveal">You asked for serious and direct. These are the findings that would hurt most to hear and help most to fix. Each is verified against the code, not opinion.</p>
+
+    <div class="truths reveal">
+      <div class="truth">
+        <h5>Your product currently hallucinates its own farm</h5>
+        <p><code>seedHalDemoData()</code> runs unconditionally at startup (<code>src/app.ts:710-713</code>, outside the simulator branch) and inserts <b>~26,000 rows of fictional "Tent A" telemetry, 60 days of relay history, and 150 synthetic decisions</b> into real deployments. The autonomous agent, the reflector, and every dashboard then reason over that fake data as if it were the customer's greenhouse. Until this is gated behind demo mode, the product is literally making decisions based on a farm that doesn't exist.</p>
+      </div>
+      <div class="truth">
+        <h5>Autonomy is on by default with zero rules between the LLM and your water valves</h5>
+        <p>The automation mode ladder seeds <b>AUTONOMOUS as the default</b> (<code>src/automation/modes.ts:69-74</code>), while the safety-rules and threshold tables are empty unless an operator creates rules by hand. With no rules, the policy engine returns no violations — so <b>every LLM-proposed <code>turn_on</code>/<code>turn_off</code> executes immediately</b>, and the decision loop never checks the confidence field it stores. For a system that actuates pumps, this is the single most important thing to fix.</p>
+      </div>
+      <div class="truth">
+        <h5>"Emergency stop" in chat doesn't stop anything</h5>
+        <p>The primary agent's <code>emergency_stop</code> intent (<code>src/agent/turn.ts:318-332</code>) logs a decision and <b>replies politely — it never calls <code>activateEstop()</code></b>. Meanwhile the actual E-stop machinery is the best-engineered safety code in the repo (safe-state sweep with 5s acks, watchdog, hang detection). A grower typing "emergency stop" to the agent gets reassurance while the pump keeps running. The irony writes itself; the fix is about ten lines.</p>
+      </div>
+      <div class="truth">
+        <h5>Your best hardware path is a $10 smart plug — not the GPIO stack you wrote</h5>
+        <p>The only integration I'd expect to work on a live LAN today is Tasmota/Shelly-gen1 over HTTP. The self-built GPIO path never sets pin direction, invokes a nonexistent pigpio command for DHT22, and parses the pin number from a field called <code>host</code> (defaulting to pin 0 — a reserved pin). Serial can't even load (missing dependency). Rather than fixing everything at once: embrace the plug-first reality, make Wi-Fi/HTTP devices bulletproof, and rebuild GPIO properly in Phase 4.</p>
+      </div>
+      <div class="truth">
+        <h5>The documentation promises a product that cannot be unboxed — and the writing is good enough that this is fixable</h5>
+        <p>The operator docs are genuinely well-crafted (grade-8 language, real pinouts, honest safety culture). But step one of the Quickstart requires an SD image that no pipeline builds, your own commercialization log admits <b>13 core unboxing behaviors were never validated on hardware</b> (<code>README-commercialization.md:109-126</code>), and support routes to a domain that exists only in those docs. You have a <b>documentation layer running one hardware-validation sprint ahead of reality</b>. Close the gap; don't rewrite the docs.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HARDWARE ================= -->
+<section id="hardware">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">04</span><h2>Hardware integration — subsystem by subsystem</h2></div>
+    <p class="sec-sub reveal">The audit found <b>zero TODO/FIXME markers in src/hal</b> — the code reads confidently. Confidence is not the problem; contact with physical reality is. Status legend: <span class="badge b-real">REAL</span> works on hardware today · <span class="badge b-scaf">SCAFFOLD</span> written, unproven or partially broken · <span class="badge b-broken">BROKEN</span> cannot work as written · <span class="badge b-miss">MISSING</span> claimed but absent.</p>
+
+    <div class="card reveal" style="padding:8px 22px">
+      <table>
+        <tr><th style="width:150px">Subsystem</th><th style="width:110px">Status</th><th>What the audit found</th></tr>
+        <tr><td>GPIO / relays</td><td><span class="badge b-broken">BROKEN</span></td>
+          <td>Shells out to <code>pigs</code> but never sets pin mode (<code>pigs m &lt;pin&gt; w</code> appears nowhere); <code>pigs dht22</code> is not a real pigpio command, so DHT reads always fail; <code>digitalRead</code>/<code>readDHT22</code>/<code>isAvailable</code> have zero callers; pin parsed from <code>dev.host</code> defaulting to reserved pin 0; control is fire-and-forget with no read-back, so relay state can lie.<span class="receipt"><code>hal/gpio.ts:22-57</code> · <code>hal/registry.ts:149-160</code></span></td></tr>
+        <tr><td>MQTT</td><td><span class="badge b-scaf">SCAFFOLD</span></td>
+          <td>Real mqtt.js client, clean session, QoS-1 — but <code>addSubscription()</code> has zero callers, so it subscribes to nothing. Payload parser is <code>parseFloat()</code>: every Tasmota/Shelly/ESPHome JSON payload silently fails and is dropped. No publish support, so it can never control a device. No TLS configuration.<span class="receipt"><code>hal/mqtt.ts:6-61</code> · wired at <code>app.ts:700</code></span></td></tr>
+        <tr><td>Serial / 1-Wire</td><td><span class="badge b-broken">BROKEN</span></td>
+          <td>Declared protocols: bme280, ds18b20, atlas, generic. But <code>serialport</code> is missing from package.json (only the parser package is declared) — first <code>open()</code> throws. The DS18B20 sysfs reader is genuinely plausible and never called. No Modbus/RTU anywhere. Your own web UI admits: "Real probing would use serialport library. For now, return a placeholder."<span class="receipt"><code>hal/serial.ts:36,92-104</code> · <code>hal-ui-server.ts:2599</code></span></td></tr>
+        <tr><td>HTTP smart devices</td><td><span class="badge b-real">REAL*</span></td>
+          <td>Tasmota (<code>cm?cmnd=Power</code>) and Shelly gen1 (<code>/status</code>, <code>/relay/0</code>) — the most credible paths in the HAL. Asterisks: Tasmota energy query uses a dubious command; Kasa watts regex captures a single character and can essentially never match; no device auth, no HTTPS, no Shelly gen2/RPC, no ESPHome.<span class="receipt"><code>hal/http-devices.ts:19-97</code></span></td></tr>
+        <tr><td>Camera</td><td><span class="badge b-scaf">SCAFFOLD</span></td>
+          <td>V4L2 + ffmpeg snapshot only — Linux-only, USB/UVC only. No RTSP, no streaming, no Pi CSI camera (no libcamera/raspistill anywhere) despite docs listing "Pi Camera Module 3" as Tier-1. And the captured image never reaches the LLM — the tool returns only <code>size_bytes</code>, so the "AI farmer" is legally blind.<span class="receipt"><code>hal/camera.ts:21-43</code> · <code>agent/tool-executor.ts:36-43</code></span></td></tr>
+        <tr><td>Discovery</td><td><span class="badge b-scaf">SCAFFOLD</span></td>
+          <td>A sequential bash <code>ping</code> sweep over 254 hosts via <code>execSync</code>, then curl probes for Tasmota/Shelly/Kasa. No mDNS, no ARP cache, no USB scan. Auto-registers every hit as an unlabeled <code>smart_plug</code>. Also a command-injection vector — see §07.<span class="receipt"><code>hal/discovery.ts:13-108</code></span></td></tr>
+        <tr><td>Simulator</td><td><span class="badge b-real">REAL</span></td>
+          <td>The best component in the repo: deterministic RNG, 2 zones × 8 metrics, exponential-approach physics, sensor noise/drift/dropout/stuck fault modeling, 6 scenarios (heat_wave, pump_failure…), a built-in rule-based agent that logs real decision rows — all through the same API path as real hardware. A demo runs end-to-end flawlessly. This is an asset most hardware startups never build.<span class="receipt"><code>hal/simulator.ts</code> · <code>hal/seed-data.ts</code></span></td></tr>
+        <tr><td>Telemetry / alerts</td><td><span class="badge b-real">REAL</span></td>
+          <td>Threshold rules with gt/lt/eq, cooldowns, ack flow, host-event publication, per-metric normal/hard ranges, startup repair of impossible readings. Weak spots: alert cooldown state is in-memory only (resets on restart); no retention pruning on <code>hal_sensors</code> — unbounded time-series growth on a 32GB SD card.<span class="receipt"><code>hal/alerts.ts</code> · <code>hal/alert-evaluator.ts</code> · <code>hal/telemetry-model.ts</code></span></td></tr>
+      </table>
+    </div>
+
+    <div class="callout c-red reveal">
+      <div class="ico">⚠️</div>
+      <div>
+        <h5>The demo-data contamination is a ship-blocker, not a nitpick</h5>
+        <p><code>seedHalDemoData()</code> is called <b>outside the <code>HAL_SIM_MODE</code> branch</b> (<code>src/app.ts:710-713</code>) and registers ~19 fake devices ("Tent A Temperature #1", protocols <code>mqtt</code>/<code>serial</code> that don't match real ones) plus 60 days of synthetic history on every real install. Every recommendation in this evaluation assumes this is fixed first, because while it stands, no real-world observation of the product is trustworthy — including your own QA.</p>
+      </div>
+    </div>
+
+    <div class="callout c-green reveal">
+      <div class="ico">🎯</div>
+      <div>
+        <h5>Hardware verdict: 3/10 — and the path to 7 is narrower than it looks</h5>
+        <p>You don't need to fix eight subsystems. You need <b>one golden path</b> working end-to-end on a real Pi: Tasmota plug → power measurement → decision loop → verified actuation → audit trail, plus one real temperature/humidity sensor feeding real telemetry. That single validated loop, wrapped in the simulator-as-regression-harness you already have, converts the product from "digital twin" to "controller." Everything else is breadth you add later.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= AI STACK ================= -->
+<section id="agent">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">05</span><h2>The AI stack — right shape, wrong enforcement</h2></div>
+    <p class="sec-sub reveal">As an AI-engineering architecture, this is genuinely more sophisticated than most "AI + hardware" projects: multiple agent roles, an automation-mode ladder, a policy engine, decision audit trails. The problem is that the enforcement is optional at every layer where it matters.</p>
+
+    <div class="flow reveal">
+      <svg viewBox="0 0 900 300" font-family="ui-monospace,Menlo,monospace">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#64748b"/></marker>
+          <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#34d399"/></marker>
+          <marker id="arrr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#f87171"/></marker>
+        </defs>
+        <!-- inbound -->
+        <rect x="14" y="26" width="128" height="46" rx="9" fill="#151d2b" stroke="#2a3850"/>
+        <text x="78" y="46" text-anchor="middle" fill="#e8edf4" font-size="12" font-weight="700">Messages</text>
+        <text x="78" y="62" text-anchor="middle" fill="#64748b" font-size="10">Telegram / TUI / UI</text>
+        <rect x="14" y="106" width="128" height="46" rx="9" fill="#151d2b" stroke="#2a3850"/>
+        <text x="78" y="126" text-anchor="middle" fill="#e8edf4" font-size="12" font-weight="700">Heartbeat / poll</text>
+        <text x="78" y="142" text-anchor="middle" fill="#64748b" font-size="10">HAL_AUTO_DECISIONS</text>
+        <!-- routes -->
+        <rect x="196" y="26" width="168" height="46" rx="9" fill="rgba(167,139,250,.08)" stroke="#a78bfa"/>
+        <text x="280" y="46" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700">turn.ts · runFarmPalTurn</text>
+        <text x="280" y="62" text-anchor="middle" fill="#9aa8bc" font-size="10">default message path (farm profile)</text>
+        <rect x="196" y="106" width="168" height="46" rx="9" fill="rgba(34,211,238,.07)" stroke="#22d3ee"/>
+        <text x="280" y="126" text-anchor="middle" fill="#22d3ee" font-size="12" font-weight="700">decision-loop.ts</text>
+        <text x="280" y="142" text-anchor="middle" fill="#9aa8bc" font-size="10">autonomous cycle · JSON decisions</text>
+        <rect x="196" y="186" width="168" height="46" rx="9" fill="#151d2b" stroke="#2a3850"/>
+        <text x="280" y="206" text-anchor="middle" fill="#9aa8bc" font-size="12" font-weight="700">/legacy → pi-runner</text>
+        <text x="280" y="222" text-anchor="middle" fill="#64748b" font-size="10">old agent · sandbox default: none</text>
+        <line x1="142" y1="49" x2="192" y2="49" stroke="#64748b" marker-end="url(#arr)"/>
+        <line x1="142" y1="129" x2="192" y2="129" stroke="#64748b" marker-end="url(#arr)"/>
+        <!-- LLM -->
+        <rect x="418" y="66" width="140" height="46" rx="9" fill="rgba(96,165,250,.08)" stroke="#60a5fa"/>
+        <text x="488" y="86" text-anchor="middle" fill="#60a5fa" font-size="12" font-weight="700">llm.ts</text>
+        <text x="488" y="102" text-anchor="middle" fill="#9aa8bc" font-size="10">openai·anthropic·zai·ollama·lmstudio</text>
+        <line x1="364" y1="49" x2="414" y2="76" stroke="#64748b" marker-end="url(#arr)"/>
+        <line x1="364" y1="129" x2="414" y2="106" stroke="#64748b" marker-end="url(#arr)"/>
+        <!-- verification -->
+        <rect x="612" y="26" width="150" height="46" rx="9" fill="rgba(52,211,153,.08)" stroke="#34d399"/>
+        <text x="687" y="46" text-anchor="middle" fill="#34d399" font-size="12" font-weight="700">policy-engine + verifier</text>
+        <text x="687" y="62" text-anchor="middle" fill="#9aa8bc" font-size="10">rules · estop · pre/post check</text>
+        <rect x="612" y="106" width="150" height="46" rx="9" fill="rgba(251,191,36,.07)" stroke="#fbbf24"/>
+        <text x="687" y="126" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="700">agent/verifier.ts</text>
+        <text x="687" y="142" text-anchor="middle" fill="#9aa8bc" font-size="10">LLM-grades-LLM · 0.7 gate</text>
+        <!-- hardware -->
+        <rect x="418" y="196" width="140" height="52" rx="9" fill="rgba(248,113,113,.07)" stroke="#f87171"/>
+        <text x="488" y="217" text-anchor="middle" fill="#f87171" font-size="12" font-weight="700">registry.control()</text>
+        <text x="488" y="233" text-anchor="middle" fill="#9aa8bc" font-size="10">GPIO · HTTP · tools</text>
+        <line x1="687" y1="72" x2="540" y2="194" stroke="#34d399" marker-end="url(#arrg)"/>
+        <line x1="687" y1="152" x2="552" y2="200" stroke="#fbbf24" marker-end="url(#arr)" stroke-dasharray="5 4"/>
+        <line x1="558" y1="89" x2="608" y2="60" stroke="#64748b" marker-end="url(#arr)"/>
+        <!-- bypasses -->
+        <rect x="612" y="196" width="150" height="52" rx="9" fill="rgba(248,113,113,.12)" stroke="#f87171" stroke-dasharray="6 4"/>
+        <text x="687" y="216" text-anchor="middle" fill="#f87171" font-size="11.5" font-weight="700">⚠ 4 bypass paths</text>
+        <text x="687" y="232" text-anchor="middle" fill="#9aa8bc" font-size="9.5">tool-executor · agent-verifier</text>
+        <text x="687" y="243" text-anchor="middle" fill="#9aa8bc" font-size="9.5">loopback API · swallowed failures</text>
+        <line x1="558" y1="222" x2="608" y2="222" stroke="#f87171" marker-end="url(#arrr)" stroke-dasharray="4 3"/>
+        <!-- sensors -->
+        <rect x="14" y="196" width="128" height="52" rx="9" fill="#151d2b" stroke="#2a3850"/>
+        <text x="78" y="217" text-anchor="middle" fill="#e8edf4" font-size="12" font-weight="700">SQLite state</text>
+        <text x="78" y="233" text-anchor="middle" fill="#64748b" font-size="10">devices·sensors·decisions</text>
+        <line x1="142" y1="215" x2="192" y2="160" stroke="#64748b" marker-end="url(#arr)"/>
+      </svg>
+    </div>
+
+    <div class="grid2 reveal" style="margin-top:26px">
+      <div class="card">
+        <h4><span class="dot" style="background:var(--green)"></span>What's genuinely good AI engineering</h4>
+        <ul>
+          <li><b>Decision audit trail</b> — every autonomous action logged with reasoning, confidence, and a full sensor snapshot; this is your moat, keep it</li>
+          <li><b>Post-execution re-verification with automatic rollback</b> to pre-action state — a pattern most commercial systems don't have</li>
+          <li><b>Automation-mode ladder</b> (observe → suggest → manage → autonomous) is exactly the trust model growers need</li>
+          <li><b>E-stop machinery</b> — safe-state sweep with per-relay acks, watchdog, farm-loop hang detection — the best safety code in the repo</li>
+          <li><b>Human-gated reflector</b> — improvement suggestions require explicit <code>/apply</code></li>
+          <li><b>Multi-provider LLM layer</b> incl. Ollama/LM Studio for local-first, with LLM-down → hard safety hold in autonomous mode</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4><span class="dot" style="background:var(--red)"></span>Where it fails as engineering</h4>
+        <ul>
+          <li><b>Defaults betray the architecture</b> — AUTONOMOUS + empty rule tables = the policy engine never fires; confidence stored but never checked</li>
+          <li><b>Tool calls execute before verification</b>; the mid-action check's failure path is swallowed and continues (<code>decision-loop.ts:355-357</code>) — fail-open</li>
+          <li><b>Self-verifying model</b> — the same LLM grades its own plan; adversarial robustness is zero</li>
+          <li><b>JSON by greedy regex</b> <code>/\{[\s\S]*\}/</code> with no schema validation (no zod/ajv), no retries, no structured outputs</li>
+          <li><b>No context strategy</b> — single-shot prompts, raw log lines to the LLM, no rolling state summary, no token budget</li>
+          <li><b>No eval harness</b> — you have 6 simulator fault scenarios and use none of them to measure decision quality before shipping autonomy</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout c-blue reveal">
+      <div class="ico">👁️</div>
+      <div>
+        <h5>The killer feature you haven't turned on: vision</h5>
+        <p>The camera tool captures a JPEG and throws the pixels away — the LLM receives only <code>size_bytes</code> (<code>tool-executor.ts:36-43</code>). Any modern multimodal model can see mold, pests, nutrient deficiency, wilting, and ripeness from a single frame. For growers, <b>"text me a photo when something looks wrong"</b> is worth more than any thermostat rule — and you already have the camera, the decision pipeline, and the alert plumbing to deliver it. This is the highest value-per-line-of-code feature available to you.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SAFETY ================= -->
+<section id="safety">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">06</span><h2>Physical safety — 4/10, and why it must go first</h2></div>
+    <p class="sec-sub reveal">This system actuates pumps, valves, fans, and lights — in the presence of water and mains electricity, unattended. The safety architecture is the right shape. The defaults and enforcement make it unsafe to enable today.</p>
+
+    <div class="card reveal" style="padding:8px 22px;margin-bottom:22px">
+      <table>
+        <tr><th style="width:170px">Finding</th><th style="width:96px">Severity</th><th>Detail</th></tr>
+        <tr><td>Default-autonomous with empty rule set</td><td><span class="sev s-crit">CRITICAL</span></td>
+          <td><code>hal_safety_rules</code>/<code>hal_thresholds</code> have no seeding anywhere; with zero rules <code>evaluateAction</code> returns no violations and everything executes. Fix: seed conservative defaults at provisioning and refuse AUTONOMOUS until rules exist.<span class="receipt"><code>automation/modes.ts:69-74</code> · <code>safety/policy-engine.ts:397-453</code></span></td></tr>
+        <tr><td>Chat "emergency stop" is cosmetic</td><td><span class="sev s-high">HIGH</span></td>
+          <td><code>turn.ts:318-332</code> logs and replies; never calls <code>activateEstop()</code>. The real estop (<code>safety/estop.ts</code>) is excellent — it's just not wired to the words users will actually use.</td></tr>
+        <tr><td>Verifier crashes once relay history exists</td><td><span class="sev s-high">HIGH</span></td>
+          <td><code>require('../hal/db.js')</code> inside a <code>"type":"module"</code> package — throws as soon as <code>getRecentToggles</code> has data. In the autonomous path this fails closed but kills the decision cycle; in the tool path the exception is swallowed and the action stays applied, unverified.<span class="receipt"><code>safety/verifier.ts:90</code> · <code>decision-loop.ts:355-357,429</code></span></td></tr>
+        <tr><td>Rollback skipped on null pre-action state</td><td><span class="sev s-med">MED</span></td>
+          <td>If pre-action snapshot failed, rollback is skipped silently — the "automatic rollback" guarantee has a hole.<span class="receipt"><code>decision-loop.ts:429</code></span></td></tr>
+        <tr><td>In-memory rate limits &amp; cooldowns</td><td><span class="sev s-med">MED</span></td>
+          <td>Agent actuation limits and alert cooldowns reset on every restart/crash-loop — a crashing host can exceed max-switching limits designed to protect relay hardware.<span class="receipt"><code>agent/verifier.ts:115-116</code> · <code>alert-evaluator.ts:7</code></span></td></tr>
+        <tr><td>No physical-layer story for autonomy</td><td><span class="sev s-med">MED</span></td>
+          <td>Docs mention a physical E-stop button (never validated), but the software has no concept of "operator within reach" — no presence-based autonomy restriction, no quiet-hours envelope, no max-runtime interlocks seeded by device type.</td></tr>
+      </table>
+    </div>
+
+    <div class="callout c-amber reveal">
+      <div class="ico">🛡️</div>
+      <div>
+        <h5>The safety thesis you should adopt — and can honestly market</h5>
+        <p><b>"Autonomy is earned, never default."</b> Ship with OBSERVE_ONLY as the factory mode; require (a) at least N verified manual cycles, (b) at least one rule per actuated device, and (c) an explicit unlock phrase in the UI before the ladder advances. You already built the ladder (<code>automation/modes.ts</code>) — you're just standing at the top of it by default. Flipping the default turns your biggest liability into your strongest sales story, because "an AI that earns the right to touch my valves" is exactly what a grower wants to hear.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SECURITY ================= -->
+<section id="security">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">07</span><h2>Security — 5/10: a good castle with the drawbridge mechanism unbolted</h2></div>
+    <p class="sec-sub reveal">The session stack is competently built. The wiring around it is what will burn you. Everything below is loopback-mitigated today — and every doc encourages users to set <code>HAL_UI_BIND_HOST</code> for remote access.</p>
+
+    <div class="card reveal" style="padding:8px 22px">
+      <table>
+        <tr><th style="width:290px">Finding</th><th style="width:80px">Severity</th><th>Detail</th></tr>
+        <tr><td>Command injection in the device layer</td><td><span class="sev s-high">HIGH</span></td>
+          <td><code>execSync</code> with template strings throughout: <code>ping … ${subnet}.$i</code>, <code>curl http://${host}/…</code>, <code>kasa device ${host}</code>. <code>subnet</code> is attacker-controllable from the discovery API <b>and from the LLM's own <code>discover_devices</code> tool</b>. One prompt-injection away from arbitrary code execution as the service user. Fix: <code>execFile</code> with argv arrays, validate subnet/host with CIDR/hostname regexes.<span class="receipt"><code>hal/discovery.ts:13,29,40,52</code> · <code>agent/tool-executor.ts:47-51</code></span></td></tr>
+        <tr><td>Unauthenticated provisioning takeover</td><td><span class="sev s-high">HIGH</span></td>
+          <td><code>/api/provisioning/reset</code> and <code>/api/provisioning/complete</code> sit in <code>publicPaths</code> with no "only before provisioning" guard. On any non-loopback bind: reset → overwrite <code>.env</code> with attacker's admin hash → log in. Full takeover.<span class="receipt"><code>hal-ui-server.ts:180-186,2991-3036</code></span></td></tr>
+        <tr><td>Raw session tokens in the audit DB</td><td><span class="sev s-high">HIGH</span></td>
+          <td><code>logLoginSuccess</code> stores the live cookie token verbatim in <code>security_audit.session_id</code> — anyone who can read the SQLite file (or its export API) can hijack the admin session. You hash tokens everywhere else; the audit log undoes it.<span class="receipt"><code>hal-ui-server.ts:465</code> · <code>security/security-audit.ts:120-134</code></span></td></tr>
+        <tr><td>Zero-auth relay control on the Control Center</td><td><span class="sev s-high">HIGH</span></td>
+          <td>In default localhost mode <code>isAuthorized</code> returns true unconditionally, and its control endpoint calls <code>halRegistry.control</code> directly — <b>any local process (including your own coding agent's bash tool) can actuate hardware with no auth</b>. Bearer compare is also non-timing-safe.<span class="receipt"><code>control-center-server.ts:434,890-911</code></span></td></tr>
+        <tr><td>Sandbox defaults to none; all API keys in child env &amp; argv</td><td><span class="sev s-high">HIGH</span></td>
+          <td>The legacy agent subprocess runs unsandboxed with full filesystem write and every collected API key in env; the key is also visible in <code>ps</code> via <code>--api-key</code> argv.<span class="receipt"><code>sandbox.ts:27</code> · <code>pi-runner.ts:442-504,673</code></span></td></tr>
+        <tr><td>CSRF scheme the shipped UI can't satisfy</td><td><span class="sev s-med">MED</span></td>
+          <td>CSRF cookie is HttpOnly and never returned in any response body; the front-end never sends <code>X-CSRF-Token</code>. Either every mutating UI call is failing, or deployments run with <code>HAL_UI_AUTH_BYPASS=1</code> — a one-var auth kill switch. A security control that incentivizes its own disablement is worse than none.<span class="receipt"><code>security/session.ts:430</code> · <code>hal-ui-server.ts:194-197</code></span></td></tr>
+        <tr><td>Your secret scanner can't fail</td><td><span class="sev s-med">MED</span></td>
+          <td><code>gitleaks detect … --exit-code 0</code> always exits 0, so the failure branch is unreachable — leaks print but never block the release gate.<span class="receipt"><code>scripts/secret-scan.sh:44-50</code></span></td></tr>
+        <tr><td>Spoofable rate-limit key · public sim endpoints</td><td><span class="sev s-low">LOW</span></td>
+          <td>Lockouts keyed on <code>X-Forwarded-For</code> even when not behind a proxy (lockout DoS); <code>/_sim/*</code> fault-injection endpoints are unauthenticated while the simulator runs.<span class="receipt"><code>security/auth.ts:304-311</code> · <code>hal-ui-server.ts:180-192</code></span></td></tr>
+      </table>
+    </div>
+
+    <div class="callout c-blue reveal" style="margin-top:22px">
+      <div class="ico">✅</div>
+      <div>
+        <h5>Give credit where due</h5>
+        <p>256-bit tokens stored as indexed SHA-256 hashes with <code>timingSafeEqual</code>; bcrypt cost-10 set at provisioning with no default password; login lockout + per-session API rate limits; a real security-audit table; atomic 0o640 <code>.env</code> writes; the wizard strips plaintext secrets before persisting; loopback binding everywhere by default; secrets masked before the diagnostic agent sees them. The bones are good — this is a wiring sprint, not a rebuild.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PRODUCT ================= -->
+<section id="product">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">08</span><h2>Product &amp; documentation — a facade one sprint ahead of reality</h2></div>
+    <p class="sec-sub reveal">The operator docs are the best-written thing in the repo. That's the problem: they describe, in confident grade-8 prose, a product whose first unboxing step doesn't exist.</p>
+
+    <div class="grid3 reveal">
+      <div class="card">
+        <h4><span class="dot" style="background:var(--red)"></span>The dead-on-arrival path</h4>
+        <p>Quickstart: "Download <code>farmpal-image.img.xz</code> from the FarmPal download page." No workflow builds an image. <code>dist/release/</code> has source checksums only. <b>Step one of your customer journey is a 404.</b></p>
+      </div>
+      <div class="card">
+        <h4><span class="dot" style="background:var(--red)"></span>Self-admitted gaps</h4>
+        <p><code>README-commercialization.md</code> lists <b>13 hardware-only validations never performed</b>: SD flash/boot, WiFi provisioning, mDNS, E-stop button, real GPIO/serial control, MQTT discovery, factory reset, license server comms, updates. The QA matrix has 41 rows and zero results.</p>
+      </div>
+      <div class="card">
+        <h4><span class="dot" style="background:var(--amber)"></span>Contradictions to resolve</h4>
+        <p>MIT "no subscriptions" README vs. hardware-bound license keys + license server + trials. Zero pricing anywhere. <code>farmpal.io</code> support hours vs. a GitHub-only SUPPORT.md. CE/FCC/RoHS claims. A Chinese-generation artifact (<code>外壳</code>) sitting in the most safety-critical doc.</p>
+      </div>
+    </div>
+
+    <div class="callout c-amber reveal" style="margin-top:22px">
+      <div class="ico">🤔</div>
+      <div>
+        <h5>The question your own docs never answer: can a Pi 5 run the brain?</h5>
+        <p>The wizard recommends "Ollama (Local)" for first setup. No document addresses model size, RAM budget, tokens/sec, or decision latency for an LLM on the same Pi that's also running SQLite, the web server, and the sim. This is <b>the single biggest feasibility question for an "autonomous AI appliance"</b> and it is unaddressed. Pragmatic answer: local small model for classification/safety, cloud model for reasoning, with an explicit offline-degradation ladder. Decide this before promising it in a wizard.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MARKET ================= -->
+<section id="market">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">09</span><h2>The real potential — where this can win</h2></div>
+    <p class="sec-sub reveal">Honest market read: the hardware-controller market is crowded; the <b>AI-native operations layer</b> for controlled-environment agriculture is empty. Your differentiation isn't another relay board — it's the audit trail, the local-first privacy stance, and natural-language operations.</p>
+
+    <div class="card reveal" style="padding:8px 22px">
+      <table class="comp">
+        <tr><th>Player</th><th>What they are</th><th>Your edge against them</th></tr>
+        <tr><td>AC Infinity / Trolmaster / Growlink</td><td>Commercial grow controllers; proprietary hardware, closed logic, subscription features</td><td>They can't explain themselves. Your decision log — "I ran the pump 4 min because VWC dropped and the forecast is dry" with a sensor snapshot — is a category they don't operate in</td></tr>
+        <tr><td>Pulse / monitoring-only kits</td><td>Sensors + dashboards, no actuation</td><td>You close the loop. Monitoring alone is a commodity; monitored <b>control</b> with reasoning is not</td></tr>
+        <tr><td>Home Assistant</td><td>Free, huge, infinitely flexible, enthusiast-grade</td><td>HA has no brain and no grow domain model. Don't compete on integrations — compete on "it decides, explains, and takes responsibility"</td></tr>
+        <tr><td>Cloud ag-tech SaaS</td><td>Farm management platforms; per-acre pricing, cloud-required</td><td>Local-first + no subscription + data never leaves the farm is a real stance for privacy-minded and off-grid growers — keep it, and make the license story consistent with it</td></tr>
+      </table>
+    </div>
+
+    <div class="pos reveal">
+      <div class="card">
+        <h4><span class="dot" style="background:var(--green)"></span>The wedge: trust ladder, not autonomy</h4>
+        <p>Don't lead with "AI runs your farm." Lead with: <b>monitoring + plain-language explanations + one-tap recommendations</b> ("Humidity trending to mildew range in Tent A — run the exhaust fan for 20 min?"). Every accepted recommendation is a data point toward earned autonomy. The automation-mode ladder you already built is the product strategy; you're just marketing the wrong end of it.</p>
+      </div>
+      <div class="card">
+        <h4><span class="dot" style="background:var(--cyan)"></span>Beachhead customers</h4>
+        <p>1) <b>Prosumer indoor growers</b> (tents/small rooms) — highest willingness to pay, tolerant of beta friction, community-driven. 2) <b>Schools &amp; research greenhouses</b> — the decision-audit trail is literally a teaching artifact. 3) <b>Off-grid/homestead</b> — local-first is a requirement, not a preference. Avoid commercial-licensed cultivation early: compliance liability out of proportion to a solo operation.</p>
+      </div>
+      <div class="card">
+        <h4><span class="dot" style="background:var(--blue)"></span>The honest ceiling &amp; upside</h4>
+        <p><b>Ceiling if nothing changes:</b> an impressive demo and open-source curiosity; hardware support treadmill solo. <b>Upside if Phase 0–3 land:</b> the first credible "LLM grow brain with interlocks and receipts" — a defensible niche of maybe 10k–50k prosumer installations at $150–400 hardware + optional $5–10/mo AI tier, and a genuine open-source community moat around the audit/verifier patterns.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ROADMAP ================= -->
+<section id="roadmap">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">10</span><h2>The roadmap — six phases, ordered by survival</h2></div>
+    <p class="sec-sub reveal">Sequencing is deliberate: truth before safety, safety before hardware, hardware before product, product before breadth. Each phase has an exit criterion — don't advance without it.</p>
+
+    <div class="phase p0 reveal">
+      <div class="ph-meta"><span class="ph-id">Phase 0</span><div class="ph-name">Truth pass</div><span class="ph-time">1–2 weeks · 12 P0 fixes</span></div>
+      <div class="ph-body">
+        <p>Make the system honest with itself. Every item is hours, not weeks. Nothing else in this document is trustworthy until these land.</p>
+        <ul>
+          <li>Gate <code>seedHalDemoData()</code> behind demo/sim mode</li>
+          <li>Factory default automation mode → <code>observe_only</code></li>
+          <li>Wire chat <code>emergency_stop</code> → <code>activateEstop()</code></li>
+          <li>Fix <code>require()</code>-in-ESM in <code>safety/verifier.ts:90</code></li>
+          <li>Auth-guard <code>/api/provisioning/*</code></li>
+          <li>Stop persisting raw session tokens in audit DB</li>
+          <li>Fix CSRF token delivery; delete <code>HAL_UI_AUTH_BYPASS</code></li>
+          <li><code>execSync</code> → <code>execFile</code> across <code>src/hal</code></li>
+          <li>Fix gitleaks <code>--exit-code 0</code> in secret-scan.sh</li>
+          <li>Fix Kasa watts regex + Tasmota energy command</li>
+          <li>Require auth for Control Center control endpoints</li>
+          <li>Drop <code>--api-key</code> from child argv</li>
+        </ul>
+        <div class="exit"><b>EXIT:</b> demo data impossible in real mode · no unauthenticated hardware path · secret-scan can fail CI</div>
+      </div>
+    </div>
+
+    <div class="phase p1 reveal">
+      <div class="ph-meta"><span class="ph-id">Phase 1</span><div class="ph-name">The golden hardware path</div><span class="ph-time">4–6 weeks · one kit, end-to-end, on a real Pi</span></div>
+      <div class="ph-body">
+        <p>Pick the kit that's closest to working: <b>Pi 5 + Tasmota smart plug + Shelly plug + USB webcam + one real temp/humidity sensor (DS18B20 via 1-Wire, which your sysfs reader almost supports)</b>. Make exactly this loop excellent: discover → register → read real telemetry → LLM decision → verified actuation → audit entry → dashboard. One loop, real copper, no sim.</p>
+        <ul>
+          <li>MQTT: subscribe to real topics, parse JSON payloads, add publish</li>
+          <li>Fix or remove the serial stack (declare the dep, or ship sysfs-only)</li>
+          <li>Read-back confirmation after every control write (state may never lie)</li>
+          <li>Camera frame → multimodal LLM ("describe this plant")</li>
+          <li>Retention pruning for <code>hal_sensors</code> (SD cards die from unbounded writes)</li>
+          <li>Build the SD-image pipeline the Quickstart already promises</li>
+          <li>On-Pi integration test rig; execute all 41 QA matrix cases for real</li>
+          <li>Simulator scenarios become CI regression tests (sim-as-harness)</li>
+        </ul>
+        <div class="exit"><b>EXIT:</b> a 7-day unattended soak test on real hardware with zero false state, and a flashable image that boots to the wizard</div>
+      </div>
+    </div>
+
+    <div class="phase p2 reveal">
+      <div class="ph-meta"><span class="ph-id">Phase 2</span><div class="ph-name">Safety spine</div><span class="ph-time">3–4 weeks · one chokepoint, earned autonomy</span></div>
+      <div class="ph-body">
+        <p>Route every hardware write in the codebase through one verified chokepoint that fails closed. Not "the docs say the verifier is the only path" — actually make it the only path.</p>
+        <ul>
+          <li>Single <code>verifiedControl()</code> API; delete direct <code>registry.control</code> call sites</li>
+          <li>Seed conservative safety rules per device type at provisioning</li>
+          <li>Confidence gate enforced in the decision loop, not just stored</li>
+          <li>Verify-before-execute for tool calls (not mid-action post-hoc)</li>
+          <li>Persist rate limits + cooldowns (survive restart/crash-loops)</li>
+          <li>Policy-engine verdicts on the agent-verifier path (close the bypass)</li>
+          <li>Structured LLM outputs: schema validation (zod) + repair retry</li>
+          <li>Autonomy unlock ritual: N verified cycles + explicit UI consent</li>
+        </ul>
+        <div class="exit"><b>EXIT:</b> a fault-injection test suite proving garbage LLM output, missing rules, and crashed verifier all fail SAFE, every time</div>
+      </div>
+    </div>
+
+    <div class="phase p3 reveal">
+      <div class="ph-meta"><span class="ph-id">Phase 3</span><div class="ph-name">Product truth</div><span class="ph-time">3–4 weeks · pick the story, find the growers</span></div>
+      <div class="ph-body">
+        <p>Resolve the identity and business-model contradictions, then put real hardware in real hands. Ten growers with real tents will teach you more than any further feature work.</p>
+        <ul>
+          <li>One name, everywhere (FarmPal / FF_SmartControl / FFT_nano → pick)</li>
+          <li>Reconcile MIT vs. license-key story; write the actual pricing page</li>
+          <li>Replace farmpal.io with real channels; strip CE/FCC claims until real</li>
+          <li>Offline degradation ladder: local model = safety, cloud = reasoning</li>
+          <li>Beta cohort: 5–10 growers, weekly decision-quality reviews</li>
+          <li>Decision-quality evals from simulator scenarios as release gate</li>
+          <li>FarmPal entries in CHANGELOG; fill or delete SPEC.md</li>
+          <li>Update-over-the-air with rollback (image pipeline prerequisite)</li>
+        </ul>
+        <div class="exit"><b>EXIT:</b> 10 beta farms running ≥30 days with retained telemetry and a decision-acceptance rate you can quote</div>
+      </div>
+    </div>
+
+    <div class="phase p4 reveal">
+      <div class="ph-meta"><span class="ph-id">Phase 4</span><span></span><div class="ph-name">Hardware breadth — done right this time</div><span class="ph-time">ongoing from month ~4</span></div>
+      <div class="ph-body">
+        <p>Expand only after the golden path soaks. Each integration gets the same bar: read-back confirmation, safe-state on boot, soak test, docs updated to match reality.</p>
+        <ul>
+          <li>GPIO rebuilt on <code>gpiozero/rgpio</code> or proper pigpio with pin-mode setup</li>
+          <li>I²C BME280 via kernel drivers (<code>/sys</code> or <code>iio</code>), not bit-banged regex</li>
+          <li>Shelly gen2/RPC + ESPHome native API (huge enthusiast overlap)</li>
+          <li>Modbus/RTU via <code>modbus-serial</code> — the commercial-greenhouse wedge</li>
+          <li>mDNS discovery (replace the bash ping sweep); USB VID/PID scan</li>
+          <li>RTSP + Pi CSI camera (libcamera) with frame-on-demand to LLM</li>
+        </ul>
+        <div class="exit"><b>EXIT:</b> the supported-devices doc lists only devices with a passing soak test — and stays true</div>
+      </div>
+    </div>
+
+    <div class="phase p5 reveal">
+      <div class="ph-meta"><span class="ph-id">Phase 5</span><div class="ph-name">Intelligence that compounds</div><span class="ph-time">ongoing · the moat</span></div>
+      <div class="ph-body">
+        <p>Once real data accumulates, the AI story graduates from rules-with-explanations to genuine agronomic insight — this is where the audit trail becomes a research asset.</p>
+        <ul>
+          <li>Real trend reflection (fix the single-reading "trends" in reflector.ts)</li>
+          <li>Closed-loop tuning: correlate decisions → outcomes → suggest setpoint changes</li>
+          <li>Vision-based growth/mold/pest tracking as a first-class metric</li>
+          <li>Fleet learning (opt-in, anonymized): what works across farms</li>
+          <li>Natural-language ops: "why did the fan run last night?" over the audit log</li>
+        </ul>
+        <div class="exit"><b>EXIT:</b> a grower renews/keeps the box because the advice is better than their own judgment — the only retention metric that matters</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FIXES ================= -->
+<section id="fixes">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">11</span><h2>The priority fix list</h2></div>
+    <p class="sec-sub reveal">Every item, in one place, ordered. P0 = this week. P1 = this month. P2 = when the foundation holds. Each is small; the compounding is the point.</p>
+
+    <div class="card reveal" style="padding:14px 22px">
+      <div class="fix"><div class="prio fx-p0">P0</div><p><b>Gate demo seeding behind sim mode.</b> <code>app.ts:710</code> — fake telemetry in real installs poisons every downstream judgment.</p><div class="area">HONESTY</div></div>
+      <div class="fix"><div class="prio fx-p0">P0</div><p><b>Default automation mode to <code>observe_only</code></b>; refuse AUTONOMOUS until rules exist. <code>automation/modes.ts:69</code></p><div class="area">SAFETY</div></div>
+      <div class="fix"><div class="prio fx-p0">P0</div><p><b>Chat emergency stop trips the real estop.</b> <code>turn.ts:318</code> → <code>activateEstop()</code></p><div class="area">SAFETY</div></div>
+      <div class="fix"><div class="prio fx-p0">P0</div><p><b>Fix <code>require()</code>-in-ESM verifier crash.</b> <code>safety/verifier.ts:90</code></p><div class="area">SAFETY</div></div>
+      <div class="fix"><div class="prio fx-p0">P0</div><p><b>Replace all HAL <code>execSync</code> templates with <code>execFile</code> + validation</b> — closes the LLM-reachable command injection. <code>hal/discovery.ts</code>, <code>http-devices.ts</code>, <code>gpio.ts</code></p><div class="area">SECURITY</div></div>
+      <div class="fix"><div class="prio fx-p0">P0</div><p><b>Auth-guard provisioning endpoints</b> (unprovisioned-only). <code>hal-ui-server.ts:2991</code></p><div class="area">SECURITY</div></div>
+      <div class="fix"><div class="prio fx-p0">P0</div><p><b>Stop logging raw session tokens</b>; fix CSRF delivery so the bypass env var can be deleted.</p><div class="area">SECURITY</div></div>
+      <div class="fix"><div class="prio fx-p0">P0</div><p><b>Fix the secret scanner</b> (<code>--exit-code 0</code>) and the broken Kasa/Tasmota command quirks.</p><div class="area">HYGIENE</div></div>
+      <div class="fix"><div class="prio fx-p1">P1</div><p><b>MQTT that actually subscribes, parses JSON, and publishes</b> — unlocks the entire Tasmota/ESPHome ecosystem in one file. <code>hal/mqtt.ts</code></p><div class="area">HARDWARE</div></div>
+      <div class="fix"><div class="prio fx-p1">P1</div><p><b>Read-back confirmation after every control write</b> — device state must never be assumed. <code>registry.ts:153</code></p><div class="area">HARDWARE</div></div>
+      <div class="fix"><div class="prio fx-p1">P1</div><p><b>Camera frames into a multimodal LLM</b> — the cheapest wow-feature in the roadmap.</p><div class="area">AI</div></div>
+      <div class="fix"><div class="prio fx-p1">P1</div><p><b>Single verified chokepoint for all hardware writes</b>; delete the four bypass paths.</p><div class="area">SAFETY</div></div>
+      <div class="fix"><div class="prio fx-p1">P1</div><p><b>SD-image build pipeline + on-Pi soak test + execute the 41 QA cases.</b></p><div class="area">PRODUCT</div></div>
+      <div class="fix"><div class="prio fx-p1">P1</div><p><b><code>hal_sensors</code> retention pruning</b> before customer SD cards fill up and die.</p><div class="area">RELIABILITY</div></div>
+      <div class="fix"><div class="prio fx-p1">P1</div><p><b>Structured LLM outputs</b> (schema validation + retry) replacing greedy-regex JSON everywhere.</p><div class="area">AI</div></div>
+      <div class="fix"><div class="prio fx-p1">P1</div><p><b>Sandbox the legacy agent by default</b>; remove keys from child argv. <code>sandbox.ts:27</code>, <code>pi-runner.ts:673</code></p><div class="area">SECURITY</div></div>
+      <div class="fix"><div class="prio fx-p2">P2</div><p><b>One name, one story, one onboarding flow</b>; kill the FFT_nano/FF_SmartControl/FarmPal trichotomy in user-facing surfaces.</p><div class="area">PRODUCT</div></div>
+      <div class="fix"><div class="prio fx-p2">P2</div><p><b>Rebuild GPIO properly</b> (pin-mode setup, real DHT driver or drop it, no pin-from-host parsing).</p><div class="area">HARDWARE</div></div>
+      <div class="fix"><div class="prio fx-p2">P2</div><p><b>Real trend analytics for the reflector</b> (rolling aggregates, not single latest readings). <code>reflector.ts:80-113</code></p><div class="area">AI</div></div>
+      <div class="fix"><div class="prio fx-p2">P2</div><p><b>mDNS discovery, ESPHome native, Modbus RTU, Shelly gen2</b> — breadth after depth.</p><div class="area">HARDWARE</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FINAL ================= -->
+<section id="final">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">12</span><h2>Final verdict</h2></div>
+    <p class="sec-sub reveal">You asked what we're really looking at. Here it is, as plainly as I can say it.</p>
+
+    <div class="final-grade reveal">
+      <div class="fg">
+        <div class="big" style="color:var(--green)">7<span style="font-size:26px;color:var(--txt3)">/10</span></div>
+        <div class="cap">The engineering foundation</div>
+        <div class="note">Real architecture, real tests, real persistence, a world-class simulator, honest audit trails. Better than most funded hardware startups' first year.</div>
+      </div>
+      <div class="fg">
+        <div class="big" style="color:var(--red)">3<span style="font-size:26px;color:var(--txt3)">/10</span></div>
+        <div class="cap">The shippable product</div>
+        <div class="note">No image, no validated hardware loop, unsafe autonomy defaults, docs describing an unboxing that can't happen. It cannot go in a customer's tent yet.</div>
+      </div>
+    </div>
+
+    <div class="truths reveal" style="margin-top:10px">
+      <div class="truth">
+        <h5>What this is</h5>
+        <p>A <b>serious, unusually well-structured attempt</b> at the thing nobody has shipped yet: an AI grow brain that explains itself, earns trust gradually, and keeps receipts. The simulator-first discipline and the decision-audit design are genuinely ahead of the market. This is not vaporware — it's <b>90,000 lines of real software with one missing layer</b>, and you know exactly which one.</p>
+      </div>
+      <div class="truth">
+        <h5>What it is not</h5>
+        <p>It is not, today, a hardware product. The GPIO stack has never successfully toggled a verified real relay, MQTT has never subscribed to a real topic, serial cannot load, the image doesn't exist, and the agent currently reasons over seeded fiction in real deployments. The gap between the docs and the copper is <b>the entire remaining product</b>.</p>
+      </div>
+      <div class="truth">
+        <h5>What to do Monday morning</h5>
+        <p>Phase 0 — all twelve fixes, in order, this week. They total roughly <b>three to five engineering days</b> and they convert the project from "dangerous if enabled" to "safe to test on real hardware." Then start Phase 1's golden path with one plug, one sensor, and one webcam, and don't write another feature until that loop has run unattended for seven days on a real Pi.</p>
+      </div>
+      <div class="truth">
+        <h5>Why it's worth it</h5>
+        <p>Because the thesis is right and the timing is right: local-first AI, explainable autonomy, and no subscription is exactly where this category is heading — and nobody owns "the grow controller with receipts." The foundation you built in 106 days is the hard part. <b>The hardware validation sprint is the part everyone else finds boring. That's your moat: be the one who did the boring part.</b></p>
+      </div>
+    </div>
+
+    <div class="callout c-green reveal" style="margin-top:34px">
+      <div class="ico">📌</div>
+      <div>
+        <h5>One-sentence summary</h5>
+        <p><b>FarmPal is a first-class digital twin and management plane in search of its first honest volt — spend two weeks on truth, six weeks on one golden hardware loop, and this goes from the best simulator in the category to the first real AI-native grow controller in it.</b></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p><b>Methodology:</b> static audit of the working tree at commit 6a5b43bd (2026-09-12): src/hal, src/agent, src/safety, src/security, src/web servers, agent tooling, docs/, scripts/, CI workflows, plus repository statistics. Line references are accurate as of this commit. Scores are engineering judgment from code and documentation evidence only — no hardware bench testing was performed; hardware ratings reflect code-path analysis and the project's own validation log (README-commercialization.md). This file is a local working artifact and is not tracked by git.</p>
+  </div>
+</footer>
+
+<script>
+  // progress bar
+  const prog = document.getElementById('progress');
+  addEventListener('scroll', () => {
+    const h = document.documentElement;
+    prog.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  }, {passive:true});
+
+  // reveal on scroll
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('on');
+      io.unobserve(e.target);
+      // score bars
+      e.target.querySelectorAll('.bar i[data-w]').forEach(b => b.style.width = b.dataset.w);
+      // radar
+      const r = e.target.querySelector('#radar-shape'); if (r) r.style.opacity = 1;
+    }
+  }), {threshold:.12});
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  // count-up
+  const cio = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    cio.unobserve(e.target);
+    const el = e.target, end = +el.dataset.count, dur = 1200, t0 = performance.now();
+    const step = t => {
+      const p = Math.min((t - t0) / dur, 1), v = Math.round(end * (1 - Math.pow(1 - p, 3)));
+      el.textContent = v.toLocaleString();
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }), {threshold:.5});
+  document.querySelectorAll('[data-count]').forEach(el => cio.observe(el));
+
+  // hero gauge
+  const gio = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) {
+      document.getElementById('gauge-arc').style.strokeDashoffset = 465 - (465 * 0.45);
+      gio.disconnect();
+    }
+  }), {threshold:.4});
+  gio.observe(document.querySelector('.overall'));
+</script>
+</body>
+</html>

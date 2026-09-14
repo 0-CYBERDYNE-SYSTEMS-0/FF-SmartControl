@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FarmPal / FF_SmartControl — Architecture Map</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; flex: 1; overflow: hidden; }
+
+  #sidebar {
+    width: 220px; min-width: 220px; background: #161b22; border-right: 1px solid #30363d;
+    display: flex; flex-direction: column; overflow-y: auto; padding: 12px;
+    font-size: 12px;
+  }
+  #sidebar h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #7d8590; margin: 12px 0 6px; }
+  #sidebar h3:first-child { margin-top: 0; }
+
+  .preset-btn {
+    display: block; width: 100%; padding: 6px 10px; margin-bottom: 4px;
+    background: #21262d; border: 1px solid #30363d; border-radius: 6px;
+    color: #e6edf3; cursor: pointer; text-align: left; font-size: 12px;
+    transition: background .15s;
+  }
+  .preset-btn:hover { background: #2d333b; }
+  .preset-btn.active { background: #1f6feb33; border-color: #1f6feb; color: #58a6ff; }
+
+  .layer-toggle { display: flex; align-items: center; gap: 7px; padding: 4px 0; cursor: pointer; }
+  .layer-toggle input { cursor: pointer; accent-color: #58a6ff; }
+  .layer-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  .conn-toggle { display: flex; align-items: center; gap: 7px; padding: 3px 0; cursor: pointer; }
+
+  #comments-list { flex: 1; overflow-y: auto; }
+  .comment-item {
+    background: #21262d; border: 1px solid #30363d; border-radius: 6px;
+    padding: 7px 8px; margin-bottom: 6px; font-size: 11px;
+  }
+  .comment-item .clabel { font-weight: 600; color: #58a6ff; margin-bottom: 3px; display: flex; justify-content: space-between; align-items: center; }
+  .comment-item .ctext { color: #8b949e; line-height: 1.4; }
+  .comment-del { background: none; border: none; color: #6e7681; cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+  .comment-del:hover { color: #f85149; }
+
+  #canvas-wrap { flex: 1; position: relative; overflow: hidden; background: #0d1117; }
+  #main-svg { width: 100%; height: 100%; cursor: grab; }
+  #main-svg:active { cursor: grabbing; }
+
+  .zoom-controls { position: absolute; bottom: 12px; right: 12px; display: flex; gap: 4px; }
+  .zoom-btn {
+    width: 28px; height: 28px; background: #21262d; border: 1px solid #30363d;
+    border-radius: 6px; color: #e6edf3; cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .zoom-btn:hover { background: #2d333b; }
+
+  #prompt-bar {
+    background: #161b22; border-top: 1px solid #30363d;
+    padding: 10px 14px; display: flex; align-items: flex-start; gap: 10px;
+    min-height: 64px; max-height: 120px;
+  }
+  #prompt-text {
+    flex: 1; font-size: 12px; color: #8b949e; line-height: 1.5;
+    font-family: 'SF Mono', 'Fira Code', monospace; overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  #copy-btn {
+    background: #21262d; border: 1px solid #30363d; border-radius: 6px;
+    color: #e6edf3; padding: 5px 12px; font-size: 12px; cursor: pointer;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  #copy-btn:hover { background: #2d333b; }
+  #copy-btn.copied { color: #3fb950; border-color: #3fb950; }
+
+  #modal-overlay {
+    display: none; position: fixed; inset: 0; background: #000a; z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  #modal-overlay.open { display: flex; }
+  #modal {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 20px; width: 380px; display: flex; flex-direction: column; gap: 10px;
+  }
+  #modal h4 { font-size: 14px; }
+  #modal .mpath { font-size: 11px; color: #7d8590; font-family: monospace; }
+  #modal textarea {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    color: #e6edf3; padding: 8px; font-size: 12px; resize: vertical;
+    min-height: 80px; font-family: inherit;
+  }
+  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal-btns button { padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  #modal-save { background: #1f6feb; border: none; color: #fff; }
+  #modal-save:hover { background: #388bfd; }
+  #modal-cancel { background: #21262d; border: 1px solid #30363d; color: #e6edf3; }
+  #modal-cancel:hover { background: #2d333b; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <div id="sidebar">
+    <h3>View Preset</h3>
+    <button class="preset-btn active" onclick="applyPreset('full')">Full System</button>
+    <button class="preset-btn" onclick="applyPreset('frontend')">Frontend Only</button>
+    <button class="preset-btn" onclick="applyPreset('agent')">Agent Pipeline</button>
+    <button class="preset-btn" onclick="applyPreset('dataflow')">Data Flow</button>
+    <button class="preset-btn" onclick="applyPreset('hardware')">HAL + Devices</button>
+
+    <h3>Layers</h3>
+    <label class="layer-toggle"><input type="checkbox" id="l-external" checked onchange="toggleLayer('external')"><span class="layer-dot" style="background:#6e7681"></span>External / Cloud</label>
+    <label class="layer-toggle"><input type="checkbox" id="l-frontend" checked onchange="toggleLayer('frontend')"><span class="layer-dot" style="background:#1f6feb"></span>Frontend UIs</label>
+    <label class="layer-toggle"><input type="checkbox" id="l-host" checked onchange="toggleLayer('host')"><span class="layer-dot" style="background:#d29922"></span>Host / Backend</label>
+    <label class="layer-toggle"><input type="checkbox" id="l-agent" checked onchange="toggleLayer('agent')"><span class="layer-dot" style="background:#3fb950"></span>Agent Pipeline</label>
+    <label class="layer-toggle"><input type="checkbox" id="l-safety" checked onchange="toggleLayer('safety')"><span class="layer-dot" style="background:#f85149"></span>Safety Layer</label>
+    <label class="layer-toggle"><input type="checkbox" id="l-hal" checked onchange="toggleLayer('hal')"><span class="layer-dot" style="background:#a371f7"></span>HAL Registry</label>
+    <label class="layer-toggle"><input type="checkbox" id="l-device" checked onchange="toggleLayer('device')"><span class="layer-dot" style="background:#f0883e"></span>Devices / HW</label>
+    <label class="layer-toggle"><input type="checkbox" id="l-data" checked onchange="toggleLayer('data')"><span class="layer-dot" style="background:#ec6547"></span>Data / SQLite</label>
+
+    <h3>Connection Types</h3>
+    <label class="conn-toggle"><input type="checkbox" id="c-data" checked onchange="render()"><span style="display:inline-block;width:18px;height:2px;background:#3b82f6;vertical-align:middle;margin-right:6px"></span>Data / API</label>
+    <label class="conn-toggle"><input type="checkbox" id="c-event" checked onchange="render()"><span style="display:inline-block;width:18px;height:2px;background:repeating-linear-gradient(90deg,#f0883e 0,#f0883e 4px,transparent 4px,transparent 8px);vertical-align:middle;margin-right:6px"></span>Events / Async</label>
+    <label class="conn-toggle"><input type="checkbox" id="c-safety" checked onchange="render()"><span style="display:inline-block;width:18px;height:2px;background:#f85149;vertical-align:middle;margin-right:6px"></span>Safety Gate</label>
+    <label class="conn-toggle"><input type="checkbox" id="c-llm" checked onchange="render()"><span style="display:inline-block;width:18px;height:2px;background:repeating-linear-gradient(90deg,#3fb950 0,#3fb950 6px,transparent 6px,transparent 10px);vertical-align:middle;margin-right:6px"></span>LLM Call</label>
+    <label class="conn-toggle"><input type="checkbox" id="c-hw" checked onchange="render()"><span style="display:inline-block;width:18px;height:2px;background:#a371f7;vertical-align:middle;margin-right:6px"></span>Hardware I/O</label>
+
+    <h3>Notes (<span id="comment-count">0</span>)</h3>
+    <div id="comments-list"></div>
+  </div>
+
+  <div id="canvas-wrap">
+    <svg id="main-svg" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr-blue"   markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#3b82f6"/></marker>
+        <marker id="arr-orange" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#f0883e"/></marker>
+        <marker id="arr-red"    markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#f85149"/></marker>
+        <marker id="arr-green"  markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#3fb950"/></marker>
+        <marker id="arr-purple" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#a371f7"/></marker>
+      </defs>
+      <g id="diagram-root"></g>
+    </svg>
+    <div class="zoom-controls">
+      <button class="zoom-btn" onclick="zoom(1.2)">+</button>
+      <button class="zoom-btn" onclick="zoom(0.8)">−</button>
+      <button class="zoom-btn" onclick="resetZoom()" title="Reset view">⌂</button>
+    </div>
+  </div>
+</div>
+
+<div id="prompt-bar">
+  <div id="prompt-text">Click any node to add a note. Use layer toggles or presets to focus on a subsystem.</div>
+  <button id="copy-btn" onclick="copyPrompt()">Copy Prompt</button>
+</div>
+
+<div id="modal-overlay">
+  <div id="modal">
+    <h4 id="modal-title"></h4>
+    <div class="mpath" id="modal-path"></div>
+    <textarea id="modal-input" placeholder="Add a note or question about this component..."></textarea>
+    <div class="modal-btns">
+      <button id="modal-cancel" onclick="closeModal()">Cancel</button>
+      <button id="modal-save" onclick="saveComment()">Save Note</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// DATA
+// ─────────────────────────────────────────────────────────────
+const LAYER_COLORS = {
+  external: { fill:'#0d0f12', stroke:'#6e7681' },
+  frontend: { fill:'#0d1a30', stroke:'#1f6feb' },
+  host:     { fill:'#1c1500', stroke:'#d29922' },
+  agent:    { fill:'#081408', stroke:'#3fb950' },
+  safety:   { fill:'#1a0808', stroke:'#f85149' },
+  hal:      { fill:'#100818', stroke:'#a371f7' },
+  device:   { fill:'#180e02', stroke:'#f0883e' },
+  data:     { fill:'#180a06', stroke:'#ec6547' },
+};
+
+const NODES = [
+  // EXTERNAL  y≈20
+  { id:'telegram',     label:'Telegram Bot',         sub:'telegraf · polling',           x:100, y:22, w:140, h:40, layer:'external' },
+  { id:'whatsapp',     label:'WhatsApp',             sub:'@whiskeysockets/baileys',       x:260, y:22, w:140, h:40, layer:'external' },
+  { id:'anthropic',    label:'Anthropic API',         sub:'claude-sonnet-4.x',            x:760, y:22, w:140, h:40, layer:'external' },
+  { id:'licenseapi',   label:'License API',           sub:'src/license/client.ts',        x:920, y:22, w:140, h:40, layer:'external' },
+  { id:'homeassist',   label:'Home Assistant',        sub:'src/home-assistant.ts',        x:1080,y:22, w:140, h:40, layer:'external' },
+
+  // FRONTEND  y≈90
+  { id:'halui',        label:'HAL UI',               sub:'src/web/hal-ui/ — :3392',      x:50,  y:90, w:155, h:44, layer:'frontend' },
+  { id:'controlctr',   label:'Control Center',        sub:'web/control-center/ — :3393',  x:225, y:90, w:155, h:44, layer:'frontend' },
+  { id:'tui',          label:'TUI Client',            sub:'src/tui/client.ts — :3390',    x:400, y:90, w:155, h:44, layer:'frontend' },
+
+  // HOST  y≈165
+  { id:'app',          label:'app.ts',               sub:'startup · shutdown · HAL init', x:50,  y:165,w:140, h:44, layer:'host' },
+  { id:'msgdispatch',  label:'message-dispatch',      sub:'session turns · queue',        x:205, y:165,w:145, h:44, layer:'host' },
+  { id:'haluiserver',  label:'HAL UI Server',         sub:'src/web/hal-ui-server.ts',     x:365, y:165,w:145, h:44, layer:'host' },
+  { id:'tgcmds',       label:'telegram-commands',     sub:'panels · callback queries',    x:525, y:165,w:145, h:44, layer:'host' },
+  { id:'cronservice',  label:'Cron Service',          sub:'src/cron/service.ts',          x:685, y:165,w:140, h:44, layer:'host' },
+  { id:'farmstate',    label:'farm-state-collector',  sub:'src/farm-state-collector.ts',  x:840, y:165,w:160, h:44, layer:'host' },
+  { id:'pirunner',     label:'pi-runner',             sub:'agent subprocess spawn',       x:1015,y:165,w:135, h:44, layer:'host' },
+
+  // AGENT  y≈250–350
+  { id:'automodes',    label:'Automation Modes',      sub:'OBSERVE/SUGGEST/ASSISTED/AUTO',x:50,  y:250,w:155, h:44, layer:'agent' },
+  { id:'decisionloop', label:'Decision Loop',         sub:'src/agent/decision-loop.ts',   x:225, y:250,w:155, h:44, layer:'agent' },
+  { id:'generator',    label:'Generator Agent',       sub:'src/agent/generator.ts',       x:50,  y:335,w:140, h:44, layer:'agent' },
+  { id:'verifier',     label:'Verifier Agent',        sub:'src/agent/verifier.ts',        x:210, y:335,w:140, h:44, layer:'agent' },
+  { id:'reflector',    label:'Reflector Agent',       sub:'src/agent/reflector.ts',       x:370, y:335,w:140, h:44, layer:'agent' },
+  { id:'diagnostic',   label:'Diagnostic Agent',      sub:'src/agent/diagnostic.ts',      x:530, y:335,w:140, h:44, layer:'agent' },
+  { id:'llm',          label:'LLM Client',            sub:'src/agent/llm.ts',             x:690, y:335,w:130, h:44, layer:'agent' },
+  { id:'toolexec',     label:'Tool Executor',          sub:'src/agent/tool-executor.ts',   x:840, y:335,w:130, h:44, layer:'agent' },
+
+  // SAFETY  y≈420
+  { id:'policyeng',    label:'Policy Engine',         sub:'max_on/min_off/thresholds',    x:100, y:420,w:155, h:44, layer:'safety' },
+  { id:'estop',        label:'E-Stop + Watchdog',     sub:'src/safety/estop.ts',          x:275, y:420,w:155, h:44, layer:'safety' },
+  { id:'auditlog',     label:'Safety Audit Log',      sub:'src/safety/audit-log.ts',      x:450, y:420,w:155, h:44, layer:'safety' },
+
+  // HAL REGISTRY  y≈495
+  { id:'halreg',       label:'Device Registry',       sub:'src/hal/registry.ts',          x:50,  y:495,w:145, h:44, layer:'hal' },
+  { id:'halsensors',   label:'Sensor Store',          sub:'src/hal/sensors.ts',           x:210, y:495,w:145, h:44, layer:'hal' },
+  { id:'halrelays',    label:'Relay Store',           sub:'src/hal/relays.ts',            x:370, y:495,w:145, h:44, layer:'hal' },
+  { id:'haldecisions', label:'Decision Log',          sub:'src/hal/decisions.ts',         x:530, y:495,w:145, h:44, layer:'hal' },
+  { id:'halalerts',    label:'Alert Evaluator',       sub:'src/hal/alert-evaluator.ts',   x:690, y:495,w:145, h:44, layer:'hal' },
+  { id:'discovery',    label:'Device Discovery',      sub:'src/hal/discovery.ts',         x:850, y:495,w:145, h:44, layer:'hal' },
+  { id:'simulator',    label:'HAL Simulator',         sub:'src/hal/simulator.ts',         x:1010,y:495,w:145, h:44, layer:'hal' },
+
+  // DEVICES  y≈570
+  { id:'tasmota',      label:'Tasmota / Shelly',      sub:'HTTP REST smart plugs',        x:50,  y:572,w:150, h:40, layer:'device' },
+  { id:'kasa',         label:'Kasa (TP-Link)',         sub:'UDP LAN control',             x:215, y:572,w:150, h:40, layer:'device' },
+  { id:'mqtt',         label:'MQTT Broker',           sub:'src/hal/mqtt.ts',              x:380, y:572,w:150, h:40, layer:'device' },
+  { id:'gpio',         label:'GPIO / Relay',          sub:'src/hal/gpio.ts',              x:545, y:572,w:150, h:40, layer:'device' },
+  { id:'serial',       label:'Serial Sensors',         sub:'CO₂ / temp — hal/serial.ts',  x:710, y:572,w:150, h:40, layer:'device' },
+  { id:'camera',       label:'V4L2 Camera',           sub:'src/hal/camera.ts',            x:875, y:572,w:150, h:40, layer:'device' },
+
+  // DATA  y≈635
+  { id:'haldb',        label:'HAL SQLite',            sub:'data/fft_nano.db · WAL',       x:200, y:635,w:155, h:40, layer:'data' },
+  { id:'maindb',       label:'Main SQLite',           sub:'src/db.ts · sessions · chat',  x:375, y:635,w:155, h:40, layer:'data' },
+  { id:'filesystem',   label:'Filesystem',            sub:'data/ · logs/ · backups/',     x:550, y:635,w:155, h:40, layer:'data' },
+];
+
+const CONNECTIONS = [
+  // External → Host
+  { from:'telegram',    to:'msgdispatch',  type:'data',   label:'updates/msgs' },
+  { from:'whatsapp',    to:'msgdispatch',  type:'data',   label:'messages' },
+  { from:'licenseapi',  to:'app',          type:'data',   label:'license check' },
+  { from:'homeassist',  to:'farmstate',    type:'data',   label:'canvas actions' },
+
+  // Host internals
+  { from:'app',         to:'haluiserver',  type:'data' },
+  { from:'app',         to:'msgdispatch',  type:'data' },
+  { from:'app',         to:'cronservice',  type:'data' },
+  { from:'msgdispatch', to:'tgcmds',       type:'data',   label:'/commands' },
+  { from:'msgdispatch', to:'pirunner',     type:'event',  label:'spawn agent' },
+  { from:'msgdispatch', to:'decisionloop', type:'event',  label:'message trigger' },
+  { from:'cronservice', to:'decisionloop', type:'event',  label:'heartbeat/schedule' },
+  { from:'cronservice', to:'reflector',    type:'event',  label:'weekly trigger' },
+  { from:'haluiserver', to:'halui',        type:'data',   label:'REST /api/*' },
+  { from:'farmstate',   to:'haluiserver',  type:'data',   label:'snapshot' },
+  { from:'tui',         to:'app',          type:'data',   label:'WS :3390' },
+  { from:'controlctr',  to:'haluiserver',  type:'data',   label:'REST :3393' },
+  { from:'pirunner',    to:'llm',          type:'llm',    label:'pi agent subprocess' },
+
+  // Agent pipeline
+  { from:'decisionloop',to:'automodes',    type:'data',   label:'mode check' },
+  { from:'decisionloop',to:'generator',    type:'data',   label:'build prompt' },
+  { from:'generator',   to:'llm',          type:'llm',    label:'system + user prompt' },
+  { from:'llm',         to:'anthropic',    type:'llm',    label:'API call' },
+  { from:'anthropic',   to:'llm',          type:'llm',    label:'JSON response' },
+  { from:'generator',   to:'verifier',     type:'data',   label:'GeneratorResult' },
+  { from:'verifier',    to:'policyeng',    type:'safety', label:'deterministic rules' },
+  { from:'verifier',    to:'llm',          type:'llm',    label:'LLM safety check' },
+  { from:'verifier',    to:'toolexec',     type:'data',   label:'approved action' },
+  { from:'reflector',   to:'llm',          type:'llm',    label:'weekly analysis' },
+  { from:'diagnostic',  to:'llm',          type:'llm',    label:'health report' },
+  { from:'toolexec',    to:'halrelays',    type:'data',   label:'relay commands' },
+  { from:'toolexec',    to:'haldecisions', type:'data',   label:'log decision' },
+
+  // Safety gates
+  { from:'estop',       to:'decisionloop', type:'safety', label:'E-Stop check' },
+  { from:'estop',       to:'halrelays',    type:'safety', label:'safe-state relays' },
+  { from:'policyeng',   to:'auditlog',     type:'safety', label:'append audit' },
+  { from:'policyeng',   to:'estop',        type:'safety', label:'hang detection' },
+
+  // HAL
+  { from:'halreg',      to:'halsensors',   type:'data' },
+  { from:'halreg',      to:'halrelays',    type:'data' },
+  { from:'halreg',      to:'haldecisions', type:'data' },
+  { from:'halreg',      to:'halalerts',    type:'data' },
+  { from:'discovery',   to:'halreg',       type:'event',  label:'auto-register' },
+  { from:'simulator',   to:'halsensors',   type:'event',  label:'synthetic readings' },
+
+  // HAL ↔ Devices
+  { from:'halrelays',   to:'tasmota',      type:'hw',     label:'HTTP toggle' },
+  { from:'halrelays',   to:'kasa',         type:'hw',     label:'UDP toggle' },
+  { from:'halrelays',   to:'gpio',         type:'hw',     label:'GPIO write' },
+  { from:'mqtt',        to:'halsensors',   type:'hw',     label:'sensor readings' },
+  { from:'serial',      to:'halsensors',   type:'hw',     label:'CO₂/temp readings' },
+  { from:'camera',      to:'halreg',       type:'hw',     label:'frame capture' },
+  { from:'tasmota',     to:'halsensors',   type:'hw',     label:'energy telemetry' },
+  { from:'discovery',   to:'mqtt',         type:'hw',     label:'mDNS / MQTT scan' },
+
+  // Data
+  { from:'haldb',       to:'halreg',       type:'data',   label:'persist' },
+  { from:'haldb',       to:'halsensors',   type:'data' },
+  { from:'haldb',       to:'haldecisions', type:'data' },
+  { from:'maindb',      to:'msgdispatch',  type:'data',   label:'sessions/chat' },
+  { from:'auditlog',    to:'haldb',        type:'data',   label:'safety_audit table' },
+  { from:'filesystem',  to:'reflector',    type:'data',   label:'reflector-report.json' },
+];
+
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+const state = {
+  layers: { external:true, frontend:true, host:true, agent:true, safety:true, hal:true, device:true, data:true },
+  comments: [],
+  zoom: 0.72,
+  panX: 8,
+  panY: 8,
+};
+
+// ─────────────────────────────────────────────────────────────
+// RENDERING
+// ─────────────────────────────────────────────────────────────
+const CONN_STYLES = {
+  data:   { color:'#3b82f6', dash:'',    marker:'arr-blue',   w:1.5 },
+  event:  { color:'#f0883e', dash:'5,4', marker:'arr-orange', w:1.5 },
+  safety: { color:'#f85149', dash:'',    marker:'arr-red',    w:2   },
+  llm:    { color:'#3fb950', dash:'7,4', marker:'arr-green',  w:1.5 },
+  hw:     { color:'#a371f7', dash:'',    marker:'arr-purple', w:1.5 },
+};
+
+const BANDS = [
+  { label:'EXTERNAL / CLOUD',  y:10,  h:58,  layer:'external' },
+  { label:'FRONTEND UIs',      y:78,  h:60,  layer:'frontend' },
+  { label:'HOST / BACKEND',    y:148, h:72,  layer:'host'     },
+  { label:'AGENT PIPELINE',    y:232, h:160, layer:'agent'    },
+  { label:'SAFETY LAYER',      y:404, h:68,  layer:'safety'   },
+  { label:'HAL REGISTRY',      y:480, h:68,  layer:'hal'      },
+  { label:'DEVICES / HARDWARE',y:558, h:60,  layer:'device'   },
+  { label:'DATA / SQLite',     y:625, h:58,  layer:'data'     },
+];
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k,v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+  return el;
+}
+
+function nodeById(id) { return NODES.find(n => n.id === id); }
+function cx(n) { return n.x + n.w / 2; }
+function cy(n) { return n.y + n.h / 2; }
+
+function edgePt(a, b) {
+  const ax = cx(a), ay = cy(a), bx = cx(b), by = cy(b);
+  const dx = bx - ax, dy = by - ay;
+  let sx, sy, ex, ey;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    sx = dx > 0 ? a.x + a.w : a.x; sy = ay;
+    ex = dx > 0 ? b.x : b.x + b.w; ey = by;
+  } else {
+    sx = ax; sy = dy > 0 ? a.y + a.h : a.y;
+    ex = bx; ey = dy > 0 ? b.y : b.y + b.h;
+  }
+  return { sx, sy, ex, ey };
+}
+
+function cubicD(sx, sy, ex, ey) {
+  const dx = ex - sx, dy = ey - sy;
+  return `M${sx},${sy} C${sx + dx*0.4},${sy} ${ex - dx*0.4},${ey} ${ex},${ey}`;
+}
+
+function connVisible(c) {
+  const a = nodeById(c.from), b = nodeById(c.to);
+  if (!a || !b) return false;
+  if (!state.layers[a.layer] || !state.layers[b.layer]) return false;
+  const el = document.getElementById('c-' + c.type);
+  return el ? el.checked : true;
+}
+
+function render() {
+  const root = document.getElementById('diagram-root');
+  while (root.firstChild) root.removeChild(root.firstChild);
+
+  const g = svgEl('g', { transform:`translate(${state.panX},${state.panY}) scale(${state.zoom})` });
+  root.appendChild(g);
+
+  // Layer bands
+  for (const b of BANDS) {
+    if (!state.layers[b.layer]) continue;
+    const lc = LAYER_COLORS[b.layer];
+    g.appendChild(svgEl('rect', { x:18, y:b.y, width:1295, height:b.h, rx:8, fill:lc.fill, stroke:lc.stroke + '30', 'stroke-width':1 }));
+    const t = svgEl('text', { x:26, y:b.y+13, fill:lc.stroke, 'font-size':9, 'font-weight':700, 'letter-spacing':'.07em', 'font-family':'sans-serif' });
+    t.textContent = b.label;
+    g.appendChild(t);
+  }
+
+  // Connections
+  for (const c of CONNECTIONS) {
+    if (!connVisible(c)) continue;
+    const a = nodeById(c.from), b = nodeById(c.to);
+    const s = CONN_STYLES[c.type];
+    const { sx, sy, ex, ey } = edgePt(a, b);
+    g.appendChild(svgEl('path', { d:cubicD(sx,sy,ex,ey), fill:'none', stroke:s.color, 'stroke-width':s.w, 'stroke-dasharray':s.dash, 'marker-end':`url(#${s.marker})`, opacity:.55 }));
+    if (c.label) {
+      const mx = (sx+ex)/2, my = (sy+ey)/2;
+      g.appendChild(svgEl('rect', { x:mx-30, y:my-8, width:60, height:13, rx:3, fill:'#0d1117', opacity:.85 }));
+      const lt = svgEl('text', { x:mx, y:my+2, 'text-anchor':'middle', 'font-size':8, fill:s.color, 'font-family':'sans-serif', 'font-weight':600 });
+      lt.textContent = c.label;
+      g.appendChild(lt);
+    }
+  }
+
+  // Nodes
+  for (const n of NODES) {
+    if (!state.layers[n.layer]) continue;
+    const lc = LAYER_COLORS[n.layer];
+    const hasNote = state.comments.some(c => c.target === n.id);
+    const ng = svgEl('g', { transform:`translate(${n.x},${n.y})`, style:'cursor:pointer' });
+    ng.addEventListener('click', () => openModal(n));
+
+    // Shadow
+    ng.appendChild(svgEl('rect', { x:2, y:2, width:n.w, height:n.h, rx:6, fill:'#000', opacity:.5 }));
+
+    // Body
+    ng.appendChild(svgEl('rect', { width:n.w, height:n.h, rx:6, fill:lc.fill, stroke: hasNote ? '#f0883e' : lc.stroke, 'stroke-width': hasNote ? 2.5 : 1.5 }));
+
+    // Note indicator
+    if (hasNote) {
+      ng.appendChild(svgEl('circle', { cx:n.w-7, cy:7, r:5, fill:'#f0883e' }));
+    }
+
+    // Label
+    const label = svgEl('text', { x:n.w/2, y:n.h/2-5, 'text-anchor':'middle', 'font-size':11, 'font-weight':700, fill:'#e6edf3', 'font-family':'sans-serif' });
+    label.textContent = n.label;
+    ng.appendChild(label);
+
+    // Subtitle
+    const sub = svgEl('text', { x:n.w/2, y:n.h/2+9, 'text-anchor':'middle', 'font-size':8.5, fill:'#7d8590', 'font-family':'monospace' });
+    sub.textContent = n.sub;
+    ng.appendChild(sub);
+
+    g.appendChild(ng);
+  }
+
+  updatePrompt();
+}
+
+// ─────────────────────────────────────────────────────────────
+// ZOOM / PAN
+// ─────────────────────────────────────────────────────────────
+function zoom(f) { state.zoom = Math.max(0.25, Math.min(4, state.zoom * f)); render(); }
+function resetZoom() { state.zoom = 0.72; state.panX = 8; state.panY = 8; render(); }
+
+let drag = null;
+document.getElementById('main-svg').addEventListener('mousedown', e => {
+  if (e.target.closest('[style*="cursor:pointer"]')) return;
+  drag = { ox: e.clientX - state.panX, oy: e.clientY - state.panY };
+});
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  state.panX = e.clientX - drag.ox; state.panY = e.clientY - drag.oy;
+  render();
+});
+window.addEventListener('mouseup', () => { drag = null; });
+document.getElementById('main-svg').addEventListener('wheel', e => {
+  e.preventDefault(); zoom(e.deltaY < 0 ? 1.1 : 0.9);
+}, { passive:false });
+
+// ─────────────────────────────────────────────────────────────
+// PRESETS
+// ─────────────────────────────────────────────────────────────
+const PRESETS = {
+  full:     { external:true, frontend:true, host:true, agent:true, safety:true, hal:true, device:true, data:true,  zoom:0.72, px:8,  py:8   },
+  frontend: { external:true, frontend:true, host:true, agent:false,safety:false,hal:false,device:false,data:true,  zoom:1.0,  px:8,  py:8   },
+  agent:    { external:true, frontend:false,host:true, agent:true, safety:true, hal:true, device:false,data:true,  zoom:0.85, px:8,  py:-50 },
+  dataflow: { external:false,frontend:true, host:true, agent:false,safety:false,hal:true, device:false,data:true,  zoom:0.9,  px:8,  py:8   },
+  hardware: { external:false,frontend:false,host:false,agent:false,safety:true, hal:true, device:true, data:true,  zoom:1.0,  px:8,  py:-280},
+};
+
+function applyPreset(name) {
+  const p = PRESETS[name];
+  if (!p) return;
+  for (const [k,v] of Object.entries(p)) {
+    if (k === 'zoom') { state.zoom = v; continue; }
+    if (k === 'px') { state.panX = v; continue; }
+    if (k === 'py') { state.panY = v; continue; }
+    state.layers[k] = v;
+    const el = document.getElementById('l-' + k);
+    if (el) el.checked = v;
+  }
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  const match = document.querySelector(`.preset-btn[onclick*="'${name}'"]`);
+  if (match) match.classList.add('active');
+  render();
+}
+
+function toggleLayer(layer) {
+  state.layers[layer] = document.getElementById('l-' + layer).checked;
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────
+// COMMENTS
+// ─────────────────────────────────────────────────────────────
+let activeNode = null;
+
+function openModal(node) {
+  activeNode = node;
+  document.getElementById('modal-title').textContent = node.label;
+  document.getElementById('modal-path').textContent = node.sub;
+  const existing = state.comments.find(c => c.target === node.id);
+  document.getElementById('modal-input').value = existing ? existing.text : '';
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('modal-input').focus(), 40);
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  activeNode = null;
+}
+
+function saveComment() {
+  const text = document.getElementById('modal-input').value.trim();
+  if (!text) { closeModal(); return; }
+  const idx = state.comments.findIndex(c => c.target === activeNode.id);
+  const entry = { id: Date.now(), target: activeNode.id, label: activeNode.label, file: activeNode.sub, text };
+  if (idx >= 0) state.comments[idx] = entry;
+  else state.comments.push(entry);
+  closeModal();
+  renderComments();
+  render();
+}
+
+function deleteComment(id) {
+  state.comments = state.comments.filter(c => c.id !== id);
+  renderComments();
+  render();
+}
+
+function renderComments() {
+  document.getElementById('comment-count').textContent = String(state.comments.length);
+  const list = document.getElementById('comments-list');
+  while (list.firstChild) list.removeChild(list.firstChild);
+
+  for (const c of state.comments) {
+    const item = document.createElement('div');
+    item.className = 'comment-item';
+
+    const header = document.createElement('div');
+    header.className = 'clabel';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = c.label;
+
+    const del = document.createElement('button');
+    del.className = 'comment-del';
+    del.textContent = '✕';
+    del.title = 'Remove note';
+    del.addEventListener('click', () => deleteComment(c.id));
+
+    header.appendChild(labelSpan);
+    header.appendChild(del);
+
+    const body = document.createElement('div');
+    body.className = 'ctext';
+    body.textContent = c.text;
+
+    item.appendChild(header);
+    item.appendChild(body);
+    list.appendChild(item);
+  }
+}
+
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+document.getElementById('modal-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveComment();
+});
+
+// ─────────────────────────────────────────────────────────────
+// PROMPT
+// ─────────────────────────────────────────────────────────────
+function updatePrompt() {
+  const visibleLayers = Object.entries(state.layers).filter(([,v])=>v).map(([k])=>k);
+  const allVisible = visibleLayers.length === Object.keys(state.layers).length;
+
+  let text = 'This is the FarmPal / FF_SmartControl architecture';
+  if (!allVisible) text += ', showing the ' + visibleLayers.join(', ') + ' layers';
+  text += '.\n\n';
+
+  if (state.comments.length === 0) {
+    text += 'Click any component to add a note or question. Use presets and layer toggles to focus on a subsystem.';
+  } else {
+    text += 'Notes and questions:\n\n';
+    for (const c of state.comments) {
+      text += `**${c.label}** (${c.file}):\n${c.text}\n\n`;
+    }
+  }
+
+  document.getElementById('prompt-text').textContent = text.trim();
+}
+
+function copyPrompt() {
+  navigator.clipboard.writeText(document.getElementById('prompt-text').textContent).then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy Prompt'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+// Init
+render();
+</script>
+</body>
+</html>

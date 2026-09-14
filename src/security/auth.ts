@@ -29,7 +29,11 @@ import {
   resetRateLimit,
 } from './rate-limit.js';
 import { getDb } from '../hal/db.js';
-import { getProvisioningManager } from '../first-boot.js';
+import {
+  getProvisioningManager,
+  getProvisionedFlagFile,
+} from '../first-boot.js';
+import fs from 'fs';
 
 export interface AuthResult {
   success: boolean;
@@ -166,6 +170,16 @@ export function handleLogout(token: string): { clearCookie: string } {
 }
 
 /**
+ * SECURITY CONSTRAINT: provisioning endpoints are public only while the system
+ * is unprovisioned. Once the provisioning-complete flag file exists, they fall
+ * through to normal session auth. The wizard keeps working pre-provisioning,
+ * and works again after a reset (which deletes the flag file).
+ */
+export function isProvisioningPublic(): boolean {
+  return !fs.existsSync(getProvisionedFlagFile());
+}
+
+/**
  * Auth middleware - checks for valid session
  * Returns auth context if valid, null if not authenticated
  */
@@ -177,17 +191,17 @@ export function authMiddleware(req: http.IncomingMessage): {
 } {
   // Skip auth for certain paths
   const pathname = getPathname(req);
-  const skipAuthPaths = [
-    '/health',
-    '/api/provisioning',
-    '/api/auth/login',
-    '/_sim',
-  ];
+  const skipAuthPaths = ['/health', '/api/auth/login', '/_sim'];
 
   for (const skip of skipAuthPaths) {
     if (pathname.startsWith(skip)) {
       return { authorized: true };
     }
+  }
+
+  // Provisioning endpoints: public only pre-provisioning
+  if (pathname.startsWith('/api/provisioning') && isProvisioningPublic()) {
+    return { authorized: true };
   }
 
   // Check for provisioning mode - redirect to wizard if no password set
@@ -339,17 +353,17 @@ function getPathname(req: http.IncomingMessage): string {
  */
 export function isProtectedPath(pathname: string): boolean {
   // Public paths that don't require auth
-  const publicPaths = [
-    '/health',
-    '/api/provisioning',
-    '/api/auth/login',
-    '/_sim',
-  ];
+  const publicPaths = ['/health', '/api/auth/login', '/_sim'];
 
   for (const path of publicPaths) {
     if (pathname.startsWith(path)) {
       return false;
     }
+  }
+
+  // Provisioning endpoints: public only pre-provisioning
+  if (pathname.startsWith('/api/provisioning') && isProvisioningPublic()) {
+    return false;
   }
 
   // API paths are protected
