@@ -273,6 +273,8 @@ export function clearEstop(operatorId: string): {
   const state = getEstopState();
 
   if (!state.active) {
+    // Drop any stale farm-loop safety latch even if E-Stop was already inactive
+    clearSafetyMode();
     return { success: true }; // Already cleared
   }
 
@@ -290,6 +292,10 @@ export function clearEstop(operatorId: string): {
 
   // Invalidate cache
   estopStateCache = null;
+
+  // The watchdog latches safety_mode together with the E-Stop on a hang;
+  // clearing the E-Stop is the operator's "recovered" signal, so drop both.
+  clearSafetyMode();
 
   logger.info({ operatorId }, 'Emergency Stop cleared by operator');
 
@@ -467,12 +473,6 @@ export function recordDecisionHeartbeat(): void {
     WHERE id = 'global'
   `,
   ).run(now, now);
-
-  // Clear any existing safety mode if we're making progress
-  const state = getFarmLoopState();
-  if (state.safetyMode && isEstopActive()) {
-    // Don't auto-clear - operator must clear E-Stop
-  }
 
   farmLoopStateCache = null;
 }

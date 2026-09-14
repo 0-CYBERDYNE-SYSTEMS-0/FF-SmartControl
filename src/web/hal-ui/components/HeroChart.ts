@@ -114,29 +114,33 @@ export async function loadHeroChartData(): Promise<{
 
   const layers: HeroChartLayer[] = [];
 
-  const [decisions] = await Promise.all([
+  const [decisions, historyMap] = await Promise.all([
     halApi.getDecisions(50).catch(() => [] as HalDecision[]),
-    ...sensors.flatMap((s) =>
-      HERO_METRIC_KEYS.map(async (m) => {
-        try {
-          const data = await halApi.getSensorHistory(s.id, m, from, to);
-          if (data.length > 0) {
-            const cfg = metricConfig[m];
-            layers.push({
-              deviceId: s.id,
-              deviceName: s.name,
-              zoneName: resolveZoneName(s.id, s.name),
-              metric: m,
-              color: cfg?.color || '#888',
-              data,
-            });
-          }
-        } catch {
-          /* skip */
-        }
-      }),
-    ),
+    halApi
+      .getSensorHistoryBatch(
+        sensors.map((s) => s.id),
+        [...HERO_METRIC_KEYS],
+        from,
+        to,
+      )
+      .catch(() => new Map<string, HalSensorReading[]>()),
   ]);
+  for (const s of sensors) {
+    for (const m of HERO_METRIC_KEYS) {
+      const data = historyMap.get(`${s.id}|${m}`) ?? [];
+      if (data.length > 0) {
+        const cfg = metricConfig[m];
+        layers.push({
+          deviceId: s.id,
+          deviceName: s.name,
+          zoneName: resolveZoneName(s.id, s.name),
+          metric: m,
+          color: cfg?.color || '#888',
+          data,
+        });
+      }
+    }
+  }
 
   return { layers, decisions };
 }

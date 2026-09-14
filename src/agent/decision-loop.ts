@@ -2,6 +2,66 @@ import { callLLM } from './llm.js';
 
 export type TriggerType = 'message' | 'heartbeat' | 'scheduled_task' | 'manual';
 
+// Robust decision-JSON extraction. Reasoning models (MiniMax-M3, Claude
+// extended thinking) wrap or precede the JSON with prose/markdown fences, and a
+// greedy `/\{[\s\S]*\}/` either over-captures or fails — silently degrading a
+// valid "turn_on" into a no-op. Scan for balanced top-level objects (ignoring
+// braces inside strings) and prefer the one that actually carries a `decision`.
+export function extractDecisionJson(text: string): Record<string, any> | null {
+  if (!text) return null;
+  const tryParse = (s: string): Record<string, any> | null => {
+    try {
+      const v = JSON.parse(s);
+      return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+    } catch {
+      return null;
+    }
+  };
+  const sources: string[] = [];
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) sources.push(fence[1]);
+  sources.push(text);
+
+  for (const src of sources) {
+    const direct = tryParse(src.trim());
+    if (direct) return direct;
+    // Collect every balanced {...} object, tracking string literals/escapes.
+    const objs: Record<string, any>[] = [];
+    let depth = 0;
+    let start = -1;
+    let inStr = false;
+    let esc = false;
+    for (let i = 0; i < src.length; i++) {
+      const c = src[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === '\\') esc = true;
+        else if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') inStr = true;
+      else if (c === '{') {
+        if (depth === 0) start = i;
+        depth++;
+      } else if (c === '}') {
+        depth--;
+        if (depth === 0 && start >= 0) {
+          const obj = tryParse(src.slice(start, i + 1));
+          if (obj) objs.push(obj);
+          start = -1;
+        }
+      }
+    }
+    if (objs.length) {
+      const withDecision = objs.filter((o) => 'decision' in o);
+      return withDecision.length
+        ? withDecision[withDecision.length - 1]
+        : objs[objs.length - 1];
+    }
+  }
+  return null;
+}
+
 interface DecisionCycleContext {
   trigger: TriggerType;
   message?: string;
@@ -105,7 +165,7 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     devices
       .map(
         (d: any) =>
-          `  - ${d.label || d.id}: ${d.type} (${d.protocol}) at ${d.host || 'gpio'}, state=${d.last_state}, value=${d.last_value}`,
+          `  - id="${d.id}"${d.label ? ` (${d.label})` : ''}: ${d.type} (${d.protocol}) at ${d.host || 'gpio'}, state=${d.last_state}, value=${d.last_value}`,
       )
       .join('\n'),
     '',
@@ -130,6 +190,7 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     `Trigger: ${ctx.trigger}`,
     ctx.message ? `User message: ${ctx.message}` : '',
     '',
+    'device_id MUST be one of the exact id="..." values listed above, or null. Do not use the human label.',
     'Respond ONLY with a valid JSON object: {"reasoning":"string","decision":"turn_on|turn_off|adjust|alert|noop","device_id":"string|null","confidence":0.0-1.0,"tool_calls":[]}',
   ].join('\n');
 
@@ -196,13 +257,29 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     device_id: null,
   };
   if (llmResult) {
-    try {
-      const jsonMatch = llmResult.text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
-      else parsed.reasoning = llmResult.text;
-    } catch {
-      parsed.reasoning = llmResult.text;
-    }
+    const extracted = extractDecisionJson(llmResult.text);
+    if (extracted) parsed = { ...parsed, ...extracted };
+    else parsed.reasoning = llmResult.text;
+  }
+
+  // Drop malformed tool calls (missing/blank tool name) so the executor never
+  // sees `Unknown tool: undefined` from a reasoning model's loose output.
+  if (Array.isArray(parsed.tool_calls)) {
+    parsed.tool_calls = parsed.tool_calls.filter(
+      (tc: any) => tc && typeof tc.tool === 'string' && tc.tool.length > 0,
+    );
+  } else {
+    parsed.tool_calls = [];
+  }
+
+  // Guard against a hallucinated device_id: hal_decision_log has a foreign key
+  // on device_id, so an unregistered id throws and kills the whole cycle.
+  // Treat an unknown id as a safe no-action instead of crashing.
+  if (parsed.device_id && !halRegistry.get(parsed.device_id)) {
+    parsed.reasoning =
+      `${parsed.reasoning || ''} [device_id "${parsed.device_id}" is not a registered device — no action taken]`.trim();
+    parsed.device_id = null;
+    parsed.decision = 'noop';
   }
 
   // Convert sensor snapshot to flat format for decision log (backward compatible)

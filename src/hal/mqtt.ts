@@ -14,6 +14,56 @@ export interface MQTTSensorConfig {
   unit: SensorUnit;
 }
 
+// JSON keys real devices use for each metric (case-insensitive match).
+const METRIC_KEYS: Record<string, string[]> = {
+  temperature: ['temperature', 'temp'],
+  humidity: ['humidity', 'hum'],
+  co2: ['co2', 'carbondioxide', 'eco2'],
+  light: ['illuminance', 'light', 'lux'],
+  soil_moisture: ['moisture', 'soilmoisture', 'soil'],
+  water_level: ['waterlevel', 'level', 'distance'],
+  ph: ['ph'],
+  pressure: ['pressure'],
+  weight: ['weight', 'load'],
+};
+
+// Extract a metric value from an MQTT payload that may be a bare number
+// (ESPHome) or nested JSON (Tasmota `{"BME280":{"Temperature":22.5}}`,
+// `{"ENERGY":{"Power":45}}`). Returns null if no numeric value is found.
+export function extractMetricValue(
+  payload: string,
+  metric: MetricType,
+): number | null {
+  const bare = parseFloat(payload);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return isNaN(bare) ? null : bare;
+  }
+  if (typeof parsed === 'number') return parsed;
+
+  const wanted = (METRIC_KEYS[metric] ?? [metric]).map((k) => k.toLowerCase());
+  let found: number | null = null;
+  const walk = (node: unknown): void => {
+    if (found !== null || node === null || typeof node !== 'object') return;
+    for (const [key, val] of Object.entries(node as Record<string, unknown>)) {
+      if (
+        typeof val === 'number' &&
+        wanted.includes(key.toLowerCase().replace(/[\s_-]/g, ''))
+      ) {
+        found = val;
+        return;
+      }
+      if (val && typeof val === 'object') walk(val);
+      if (found !== null) return;
+    }
+  };
+  walk(parsed);
+  if (found !== null) return found;
+  return isNaN(bare) ? null : bare;
+}
+
 export class MQTTSubscriber {
   private client: MqttClient | null = null;
   private subscriptions: MQTTSensorConfig[] = [];
@@ -58,11 +108,14 @@ export class MQTTSubscriber {
   }
 
   private handleMessage(topic: string, payload: Buffer): void {
-    const value = parseFloat(payload.toString());
-    if (isNaN(value)) return;
-
     const sub = this.subscriptions.find((s) => s.topic === topic);
     if (!sub) return;
+
+    // Real devices publish JSON (Tasmota `tele/<topic>/SENSOR`:
+    // {"BME280":{"Temperature":22.5,"Humidity":48}}, {"ENERGY":{"Power":45}});
+    // ESPHome and bare sensors publish a plain number. Handle both.
+    const value = extractMetricValue(payload.toString(), sub.metric);
+    if (value === null) return;
 
     try {
       halSensors.store({

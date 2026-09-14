@@ -1,14 +1,21 @@
 # Repository Guidelines
 
+> **v1.0 direction (locked):** This is a *software product* sold as a license ($299) or a pre-flashed SD card ($449).
+> The Pi, smart plugs, and sensors are the customer's hardware. If a change moves the product off this direction,
+> update [`DIRECTION.md`](DIRECTION.md) in the same PR. See also [`market-research-2026.md`](market-research-2026.md)
+> and [`ship-gate-spec.md`](ship-gate-spec.md).
+
 ## Project Overview
 
-FarmPal is a hardware-first smart garden controller built on top of the older FFT_nano host. The current checkout is a hybrid:
+FarmPal is a **software product** that ships as an SD card image for the Raspberry Pi (or any Linux box). It controls
+the customer's existing Tasmota / Shelly / Kasa smart plugs, MQTT sensors, GPIO relays, and 1-Wire / serial sensors
+through a verifier-gated safety policy engine. The current checkout is a hybrid:
 
 - The full FFT_nano host still owns startup, service lifecycle, SQLite state, chat/session routing, TUI gateway, web server, scheduler, heartbeat, and legacy Pi-based agent runs.
 - The FarmPal product surface is the HAL, simulator, hardware control APIs, HAL UI, and a newer lightweight farm-controller agent loop under `src/agent/`.
 - The newer `src/agent/decision-loop.ts` path calls an LLM directly, reads HAL state, logs decisions, and can execute HAL tool calls without going through the full Pi/container agent loop.
 
-Treat this as a 99% hardware product. Prioritize customer out-of-box reliability for local host execution, HAL device state, simulator/demo clarity, TUI testing, and safe control of real relays/sensors/cameras.
+Treat this as a **software product**. The moat is the verifier-gated control plane, the discovery wizard, and the operator experience — not the hardware. The Pi is the customer's hardware; we ship an SD card image and a license key. Prioritize correctness, customer out-of-box reliability, the safety policy engine, the discovery wizard, and the operator dashboard.
 
 Current important reality:
 
@@ -192,6 +199,8 @@ npm run hal:ui:build
   - `HAL_SIM_MODE=1` enables the HAL simulator loop instead of periodic HAL polling.
   - `HAL_SIM_TICK_MS`, `HAL_SIM_SPEED`, `HAL_SIM_SEED`, and `HAL_SIM_SCENARIO` tune simulator runtime behavior.
   - Demo seeding (`seedHalDemoData()`) runs only when `HAL_SIM_MODE=1` or `HAL_SEED_DEMO_DATA=1`. Real deployments must never contain seeded "Tent A" demo rows; treat their presence as a bug.
+  - `HAL_SIM_AUTOPILOT=0` disables the simulator's internal rule-based controller and its light-schedule actuation, so the real agent (`runDecisionCycle`, via `HAL_AUTO_DECISIONS=true`) is the sole decision-maker driving the twin. Default (`1`) preserves the legacy self-playing twin. Sim-only — the real-hardware path is unaffected. In sim mode the simulator mirrors relay state from `halRegistry` each tick, and `halRegistry.control()` short-circuits the real HTTP/GPIO call (records state only) so agent/manual actuation closes the physics loop without hardware.
+- Efficacy scorecard (`scripts/sim-efficacy.ts`): runs the real agent against the twin, grades against ground truth (`HalSimulator.getGroundTruth()`), and writes a SIMULATION-labeled report to `reports/efficacy/` (gitignored). `--plumbing` validates the pipeline with no LLM cost. Reports are real software behavior on simulated physics — never present them as real-hardware results.
 - Safety defaults (see SPEC.md): the factory automation mode is `OBSERVE_ONLY`; autonomy is an explicit operator action. The chat `emergency_stop` intent trips the real E-stop (`src/safety/estop.ts` `activateEstop`), same as the dashboard button.
 - HAL UI security invariants: `HAL_UI_AUTH_BYPASS` no longer exists (auth cannot be disabled by env var); mutating HAL UI requests require a CSRF double-submit token (frontend obtains it from the session/login response and sends `X-CSRF-Token`); `/api/provisioning/*` is public only while the system is unprovisioned; Control Center mutating `/api/hal/*` routes require bearer auth in every access mode (per-install token stored `0600` in the data dir when unset); `security_audit` stores session-token hashes, never raw tokens; all `src/hal` external command execution uses argv arrays with validated inputs.
 - Simplified FarmPal agent knobs:
@@ -199,6 +208,7 @@ npm run hal:ui:build
   - `HAL_AUTO_DECISIONS=true` triggers the decision loop from periodic HAL heartbeat/poll paths.
   - `FEATURE_FARM` / `FFT_PROFILE` enable the farm profile; `FARMPAL_PRIMARY_AGENT=0` (or `false`/`no`/`off`) forces the legacy Pi agent back as the primary message path. Profile detection lives in `src/profile.ts`.
   - `LLM_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `LMSTUDIO_BASE_URL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `ZAI_API_KEY` affect `src/agent/llm.ts`.
+  - `ANTHROPIC_BASE_URL` and `ANTHROPIC_MODEL` override the Anthropic provider endpoint/model, enabling any Anthropic-compatible provider (e.g. MiniMax `https://api.minimax.io/anthropic` + model `MiniMax-M3`, Kimi, etc.). The provider appends `/v1/messages` — do not include it. The Anthropic response parser concatenates `text` blocks and skips `thinking` blocks, so reasoning models (MiniMax-M3, Claude extended thinking) return their answer rather than empty output.
 - Telegram is enabled when `TELEGRAM_BOT_TOKEN` is set. WhatsApp auth uses `npm run auth`.
 - Avoid starting foreground host commands when Telegram polling is already active in the service; polling conflicts can occur before the lock or upstream channel state makes the issue obvious.
 
@@ -207,9 +217,10 @@ npm run hal:ui:build
 - There are two FarmPal agent entry points, do not conflate them:
   - `runFarmPalTurn()` in `src/agent/turn.ts` — the per-message turn path. Gated by `farmPalPrimaryAgent` (see `src/index.ts`): enabled when `FEATURE_FARM` is active and `FARMPAL_PRIMARY_AGENT` is not disabled. When enabled, it is the default message path and `/legacy` escapes to the Pi agent.
   - `runDecisionCycle()` in `src/agent/decision-loop.ts` — the autonomous decision cycle behind `HAL_AUTO_MODE` (`!auto ` messages) and `HAL_AUTO_DECISIONS` (heartbeat/poll paths).
-- `runDecisionCycle()` reads devices from `halRegistry`, sensor readings from `halSensors`, recent decisions from `halDecisions`, then asks the LLM for a strict JSON decision.
-- The decision cycle can execute HAL tool calls through `src/agent/tool-executor.ts` and can directly call `halRegistry.control()` for `turn_on`/`turn_off` decisions.
-- Generator/Verifier (`src/agent/generator.ts`, `src/agent/verifier.ts`) run inside the `turn.ts` path. They do **not** wrap `decision-loop.ts`; don't assume verifier safety checks apply to autonomous decision-cycle actions.
+- `runDecisionCycle()` reads devices from `halRegistry`, sensor readings from `halSensors`, recent decisions from `halDecisions`, then asks the LLM for a strict JSON decision. The device list in the prompt includes each device's exact `id="..."`, and the model is instructed to emit `device_id` matching one of those ids (not the human label) — otherwise the `hal_decision_log` foreign key rejects it.
+- A guard in `runDecisionCycle` nulls an unregistered `device_id` (treats it as a safe no-op) before logging, so a hallucinated id cannot throw a foreign-key error and kill the cycle.
+- The decision cycle can execute HAL tool calls through `src/agent/tool-executor.ts` and, for `turn_on`/`turn_off` decisions with a valid `device_id`, actuates via `halRegistry.control()` **through the safety verifier** (`src/safety/verifier.ts`): the action is verified, executed, re-verified for mid-action violations, and logged to `halRelays`/audit. Actuation does not require `tool_calls`.
+- Do not conflate the two verifiers: `src/safety/verifier.ts` gates decision-loop actuation (policy engine + audit), while the Generator/Verifier pattern (`src/agent/generator.ts`, `src/agent/verifier.ts`) runs only inside the `turn.ts` path.
 - The TUI does not bypass the host. TUI messages still enter through the gateway/session/message-dispatch path. For no-Telegram development, verify the TUI session/bootstrap path before assuming a message can reach the farm agent.
 - The old Pi runner still exists and is used by the `/legacy` escape hatch, non-farm profiles, and routes the farm turn does not claim (e.g. coding worker). Host runtime means that path spawns local `pi`.
 

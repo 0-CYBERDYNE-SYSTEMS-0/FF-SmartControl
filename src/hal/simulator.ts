@@ -39,6 +39,8 @@ export type SimScenario =
   | 'normal_day'
   | 'heat_wave'
   | 'cold_snap'
+  | 'heat_sustained'
+  | 'cold_sustained'
   | 'pump_failure'
   | 'sensor_fault'
   | 'light_cycle_fault'
@@ -650,6 +652,17 @@ export class HalSimulator {
   private tickCount = 0;
   private simTimeMs = Date.now();
   private lightScheduleOn = false;
+  // Sustained external temperature forcing (°C added to the ambient the zone
+  // drifts toward). 0 for transient/normal scenarios; nonzero for the
+  // *_sustained scenarios where doing nothing must fail and only active
+  // control keeps the zone in band. Set in applyScenario().
+  private envForcingTemp = 0;
+  // When false (HAL_SIM_AUTOPILOT=0), the simulator stops making control
+  // decisions and stops its internal light-schedule actuation. The twin
+  // becomes a pure world (physics + sensor emission), and relay state is
+  // driven by whatever wrote halRegistry — i.e. the real agent or manual UI.
+  // Default true preserves legacy self-playing behavior exactly.
+  private autopilot = process.env.HAL_SIM_AUTOPILOT !== '0';
   private faultState: {
     sensorStuck: Set<string>; // deviceId:metric
     deviceOffline: Set<string>; // deviceId
@@ -755,6 +768,13 @@ export class HalSimulator {
     this.tick();
   }
 
+  // Drive the ambient the zone is pulled toward from an external source (e.g. a
+  // recorded real-world weather trace during historical replay). `ambientC` is
+  // the absolute outdoor temperature; pass null to clear and return to defaults.
+  setExternalAmbient(ambientC: number | null): void {
+    this.envForcingTemp = ambientC === null ? 0 : ambientC - 20;
+  }
+
   injectFault(
     fault:
       | 'sensor_stuck'
@@ -832,7 +852,31 @@ export class HalSimulator {
     };
   }
 
+  // Read-only full ground-truth zone vector. The twin knows the EXACT physical
+  // state; sensors only ever report a noisy/drifted/lagged view of it. The
+  // efficacy scorecard grades the agent against this oracle. Sim-only.
+  getGroundTruth(): Array<ZoneState & { name: string }> {
+    return this.zones.map((z) => ({ ...z }));
+  }
+
+  // Agent-driven mode: pull authoritative relay state from halRegistry into the
+  // sim's device model so physics responds to the real agent / manual UI.
+  private syncDeviceStatesFromRegistry(): void {
+    for (const dev of this.devices) {
+      if (this.faultState.deviceOffline.has(dev.id)) continue;
+      const reg = halRegistry.get(dev.id);
+      const regState = reg?.last_state;
+      if (regState === 'on' || regState === 'off') {
+        dev.state = regState;
+      }
+    }
+    this.lightScheduleOn =
+      this.devices.find((d) => d.id === 'grow_light_main')?.state === 'on';
+  }
+
   private applyScenario(): void {
+    // Reset sustained forcing; only the *_sustained scenarios set it nonzero.
+    this.envForcingTemp = 0;
     switch (this.config.scenario) {
       case 'heat_wave':
         this.zones.forEach((z) => {
@@ -844,6 +888,29 @@ export class HalSimulator {
         this.zones.forEach((z) => {
           z.temperature -= 10;
           z.humidity += 20;
+        });
+        break;
+      // Sustained heat: ambient is held ~34°C continuously. With NO control the
+      // zone settles ~34°C (past the 32°C danger line); only an active exhaust
+      // fan (which pulls toward ~21°C) drags it back into the 20-28°C band.
+      // This is the scenario that makes the agent-vs-baseline delta meaningful.
+      case 'heat_sustained':
+        this.envForcingTemp = 14;
+        this.zones.forEach((z) => {
+          z.temperature = 31;
+          z.humidity -= 10;
+        });
+        break;
+      // Sustained cold: ambient held ~14°C (below the 15°C danger-low). Without
+      // heat the zone sits ~14°C (breaching danger-low); the heater (which pulls
+      // toward 25.5°C) lifts the equilibrium to ~20.7°C — back into the 20-28°C
+      // band. Calibrated winnable: a stronger -8 forcing capped the heater below
+      // the 20°C band floor, making the scenario impossible to pass.
+      case 'cold_sustained':
+        this.envForcingTemp = -6;
+        this.zones.forEach((z) => {
+          z.temperature = 14;
+          z.humidity += 10;
         });
         break;
       case 'pump_failure':
@@ -871,25 +938,38 @@ export class HalSimulator {
     this.simTimeMs += this.config.tickMs * this.config.speed;
     this.tickCount++;
 
-    // 1. Update light schedule (18/6 cycle)
-    const simDate = new Date(this.simTimeMs);
-    const hour = simDate.getHours() + simDate.getMinutes() / 60;
-    const shouldBeLightOn = hour >= 6 && hour < 24; // 18h on, 6h off
-    if (
-      shouldBeLightOn !== this.lightScheduleOn &&
-      !this.faultState.deviceOffline.has('grow_light_main')
-    ) {
-      this.lightScheduleOn = shouldBeLightOn;
-      const lightDev = this.devices.find((d) => d.id === 'grow_light_main')!;
-      lightDev.state = shouldBeLightOn ? 'on' : 'off';
-      halRegistry.updateState(lightDev.id, lightDev.state, lightDev.powerWatts);
-      halRelays.log({
-        device_id: lightDev.id,
-        state: lightDev.state,
-        reason: 'schedule',
-        triggered_by: 'simulator',
-        switched_at: new Date(this.simTimeMs).toISOString(),
-      });
+    // 0. Agent-driven mode: relay state lives in halRegistry (written by the
+    //    real agent or manual UI). Mirror it into the sim's device model so
+    //    physics responds to whoever is actually in control.
+    if (!this.autopilot) {
+      this.syncDeviceStatesFromRegistry();
+    }
+
+    // 1. Update light schedule (18/6 cycle) — internal actuation, autopilot only
+    if (this.autopilot) {
+      const simDate = new Date(this.simTimeMs);
+      const hour = simDate.getHours() + simDate.getMinutes() / 60;
+      const shouldBeLightOn = hour >= 6 && hour < 24; // 18h on, 6h off
+      if (
+        shouldBeLightOn !== this.lightScheduleOn &&
+        !this.faultState.deviceOffline.has('grow_light_main')
+      ) {
+        this.lightScheduleOn = shouldBeLightOn;
+        const lightDev = this.devices.find((d) => d.id === 'grow_light_main')!;
+        lightDev.state = shouldBeLightOn ? 'on' : 'off';
+        halRegistry.updateState(
+          lightDev.id,
+          lightDev.state,
+          lightDev.powerWatts,
+        );
+        halRelays.log({
+          device_id: lightDev.id,
+          state: lightDev.state,
+          reason: 'schedule',
+          triggered_by: 'simulator',
+          switched_at: new Date(this.simTimeMs).toISOString(),
+        });
+      }
     }
 
     // 2. Apply device effects to zone physics
@@ -903,8 +983,10 @@ export class HalSimulator {
       const zoneSoilEvaporation = zoneIndex === 0 ? 0.005 : 0.0042;
       const zoneWaterDrain = zoneIndex === 0 ? 0.0022 : 0.0017;
 
-      // Temperature drifts toward ambient (20°C) + light heat
-      const ambientTemp = 20 + (this.lightScheduleOn ? 2 : 0) + zoneTempOffset;
+      // Temperature drifts toward ambient (20°C) + light heat + sustained
+      // external forcing (nonzero only in the *_sustained scenarios).
+      const ambientTemp =
+        20 + this.envForcingTemp + (this.lightScheduleOn ? 2 : 0) + zoneTempOffset;
       zone.temperature += (ambientTemp - zone.temperature) * 0.001 * dtSeconds;
 
       // Humidity drifts toward ambient (50%) + plant transpiration
@@ -939,8 +1021,11 @@ export class HalSimulator {
       this.clampZone(zone);
     });
 
-    // 4. Agent-style auto decisions
-    this.runAutoDecisions();
+    // 4. Agent-style auto decisions — internal controller, autopilot only.
+    //    With HAL_SIM_AUTOPILOT=0 the real agent is the sole decision-maker.
+    if (this.autopilot) {
+      this.runAutoDecisions();
+    }
 
     // 5. Read sensors and store to HAL
     this.readAndStoreSensors();

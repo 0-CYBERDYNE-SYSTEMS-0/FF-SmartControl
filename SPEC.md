@@ -1,9 +1,25 @@
-# FarmPal — Product Spec & Mission
+# FF_SmartControl (FarmPal) — Engineering Spec & Mission
 
-This is the canonical statement of what FarmPal is, what it must never pretend to be,
-and what is actually implemented versus planned. UI/visual design tokens live in
-`DESIGN.md`; operator guides live in `docs/`. Where other documents disagree with
-this file, this file wins.
+Two documents own different truths: **[`DIRECTION.md`](DIRECTION.md) owns the
+product direction** (what we sell, who it's for, the v1.0 ship-gate — license +
+SD-card image model). **This file owns the engineering mission**: the principles
+the software must never violate, what is actually implemented versus planned,
+and the hardware-support truth table. UI/visual design tokens live in
+`DESIGN.md`; operator guides live in `docs/`. A change that violates this file's
+principles is a bug even if it ships; a change that moves the product off
+`DIRECTION.md` must update `DIRECTION.md` in the same PR.
+
+| Document | What it's for |
+|---|---|
+| [`DIRECTION.md`](DIRECTION.md) | v1.0 product direction — offering, customer, ship-gate |
+| [`DESIGN.md`](DESIGN.md) | System design (architecture, modules, data model) |
+| [`ship-gate-spec.md`](ship-gate-spec.md) | The engineering calendar to v1.0 launch |
+| [`market-research-2026.md`](market-research-2026.md) | Pricing rationale, competitor table |
+| [`docs/QA_MATRIX.md`](docs/QA_MATRIX.md) | Formal QA matrix (rows must be executed, not blank) |
+| [`README-commercialization.md`](README-commercialization.md) | Commercialization milestones and hardware-validation log |
+| [`HANDOFF.md`](HANDOFF.md) | Engineering handoff notes (incidents, port policy) |
+| [`CHANGELOG.md`](CHANGELOG.md) | Release history |
+| [`docs/`](docs/) | Operator guides (QUICKSTART, HARDWARE, SAFETY, DASHBOARD, AUTOMATION, TROUBLESHOOTING, BACKUP_RESTORE, FACTORY_RESET) |
 
 ## Mission
 

@@ -1,7 +1,7 @@
 // System view — metric state overview with animated lake-tank visualization
 
 import { getStore, setStore, formatSensorValue } from '../store.js';
-import { halApi } from '../api.js';
+import { halApi, type HalSensorReading } from '../api.js';
 import { renderSystemEnvironmentHero } from '../components/EnvironmentCharts.js';
 
 type MetricKey =
@@ -219,50 +219,52 @@ async function loadSystemData(): Promise<void> {
       metricBuckets.set(m.key, new Map());
     }
 
-    await Promise.all(
-      sensors.flatMap((device) =>
-        systemMetrics.map(async (metric) => {
-          const data = await halApi.getSensorHistory(
-            device.id,
+    const historyMap = await halApi
+      .getSensorHistoryBatch(
+        sensors.map((d) => d.id),
+        systemMetrics.map((m) => m.key),
+        from,
+        to,
+      )
+      .catch(() => new Map<string, HalSensorReading[]>());
+
+    for (const device of sensors) {
+      for (const metric of systemMetrics) {
+        const data = historyMap.get(`${device.id}|${metric.key}`) ?? [];
+        if (data.length === 0) continue;
+
+        const latest = data[data.length - 1];
+        const prevTs = metricLatestTs.get(metric.key) ?? '';
+        if (latest.timestamp > prevTs) {
+          metricLatestTs.set(metric.key, latest.timestamp);
+          const cv = formatSensorValue(
+            latest.value,
             metric.key,
-            from,
-            to,
+            store.unitSystem,
           );
-          if (data.length === 0) return;
+          metricLatestVal.set(metric.key, cv.value);
+          const pill = document.getElementById(`sys-pill-${metric.key}`);
+          if (pill)
+            pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
+        }
 
-          const latest = data[data.length - 1];
-          const prevTs = metricLatestTs.get(metric.key) ?? '';
-          if (latest.timestamp > prevTs) {
-            metricLatestTs.set(metric.key, latest.timestamp);
-            const cv = formatSensorValue(
-              latest.value,
-              metric.key,
-              store.unitSystem,
-            );
-            metricLatestVal.set(metric.key, cv.value);
-            const pill = document.getElementById(`sys-pill-${metric.key}`);
-            if (pill)
-              pill.textContent = `${cv.value.toFixed(1)}${cv.unit || metric.fallbackUnit}`;
-          }
-
-          const buckets = metricBuckets.get(metric.key)!;
-          for (const d of data) {
-            const t = new Date(d.timestamp).getTime();
-            if (!Number.isFinite(t)) continue;
-            const bucket = Math.floor(t / 60000) * 60000;
-            const val = formatSensorValue(
-              d.value,
-              metric.key,
-              store.unitSystem,
-            ).value;
-            const acc = buckets.get(bucket) ?? { sum: 0, count: 0 };
-            acc.sum += val;
-            acc.count += 1;
-            buckets.set(bucket, acc);
-          }
-        }),
-      ),
-    );
+        const buckets = metricBuckets.get(metric.key)!;
+        for (const d of data) {
+          const t = new Date(d.timestamp).getTime();
+          if (!Number.isFinite(t)) continue;
+          const bucket = Math.floor(t / 60000) * 60000;
+          const val = formatSensorValue(
+            d.value,
+            metric.key,
+            store.unitSystem,
+          ).value;
+          const acc = buckets.get(bucket) ?? { sum: 0, count: 0 };
+          acc.sum += val;
+          acc.count += 1;
+          buckets.set(bucket, acc);
+        }
+      }
+    }
 
     const chartMetrics = systemMetrics
       .filter((m) => metricLatestVal.has(m.key))

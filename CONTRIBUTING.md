@@ -1,5 +1,9 @@
 # Contributing
 
+> **v1.0 product direction:** FF_SmartControl (FarmPal) is a software product — license + SD card
+> image. The Pi, smart plugs, and sensors are the customer's hardware. See
+> [`DIRECTION.md`](DIRECTION.md) for the locked v1.0 direction.
+
 ## Source Code Changes
 
 FFT_nano is a product-focused fork. Contributions should:

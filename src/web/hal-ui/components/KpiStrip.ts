@@ -1,7 +1,7 @@
 // KPI Strip — 6 cards with big numbers, inline sparklines from real sensor history
 
 import { getStore, formatSensorValue } from '../store.js';
-import { halApi } from '../api.js';
+import { halApi, type HalSensorReading } from '../api.js';
 import { renderSparkline } from './HeroChart.js';
 import { injectHeroChartStyles } from './HeroChart.js';
 
@@ -306,8 +306,14 @@ async function fetchMetricSparkline(
   const to = new Date().toISOString();
 
   try {
+    const historyMap = await halApi.getSensorHistoryBatch(
+      sensors.map((s) => s.id),
+      [metric],
+      from,
+      to,
+    );
     for (const s of sensors) {
-      const data = await halApi.getSensorHistory(s.id, metric, from, to);
+      const data = historyMap.get(`${s.id}|${metric}`) ?? [];
       if (data.length > 1) {
         const step = Math.max(1, Math.floor(data.length / buckets));
         return Array.from(
@@ -332,8 +338,14 @@ async function fetchMetricSparklinePrev(
   const from = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
   try {
+    const historyMap = await halApi.getSensorHistoryBatch(
+      sensors.map((s) => s.id),
+      [metric],
+      from,
+      to,
+    );
     for (const s of sensors) {
-      const data = await halApi.getSensorHistory(s.id, metric, from, to);
+      const data = historyMap.get(`${s.id}|${metric}`) ?? [];
       if (data.length > 1) {
         const step = Math.max(1, Math.floor(data.length / buckets));
         return Array.from(
@@ -368,7 +380,11 @@ export function injectKpiStyles(): void {
   style.textContent = `
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  /* Exactly 6 KPIs — use divisor-of-6 column counts (6/3/2/1) so every row is
+     always full at every width: no orphaned card, no blank trailing cells.
+     minmax(0,1fr) lets tracks shrink below content (which wraps) instead of
+     content forcing a wider track and collapsing the column count. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   grid-auto-rows: minmax(80px, auto);
   align-items: stretch;
   gap: var(--space-2);
@@ -385,6 +401,7 @@ export function injectKpiStyles(): void {
   align-items: stretch;
   gap: var(--space-1);
   min-height: 80px;
+  min-width: 0;
   transition: border-color var(--transition-fast);
 }
 .kpi-card:hover {
@@ -448,8 +465,14 @@ export function injectKpiStyles(): void {
 .kpi-sparkline-empty {
   height: 28px;
 }
-@media (max-width: 767px) {
-  .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+@media (max-width: 1100px) {
+  .kpi-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 380px) {
+  .kpi-strip { grid-template-columns: 1fr; }
 }
 `;
   document.head.appendChild(style);

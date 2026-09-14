@@ -1,6 +1,10 @@
 // Latest Decision + Camera Snapshot — compact inline decision card
 
 import { formatDateTimeValue, getStore } from '../store.js';
+import {
+  renderReasoningBlock,
+  injectReasoningStyles,
+} from './ReasoningBlock.js';
 
 export function renderLatestDecision(): string {
   const store = getStore();
@@ -33,6 +37,7 @@ export function renderLatestDecision(): string {
       <div class="latest-decision-body">
         <div class="latest-decision-trigger text-sm text-secondary">${escapeHtml(latest.trigger)}</div>
         <div class="latest-decision-action font-semibold text-sm">${escapeHtml(latest.decision)}</div>
+        <div class="latest-decision-reasoning">${renderReasoningBlock(latest)}</div>
         <div class="latest-decision-footer">
           <span class="latest-decision-status" style="color: ${statusColor}; background: color-mix(in srgb, ${statusColor} 15%, transparent)"
             >${latest.status || 'pending'}</span
@@ -65,6 +70,7 @@ function escapeHtml(s: string): string {
 }
 
 export function injectLatestDecisionStyles(): void {
+  injectReasoningStyles();
   if (document.getElementById('hal-latest-decision-styles')) return;
   const style = document.createElement('style');
   style.id = 'hal-latest-decision-styles';
@@ -99,6 +105,10 @@ export function injectLatestDecisionStyles(): void {
 }
 .latest-decision-action {
   color: var(--text-primary);
+}
+.latest-decision-reasoning {
+  margin-top: var(--space-1);
+  min-width: 0;
 }
 .latest-decision-footer {
   display: flex;

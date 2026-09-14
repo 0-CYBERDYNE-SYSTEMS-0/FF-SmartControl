@@ -399,6 +399,36 @@ export const halApi = {
       .filter((reading): reading is HalSensorReading => Boolean(reading));
   },
 
+  // GET /api/hal/sensors/history-batch — many device/metric series in one call.
+  // Returns a map keyed by `${device}|${metric}` so callers can avoid firing one
+  // request per series (which trips the 100/min rate limit and 429s the views).
+  async getSensorHistoryBatch(
+    devices: string[],
+    metrics: string[],
+    from?: string,
+    to?: string,
+  ): Promise<Map<string, HalSensorReading[]>> {
+    const result = new Map<string, HalSensorReading[]>();
+    if (devices.length === 0 || metrics.length === 0) return result;
+    const series = await halGet<
+      Array<{ device_id: string; metric: string; points: RawHalSensorReading[] }>
+    >('/sensors/history-batch', {
+      devices: devices.join(','),
+      metrics: metrics.join(','),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    });
+    for (const s of series) {
+      result.set(
+        `${s.device_id}|${s.metric}`,
+        s.points
+          .map(normalizeSensorReading)
+          .filter((r): r is HalSensorReading => Boolean(r)),
+      );
+    }
+    return result;
+  },
+
   // GET /api/hal/decisions
   async getDecisions(limit = 20): Promise<HalDecision[]> {
     const decisions = await halGet<RawHalDecision[]>('/decisions', {
