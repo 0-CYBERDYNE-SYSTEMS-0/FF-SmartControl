@@ -11,8 +11,21 @@ export async function executeToolCall(
     case 'control_plug':
     case 'control_device': {
       const { device_id, action } = tc.args;
-      await registry.control(device_id, action);
-      return { ok: true, device_id, action };
+      if (!device_id) throw new Error(`control_plug requires device_id`);
+      // Unified actuation chokepoint: e-stop gate + policy verify + audit.
+      const { executeActuation } = await import('../safety/verifier.js');
+      const outcome = await executeActuation({
+        deviceId: device_id,
+        action: action === 'off' ? 'off' : 'on',
+        triggeredBy: 'agent',
+        source: 'autonomous',
+      });
+      return {
+        ok: outcome.executed,
+        device_id,
+        action,
+        ...(outcome.executed ? {} : { reason: outcome.reason }),
+      };
     }
 
     case 'read_sensor': {

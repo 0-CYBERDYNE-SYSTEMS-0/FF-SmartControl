@@ -144,9 +144,13 @@ pass excuse for new failures.
    (Tasmota plug + one sensor + camera): discover → read → decide → verified
    actuation → audit; 7-day unattended soak; flashable SD image; QA matrix
    executed for real.
-2. **Safety spine** — single verified chokepoint for all hardware writes,
-   seeded safety rules per device type, enforced confidence gates,
-   verify-before-execute for tool calls, persisted rate limits.
+2. **Safety spine** — single verified chokepoint for all hardware writes ✅
+   (`executeActuation` in `src/safety/verifier.ts` is the one gate for manual
+   and autonomous actuation, behind the policy engine and the E-stop gate);
+   seeded safety rules per device type — not yet shipped (the
+   `hal_safety_rules` table and policy engine exist, but no default rule
+   seeds); enforced confidence gates, verify-before-execute for tool calls,
+   persisted rate limits — pending.
 3. **Product truth** — one name, one business model, real support channels,
    beta cohort (5–10 growers), decision-quality evals as a release gate.
 4. **Hardware breadth** — GPIO rebuild, I²C sensors, ESPHome native,

@@ -13,7 +13,10 @@ export type TriggeredBy =
   | 'manual_ui'
   | 'schedule'
   | 'watchdog'
-  | 'estop_system';
+  | 'estop_system'
+  | 'web-ui'
+  | 'telegram'
+  | 'gateway';
 
 export interface AuditLogEntry {
   id: string;

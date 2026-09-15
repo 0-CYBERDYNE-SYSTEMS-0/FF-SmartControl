@@ -13,6 +13,7 @@
 
 import { getDb } from '../hal/db.js';
 import { logger } from '../logger.js';
+import type { TriggeredBy } from '../safety/audit-log.js';
 
 export type AutomationMode =
   | 'OBSERVE_ONLY'
@@ -597,7 +598,8 @@ export function handleDecisionBasedOnMode(
 
 /**
  * Execute a pending decision's hardware action.
- * Retrieves decision details from hal_decision_log and calls halRegistry.control().
+ * Retrieves decision details from hal_decision_log and executes through the
+ * unified actuation chokepoint (executeActuation).
  * Returns true if execution succeeded, false otherwise.
  */
 export async function executePendingDecision(
@@ -625,10 +627,53 @@ export async function executePendingDecision(
     return false;
   }
 
+  // The pending decision only reaches execution after operator approval
+  // (explicit review approval, or an expired 30s veto window), so the
+  // chokepoint treats it as manual; triggeredBy preserves the originating
+  // actor recorded on the decision row (falling back to 'schedule').
+  const VALID_TRIGGERED_BY = new Set<string>([
+    'agent',
+    'manual_ui',
+    'schedule',
+    'watchdog',
+    // 'estop_system' deliberately excluded: it must never arrive from a DB row —
+    // the actuation chokepoint allow-lists it to let the E-stop sweep actuate.
+    'web-ui',
+    'telegram',
+    'gateway',
+  ]);
+  const rowTriggeredBy =
+    typeof decisionRow.triggered_by === 'string'
+      ? decisionRow.triggered_by
+      : '';
+  const triggeredBy = (
+    VALID_TRIGGERED_BY.has(rowTriggeredBy) ? rowTriggeredBy : 'schedule'
+  ) as TriggeredBy;
+
   try {
-    const { halRegistry } = await import('../hal/registry.js');
+    const { executeActuation } = await import('../safety/verifier.js');
     const action = decision === 'turn_on' ? 'on' : 'off';
-    await halRegistry.control(deviceId, action);
+    const outcome = await executeActuation({
+      deviceId,
+      action,
+      triggeredBy,
+      source: 'manual',
+      decisionId,
+    });
+
+    if (!outcome.executed) {
+      logger.warn(
+        { decisionId, deviceId, reason: outcome.reason },
+        'executePendingDecision: actuation denied by safety chokepoint',
+      );
+      db.prepare(
+        `UPDATE hal_automation_pending SET executed = 1 WHERE decision_id = ?`,
+      ).run(decisionId);
+      db.prepare(
+        `UPDATE hal_decision_log SET pending_status = NULL, outcome = 'failure' WHERE id = ?`,
+      ).run(decisionId);
+      return false;
+    }
 
     // Mark as executed in pending table
     db.prepare(

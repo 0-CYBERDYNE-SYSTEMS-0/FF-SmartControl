@@ -9,7 +9,6 @@ import { isValidHost } from '../hal/discovery.js';
 import { halRegistry } from '../hal/registry.js';
 import { halSensors } from '../hal/sensors.js';
 import { halDecisions } from '../hal/decisions.js';
-import { halRelays } from '../hal/relays.js';
 import { mqttSubscriber } from '../hal/mqtt.js';
 import type { MetricType } from '../hal/types.js';
 import { logger } from '../logger.js';
@@ -834,49 +833,22 @@ export async function startHalUiServer(
             action as 'on' | 'off',
           );
 
-          // VAL-AUTO-032: Log manual override to safety audit with triggered_by: 'manual_ui'
-          // Capture sensor snapshot for audit entry
-          const { captureSensorSnapshot } =
-            await import('../safety/verifier.js');
-          const { createAuditEntry } = await import('../safety/audit-log.js');
-          const sensorSnapshot = captureSensorSnapshot();
-          // Map UI action ('on'/'off') to proposedAction format ('turn_on'/'turn_off')
-          const proposedAction = action === 'on' ? 'turn_on' : 'turn_off';
-          createAuditEntry({
+          // Unified actuation chokepoint: e-stop gate, advisory policy check,
+          // audit entry (VAL-AUTO-032, triggered_by 'manual_ui') and relay log.
+          // In simulator mode halRegistry.control records state only and the
+          // sim twin mirrors it on the next tick.
+          const { executeActuation } = await import('../safety/verifier.js');
+          const outcome = await executeActuation({
             deviceId,
-            proposedAction: proposedAction as 'turn_on' | 'turn_off',
-            verifierResult: 'APPROVED',
-            deniedReason: null,
-            conflictingRuleIds: null,
-            sensorSnapshot,
-            decisionId: null, // Manual action, not from decision loop
-            triggeredBy: 'manual_ui', // VAL-AUTO-032
-            executed: true,
-            executedState: action as 'on' | 'off',
-            interrupted: false,
-            interruptedAtStep: null,
-            revertedSteps: null,
+            action: action as 'on' | 'off',
+            triggeredBy: 'manual_ui',
+            source: 'manual',
           });
-
-          // In simulator mode, delegate to simulator instead of real hardware
-          const sim = getSimulator();
-          if (sim) {
-            sim.setDeviceState(deviceId, action);
-            halRelays.log({
-              device_id: deviceId,
-              state: action,
-              reason: 'manual',
-              triggered_by: 'manual_ui', // VAL-DISC-073: manual toggle logged correctly
-            });
-          } else {
-            await halRegistry.control(deviceId, action);
-            halRelays.log({
-              device_id: deviceId,
-              state: action,
-              reason: 'manual',
-              triggered_by: 'manual_ui', // VAL-DISC-073: manual toggle logged correctly
-            });
+          if (!outcome.executed) {
+            sendJson(res, 409, { ok: false, error: outcome.reason });
+            return;
           }
+
           sendJson(res, 200, {
             ok: true,
             overriddenDecisions:

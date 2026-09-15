@@ -463,18 +463,58 @@ async function resolveControlCenterAuthToken(
     token = randomBytes(32).toString('hex');
     try {
       fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
-      fs.writeFileSync(tokenFile, `${token}\n`, { mode: 0o600 });
+      // Refuse to write through a symlink planted at the token-file path.
+      let lstat: fs.Stats | null = null;
+      try {
+        lstat = fs.lstatSync(tokenFile);
+      } catch {
+        lstat = null; // does not exist yet
+      }
+      if (lstat?.isSymbolicLink()) {
+        throw new Error(
+          `refusing to write Control Center token file: ${tokenFile} is a symlink`,
+        );
+      }
+      // 'wx' is exclusive: if the file appears between the read and the
+      // write (creation race), the EEXIST handler below reuses its token
+      // instead of clobbering it.
+      fs.writeFileSync(tokenFile, `${token}\n`, { mode: 0o600, flag: 'wx' });
       logger.info(
         { tokenFile },
         'No FFT_NANO_WEB_AUTH_TOKEN configured; generated Control Center token for mutating routes',
       );
     } catch (err) {
-      // Persistence is best-effort: keep the in-memory token so mutations
-      // still work for callers that have it (e.g. read-only data dir).
-      logger.warn(
-        { tokenFile, err: err instanceof Error ? err.message : String(err) },
-        'Could not persist Control Center token file; using in-memory token only',
-      );
+      const code = (err as NodeJS.ErrnoException | null)?.code;
+      if (code === 'EEXIST') {
+        // Lost a creation race: reuse the token in the existing file.
+        try {
+          const existing = fs.readFileSync(tokenFile, 'utf-8').trim();
+          if (!existing) throw new Error('existing token file is empty');
+          token = existing;
+          logger.info(
+            { tokenFile },
+            'Using existing Control Center token file for mutating routes',
+          );
+        } catch (reuseErr) {
+          // Persistence is best-effort: keep the in-memory token so mutations
+          // still work for callers that have it (e.g. read-only data dir).
+          logger.warn(
+            {
+              tokenFile,
+              err:
+                reuseErr instanceof Error ? reuseErr.message : String(reuseErr),
+            },
+            'Could not reuse existing Control Center token file; using in-memory token only',
+          );
+        }
+      } else {
+        // Persistence is best-effort: keep the in-memory token so mutations
+        // still work for callers that have it (e.g. read-only data dir).
+        logger.warn(
+          { tokenFile, err: err instanceof Error ? err.message : String(err) },
+          'Could not persist Control Center token file; using in-memory token only',
+        );
+      }
     }
   } else {
     logger.info(
@@ -547,15 +587,21 @@ export async function startWebControlCenterServer(
       return;
     }
 
-    // Note: /api/hal/* routes are handled in their own block below (with
-    // mandatory bearer auth on mutating methods), so they are excluded here.
+    // Note: /api/hal/* routes are handled in their own block below with the
+    // same rule: mutating methods require bearer auth in EVERY access mode,
+    // read-only GETs may stay auth-free in localhost mode.
     if (
       requestPath.startsWith('/api/') &&
       !requestPath.startsWith('/api/hal/')
     ) {
-      if (!isAuthorized(req, authRequired, authToken)) {
+      const isMutatingMethod =
+        method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
+      if (!isAuthorized(req, isMutatingMethod || authRequired, authToken)) {
         res.setHeader('WWW-Authenticate', 'Bearer');
-        sendJson(res, 401, { ok: false, error: 'Unauthorized' });
+        sendJson(res, 401, {
+          ok: false,
+          error: `Unauthorized. Bearer token required for mutating requests. Token file: ${ccTokenFile}`,
+        });
         return;
       }
 
@@ -968,8 +1014,6 @@ export async function startWebControlCenterServer(
 
       // POST /api/hal/devices/:id/control — { action: 'on' | 'off' }
       if (path.match(/^\/devices\/[^/]+\/control$/) && method === 'POST') {
-        const { halRegistry } = await import('../hal/registry.js');
-        const { halRelays } = await import('../hal/relays.js');
         const deviceId = path.split('/')[2];
         let body: any;
         try {
@@ -983,13 +1027,19 @@ export async function startWebControlCenterServer(
           return;
         }
         try {
-          await halRegistry.control(deviceId, action);
-          halRelays.log({
-            device_id: deviceId,
-            state: action,
-            reason: 'manual',
-            triggered_by: 'web-ui',
+          // Unified actuation chokepoint: e-stop gate, advisory policy check,
+          // safety audit entry and relay log (triggered_by 'web-ui').
+          const { executeActuation } = await import('../safety/verifier.js');
+          const outcome = await executeActuation({
+            deviceId,
+            action,
+            triggeredBy: 'web-ui',
+            source: 'manual',
           });
+          if (!outcome.executed) {
+            sendJson(res, 409, { ok: false, error: outcome.reason });
+            return;
+          }
           sendJson(res, 200, { ok: true });
         } catch (err: any) {
           sendJson(res, 500, { error: err.message });

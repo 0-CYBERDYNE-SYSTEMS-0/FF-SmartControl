@@ -4820,15 +4820,19 @@ function createTuiGatewayAdapters(): TuiGatewayAdapters {
       }));
     },
     halControl: async ({ deviceId, action }) => {
-      const { halRegistry } = require('./hal/registry.js');
-      const { getSimulator } = require('./hal/simulator.js');
-      const sim = getSimulator();
-      if (sim) {
-        sim.setDeviceState(deviceId, action);
-        return { ok: true };
-      }
-      await halRegistry.control(deviceId, action);
-      return { ok: true };
+      // Unified actuation chokepoint: e-stop gate, advisory policy check, audit.
+      // Sim-safe: halRegistry.control() short-circuits to twin state when the
+      // simulator is running, so the chokepoint stays the single entry point.
+      const { executeActuation } = await import('./safety/verifier.js');
+      const outcome = await executeActuation({
+        deviceId,
+        action: action === 'off' ? 'off' : 'on',
+        triggeredBy: 'gateway',
+        source: 'manual',
+      });
+      return outcome.executed
+        ? { ok: true }
+        : { ok: false, reason: outcome.reason };
     },
     halSensors: () => {
       const { halRegistry } = require('./hal/registry.js');

@@ -230,6 +230,162 @@ export async function recordInterruption(
 }
 
 // ============================================================
+// Unified actuation chokepoint
+// Every on/off actuation flows through executeActuation: e-stop
+// gate, policy verification, execution, re-verification, audit.
+// Only estop.ts and app.ts lifecycle shutdown may actuate directly.
+// ============================================================
+
+export interface ExecuteActuationParams {
+  deviceId: string;
+  action: 'on' | 'off';
+  triggeredBy: TriggeredBy;
+  source: 'autonomous' | 'manual';
+  decisionId?: string;
+  /** Precomputed verification result (e.g. decision-loop reuses its own verifyAction call). */
+  verifyResult?: VerifyResult;
+}
+
+export interface ActuationViolations {
+  ruleIds: string[];
+  reason: string | null;
+}
+
+export interface ExecuteActuationResult {
+  executed: boolean;
+  result: 'on' | 'off' | 'unchanged';
+  reason: string;
+  violations?: ActuationViolations;
+  auditEntry?: AuditLogEntry;
+}
+
+/**
+ * The single gate to hardware for on/off actuation.
+ *
+ * - E-stop active: denies every source except `triggeredBy === 'estop_system'`
+ *   (belt-and-braces allow-list; estop.ts never calls this function).
+ * - source 'autonomous': full verify → control → re-verify → rollback →
+ *   recordExecution sequence. A provided `verifyResult` is reused instead of
+ *   running verifyAction again (avoids double audit entries).
+ * - source 'manual': policy violations are ADVISORY — they are reported back
+ *   but the action executes anyway, with a real audit entry.
+ */
+export async function executeActuation(
+  params: ExecuteActuationParams,
+): Promise<ExecuteActuationResult> {
+  const { deviceId, action, triggeredBy, source, decisionId, verifyResult } =
+    params;
+
+  // 1. E-stop gate: no actuation for any caller while the E-stop is latched,
+  //    except the belt-and-braces 'estop_system' allow-list entry.
+  const { getEstopState } = await import('./estop.js');
+  if (getEstopState().active && triggeredBy !== 'estop_system') {
+    const auditEntry = createAuditEntry({
+      deviceId,
+      proposedAction: action === 'on' ? 'turn_on' : 'turn_off',
+      verifierResult: 'DENIED',
+      deniedReason: 'emergency stop active',
+      sensorSnapshot: captureSensorSnapshot(),
+      decisionId: decisionId ?? null,
+      triggeredBy,
+      executed: false,
+    });
+    return {
+      executed: false,
+      result: 'unchanged',
+      reason: 'emergency stop active',
+      auditEntry,
+    };
+  }
+
+  const proposedAction: ProposedAction = {
+    decision: action === 'on' ? 'turn_on' : 'turn_off',
+    deviceId,
+    reasoning: source === 'manual' ? 'manual control' : 'autonomous decision',
+    confidence: 1,
+  };
+
+  // 2. Verify (reuse a precomputed result when supplied).
+  const verify =
+    verifyResult ??
+    (await verifyAction({ action: proposedAction, triggeredBy, decisionId }));
+
+  const violations: ActuationViolations | undefined =
+    verify.conflictingRuleIds.length > 0 || verify.reason
+      ? { ruleIds: verify.conflictingRuleIds, reason: verify.reason }
+      : undefined;
+
+  if (source === 'autonomous') {
+    if (!verify.approved) {
+      return {
+        executed: false,
+        result: 'unchanged',
+        reason: verify.reason ?? 'denied by safety policy',
+        violations,
+        auditEntry: verify.auditEntry,
+      };
+    }
+
+    // 3. Execute with pre-action state capture for rollback (VAL-SAFE-004).
+    const deviceBefore = halRegistry.get(deviceId);
+    const preActionState = deviceBefore?.last_state ?? null;
+    await halRegistry.control(deviceId, action);
+
+    // 4. Re-verify against fresh sensor state to catch mid-action violations.
+    const reVerifyResult = await verifyAction({
+      action: proposedAction,
+      triggeredBy,
+      decisionId,
+      sensorSnapshot: captureSensorSnapshot(),
+    });
+
+    if (!reVerifyResult.approved) {
+      if (preActionState !== null) {
+        await halRegistry.control(deviceId, preActionState as 'on' | 'off');
+      }
+      await recordInterruption(verify.auditEntry.id, 1, 1);
+      return {
+        executed: false,
+        result: 'unchanged',
+        reason: `MID-ACTION VIOLATION: ${reVerifyResult.reason}. Action reverted.`,
+        auditEntry: verify.auditEntry,
+      };
+    }
+
+    await recordExecution(verify.auditEntry.id, action);
+    halRelays.log({
+      device_id: deviceId,
+      state: action,
+      reason: 'agent_decision',
+      triggered_by: triggeredBy,
+    });
+    return {
+      executed: true,
+      result: action,
+      reason: verify.reason ?? `device turned ${action}`,
+      auditEntry: verify.auditEntry,
+    };
+  }
+
+  // 5. Manual source: violations are advisory — execute anyway, audit honestly.
+  await halRegistry.control(deviceId, action);
+  await recordExecution(verify.auditEntry.id, action);
+  halRelays.log({
+    device_id: deviceId,
+    state: action,
+    reason: 'manual',
+    triggered_by: triggeredBy,
+  });
+  return {
+    executed: true,
+    result: action,
+    reason: verify.reason ?? `device turned ${action}`,
+    violations,
+    auditEntry: verify.auditEntry,
+  };
+}
+
+// ============================================================
 // Legacy compatibility - original hard-coded safety rules
 // These are kept as last-resort defaults before LLM fallback
 // ============================================================
