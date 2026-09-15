@@ -353,7 +353,9 @@ export async function runVerifier(
 }
 
 /**
- * Execute a verified action on the HAL registry
+ * Execute a verified action on the HAL registry.
+ * Thin wrapper over the unified actuation chokepoint (e-stop gate, policy
+ * verify, audit); kept for the runFarmPalTurn control path.
  */
 export async function executeVerifiedAction(
   decision: string,
@@ -365,14 +367,20 @@ export async function executeVerifiedAction(
   }
 
   try {
-    if (decision === 'turn_on') {
-      await halRegistry.control(deviceId, 'on');
-      return { success: true, message: `Turned on ${deviceId}` };
-    }
-
-    if (decision === 'turn_off') {
-      await halRegistry.control(deviceId, 'off');
-      return { success: true, message: `Turned off ${deviceId}` };
+    if (decision === 'turn_on' || decision === 'turn_off') {
+      const { executeActuation } = await import('../safety/verifier.js');
+      const outcome = await executeActuation({
+        deviceId,
+        action: decision === 'turn_on' ? 'on' : 'off',
+        triggeredBy: 'agent',
+        source: 'autonomous',
+      });
+      return {
+        success: outcome.executed,
+        message: outcome.executed
+          ? `${decision === 'turn_on' ? 'Turned on' : 'Turned off'} ${deviceId}`
+          : outcome.reason,
+      };
     }
 
     // Execute any additional tool calls

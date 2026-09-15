@@ -1,4 +1,5 @@
 import { callLLM } from './llm.js';
+import { z } from 'zod';
 
 export type TriggerType = 'message' | 'heartbeat' | 'scheduled_task' | 'manual';
 
@@ -262,6 +263,39 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     else parsed.reasoning = llmResult.text;
   }
 
+  // Schema-validate the model's decision payload. Extraction proves it is JSON;
+  // only validation proves it is a decision we understand. An out-of-contract
+  // payload (unknown decision verb, non-numeric confidence, junk tool_calls)
+  // degrades to a safe noop that still carries the raw model text in reasoning
+  // so the audit trail shows what the model actually said.
+  const DecisionPayloadSchema = z.object({
+    decision: z.enum(['turn_on', 'turn_off', 'adjust', 'alert', 'noop']),
+    device_id: z.string().nullable().optional(),
+    confidence: z.number().min(0).max(1).optional(),
+    reasoning: z.string().optional(),
+    tool_calls: z
+      .array(
+        z.object({
+          tool: z.string().min(1),
+          args: z.record(z.string(), z.unknown()).optional(),
+        }),
+      )
+      .optional(),
+  });
+  const payloadCheck = DecisionPayloadSchema.safeParse(parsed);
+  if (!payloadCheck.success) {
+    const issue = payloadCheck.error.issues[0];
+    parsed.reasoning =
+      `${parsed.reasoning || ''} [decision payload failed schema validation at ${issue?.path.join('.') || 'root'}: ${issue?.message || 'invalid'} — safe noop]`.trim();
+    parsed = {
+      decision: 'noop',
+      reasoning: parsed.reasoning,
+      confidence: 0.5,
+      tool_calls: [],
+      device_id: null,
+    };
+  }
+
   // Drop malformed tool calls (missing/blank tool name) so the executor never
   // sees `Unknown tool: undefined` from a reasoning model's loose output.
   if (Array.isArray(parsed.tool_calls)) {
@@ -438,7 +472,7 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
   if (parsed.decision === 'turn_on' || parsed.decision === 'turn_off') {
     if (parsed.device_id) {
       // Import verifier dynamically to avoid circular dependency
-      const { verifyAction, recordExecution } =
+      const { verifyAction, executeActuation } =
         await import('../safety/verifier.js');
 
       const verifyResult = await verifyAction({
@@ -453,88 +487,47 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
         sensorSnapshot,
       });
 
-      if (!verifyResult.approved) {
-        // Action was DENIED by safety rules
-        console.log(
-          `[DecisionLoop] Action ${parsed.decision} on ${parsed.device_id} DENIED: ${verifyResult.reason}`,
-        );
+      // Actuation flows through the unified chokepoint, which reuses this
+      // verify result (single audit entry) and keeps the rollback behavior.
+      let actuation;
+      try {
+        actuation = await executeActuation({
+          deviceId: parsed.device_id,
+          action: parsed.decision === 'turn_on' ? 'on' : 'off',
+          triggeredBy,
+          source: 'autonomous',
+          decisionId: decision.id,
+          verifyResult,
+        });
+      } catch (err) {
         halDecisions.complete(decision.id, 'failure');
-        return {
-          decision: parsed.decision,
-          reasoning: `DENIED by safety policy: ${verifyResult.reason}`,
-          toolCalls: [],
-        };
+        throw err;
       }
 
-      // Action was APPROVED - proceed to hardware
-      try {
-        // Capture pre-action state for rollback (VAL-SAFE-004)
-        const deviceBefore = halRegistry.get(parsed.device_id);
-        const preActionState = deviceBefore?.last_state ?? null;
-
-        await halRegistry.control(
-          parsed.device_id,
-          parsed.decision === 'turn_on' ? 'on' : 'off',
-        );
-
-        // Re-verify after execution to detect mid-action violations
-        // Capture fresh sensor snapshot and re-check safety rules
-        const { captureSensorSnapshot } = await import('../safety/verifier.js');
-        const freshSensorSnapshot = captureSensorSnapshot();
-        const { verifyAction: reVerify } =
-          await import('../safety/verifier.js');
-
-        const reVerifyResult = await reVerify({
-          action: {
-            decision: parsed.decision,
-            deviceId: parsed.device_id,
-            reasoning: parsed.reasoning,
-            confidence: parsed.confidence,
-          },
-          triggeredBy,
-          decisionId: decision.id,
-          sensorSnapshot: freshSensorSnapshot,
-        });
-
-        // If action is now denied due to sensor change mid-action, rollback
-        if (!reVerifyResult.approved) {
-          console.log(
-            `[DecisionLoop] Mid-action violation detected for ${parsed.device_id}: ${reVerifyResult.reason}. Reverting to pre-action state.`,
-          );
-
-          // Revert to pre-action state
-          if (preActionState !== null) {
-            await halRegistry.control(
-              parsed.device_id,
-              preActionState as 'on' | 'off',
-            );
-          }
-
-          // Record interruption in audit log
-          const { recordInterruption } = await import('../safety/verifier.js');
-          await recordInterruption(verifyResult.auditEntry.id, 1, 1);
-
+      if (!actuation.executed) {
+        if (actuation.auditEntry?.interrupted) {
+          // Mid-action violation: chokepoint already reverted to pre-action state
           halDecisions.complete(decision.id, 'failure');
           return {
             decision: parsed.decision,
-            reasoning: `MID-ACTION VIOLATION: ${reVerifyResult.reason}. Action reverted.`,
+            reasoning: actuation.reason,
             toolCalls: [],
           };
         }
 
-        // Record execution in audit log
-        await recordExecution(
-          verifyResult.auditEntry.id,
-          parsed.decision === 'turn_on' ? 'on' : 'off',
+        // Action was DENIED by safety rules
+        console.log(
+          `[DecisionLoop] Action ${parsed.decision} on ${parsed.device_id} DENIED: ${actuation.reason}`,
         );
+        halDecisions.complete(decision.id, 'failure');
+        return {
+          decision: parsed.decision,
+          reasoning: `DENIED by safety policy: ${actuation.reason}`,
+          toolCalls: [],
+        };
+      }
 
-        halRelays.log({
-          device_id: parsed.device_id,
-          state: parsed.decision === 'turn_on' ? 'on' : 'off',
-          reason: 'agent_decision',
-          triggered_by: triggeredBy,
-        });
-
+      try {
         // Mark the pending decision as executed
         const { markDecisionExecuted } = await import('../automation/modes.js');
         markDecisionExecuted(decision.id, 'success');

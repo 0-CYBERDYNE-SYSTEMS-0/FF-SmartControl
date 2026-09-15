@@ -1227,7 +1227,17 @@ export function createTelegramCommandHandlers(deps: TelegramCommandDeps): {
         .find((d) => d.id === deviceArg || d.label === deviceArg);
       if (!dev) return `Device "${deviceArg}" not found.`;
       const action = sub === 'on' ? 'on' : 'off';
-      await halRegistry.control(dev.id, action);
+      // Unified actuation chokepoint: e-stop gate, advisory policy check, audit.
+      const { executeActuation } = await import('./safety/verifier.js');
+      const outcome = await executeActuation({
+        deviceId: dev.id,
+        action,
+        triggeredBy: 'telegram',
+        source: 'manual',
+      });
+      if (!outcome.executed) {
+        return `${dev.label || dev.id} not turned ${action}: ${outcome.reason}.`;
+      }
       return `${dev.label || dev.id} turned ${action}.`;
     }
 
