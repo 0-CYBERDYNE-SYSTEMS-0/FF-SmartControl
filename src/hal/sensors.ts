@@ -83,4 +83,17 @@ export class HalSensorStore {
   }
 }
 
+/**
+ * Delete all sensor readings strictly older than `beforeIso`.
+ * Returns the number of rows deleted. `read_at < ?` uses the history index,
+ * so this stays cheap even on large tables.
+ */
+export function pruneSensorReadings(beforeIso: string): number {
+  const db = getDb();
+  const result = db
+    .prepare('DELETE FROM hal_sensors WHERE read_at < ?')
+    .run(beforeIso);
+  return Number(result.changes);
+}
+
 export const halSensors = new HalSensorStore();

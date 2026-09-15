@@ -468,6 +468,7 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
 
   let halPollTimer: ReturnType<typeof setInterval> | null = null;
   let halAlertTimer: ReturnType<typeof setInterval> | null = null;
+  let halRetentionTimer: ReturnType<typeof setInterval> | null = null;
 
   async function shutdownAndExit(
     signal: string,
@@ -482,6 +483,10 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
     if (halAlertTimer) {
       clearInterval(halAlertTimer);
       halAlertTimer = null;
+    }
+    if (halRetentionTimer) {
+      clearInterval(halRetentionTimer);
+      halRetentionTimer = null;
     }
 
     // VAL-QA-SV-002: Apply safe states to all relays before shutdown (100ms delay between relays)
@@ -845,6 +850,47 @@ export function createAppRuntime(deps: AppRuntimeDeps): {
       }
     }, 60_000);
     halAlertTimer.unref?.();
+
+    // HAL sensor retention — prune hal_sensors readings older than the
+    // configured cutoff. Runs once shortly after startup, then every 6 hours.
+    // HAL_SENSOR_RETENTION_DAYS=0 (or negative) disables pruning entirely.
+    const retentionDaysRaw = parseInt(
+      process.env.HAL_SENSOR_RETENTION_DAYS || '30',
+      10,
+    );
+    const retentionDays = Number.isNaN(retentionDaysRaw)
+      ? 30
+      : retentionDaysRaw;
+    if (retentionDays > 0) {
+      const runSensorRetention = async (): Promise<void> => {
+        try {
+          const { pruneSensorReadings } = await import('./hal/sensors.js');
+          const cutoff = new Date(
+            Date.now() - retentionDays * 24 * 60 * 60 * 1000,
+          ).toISOString();
+          const deleted = pruneSensorReadings(cutoff);
+          if (deleted > 0) {
+            deps.logger.info?.(
+              { deleted, retentionDays, cutoff },
+              'HAL sensor retention pruned old readings',
+            );
+          }
+        } catch (err) {
+          deps.logger.error?.({ err }, '[HAL] Sensor retention prune error');
+        }
+      };
+      const retentionRun = setTimeout(() => {
+        void runSensorRetention();
+      }, 10_000);
+      retentionRun.unref?.();
+      halRetentionTimer = setInterval(
+        () => {
+          void runSensorRetention();
+        },
+        6 * 60 * 60 * 1000,
+      );
+      halRetentionTimer.unref?.();
+    }
 
     deps.loadState?.();
     deps.migrateLegacyClaudeMemoryFiles?.();
