@@ -197,6 +197,7 @@ npm run hal:ui:build
   - `HAL_UI_AUTO_OPEN=0` prevents automatic browser opening.
 - HAL simulator environment knobs:
   - `HAL_SIM_MODE=1` enables the HAL simulator loop instead of periodic HAL polling.
+  - `HAL_SENSOR_RETENTION_DAYS` (default 30, `0` disables) prunes `hal_sensors` rows with `read_at` older than the cutoff; the prune runs once shortly after startup and then every 6h.
   - `HAL_SIM_TICK_MS`, `HAL_SIM_SPEED`, `HAL_SIM_SEED`, and `HAL_SIM_SCENARIO` tune simulator runtime behavior.
   - Demo seeding (`seedHalDemoData()`) runs only when `HAL_SIM_MODE=1` or `HAL_SEED_DEMO_DATA=1`. Real deployments must never contain seeded "Tent A" demo rows; treat their presence as a bug.
   - `HAL_SIM_AUTOPILOT=0` disables the simulator's internal rule-based controller and its light-schedule actuation, so the real agent (`runDecisionCycle`, via `HAL_AUTO_DECISIONS=true`) is the sole decision-maker driving the twin. Default (`1`) preserves the legacy self-playing twin. Sim-only — the real-hardware path is unaffected. In sim mode the simulator mirrors relay state from `halRegistry` each tick, and `halRegistry.control()` short-circuits the real HTTP/GPIO call (records state only) so agent/manual actuation closes the physics loop without hardware.
