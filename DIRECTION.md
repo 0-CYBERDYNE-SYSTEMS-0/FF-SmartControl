@@ -101,7 +101,7 @@ The codebase as of tag `v1.0.0` is exactly what was already built, *plus* the 2-
 
 Hard requirements before the v1.0 release tag is cut and the Stripe link goes live:
 
-1. `npm test` → 622/623 pass, 0 fail
+1. `npm test` → full suite green — 677 pass / 0 fail / 1 pre-existing skip (678 tests)
 2. `npm run typecheck` → clean
 3. `npm run doctor` → clean on a fresh Raspberry Pi 5 (8GB) install
 4. `npm run secret-scan` → clean
