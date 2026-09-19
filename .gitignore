@@ -93,3 +93,7 @@ system-height-fixed.png
 # Generated efficacy scorecards (SIMULATION artifacts)
 reports/efficacy/*.json
 reports/efficacy/*.md
+
+# Local research & analysis notes (machine-local, never shipped)
+research-*.md
+*-gap-analysis.html

@@ -3,6 +3,8 @@
 > Prepared by Hermes for TD, June 2 2026.
 > Read-only engineering analysis. No code changes proposed here are executed yet — they wait for your sign-off.
 
+> **Addendum — 2026-09-18:** The v1.0 launch calls (D1–D8) are now recorded in `DIRECTION.md` (§ Decision log). Two supersede recommendations below: §4's "ship SUGGEST mode by default" → the factory default is **OBSERVE_ONLY** (as SPEC.md already ships), with a one-click SUGGEST offer as the wizard's final step; and the launch is gated only on the 4-hour smoke test — any public grow-cycle pilot runs post-launch as marketing. Everything else in this spec stands.
+
 ## 1. Current state of the build
 
 - Typecheck: **clean** (after `npm install`)
