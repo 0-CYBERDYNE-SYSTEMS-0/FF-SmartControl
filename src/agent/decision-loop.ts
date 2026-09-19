@@ -1,7 +1,90 @@
-import { callLLM } from './llm.js';
+import { callLLM, callCloudLLM, getCloudProvider } from './llm.js';
 import { z } from 'zod';
 
 export type TriggerType = 'message' | 'heartbeat' | 'scheduled_task' | 'manual';
+
+// ============================================================
+// D5 hybrid LLM posture: escalation decision logic
+// Local provider answers first (unchanged default). When
+// DECISION_ESCALATION=auto and the local answer is low-confidence,
+// alert-class, or the sensor snapshot looks anomalous, the cycle
+// makes ONE additional cloud call via the existing cloud provider
+// keys. Default DECISION_ESCALATION is off: existing installs see
+// zero behavior change. The threshold is an env knob
+// (FARMPAL_ESCALATION_CONF, default 0.7) that the sim-efficacy
+// scorecard run informs — it is picked by the scorecard, not vibes.
+// ============================================================
+
+export interface EscalationContext {
+  decision: string;
+  confidence: number | null | undefined;
+  snapshot: Record<string, Record<string, number>>;
+}
+
+export function isEscalationEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return (env.DECISION_ESCALATION || '').toLowerCase() === 'auto';
+}
+
+export function getEscalationThreshold(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = parseFloat(env.FARMPAL_ESCALATION_CONF || '');
+  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 0.7;
+}
+
+/**
+ * Obvious snapshot anomaly: at least one sensor device is registered but no
+ * device reports any metric, or a reported value is not a finite number.
+ * A snapshot with zero registered sensor devices is a setup state, not an
+ * acute anomaly — escalating every cycle there would burn cloud spend.
+ */
+export function isAnomalousSnapshot(
+  snapshot: Record<string, Record<string, number>>,
+): boolean {
+  const deviceEntries = Object.entries(snapshot);
+  if (deviceEntries.length === 0) return false;
+
+  let reportedMetrics = 0;
+  for (const [, metrics] of deviceEntries) {
+    for (const [, value] of Object.entries(metrics)) {
+      if (!Number.isFinite(value)) return true;
+      reportedMetrics++;
+    }
+  }
+  return reportedMetrics === 0;
+}
+
+/**
+ * Decide whether the local answer needs one cloud escalation call.
+ * Pure function of the context + env; unit-tested without network.
+ */
+export function shouldEscalateToCloud(
+  ctx: EscalationContext,
+  env: NodeJS.ProcessEnv = process.env,
+): { escalate: boolean; reasons: string[] } {
+  if (!isEscalationEnabled(env)) return { escalate: false, reasons: [] };
+
+  const threshold = getEscalationThreshold(env);
+  const reasons: string[] = [];
+
+  if (
+    typeof ctx.confidence === 'number' &&
+    Number.isFinite(ctx.confidence) &&
+    ctx.confidence < threshold
+  ) {
+    reasons.push(`confidence ${ctx.confidence} < threshold ${threshold}`);
+  }
+  if (ctx.decision === 'alert') {
+    reasons.push('alert-class decision');
+  }
+  if (isAnomalousSnapshot(ctx.snapshot)) {
+    reasons.push('anomalous sensor snapshot');
+  }
+
+  return { escalate: reasons.length > 0, reasons };
+}
 
 // Robust decision-JSON extraction. Reasoning models (MiniMax-M3, Claude
 // extended thinking) wrap or precede the JSON with prose/markdown fences, and a
@@ -116,6 +199,27 @@ async function getSensorSnapshot(
   }
   return snapshot;
 }
+
+// Schema-validate the model's decision payload. Extraction proves it is JSON;
+// only validation proves it is a decision we understand. An out-of-contract
+// payload (unknown decision verb, non-numeric confidence, junk tool_calls)
+// degrades to a safe noop that still carries the raw model text in reasoning
+// so the audit trail shows what the model actually said. The same contract
+// applies to a D5 cloud escalation answer.
+const DecisionPayloadSchema = z.object({
+  decision: z.enum(['turn_on', 'turn_off', 'adjust', 'alert', 'noop']),
+  device_id: z.string().nullable().optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  reasoning: z.string().optional(),
+  tool_calls: z
+    .array(
+      z.object({
+        tool: z.string().min(1),
+        args: z.record(z.string(), z.unknown()).optional(),
+      }),
+    )
+    .optional(),
+});
 
 export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
   decision: string;
@@ -263,25 +367,7 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     else parsed.reasoning = llmResult.text;
   }
 
-  // Schema-validate the model's decision payload. Extraction proves it is JSON;
-  // only validation proves it is a decision we understand. An out-of-contract
-  // payload (unknown decision verb, non-numeric confidence, junk tool_calls)
-  // degrades to a safe noop that still carries the raw model text in reasoning
-  // so the audit trail shows what the model actually said.
-  const DecisionPayloadSchema = z.object({
-    decision: z.enum(['turn_on', 'turn_off', 'adjust', 'alert', 'noop']),
-    device_id: z.string().nullable().optional(),
-    confidence: z.number().min(0).max(1).optional(),
-    reasoning: z.string().optional(),
-    tool_calls: z
-      .array(
-        z.object({
-          tool: z.string().min(1),
-          args: z.record(z.string(), z.unknown()).optional(),
-        }),
-      )
-      .optional(),
-  });
+  // Schema-validate the model's decision payload (module-level contract above).
   const payloadCheck = DecisionPayloadSchema.safeParse(parsed);
   if (!payloadCheck.success) {
     const issue = payloadCheck.error.issues[0];
@@ -316,6 +402,68 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     parsed.decision = 'noop';
   }
 
+  // D5 escalation: when enabled and the local answer looks hard or anomalous,
+  // give the cloud model ONE chance to decide. The cloud payload passes the
+  // same schema gate as the local one; if the cloud call fails or answers
+  // out-of-contract, the local answer stands. Exactly one escalation per cycle.
+  let decidedByModel = llmResult?.model;
+  if (isEscalationEnabled() && llmResult) {
+    const escalation = shouldEscalateToCloud({
+      decision: parsed.decision,
+      confidence: parsed.confidence,
+      snapshot: sensorSnapshot,
+    });
+    if (escalation.escalate && getCloudProvider()) {
+      try {
+        const cloudResult = await callCloudLLM(userPrompt, {
+          system: systemPrompt,
+          temperature: 0.3,
+          maxTokens: 1024,
+        });
+        const cloudExtracted = extractDecisionJson(cloudResult.text);
+        const cloudCheck = cloudExtracted
+          ? DecisionPayloadSchema.safeParse(cloudExtracted)
+          : { success: false as const };
+        if (cloudCheck.success) {
+          parsed = {
+            decision: cloudCheck.data.decision,
+            device_id: cloudCheck.data.device_id ?? null,
+            confidence: cloudCheck.data.confidence ?? 0.5,
+            reasoning: cloudCheck.data.reasoning ?? cloudResult.text,
+            tool_calls: cloudCheck.data.tool_calls ?? [],
+          };
+          decidedByModel = cloudResult.model;
+          // The cloud answer gets the same hygiene as the local one: drop
+          // malformed tool calls and re-apply the hallucinated-device guard
+          // before the decision is logged or executed.
+          if (Array.isArray(parsed.tool_calls)) {
+            parsed.tool_calls = parsed.tool_calls.filter(
+              (tc: any) =>
+                tc && typeof tc.tool === 'string' && tc.tool.length > 0,
+            );
+          } else {
+            parsed.tool_calls = [];
+          }
+          if (parsed.device_id && !halRegistry.get(parsed.device_id)) {
+            parsed.reasoning =
+              `${parsed.reasoning || ''} [cloud device_id "${parsed.device_id}" is not a registered device — no action taken]`.trim();
+            parsed.device_id = null;
+            parsed.decision = 'noop';
+          }
+          parsed.reasoning =
+            `${parsed.reasoning} [escalated to cloud (${escalation.reasons.join('; ')}); decided by ${cloudResult.model}]`.trim();
+        } else {
+          parsed.reasoning =
+            `${parsed.reasoning || ''} [cloud escalation answered out-of-contract — local answer kept]`.trim();
+        }
+      } catch (err: any) {
+        parsed.reasoning =
+          `${parsed.reasoning || ''} [cloud escalation failed: ${err?.message || 'unknown'} — local answer kept]`.trim();
+        console.error('[DecisionLoop] Cloud escalation failed:', err?.message);
+      }
+    }
+  }
+
   // Convert sensor snapshot to flat format for decision log (backward compatible)
   const flatSensorSnapshot: Record<string, number> = {};
   for (const [deviceId, metrics] of Object.entries(sensorSnapshot)) {
@@ -336,7 +484,7 @@ export async function runDecisionCycle(ctx: DecisionCycleContext): Promise<{
     sensor_snapshot: flatSensorSnapshot,
     outcome: 'pending',
     triggered_by: triggeredBy,
-    model: llmResult?.model, // VAL-AUTO-042: model in audit entries
+    model: decidedByModel, // VAL-AUTO-042: model in audit entries; D5: the model that actually decided
   });
 
   // Import automation mode handler

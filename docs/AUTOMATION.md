@@ -11,6 +11,7 @@ FarmPal can run your grow environment automatically. This guide explains how aut
 **Automation** means FarmPal makes decisions and takes actions without asking you first.
 
 Instead of you watching the temperature and manually turning on the fan, FarmPal:
+
 1. Checks the temperature sensor
 2. Compares it to your settings
 3. Turns on the fan if needed
@@ -29,6 +30,7 @@ FarmPal has four modes that control how much automation is active.
 **What it does:** FarmPal watches and records. Nothing happens automatically.
 
 **When to use it:**
+
 - You want to collect data before automating
 - You are troubleshooting and want to see what is happening
 - You want full manual control
@@ -42,6 +44,7 @@ FarmPal has four modes that control how much automation is active.
 **What it does:** FarmPal watches and makes suggestions. Nothing happens automatically.
 
 **When to use it:**
+
 - You want to review FarmPal's ideas before they happen
 - You want to approve or reject each decision
 
@@ -54,10 +57,12 @@ FarmPal has four modes that control how much automation is active.
 **What it does:** FarmPal proposes actions, waits briefly, then acts — unless you stop it.
 
 **When to use it:**
+
 - You want automation but with a safety net
 - You want to see what FarmPal is planning
 
 **How it works:**
+
 1. FarmPal makes a decision
 2. A notification appears: "FarmPal plans to turn on the fan in 30 seconds"
 3. If you do nothing, the action happens after 30 seconds
@@ -70,6 +75,7 @@ FarmPal has four modes that control how much automation is active.
 **What it does:** FarmPal acts immediately without waiting.
 
 **When to use it:**
+
 - You trust the automation and want full hands-off operation
 - You have tested the system and it is working correctly
 
@@ -96,12 +102,12 @@ FarmPal has four modes that control how much automation is active.
 
 In Autonomous or Assisted mode, FarmPal can manage:
 
-| Category | Examples |
-|---|---|
-| **Lighting** | Turn grow lights on/off based on schedule |
-| **Irrigation** | Water plants based on soil moisture |
-| **Ventilation** | Turn fans on/off based on temperature |
-| **CO₂** | Add CO₂ based on levels |
+| Category            | Examples                                   |
+| ------------------- | ------------------------------------------ |
+| **Lighting**        | Turn grow lights on/off based on schedule  |
+| **Irrigation**      | Water plants based on soil moisture        |
+| **Ventilation**     | Turn fans on/off based on temperature      |
+| **CO₂**             | Add CO₂ based on levels                    |
 | **Heating/Cooling** | Control heaters or AC based on temperature |
 
 FarmPal only acts on devices you have configured and assigned to automation.
@@ -133,11 +139,11 @@ Before FarmPal can automate anything, you need to add your devices.
 
 **Threshold examples:**
 
-| Goal | Threshold Setting |
-|---|---|
-| Keep temperature between 22°C and 28°C | Min: 22°C, Max: 28°C |
-| Water when soil is dry | Min: 30% moisture |
-| Turn off lights at night | Schedule-based (not threshold-based) |
+| Goal                                   | Threshold Setting                    |
+| -------------------------------------- | ------------------------------------ |
+| Keep temperature between 22°C and 28°C | Min: 22°C, Max: 28°C                 |
+| Water when soil is dry                 | Min: 30% moisture                    |
+| Turn off lights at night               | Schedule-based (not threshold-based) |
 
 ### Step 3: Create Automation Rules
 
@@ -170,6 +176,7 @@ Safety policies are rules that **always** block dangerous actions, even in Auton
 ### What Safety Policies Do
 
 Safety policies prevent:
+
 - Turning off ventilation when temperature is dangerously high
 - Running irrigation when the soil is already saturated
 - Activating devices that could cause damage
@@ -180,12 +187,12 @@ Safety policies prevent:
 
 FarmPal comes with built-in safety policies:
 
-| Policy | What It Blocks |
-|---|---|
-| **Temperature ceiling** | No device action that would raise temperature above 45°C |
-| **Humidity floor** | No action that would raise humidity above 95% |
-| **Minimum off time** | A relay cannot be turned back on within 60 seconds of turning off |
-| **Maximum activations** | A relay cannot be switched more than 20 times per hour |
+| Policy                  | What It Blocks                                                    |
+| ----------------------- | ----------------------------------------------------------------- |
+| **Temperature ceiling** | No device action that would raise temperature above 45°C          |
+| **Humidity floor**      | No action that would raise humidity above 95%                     |
+| **Minimum off time**    | A relay cannot be turned back on within 60 seconds of turning off |
+| **Maximum activations** | A relay cannot be switched more than 20 times per hour            |
 
 ### Configuring Safety Policies
 
@@ -204,6 +211,7 @@ FarmPal comes with built-in safety policies:
 **Example:** "The exhaust fan must stay on whenever the grow lights are on."
 
 **How to set it:**
+
 1. Go to **Settings** → **Safety** → **Dependencies**
 2. Click **Add Dependency**
 3. Set: "When [Grow Lights] is [ON], [Exhaust Fan] must be [ON]"
@@ -238,6 +246,20 @@ FarmPal uses a "Generator/Verifier" system to make decisions safely.
 
 This means even if the AI makes a bad suggestion, the safety layer stops it.
 
+### Hybrid LLM Posture (Local First, Cloud for Hard Calls)
+
+FarmPal is local-first: the local model (Ollama) handles routine decision cycles. When the local answer looks hard or unusual, the decision cycle may make **one** extra call to a cloud model you have already configured (Anthropic / OpenAI / Z.ai key) and use its answer instead. Which model actually decided is recorded on every decision row.
+
+This is **off by default** and only adds cloud calls when you turn it on:
+
+| Setting                             | Meaning                                                                                                                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DECISION_ESCALATION=off` (default) | Local model only — exactly like before                                                                                                                                    |
+| `DECISION_ESCALATION=auto`          | Escalate to your configured cloud key when the local answer has **low confidence**, is an **alert**, or the **sensor snapshot looks anomalous** (e.g. no readings at all) |
+| `FARMPAL_ESCALATION_CONF`           | Confidence threshold that triggers escalation (default `0.7`)                                                                                                             |
+
+No cloud key configured? Escalation quietly keeps the local answer — nothing breaks. The default threshold is informed by the simulation efficacy scorecard (`scripts/sim-efficacy.ts`), not guesswork.
+
 ---
 
 ## Monitoring Automation
@@ -245,6 +267,7 @@ This means even if the AI makes a bad suggestion, the safety layer stops it.
 ### The Decisions Log
 
 Every automated decision is logged in the **Decisions** view. Each entry shows:
+
 - What was decided
 - What the sensor readings were at the time
 - Why the decision was made
@@ -253,6 +276,7 @@ Every automated decision is logged in the **Decisions** view. Each entry shows:
 ### Decision Confidence
 
 Each decision shows a **confidence percentage**:
+
 - **High confidence (80–100%)** — FarmPal is very sure this is the right action
 - **Medium confidence (50–79%)** — FarmPal has some uncertainty
 - **Low confidence (<50%)** — FarmPal is unsure; you may want to review
@@ -260,6 +284,7 @@ Each decision shows a **confidence percentage**:
 ### Audit Log
 
 For detailed tracking, the **Audit Log** records:
+
 - Every hardware action
 - Who/what triggered it (automation or manual)
 - Sensor snapshot at the time
@@ -288,11 +313,11 @@ As well as threshold-based automation, you can set **schedules** for devices.
 
 **Schedules vs. Thresholds:**
 
-| Type | Trigger | Example |
-|---|---|---|
-| **Threshold** | Sensor reading crosses a value | "Turn on fan when temp > 28°C" |
-| **Schedule** | Clock time | "Turn on lights at 6 AM" |
-| **Both** | Both conditions must be true | "At 6 AM, if soil is dry, water" |
+| Type          | Trigger                        | Example                          |
+| ------------- | ------------------------------ | -------------------------------- |
+| **Threshold** | Sensor reading crosses a value | "Turn on fan when temp > 28°C"   |
+| **Schedule**  | Clock time                     | "Turn on lights at 6 AM"         |
+| **Both**      | Both conditions must be true   | "At 6 AM, if soil is dry, water" |
 
 ---
 
@@ -301,11 +326,13 @@ As well as threshold-based automation, you can set **schedules** for devices.
 The **Emergency Stop (E-Stop)** button stops all automation immediately.
 
 When E-Stop is triggered:
+
 - All autonomous decisions are suspended
 - All relays go to their configured safe states
 - A red banner appears: "EMERGENCY STOP ACTIVE"
 
 **Clearing E-Stop:**
+
 1. Fix the problem
 2. Click **Clear Emergency Stop** in the red banner
 3. Enter your admin password
@@ -327,6 +354,7 @@ When E-Stop is triggered:
 ### Watch the Decisions Log
 
 Check the Decisions log daily at first. Look for:
+
 - Decisions that were DENIED (blocked by safety)
 - Decisions that failed (hardware did not respond)
 - Patterns that seem wrong
@@ -353,14 +381,14 @@ Check the Decisions log daily at first. Look for:
 
 ## Troubleshooting Automation
 
-| Problem | Likely Cause | Fix |
-|---|---|---|
-| Device not responding to automation | Device offline | Check wiring and power |
-| FarmPal keeps blocking actions | Threshold too close to current reading | Adjust threshold |
-| Actions happen at wrong times | Wrong timezone | Check Settings → Timezone |
-| FarmPal ignores a sensor | Sensor offline | Check sensor connection |
-| No autonomous decisions happening | Mode set to Observe or Suggest | Change mode to Autonomous |
-| E-Stop keeps triggering | Safety policy too strict | Adjust safety policy thresholds |
+| Problem                             | Likely Cause                           | Fix                             |
+| ----------------------------------- | -------------------------------------- | ------------------------------- |
+| Device not responding to automation | Device offline                         | Check wiring and power          |
+| FarmPal keeps blocking actions      | Threshold too close to current reading | Adjust threshold                |
+| Actions happen at wrong times       | Wrong timezone                         | Check Settings → Timezone       |
+| FarmPal ignores a sensor            | Sensor offline                         | Check sensor connection         |
+| No autonomous decisions happening   | Mode set to Observe or Suggest         | Change mode to Autonomous       |
+| E-Stop keeps triggering             | Safety policy too strict               | Adjust safety policy thresholds |
 
 For more help, see the **Troubleshooting Guide** (accessible from **Settings → Help → Troubleshooting**).
 
@@ -368,18 +396,18 @@ For more help, see the **Troubleshooting Guide** (accessible from **Settings →
 
 ## Summary
 
-| Concept | What It Means |
-|---|---|
-| **Automation** | FarmPal acts without asking you |
-| **Modes** | Control how much FarmPal can act autonomously |
-| **Thresholds** | Trigger points for automated actions |
-| **Rules** | Connect thresholds to actions |
-| **Safety Policies** | Always-on rules that prevent dangerous actions |
+| Concept                | What It Means                                      |
+| ---------------------- | -------------------------------------------------- |
+| **Automation**         | FarmPal acts without asking you                    |
+| **Modes**              | Control how much FarmPal can act autonomously      |
+| **Thresholds**         | Trigger points for automated actions               |
+| **Rules**              | Connect thresholds to actions                      |
+| **Safety Policies**    | Always-on rules that prevent dangerous actions     |
 | **Generator/Verifier** | Two-step decision process (propose → safety check) |
-| **E-Stop** | Stops all automation immediately |
+| **E-Stop**             | Stops all automation immediately                   |
 
 ---
 
-*Start with Observe Only mode, collect data, then gradually increase automation as you trust the system.*
+_Start with Observe Only mode, collect data, then gradually increase automation as you trust the system._
 
 For additional support: [farmpal.io/support](https://farmpal.io/support)
