@@ -80,7 +80,7 @@ agents-sdk-docs
 .factory/
 fft-experience/
 
-# Claude Code planning artifacts (local only)
+# Local planning artifacts (machine-local only)
 docs/superpowers/
 node_modules_old/\ncompiled/\n
 

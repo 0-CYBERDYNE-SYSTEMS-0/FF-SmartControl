@@ -143,12 +143,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
           ? 'warning'
           : 'critical'
       : 'good',
-    sparklineData:
-      tempHistory.length > 1
-        ? tempHistory
-        : hasTemp
-          ? []
-          : [],
+    sparklineData: tempHistory.length > 1 ? tempHistory : hasTemp ? [] : [],
     sparklineColor: hasTemp ? '#F59E0B' : 'var(--text-tertiary)',
     comparison: tempComp,
   });
@@ -178,12 +173,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
           ? 'warning'
           : 'critical'
       : 'good',
-    sparklineData:
-      humHistory.length > 1
-        ? humHistory
-        : hasHum
-          ? []
-          : [],
+    sparklineData: humHistory.length > 1 ? humHistory : hasHum ? [] : [],
     sparklineColor: hasHum ? '#38BDF8' : 'var(--text-tertiary)',
     comparison: humComp,
   });
@@ -213,12 +203,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
           ? 'warning'
           : 'critical'
       : 'good',
-    sparklineData:
-      soilHistory.length > 1
-        ? soilHistory
-        : hasSoil
-          ? []
-          : [],
+    sparklineData: soilHistory.length > 1 ? soilHistory : hasSoil ? [] : [],
     sparklineColor: hasSoil ? '#EF4444' : 'var(--text-tertiary)',
     comparison: soilComp,
   });
@@ -248,12 +233,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
           ? 'warning'
           : 'critical'
       : 'good',
-    sparklineData:
-      lightHistory.length > 1
-        ? lightHistory
-        : hasLight
-          ? []
-          : [],
+    sparklineData: lightHistory.length > 1 ? lightHistory : hasLight ? [] : [],
     sparklineColor: hasLight ? '#FACC15' : 'var(--text-tertiary)',
     comparison: lightComp,
   });
@@ -283,12 +263,7 @@ export async function buildKpiData(): Promise<KpiData[]> {
           ? 'warning'
           : 'critical'
       : 'good',
-    sparklineData:
-      co2History.length > 1
-        ? co2History
-        : hasCo2
-          ? []
-          : [],
+    sparklineData: co2History.length > 1 ? co2History : hasCo2 ? [] : [],
     sparklineColor: hasCo2 ? '#22C55E' : 'var(--text-tertiary)',
     comparison: co2Comp,
   });
@@ -371,7 +346,6 @@ function computeComparison(
   const delta = ((currAvg - prevAvg) / Math.abs(prevAvg)) * 100;
   return { delta, label: 'vs yesterday' };
 }
-
 
 export function injectKpiStyles(): void {
   if (document.getElementById('hal-kpi-styles')) return;

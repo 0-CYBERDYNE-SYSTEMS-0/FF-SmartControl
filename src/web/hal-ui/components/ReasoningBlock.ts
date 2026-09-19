@@ -51,7 +51,10 @@ export function renderVerifierRow(audit: AuditMatch): string {
 
 // Full reasoning text + verifier row — for surfaces that manage their own
 // expand/collapse (the Decisions list).
-export function renderReasoningDetail(d: HalDecision, audit?: AuditMatch): string {
+export function renderReasoningDetail(
+  d: HalDecision,
+  audit?: AuditMatch,
+): string {
   const full = (d.reasoning || '').trim();
   return `
     ${full ? `<div class="reasoning-full">${escapeHtml(full)}</div>` : ''}
@@ -61,7 +64,10 @@ export function renderReasoningDetail(d: HalDecision, audit?: AuditMatch): strin
 
 // Self-contained block — clamped one-liner always, full text when Detailed or
 // auto-surfaced. For cards without their own expand (LatestDecision, pending).
-export function renderReasoningBlock(d: HalDecision, audit?: AuditMatch): string {
+export function renderReasoningBlock(
+  d: HalDecision,
+  audit?: AuditMatch,
+): string {
   const summary = summarizeReasoning(d);
   const full = (d.reasoning || '').trim();
   const auto = shouldAutoSurface(d, audit);

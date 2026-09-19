@@ -8761,22 +8761,27 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           }
         }
       }
-      renderDeviceForceGraphSvg(nodes, edges, "devices-graph-container", (nodeId) => {
-        gridContainer.style.display = "";
-        graphBtn.classList.remove("active");
-        graphContainer.style.display = "none";
-        graphVisible = false;
-        const card = document.querySelector(
-          `.device-card[data-device-id="${CSS.escape(nodeId)}"]`
-        );
-        if (card) {
-          card.scrollIntoView({ behavior: "smooth", block: "center" });
-          card.style.outline = `2px solid var(--accent)`;
-          setTimeout(() => {
-            card.style.outline = "";
-          }, 2e3);
+      renderDeviceForceGraphSvg(
+        nodes,
+        edges,
+        "devices-graph-container",
+        (nodeId) => {
+          gridContainer.style.display = "";
+          graphBtn.classList.remove("active");
+          graphContainer.style.display = "none";
+          graphVisible = false;
+          const card = document.querySelector(
+            `.device-card[data-device-id="${CSS.escape(nodeId)}"]`
+          );
+          if (card) {
+            card.scrollIntoView({ behavior: "smooth", block: "center" });
+            card.style.outline = `2px solid var(--accent)`;
+            setTimeout(() => {
+              card.style.outline = "";
+            }, 2e3);
+          }
         }
-      });
+      );
     }
     function applyFilter() {
       const q = filterInput?.value.toLowerCase() || "";

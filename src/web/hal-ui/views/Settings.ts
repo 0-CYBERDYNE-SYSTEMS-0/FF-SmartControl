@@ -677,11 +677,9 @@ function attachSettingsEvents(): void {
           | 'quiet'
           | 'detailed';
         setStore({ reasoningVerbosity });
-        document
-          .querySelectorAll('[data-reasoning-verbosity]')
-          .forEach((b) => {
-            b.classList.toggle('active', b === btn);
-          });
+        document.querySelectorAll('[data-reasoning-verbosity]').forEach((b) => {
+          b.classList.toggle('active', b === btn);
+        });
         showToast(
           `Reasoning detail: ${reasoningVerbosity === 'quiet' ? 'Quiet' : 'Detailed'}`,
           'info',

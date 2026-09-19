@@ -19,7 +19,7 @@ const TOTAL_H = H + SPARK_H;
 const TOP_PAD = 40;
 const BOT_PAD = 20;
 const FILLABLE = H - TOP_PAD - BOT_PAD; // 160px
-const FILL_BOTTOM = H - BOT_PAD;        // 200
+const FILL_BOTTOM = H - BOT_PAD; // 200
 const PERIOD = 80;
 const AMP = 10;
 
@@ -35,7 +35,11 @@ const WAVE_DUR: Record<string, string> = {
 };
 
 function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 export function injectLakeTankStyles(): void {
@@ -113,7 +117,13 @@ export function renderLakeTanks(containerId: string, tanks: LakeTank[]): void {
 
 function buildTankSvg(tank: LakeTank): string {
   const fillPct = Number.isFinite(tank.currentValue)
-    ? Math.max(0.02, Math.min(1, (tank.currentValue - tank.minVal) / (tank.maxVal - tank.minVal)))
+    ? Math.max(
+        0.02,
+        Math.min(
+          1,
+          (tank.currentValue - tank.minVal) / (tank.maxVal - tank.minVal),
+        ),
+      )
     : 0.02;
 
   const fillY = TOP_PAD + FILLABLE * (1 - fillPct);
@@ -124,7 +134,9 @@ function buildTankSvg(tank: LakeTank): string {
   const insideFill = fillPct >= 0.25;
   const valueY = insideFill ? fillMidY : fillY - 12;
   const valueClass = insideFill ? 'lake-val' : 'lake-val-above';
-  const displayVal = Number.isFinite(tank.currentValue) ? tank.currentValue.toFixed(1) : '--';
+  const displayVal = Number.isFinite(tank.currentValue)
+    ? tank.currentValue.toFixed(1)
+    : '--';
 
   const label = esc(tank.label);
   const unit = esc(tank.unit);
@@ -209,7 +221,8 @@ function buildSparklineSvg(tank: LakeTank): string {
 
   const pts = sorted.map((p) => {
     const px = x0 + ((p.time - tMin) / tRange) * sw;
-    const py = y0 + sh - Math.max(0, Math.min(1, (p.value - tank.minVal) / vRange)) * sh;
+    const py =
+      y0 + sh - Math.max(0, Math.min(1, (p.value - tank.minVal) / vRange)) * sh;
     return `${px.toFixed(1)},${py.toFixed(1)}`;
   });
 

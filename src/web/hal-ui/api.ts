@@ -411,7 +411,11 @@ export const halApi = {
     const result = new Map<string, HalSensorReading[]>();
     if (devices.length === 0 || metrics.length === 0) return result;
     const series = await halGet<
-      Array<{ device_id: string; metric: string; points: RawHalSensorReading[] }>
+      Array<{
+        device_id: string;
+        metric: string;
+        points: RawHalSensorReading[];
+      }>
     >('/sensors/history-batch', {
       devices: devices.join(','),
       metrics: metrics.join(','),
