@@ -3,6 +3,11 @@
 
 import { halApi, HalDevice } from '../api.js';
 import { showToast } from '../components/Toast.js';
+import {
+  GOLDEN_KIT_PRESETS,
+  getGoldenKitPreset,
+  type GoldenKitPreset,
+} from '../../../hal/device-presets.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,6 +83,10 @@ let isScanning = false;
 let scanAbortController: AbortController | null = null;
 let scanTimeout: ReturnType<typeof setTimeout> | null = null;
 let wizardOverlay: HTMLElement | null = null;
+// Golden-kit quick-pick (D3): preset chosen in step 1; pre-fills protocol
+// selection and suggested labels. Purely advisory — never required.
+let goldenKitPreset: GoldenKitPreset | null = null;
+let manualAddPreset: GoldenKitPreset | null = null;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -91,6 +100,8 @@ export async function openDiscoveryWizard(): Promise<void> {
   isScanning = false;
   scanAbortController = null;
   scanTimeout = null;
+  goldenKitPreset = null;
+  manualAddPreset = null;
 
   // Load zones
   try {
@@ -275,11 +286,30 @@ function renderStep1_ProtocolSelect(): string {
     `;
   }).join('');
 
+  const goldenChips = GOLDEN_KIT_PRESETS.map(
+    (p) => `
+      <button type="button" class="dw-golden-chip" data-preset="${p.id}"
+              title="${escapeHtml(p.description)}">
+        <span class="dw-golden-chip-name">${escapeHtml(p.label)}</span>
+        ${p.optional ? '<span class="dw-golden-chip-optional">optional</span>' : ''}
+      </button>
+    `,
+  ).join('');
+
   return `
     <div class="dw-step-content">
       <p class="dw-step-desc">Choose how you want to discover your devices.</p>
       <div class="dw-protocol-grid" id="dw-protocol-grid">
         ${protocolCards}
+      </div>
+      <div class="dw-golden-kit">
+        <div class="dw-golden-kit-title">Golden kit quick-pick</div>
+        <div class="dw-golden-kit-desc">
+          Reference devices the presets ship for — any equivalent works.
+          Picking one pre-selects where to look.
+        </div>
+        <div class="dw-golden-kit-grid">${goldenChips}</div>
+        <div class="dw-golden-kit-hint" id="dw-golden-hint"></div>
       </div>
     </div>
   `;
@@ -536,6 +566,11 @@ function renderStep4_Assign(): string {
       <p class="dw-step-desc">
         Configure ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''}.
         Set a name, assign a zone, and choose the device role.
+        ${
+          goldenKitPreset
+            ? `Golden-kit preset: <strong>${escapeHtml(goldenKitPreset.label)}</strong> (expected metrics: ${goldenKitPreset.metrics.length ? goldenKitPreset.metrics.join(', ') : 'none — actuator'}).`
+            : ''
+        }
       </p>
       <div class="dw-assign-list">
         ${deviceRows}
@@ -612,6 +647,49 @@ function attachWizardHandlers(): void {
 function attachStep1Handlers(): void {
   const overlay = document.getElementById('discovery-wizard-overlay');
   if (!overlay) return;
+
+  // Golden-kit quick-pick chips (D3)
+  overlay
+    .querySelectorAll<HTMLButtonElement>('.dw-golden-chip')
+    .forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const preset = getGoldenKitPreset(chip.dataset.preset || '');
+        if (!preset) return;
+
+        // No scan path exists for this preset (e.g. Kasa) — jump straight to
+        // manual add with the preset pre-filled.
+        if (preset.wizardProtocol === 'manual') {
+          goldenKitPreset = preset;
+          openManualAdd(preset);
+          return;
+        }
+
+        const card = overlay.querySelector(
+          `.dw-protocol-card[data-protocol="${preset.wizardProtocol}"]`,
+        ) as HTMLElement | null;
+        if (!card || card.classList.contains('disabled')) {
+          const hint = document.getElementById('dw-golden-hint');
+          if (hint)
+            hint.textContent = `${preset.label}: that transport is unavailable right now.`;
+          return;
+        }
+
+        goldenKitPreset = preset;
+        selectedProtocol =
+          PROTOCOLS.find((p) => p.id === preset.wizardProtocol) || null;
+        overlay
+          .querySelectorAll('.dw-protocol-card')
+          .forEach((c) => c.classList.remove('selected'));
+        card.classList.add('selected');
+        const nextBtn = overlay.querySelector(
+          '#dw-next-btn',
+        ) as HTMLButtonElement | null;
+        if (nextBtn) nextBtn.disabled = !selectedProtocol;
+        const hint = document.getElementById('dw-golden-hint');
+        if (hint)
+          hint.textContent = `${preset.label} preset selected — click Next to scan.`;
+      });
+    });
 
   // Protocol card selection
   overlay
@@ -873,9 +951,11 @@ async function confirmRegistration(): Promise<void> {
 // Manual Add Modal (VAL-DISC-040, VAL-DISC-041)
 // ---------------------------------------------------------------------------
 
-function openManualAdd(): void {
+function openManualAdd(preset?: GoldenKitPreset): void {
   const overlay = document.getElementById('discovery-wizard-overlay');
   if (!overlay) return;
+
+  manualAddPreset = preset || null;
 
   const panel = overlay.querySelector('.dw-panel') as HTMLElement;
   if (!panel) return;
@@ -904,9 +984,29 @@ function renderManualAddForm(): string {
     )
     .join('');
 
+  // Golden-kit preset prefill (D3): protocol, type, and suggested label.
+  const preset = manualAddPreset;
+  const protocols = ['tasmota', 'shelly', 'kasa', 'mqtt', 'gpio', 'serial'];
+  const protocolOptions = protocols
+    .map((p) => {
+      const label: Record<string, string> = {
+        tasmota: 'HTTP / Tasmota',
+        shelly: 'HTTP / Shelly',
+        kasa: 'HTTP / Kasa',
+        mqtt: 'MQTT',
+        gpio: 'GPIO',
+        serial: 'Serial',
+      };
+      const selected = preset?.halProtocol === p ? ' selected' : '';
+      return `<option value="${p}"${selected}>${label[p]}</option>`;
+    })
+    .join('');
+  const typeSelected = preset?.deviceType;
+
   return `
     <div class="dw-step-content">
       <p class="dw-step-desc">
+        ${preset ? `Golden kit: <strong>${escapeHtml(preset.label)}</strong>. ` : ''}
         Enter your device details manually. FF_SmartControl will verify connectivity before saving.
       </p>
       <div class="dw-manual-form">
@@ -917,25 +1017,23 @@ function renderManualAddForm(): string {
         <div class="dw-form-group">
           <label class="dw-label">Protocol *</label>
           <select class="dw-select" id="ma-protocol">
-            <option value="tasmota">HTTP / Tasmota</option>
-            <option value="shelly">HTTP / Shelly</option>
-            <option value="mqtt">MQTT</option>
-            <option value="gpio">GPIO</option>
-            <option value="serial">Serial</option>
+            ${protocolOptions}
           </select>
         </div>
         <div class="dw-form-group">
           <label class="dw-label">Device Type</label>
           <select class="dw-select" id="ma-type">
-            <option value="sensor">Sensor</option>
-            <option value="relay">Relay</option>
-            <option value="camera">Camera</option>
-            <option value="smart_plug">Smart Plug</option>
+            <option value="sensor" ${typeSelected === 'sensor' ? 'selected' : ''}>Sensor</option>
+            <option value="relay" ${typeSelected === 'relay' ? 'selected' : ''}>Relay</option>
+            <option value="camera" ${typeSelected === 'camera' ? 'selected' : ''}>Camera</option>
+            <option value="smart_plug" ${typeSelected === 'smart_plug' ? 'selected' : ''}>Smart Plug</option>
           </select>
         </div>
         <div class="dw-form-group">
           <label class="dw-label">Device Name</label>
-          <input class="dw-input" type="text" id="ma-name" placeholder="My Sensor" maxlength="64">
+          <input class="dw-input" type="text" id="ma-name"
+            value="${preset ? escapeHtml(preset.label) : ''}"
+            placeholder="My Sensor" maxlength="64">
         </div>
         <div class="dw-form-group">
           <label class="dw-label">Zone</label>
@@ -957,6 +1055,7 @@ function attachManualAddHandlers(): void {
   overlay
     .querySelector('#dw-cancel-manual-btn')
     ?.addEventListener('click', () => {
+      manualAddPreset = null;
       currentStep = 1;
       selectedProtocol = null;
       renderWizard();
@@ -1314,6 +1413,38 @@ function injectWizardStyles(): void {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ===== Golden kit quick-pick (D3) ===== */
+.dw-golden-kit {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+.dw-golden-kit-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.dw-golden-kit-desc { font-size: 12px; color: var(--text-secondary); margin: 2px 0 var(--space-2); }
+.dw-golden-kit-grid { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.dw-golden-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary, var(--bg-primary));
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast, 0.15s), background var(--transition-fast, 0.15s);
+}
+.dw-golden-chip:hover { border-color: var(--accent); }
+.dw-golden-chip-optional {
+  font-size: 10px;
+  color: var(--text-tertiary, var(--text-secondary));
+  font-style: normal;
+}
+.dw-golden-kit-hint { font-size: 12px; color: var(--text-secondary); min-height: 16px; margin-top: var(--space-2); }
 `;
   document.head.appendChild(style);
 }

@@ -7268,6 +7268,106 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     }
   });
 
+  // src/hal/device-presets.ts
+  function getGoldenKitPreset(id) {
+    return GOLDEN_KIT_PRESETS.find((p) => p.id === id);
+  }
+  var GOLDEN_KIT_PRESETS, GOLDEN_KIT_REQUIRED_IDS;
+  var init_device_presets = __esm({
+    "src/hal/device-presets.ts"() {
+      "use strict";
+      GOLDEN_KIT_PRESETS = [
+        {
+          id: "tasmota_plug",
+          label: "Tasmota Plug",
+          description: "Tasmota-flashable smart plug (HTTP, watts + relay)",
+          deviceType: "smart_plug",
+          wizardProtocol: "http_tasmota",
+          halProtocol: "tasmota",
+          metrics: [],
+          pollIntervalMs: 1e4,
+          optional: false,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "shelly_plug",
+          label: "Shelly Plug",
+          description: "Shelly WiFi smart plug (HTTP, watts + relay)",
+          deviceType: "smart_plug",
+          wizardProtocol: "http_shelly",
+          halProtocol: "shelly",
+          metrics: [],
+          pollIntervalMs: 1e4,
+          optional: false,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "kasa_plug",
+          label: "Kasa Plug",
+          description: "TP-Link Kasa WiFi smart plug (add by IP address)",
+          deviceType: "smart_plug",
+          wizardProtocol: "manual",
+          halProtocol: "kasa",
+          metrics: [],
+          pollIntervalMs: 1e4,
+          optional: false,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "soil_moisture_probe",
+          label: "Soil Moisture Probe",
+          description: "Capacitive soil-moisture probe via USB serial/ADC bridge",
+          deviceType: "sensor",
+          wizardProtocol: "serial",
+          halProtocol: "serial",
+          metrics: ["soil_moisture"],
+          pollIntervalMs: 6e4,
+          optional: false,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "temp_humidity_sensor",
+          label: "Temp / Humidity Sensor",
+          description: "BME280 / SHT-class sensor via USB serial bridge",
+          deviceType: "sensor",
+          wizardProtocol: "serial",
+          halProtocol: "serial",
+          metrics: ["temperature", "humidity"],
+          pollIntervalMs: 6e4,
+          optional: false,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "co2_sensor",
+          label: "CO2 Sensor",
+          description: "NDIR CO2 sensor (SCD/MH-Z class) \u2014 optional",
+          deviceType: "sensor",
+          wizardProtocol: "serial",
+          halProtocol: "serial",
+          metrics: ["co2"],
+          pollIntervalMs: 3e5,
+          optional: true,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "relay_board",
+          label: "Relay Board",
+          description: "GPIO relay board via pigpiod \u2014 optional",
+          deviceType: "relay",
+          wizardProtocol: "gpio",
+          halProtocol: "gpio",
+          metrics: [],
+          pollIntervalMs: 1e4,
+          optional: true,
+          bomRef: "reference-bom"
+        }
+      ];
+      GOLDEN_KIT_REQUIRED_IDS = GOLDEN_KIT_PRESETS.filter(
+        (p) => !p.optional
+      ).map((p) => p.id);
+    }
+  });
+
   // src/web/hal-ui/views/DiscoveryWizard.ts
   async function openDiscoveryWizard() {
     currentStep = 1;
@@ -7277,6 +7377,8 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     isScanning = false;
     scanAbortController = null;
     scanTimeout = null;
+    goldenKitPreset = null;
+    manualAddPreset = null;
     try {
       zones = await halApi.getZones();
     } catch {
@@ -7431,11 +7533,29 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       </div>
     `;
     }).join("");
+    const goldenChips = GOLDEN_KIT_PRESETS.map(
+      (p) => `
+      <button type="button" class="dw-golden-chip" data-preset="${p.id}"
+              title="${escapeHtml9(p.description)}">
+        <span class="dw-golden-chip-name">${escapeHtml9(p.label)}</span>
+        ${p.optional ? '<span class="dw-golden-chip-optional">optional</span>' : ""}
+      </button>
+    `
+    ).join("");
     return `
     <div class="dw-step-content">
       <p class="dw-step-desc">Choose how you want to discover your devices.</p>
       <div class="dw-protocol-grid" id="dw-protocol-grid">
         ${protocolCards}
+      </div>
+      <div class="dw-golden-kit">
+        <div class="dw-golden-kit-title">Golden kit quick-pick</div>
+        <div class="dw-golden-kit-desc">
+          Reference devices the presets ship for \u2014 any equivalent works.
+          Picking one pre-selects where to look.
+        </div>
+        <div class="dw-golden-kit-grid">${goldenChips}</div>
+        <div class="dw-golden-kit-hint" id="dw-golden-hint"></div>
       </div>
     </div>
   `;
@@ -7644,6 +7764,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       <p class="dw-step-desc">
         Configure ${selectedDevices.length} device${selectedDevices.length !== 1 ? "s" : ""}.
         Set a name, assign a zone, and choose the device role.
+        ${goldenKitPreset ? `Golden-kit preset: <strong>${escapeHtml9(goldenKitPreset.label)}</strong> (expected metrics: ${goldenKitPreset.metrics.length ? goldenKitPreset.metrics.join(", ") : "none \u2014 actuator"}).` : ""}
       </p>
       <div class="dw-assign-list">
         ${deviceRows}
@@ -7698,6 +7819,37 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   function attachStep1Handlers() {
     const overlay = document.getElementById("discovery-wizard-overlay");
     if (!overlay) return;
+    overlay.querySelectorAll(".dw-golden-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const preset = getGoldenKitPreset(chip.dataset.preset || "");
+        if (!preset) return;
+        if (preset.wizardProtocol === "manual") {
+          goldenKitPreset = preset;
+          openManualAdd(preset);
+          return;
+        }
+        const card = overlay.querySelector(
+          `.dw-protocol-card[data-protocol="${preset.wizardProtocol}"]`
+        );
+        if (!card || card.classList.contains("disabled")) {
+          const hint2 = document.getElementById("dw-golden-hint");
+          if (hint2)
+            hint2.textContent = `${preset.label}: that transport is unavailable right now.`;
+          return;
+        }
+        goldenKitPreset = preset;
+        selectedProtocol = PROTOCOLS.find((p) => p.id === preset.wizardProtocol) || null;
+        overlay.querySelectorAll(".dw-protocol-card").forEach((c) => c.classList.remove("selected"));
+        card.classList.add("selected");
+        const nextBtn = overlay.querySelector(
+          "#dw-next-btn"
+        );
+        if (nextBtn) nextBtn.disabled = !selectedProtocol;
+        const hint = document.getElementById("dw-golden-hint");
+        if (hint)
+          hint.textContent = `${preset.label} preset selected \u2014 click Next to scan.`;
+      });
+    });
     overlay.querySelectorAll(".dw-protocol-card:not(.disabled)").forEach((card) => {
       card.addEventListener("click", () => {
         const id = card.dataset.protocol;
@@ -7890,9 +8042,10 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       showToast(`Failed to add devices: ${errors.join("; ")}`, "danger");
     }
   }
-  function openManualAdd() {
+  function openManualAdd(preset) {
     const overlay = document.getElementById("discovery-wizard-overlay");
     if (!overlay) return;
+    manualAddPreset = preset || null;
     const panel = overlay.querySelector(".dw-panel");
     if (!panel) return;
     const bodyEl = document.getElementById("dw-body");
@@ -7912,9 +8065,25 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     const zoneOptions = zones.map(
       (z) => `<option value="${escapeHtml9(z.name)}">${escapeHtml9(z.name)}</option>`
     ).join("");
+    const preset = manualAddPreset;
+    const protocols = ["tasmota", "shelly", "kasa", "mqtt", "gpio", "serial"];
+    const protocolOptions = protocols.map((p) => {
+      const label = {
+        tasmota: "HTTP / Tasmota",
+        shelly: "HTTP / Shelly",
+        kasa: "HTTP / Kasa",
+        mqtt: "MQTT",
+        gpio: "GPIO",
+        serial: "Serial"
+      };
+      const selected = preset?.halProtocol === p ? " selected" : "";
+      return `<option value="${p}"${selected}>${label[p]}</option>`;
+    }).join("");
+    const typeSelected = preset?.deviceType;
     return `
     <div class="dw-step-content">
       <p class="dw-step-desc">
+        ${preset ? `Golden kit: <strong>${escapeHtml9(preset.label)}</strong>. ` : ""}
         Enter your device details manually. FF_SmartControl will verify connectivity before saving.
       </p>
       <div class="dw-manual-form">
@@ -7925,25 +8094,23 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         <div class="dw-form-group">
           <label class="dw-label">Protocol *</label>
           <select class="dw-select" id="ma-protocol">
-            <option value="tasmota">HTTP / Tasmota</option>
-            <option value="shelly">HTTP / Shelly</option>
-            <option value="mqtt">MQTT</option>
-            <option value="gpio">GPIO</option>
-            <option value="serial">Serial</option>
+            ${protocolOptions}
           </select>
         </div>
         <div class="dw-form-group">
           <label class="dw-label">Device Type</label>
           <select class="dw-select" id="ma-type">
-            <option value="sensor">Sensor</option>
-            <option value="relay">Relay</option>
-            <option value="camera">Camera</option>
-            <option value="smart_plug">Smart Plug</option>
+            <option value="sensor" ${typeSelected === "sensor" ? "selected" : ""}>Sensor</option>
+            <option value="relay" ${typeSelected === "relay" ? "selected" : ""}>Relay</option>
+            <option value="camera" ${typeSelected === "camera" ? "selected" : ""}>Camera</option>
+            <option value="smart_plug" ${typeSelected === "smart_plug" ? "selected" : ""}>Smart Plug</option>
           </select>
         </div>
         <div class="dw-form-group">
           <label class="dw-label">Device Name</label>
-          <input class="dw-input" type="text" id="ma-name" placeholder="My Sensor" maxlength="64">
+          <input class="dw-input" type="text" id="ma-name"
+            value="${preset ? escapeHtml9(preset.label) : ""}"
+            placeholder="My Sensor" maxlength="64">
         </div>
         <div class="dw-form-group">
           <label class="dw-label">Zone</label>
@@ -7961,6 +8128,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     const overlay = document.getElementById("discovery-wizard-overlay");
     if (!overlay) return;
     overlay.querySelector("#dw-cancel-manual-btn")?.addEventListener("click", () => {
+      manualAddPreset = null;
       currentStep = 1;
       selectedProtocol = null;
       renderWizard();
@@ -8302,18 +8470,51 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ===== Golden kit quick-pick (D3) ===== */
+.dw-golden-kit {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+.dw-golden-kit-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.dw-golden-kit-desc { font-size: 12px; color: var(--text-secondary); margin: 2px 0 var(--space-2); }
+.dw-golden-kit-grid { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.dw-golden-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary, var(--bg-primary));
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast, 0.15s), background var(--transition-fast, 0.15s);
+}
+.dw-golden-chip:hover { border-color: var(--accent); }
+.dw-golden-chip-optional {
+  font-size: 10px;
+  color: var(--text-tertiary, var(--text-secondary));
+  font-style: normal;
+}
+.dw-golden-kit-hint { font-size: 12px; color: var(--text-secondary); min-height: 16px; margin-top: var(--space-2); }
 `;
     document.head.appendChild(style);
   }
   function escapeHtml9(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-  var PROTOCOLS, currentStep, selectedProtocol, discoveredDevices, selectedDevices, zones, isScanning, scanAbortController, scanTimeout, wizardOverlay;
+  var PROTOCOLS, currentStep, selectedProtocol, discoveredDevices, selectedDevices, zones, isScanning, scanAbortController, scanTimeout, wizardOverlay, goldenKitPreset, manualAddPreset;
   var init_DiscoveryWizard = __esm({
     "src/web/hal-ui/views/DiscoveryWizard.ts"() {
       "use strict";
       init_api();
       init_Toast();
+      init_device_presets();
       PROTOCOLS = [
         {
           id: "gpio",
@@ -8355,6 +8556,8 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       scanAbortController = null;
       scanTimeout = null;
       wizardOverlay = null;
+      goldenKitPreset = null;
+      manualAddPreset = null;
     }
   });
 
