@@ -19,6 +19,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   play, Pacific Northwest garden-center partnership angle.
 - `ship-gate-spec.md` — the v1.0 engineering ship-gate: 3 UTC test fixes already landed,
   7-day calendar to launch, per-SKU pricing, Eugene channel opener.
+- **Watering control, launch-gated (D6).** `src/hal/watering.ts` drives the customer's existing
+  irrigation hardware (pumps/valves on smart plugs or relays) through the safety verifier's
+  `executeActuation` chokepoint — E-stop, policy rules, and audit trail apply to every watering
+  action. A max-run interlock (`FARMPAL_WATERING_MAX_MIN`, default 30 minutes) switches water
+  off through the same chokepoint and logs it. The feature is off by default
+  (`FARMPAL_WATERING=1` enables it): watering ships in v1.0 only if the soil-probe golden kit
+  passes its 7-day soak test pre-launch; if the gate fails, it slips to v1.1 with this entry
+  standing as the honest record.
 
 ### Fixed
 - **Safety policy engine UTC bug.** `checkScheduleWindows` in
