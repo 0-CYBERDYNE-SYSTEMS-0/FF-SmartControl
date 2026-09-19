@@ -13127,8 +13127,9 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     render(container);
   }
   function render(container) {
-    const effectiveSteps = hasEthernet ? [1, 2, 3, 5, 6] : TOTAL_STEPS;
+    const effectiveSteps = hasEthernet ? [1, 2, 3, 5, 6, SUGGEST_STEP] : [1, 2, 3, 4, 5, 6, SUGGEST_STEP];
     const currentIndex = effectiveSteps.indexOf(currentStep2);
+    const onSuggestStep = currentStep2 === SUGGEST_STEP;
     container.innerHTML = `
     <div class="wizard-page">
       <div class="wizard-card">
@@ -13153,14 +13154,16 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           ${renderStepBody(currentStep2)}
         </div>
 
+        ${onSuggestStep ? "" : `
         <div class="wizard-footer">
           ${currentIndex > 0 ? '<button class="wizard-btn wizard-btn-back" id="wizard-back">Back</button>' : "<div></div>"}
           <button class="wizard-btn wizard-btn-next" id="wizard-next" ${isSubmitting ? "disabled" : ""}>
-            ${isSubmitting ? "Saving..." : currentIndex === effectiveSteps.length - 1 ? "Complete Setup" : "Next"}
+            ${isSubmitting ? "Saving..." : "Next"}
           </button>
         </div>
+        `}
 
-        ${currentStep2 !== 1 ? '<button class="wizard-skip-label" id="wizard-back-to-start">\u2190 Start over</button>' : ""}
+        ${currentStep2 !== 1 && !onSuggestStep ? '<button class="wizard-skip-label" id="wizard-back-to-start">\u2190 Start over</button>' : ""}
       </div>
     </div>
   `;
@@ -13191,6 +13194,8 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         return renderLlmStep();
       case 6:
         return renderTelegramStep();
+      case SUGGEST_STEP:
+        return renderSuggestStep();
       default:
         return "";
     }
@@ -13472,6 +13477,98 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     </div>
   `;
   }
+  function renderSuggestStep() {
+    const canAutoEnable = !!wizardData.adminPassword;
+    return `
+    <div class="wizard-step-content">
+      <h2 class="step-title">Turn on suggestions?</h2>
+      <p class="step-desc">
+        Your farm starts in <strong>Observe</strong> mode: FF_SmartControl watches
+        your sensors and touches nothing. Turn on <strong>Suggestions</strong> and
+        it will also propose actions \u2014 lights, fans, plugs \u2014 for you to approve
+        or veto. Nothing runs without your say-so.
+      </p>
+
+      <div class="suggest-card" id="suggest-card">
+        <div class="suggest-card-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2z"/></svg>
+        </div>
+        <div class="suggest-card-body">
+          <div class="suggest-card-title">Suggestions mode</div>
+          <div class="suggest-card-desc">Watch, learn, and propose \u2014 you approve every action.</div>
+        </div>
+        <button class="wizard-btn wizard-btn-next suggest-enable-btn" id="wizard-suggest-enable" ${canAutoEnable ? "" : "disabled"}>
+          Turn on suggestions
+        </button>
+      </div>
+
+      ${canAutoEnable ? "" : '<div class="form-hint">For security, sign in on the next screen and enable Suggestions from the mode menu at the top.</div>'}
+
+      <div class="suggest-actions">
+        <button class="wizard-btn wizard-btn-back" id="wizard-suggest-keep">Keep observing</button>
+      </div>
+
+      <div class="step-error hidden" id="suggest-error"></div>
+
+      <div class="skip-note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        You can change this anytime from the mode menu \u2014 Suggestions never acts on its own.
+      </div>
+    </div>
+  `;
+  }
+  async function enableSuggestions() {
+    const enableBtn = document.getElementById(
+      "wizard-suggest-enable"
+    );
+    const keepBtn = document.getElementById(
+      "wizard-suggest-keep"
+    );
+    const errorEl = document.getElementById("suggest-error");
+    if (errorEl) {
+      errorEl.textContent = "";
+      errorEl.classList.add("hidden");
+    }
+    if (enableBtn) {
+      enableBtn.disabled = true;
+      enableBtn.textContent = "Enabling...";
+    }
+    if (keepBtn) keepBtn.disabled = true;
+    try {
+      const loginRes = await fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: "admin",
+          password: wizardData.adminPassword
+        })
+      });
+      if (!loginRes.ok) {
+        const body = await loginRes.json().catch(() => ({}));
+        throw new Error(body.error || "Sign in failed");
+      }
+      const loginBody = await loginRes.json();
+      setCsrfToken(loginBody.csrfToken);
+      await halApi.setAutomationMode("SUGGEST", "wizard");
+      goToDashboard();
+    } catch (err) {
+      if (errorEl) {
+        errorEl.textContent = err.message || "Could not enable Suggestions. You can enable it from the mode menu later.";
+        errorEl.classList.remove("hidden");
+      }
+      if (enableBtn) {
+        enableBtn.textContent = "Try again";
+        enableBtn.disabled = !wizardData.adminPassword;
+      }
+      if (keepBtn) keepBtn.disabled = false;
+    }
+  }
+  function goToDashboard() {
+    sessionStorage.setItem("operatorId", "admin");
+    window.location.hash = "#dashboard";
+    window.location.reload();
+  }
   function renderError(message) {
     return `
     <div class="wizard-page">
@@ -13527,6 +13624,17 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         telegramFields.classList.toggle("hidden", !telegramToggle.checked);
       });
     }
+    const suggestEnable = document.getElementById("wizard-suggest-enable");
+    const suggestKeep = document.getElementById("wizard-suggest-keep");
+    if (currentStep2 === SUGGEST_STEP) {
+      suggestEnable?.addEventListener("click", () => {
+        void enableSuggestions();
+      });
+      suggestKeep?.addEventListener("click", () => {
+        goToDashboard();
+      });
+      return;
+    }
     const backBtn = document.getElementById("wizard-back");
     backBtn?.addEventListener("click", async () => {
       if (currentIndex > 0) {
@@ -13557,12 +13665,19 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       try {
         await saveCurrentStep(currentIndex, currentStep2);
         isSubmitting = false;
-        if (currentIndex < effectiveSteps.length - 1) {
-          currentStep2 = effectiveSteps[currentIndex + 1];
+        const nextStep = effectiveSteps[currentIndex + 1];
+        if (nextStep === SUGGEST_STEP) {
+          await completeProvisioning();
+          currentStep2 = SUGGEST_STEP;
+          wizardData = loadStepData(currentStep2);
+          render(container);
+        } else if (nextStep !== void 0) {
+          currentStep2 = nextStep;
           wizardData = loadStepData(currentStep2);
           render(container);
         } else {
-          await completeWizard(container);
+          await completeProvisioning();
+          goToDashboard();
         }
       } catch (err) {
         isSubmitting = false;
@@ -13691,7 +13806,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     `;
     }
   }
-  async function completeWizard(container) {
+  async function completeProvisioning() {
     wizardData.farmName = document.getElementById("farm-name")?.value || "My Farm";
     wizardData.timezone = document.getElementById("timezone")?.value || wizardData.timezone;
     wizardData.wifiSsid = document.getElementById("wifi-ssid")?.value || "";
@@ -13720,8 +13835,6 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     };
     await provisioningApi.complete(completeData);
     sessionStorage.setItem("operatorId", "admin");
-    window.location.hash = "#dashboard";
-    window.location.reload();
   }
   function updatePasswordStrength(pwd) {
     const bars = document.querySelectorAll(".strength-bar");
@@ -14272,6 +14385,58 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   color: var(--text-secondary);
 }
 
+/* ===== Suggestions Step (D2) ===== */
+.suggest-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.suggest-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+
+.suggest-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.suggest-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.suggest-card-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.suggest-enable-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.suggest-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: var(--space-4);
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 600px) {
   .wizard-card {
@@ -14295,6 +14460,14 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     gap: var(--space-3);
   }
 
+  .suggest-card {
+    flex-wrap: wrap;
+  }
+
+  .suggest-enable-btn {
+    width: 100%;
+  }
+
   .wizard-btn-back {
     padding: 0 var(--space-4);
   }
@@ -14306,12 +14479,14 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
 `;
     document.head.appendChild(style);
   }
-  var DEFAULT_DATA, STEP_LABELS, TOTAL_STEPS, currentStep2, wizardData, hasEthernet, isSubmitting, COMMON_TIMEZONES, wifiNetworks, LLM_PROVIDERS;
+  var SUGGEST_STEP, DEFAULT_DATA, STEP_LABELS, currentStep2, wizardData, hasEthernet, isSubmitting, COMMON_TIMEZONES, wifiNetworks, LLM_PROVIDERS;
   var init_SetupWizard = __esm({
     "src/web/hal-ui/views/SetupWizard.ts"() {
       "use strict";
       init_api_provisioning();
+      init_api();
       init_bcryptjs();
+      SUGGEST_STEP = 7;
       DEFAULT_DATA = {
         adminPassword: "",
         adminPasswordHash: "",
@@ -14333,9 +14508,9 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         3: "Timezone",
         4: "WiFi",
         5: "LLM Provider",
-        6: "Telegram"
+        6: "Telegram",
+        7: "Suggestions"
       };
-      TOTAL_STEPS = [1, 2, 3, 4, 5, 6];
       currentStep2 = 1;
       wizardData = { ...DEFAULT_DATA };
       hasEthernet = false;

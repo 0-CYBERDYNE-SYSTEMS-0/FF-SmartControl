@@ -7,13 +7,19 @@ import {
   type WizardSession,
   type WizardCompleteRequest,
 } from '../api-provisioning.js';
-import { halApi } from '../api.js';
+import { halApi, setCsrfToken } from '../api.js';
 import bcrypt from 'bcryptjs';
 
 // ---------------------------------------------------------------------------
 // Wizard Steps
 // ---------------------------------------------------------------------------
-type StepId = 1 | 2 | 3 | 4 | 5 | 6;
+// Steps 1-6 provision the system. Step 7 is the client-only completion step
+// (D2): a one-click offer to leave OBSERVE_ONLY for SUGGEST. It is never
+// persisted via the provisioning wizard-step API — declining it (or closing
+// the browser here) leaves the factory OBSERVE_ONLY default intact.
+type StepId = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+const SUGGEST_STEP: StepId = 7;
 
 interface WizardData {
   // Step 1
@@ -60,9 +66,8 @@ const STEP_LABELS: Record<StepId, string> = {
   4: 'WiFi',
   5: 'LLM Provider',
   6: 'Telegram',
+  7: 'Suggestions',
 };
-
-const TOTAL_STEPS: StepId[] = [1, 2, 3, 4, 5, 6];
 
 // ---------------------------------------------------------------------------
 // Render
@@ -137,9 +142,13 @@ export async function renderSetupWizard(container: HTMLElement): Promise<void> {
 }
 
 function render(container: HTMLElement): void {
-  // If WiFi is not needed (ethernet), skip it
-  const effectiveSteps = hasEthernet ? [1, 2, 3, 5, 6] : TOTAL_STEPS;
+  // If WiFi is not needed (ethernet), skip it. Step 7 (Suggestions) always
+  // closes the flow.
+  const effectiveSteps: StepId[] = hasEthernet
+    ? [1, 2, 3, 5, 6, SUGGEST_STEP]
+    : [1, 2, 3, 4, 5, 6, SUGGEST_STEP];
   const currentIndex = effectiveSteps.indexOf(currentStep);
+  const onSuggestStep = currentStep === SUGGEST_STEP;
 
   container.innerHTML = `
     <div class="wizard-page">
@@ -165,14 +174,20 @@ function render(container: HTMLElement): void {
           ${renderStepBody(currentStep)}
         </div>
 
+        ${
+          onSuggestStep
+            ? ''
+            : `
         <div class="wizard-footer">
           ${currentIndex > 0 ? '<button class="wizard-btn wizard-btn-back" id="wizard-back">Back</button>' : '<div></div>'}
           <button class="wizard-btn wizard-btn-next" id="wizard-next" ${isSubmitting ? 'disabled' : ''}>
-            ${isSubmitting ? 'Saving...' : currentIndex === effectiveSteps.length - 1 ? 'Complete Setup' : 'Next'}
+            ${isSubmitting ? 'Saving...' : 'Next'}
           </button>
         </div>
+        `
+        }
 
-        ${currentStep !== 1 ? '<button class="wizard-skip-label" id="wizard-back-to-start">← Start over</button>' : ''}
+        ${currentStep !== 1 && !onSuggestStep ? '<button class="wizard-skip-label" id="wizard-back-to-start">← Start over</button>' : ''}
       </div>
     </div>
   `;
@@ -212,6 +227,8 @@ function renderStepBody(step: StepId): string {
       return renderLlmStep();
     case 6:
       return renderTelegramStep();
+    case SUGGEST_STEP:
+      return renderSuggestStep();
     default:
       return '';
   }
@@ -597,6 +614,123 @@ function renderTelegramStep(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Step 7: Suggestions (D2 — one-click SUGGEST offer; client-only step)
+// ---------------------------------------------------------------------------
+function renderSuggestStep(): string {
+  // After a mid-wizard reload the plaintext admin password is gone (only the
+  // hash is persisted), so auto-login cannot be attempted — the operator can
+  // flip the mode from the dashboard instead.
+  const canAutoEnable = !!wizardData.adminPassword;
+
+  return `
+    <div class="wizard-step-content">
+      <h2 class="step-title">Turn on suggestions?</h2>
+      <p class="step-desc">
+        Your farm starts in <strong>Observe</strong> mode: FF_SmartControl watches
+        your sensors and touches nothing. Turn on <strong>Suggestions</strong> and
+        it will also propose actions — lights, fans, plugs — for you to approve
+        or veto. Nothing runs without your say-so.
+      </p>
+
+      <div class="suggest-card" id="suggest-card">
+        <div class="suggest-card-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2z"/></svg>
+        </div>
+        <div class="suggest-card-body">
+          <div class="suggest-card-title">Suggestions mode</div>
+          <div class="suggest-card-desc">Watch, learn, and propose — you approve every action.</div>
+        </div>
+        <button class="wizard-btn wizard-btn-next suggest-enable-btn" id="wizard-suggest-enable" ${canAutoEnable ? '' : 'disabled'}>
+          Turn on suggestions
+        </button>
+      </div>
+
+      ${
+        canAutoEnable
+          ? ''
+          : '<div class="form-hint">For security, sign in on the next screen and enable Suggestions from the mode menu at the top.</div>'
+      }
+
+      <div class="suggest-actions">
+        <button class="wizard-btn wizard-btn-back" id="wizard-suggest-keep">Keep observing</button>
+      </div>
+
+      <div class="step-error hidden" id="suggest-error"></div>
+
+      <div class="skip-note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        You can change this anytime from the mode menu — Suggestions never acts on its own.
+      </div>
+    </div>
+  `;
+}
+
+async function enableSuggestions(): Promise<void> {
+  const enableBtn = document.getElementById(
+    'wizard-suggest-enable',
+  ) as HTMLButtonElement | null;
+  const keepBtn = document.getElementById(
+    'wizard-suggest-keep',
+  ) as HTMLButtonElement | null;
+  const errorEl = document.getElementById('suggest-error');
+  if (errorEl) {
+    errorEl.textContent = '';
+    errorEl.classList.add('hidden');
+  }
+  if (enableBtn) {
+    enableBtn.disabled = true;
+    enableBtn.textContent = 'Enabling...';
+  }
+  if (keepBtn) keepBtn.disabled = true;
+
+  try {
+    // The wizard just created the admin credential, so sign in with it to get
+    // the session cookie + CSRF token required by the authenticated
+    // automation-mode endpoint (same PUT the dashboard and TUI use).
+    const loginRes = await fetch('/api/auth/login', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'admin',
+        password: wizardData.adminPassword,
+      }),
+    });
+    if (!loginRes.ok) {
+      const body = (await loginRes.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      throw new Error(body.error || 'Sign in failed');
+    }
+    const loginBody = (await loginRes.json()) as { csrfToken?: string };
+    setCsrfToken(loginBody.csrfToken);
+
+    // Reuse the existing automation-mode mutation path (Control Center / TUI).
+    await halApi.setAutomationMode('SUGGEST', 'wizard');
+
+    goToDashboard();
+  } catch (err: any) {
+    if (errorEl) {
+      errorEl.textContent =
+        err.message ||
+        'Could not enable Suggestions. You can enable it from the mode menu later.';
+      errorEl.classList.remove('hidden');
+    }
+    if (enableBtn) {
+      enableBtn.textContent = 'Try again';
+      enableBtn.disabled = !wizardData.adminPassword;
+    }
+    if (keepBtn) keepBtn.disabled = false;
+  }
+}
+
+function goToDashboard(): void {
+  sessionStorage.setItem('operatorId', 'admin');
+  window.location.hash = '#dashboard';
+  window.location.reload();
+}
+
+// ---------------------------------------------------------------------------
 // Error state
 // ---------------------------------------------------------------------------
 function renderError(message: string): string {
@@ -672,6 +806,20 @@ function attachWizardEvents(
     });
   }
 
+  // Suggestions step (client-only completion step)
+  const suggestEnable = document.getElementById('wizard-suggest-enable');
+  const suggestKeep = document.getElementById('wizard-suggest-keep');
+  if (currentStep === SUGGEST_STEP) {
+    suggestEnable?.addEventListener('click', () => {
+      void enableSuggestions();
+    });
+    suggestKeep?.addEventListener('click', () => {
+      // Deliberately no mode change: the factory OBSERVE_ONLY default stands.
+      goToDashboard();
+    });
+    return;
+  }
+
   // Back button
   const backBtn = document.getElementById('wizard-back');
   backBtn?.addEventListener('click', async () => {
@@ -712,14 +860,23 @@ function attachWizardEvents(
       await saveCurrentStep(currentIndex, currentStep);
       isSubmitting = false; // reset before rendering the next step's button
 
-      if (currentIndex < effectiveSteps.length - 1) {
+      const nextStep = effectiveSteps[currentIndex + 1];
+      if (nextStep === SUGGEST_STEP) {
+        // Last provisioning step: persist the setup, then reveal the
+        // completion step (D2 one-click SUGGEST offer) instead of reloading.
+        await completeProvisioning();
+        currentStep = SUGGEST_STEP;
+        wizardData = loadStepData(currentStep);
+        render(container);
+      } else if (nextStep !== undefined) {
         // Advance to next step
-        currentStep = effectiveSteps[currentIndex + 1];
+        currentStep = nextStep;
         wizardData = loadStepData(currentStep);
         render(container);
       } else {
-        // Complete wizard (reloads the page on success)
-        await completeWizard(container);
+        // Unreachable: the suggestions step owns its own buttons.
+        await completeProvisioning();
+        goToDashboard();
       }
     } catch (err: any) {
       isSubmitting = false;
@@ -887,7 +1044,7 @@ function showStepError(step: StepId, message: string): void {
   }
 }
 
-async function completeWizard(container: HTMLElement): Promise<void> {
+async function completeProvisioning(): Promise<void> {
   // Gather final data
   wizardData.farmName =
     (document.getElementById('farm-name') as HTMLInputElement)?.value ||
@@ -933,11 +1090,9 @@ async function completeWizard(container: HTMLElement): Promise<void> {
   };
 
   // Let errors propagate to the caller so it can clear the submitting state
-  // and re-render; on success the page reloads into the dashboard.
+  // and re-render; on success the wizard advances to the Suggestions step.
   await provisioningApi.complete(completeData);
   sessionStorage.setItem('operatorId', 'admin');
-  window.location.hash = '#dashboard';
-  window.location.reload();
 }
 
 // ---------------------------------------------------------------------------
@@ -1519,6 +1674,58 @@ function injectWizardStyles(): void {
   color: var(--text-secondary);
 }
 
+/* ===== Suggestions Step (D2) ===== */
+.suggest-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.suggest-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+
+.suggest-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.suggest-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.suggest-card-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.suggest-enable-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.suggest-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: var(--space-4);
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 600px) {
   .wizard-card {
@@ -1540,6 +1747,14 @@ function injectWizardStyles(): void {
 
   .wizard-footer {
     gap: var(--space-3);
+  }
+
+  .suggest-card {
+    flex-wrap: wrap;
+  }
+
+  .suggest-enable-btn {
+    width: 100%;
   }
 
   .wizard-btn-back {
