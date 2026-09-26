@@ -193,6 +193,46 @@ Each relay should have a configured "safe state" — what it does when FarmPal s
 
 ---
 
+## Watering Control Guardrails
+
+Watering in FarmPal means switching **your existing** irrigation hardware — a pump or valve on
+a smart plug or relay. There is no new hardware category, and every watering action (manual or
+automated) passes through the same safety verifier as every other device: the E-Stop stops
+water, policy rules apply to water, and every start/stop is written to the audit trail.
+
+### Launch gate
+
+Watering is **off by default** (`FARMPAL_WATERING`). It ships enabled only after the
+soil-probe golden kit passes its 7-day soak test (DIRECTION.md D6). While the gate is off,
+any request to start watering fails with a "watering is launch-gated" error and nothing
+actuates. Stopping water is always available, gate on or off.
+
+### Max-run interlock (always on)
+
+Independently of any policy rule, a watering run that is still on after
+`FARMPAL_WATERING_MAX_MIN` minutes (default 30) is switched off automatically and the
+shutoff is logged to the audit trail. This is the hard backstop; the rules below are extra
+layers, not replacements.
+
+### Recommended policy rules (per watering device)
+
+Safety rules attach to a specific device, so add these once per pump/valve after discovery
+(Settings → Safety Rules). They use the existing rule schema — no setup beyond picking the
+device:
+
+| Rule type | Config | What it does |
+|---|---|---|
+| `max_activations_per_hour` | `{"maxPerHour": 4}` | Caps how often a pump/valve may start per hour (short-cycling protection). |
+| `min_off_duration` | `{"minSeconds": 900}` | Forces a 15-minute rest between watering runs. |
+| `dependency` | `{"triggerDeviceId": "<soil-sensor-id>", "triggerMetric": "soil_moisture", "operator": "gt", "value": 60, "actionRequired": "off"}` | Blocks watering while the soil is already wet (soil moisture above 60%). Replace the sensor id and threshold with your own. |
+
+> Note: a rule type named `max_on_duration` also exists, but in the current engine it
+> enforces a minimum off-time between activations (same semantics as `min_off_duration`).
+> The real max-run-time enforcement for watering is the interlock above, which lives in the
+> watering module (`FARMPAL_WATERING_MAX_MIN`), not in a policy rule.
+
+---
+
 ## Routine Safety Checks
 
 Perform these checks monthly:

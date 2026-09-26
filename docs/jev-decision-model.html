@@ -1,0 +1,927 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jev × FarmPal — System One decisions for the garden controller</title>
+<style>
+  :root{
+    --bg:#070b09; --bg2:#0b110e; --panel:#101a15; --panel2:#0d1411;
+    --line:#1d2b24; --line2:#27392f;
+    --text:#e6f2ea; --muted:#8fa89a; --faint:#5d7266;
+    --green:#35d07f; --green-dim:#4ad78755;
+    --jev:#f5a623; --jev-dim:#f5a62333;
+    --red:#ff5c5c; --red-dim:#ff5c5c33;
+    --violet:#a78bfa; --violet-dim:#a78bfa2e;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+    line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:#35d07f33}
+  .wrap{max-width:1100px; margin:0 auto; padding:0 28px}
+  section{padding:76px 0; border-top:1px solid var(--line)}
+  section:first-of-type{border-top:none}
+  .eyebrow{
+    font-size:11.5px; font-weight:800; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--jev); margin-bottom:14px;
+  }
+  .eyebrow.grn{color:var(--green)} .eyebrow.vio{color:var(--violet)} .eyebrow.red{color:var(--red)}
+  h2{font-size:clamp(26px,3.4vw,38px); letter-spacing:-.02em; line-height:1.15; margin-bottom:14px}
+  h3{font-size:17px; letter-spacing:-.01em; margin-bottom:8px}
+  .lede{color:var(--muted); font-size:17px; max-width:760px; margin-bottom:34px}
+  .lede b, .lede strong{color:var(--text)}
+  a{color:var(--green)}
+
+  /* ── nav ── */
+  nav.bar{
+    position:sticky; top:0; z-index:50; backdrop-filter:blur(14px);
+    background:#070b09d9; border-bottom:1px solid var(--line);
+  }
+  nav.bar .wrap{display:flex; gap:4px; align-items:center; height:46px; overflow-x:auto; scrollbar-width:none}
+  nav.bar a{
+    color:var(--muted); text-decoration:none; font-size:12.5px; font-weight:600;
+    padding:5px 11px; border-radius:99px; white-space:nowrap;
+  }
+  nav.bar a:hover{color:var(--text); background:#ffffff0a}
+  nav.bar .dot{width:7px;height:7px;border-radius:99px;background:var(--jev);margin:0 8px 0 2px;
+    box-shadow:0 0 10px var(--jev); animation:pulse 2.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* ── hero ── */
+  .hero{padding:86px 0 70px; border-top:none; position:relative; overflow:hidden}
+  .hero::before{
+    content:""; position:absolute; inset:-40% -20% auto; height:130%; pointer-events:none;
+    background:
+      radial-gradient(600px 340px at 22% 18%, #35d07f14, transparent 70%),
+      radial-gradient(700px 380px at 78% 10%, #f5a62312, transparent 70%);
+  }
+  .hero .wrap{position:relative}
+  .badge-row{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:26px}
+  .badge{
+    font-size:11.5px; font-weight:700; letter-spacing:.05em; padding:5px 12px; border-radius:99px;
+    border:1px solid var(--line2); color:var(--muted); background:var(--panel2);
+  }
+  .badge.j{border-color:var(--jev-dim); color:var(--jev)}
+  .badge.g{border-color:var(--green-dim); color:var(--green)}
+  h1{font-size:clamp(36px,5.4vw,62px); letter-spacing:-.03em; line-height:1.04; max-width:900px}
+  h1 .x{color:var(--faint); font-weight:300}
+  h1 .jv{color:var(--jev)}
+  h1 .fp{color:var(--green)}
+  .hero p.sub{color:var(--muted); font-size:18.5px; max-width:780px; margin:22px 0 34px}
+  .hero p.sub b{color:var(--text)}
+  .chips{display:flex; flex-wrap:wrap; gap:10px}
+  .chip{
+    background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
+    border-radius:14px; padding:13px 18px; min-width:158px;
+  }
+  .chip .v{font-size:20px; font-weight:800; letter-spacing:-.02em}
+  .chip .v.am{color:var(--jev)} .chip .v.gr{color:var(--green)} .chip .v.vi{color:var(--violet)}
+  .chip .k{font-size:11.5px; color:var(--muted); margin-top:2px}
+  .fine{font-size:12px; color:var(--faint); margin-top:26px; max-width:820px}
+
+  /* ── cards ── */
+  .grid{display:grid; gap:14px}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(238px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+  .card{
+    background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--line); border-radius:16px; padding:22px;
+  }
+  .card.j{border-color:var(--jev-dim)}
+  .card.r{border-color:var(--red-dim)}
+  .card.v{border-color:var(--violet-dim)}
+  .card .ic{font-size:22px; margin-bottom:10px}
+  .card p{color:var(--muted); font-size:14px}
+  .card p b{color:var(--text)}
+  .card .tag{display:inline-block; font-size:10.5px; font-weight:800; letter-spacing:.1em;
+    text-transform:uppercase; margin-bottom:10px; color:var(--jev)}
+  .card.r .tag{color:var(--red)} .card.v .tag{color:var(--violet)} .card.g .tag{color:var(--green)}
+  .card p code, td code, li code{
+    font-family:var(--mono); font-size:.86em; background:#ffffff0d; padding:1px 5px;
+    border-radius:5px; color:#cfe8d9;
+  }
+
+  /* ── system1/2 strip ── */
+  .s12{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:26px}
+  @media (max-width:760px){.s12{grid-template-columns:1fr}}
+  .s12 .half{border-radius:16px; padding:24px; border:1px solid var(--line); background:var(--panel2)}
+  .s12 .half.fast{border-color:var(--jev-dim); background:linear-gradient(180deg,#171208,#0d0a04)}
+  .s12 .half h4{font-size:15px; margin-bottom:8px}
+  .s12 .half.fast h4{color:var(--jev)}
+  .s12 .half.slow h4{color:var(--violet)}
+  .s12 .half p{color:var(--muted); font-size:14px}
+
+  /* ── race ── */
+  .race-box{background:var(--panel2); border:1px solid var(--line); border-radius:18px; padding:26px; margin-top:20px}
+  .race-head{display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px}
+  .race-head .t{font-size:14px; font-weight:700}
+  .race-head .t span{color:var(--muted); font-weight:500}
+  button.go{
+    background:var(--jev); color:#1a1204; border:none; font-weight:800; font-size:13px;
+    padding:9px 20px; border-radius:99px; cursor:pointer; letter-spacing:.02em;
+  }
+  button.go:hover{filter:brightness(1.1)}
+  .track{margin-bottom:16px}
+  .track .lab{display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:6px}
+  .track .lab .who{font-weight:700}
+  .track .lab .ms{font-family:var(--mono); color:var(--muted)}
+  .rail{height:12px; border-radius:99px; background:#ffffff08; overflow:hidden; position:relative}
+  .fill{height:100%; width:0%; border-radius:99px}
+  .fill.llm{background:linear-gradient(90deg,#6d5bd0,#a78bfa)}
+  .fill.jv{background:linear-gradient(90deg,#c77f12,#f5a623)}
+  .verdict{font-size:13px; color:var(--muted); margin-top:6px; min-height:20px; font-family:var(--mono)}
+  .verdict b{color:var(--jev)}
+
+  /* ── cost bars ── */
+  .cost{margin-top:22px}
+  .cost .row{display:grid; grid-template-columns:150px 1fr 110px; gap:14px; align-items:center; margin-bottom:12px}
+  @media (max-width:640px){.cost .row{grid-template-columns:110px 1fr}}
+  .cost .row .n{font-size:13px; font-weight:700}
+  .cost .row .n small{display:block; color:var(--faint); font-weight:500; font-size:11px}
+  .cost .bar{height:22px; border-radius:7px; position:relative; background:#ffffff06}
+  .cost .bar i{position:absolute; inset:0 auto 0 0; border-radius:7px; display:block}
+  .cost .row .v{font-family:var(--mono); font-size:12.5px; color:var(--muted); text-align:right}
+
+  /* ── fit table ── */
+  .fit{border:1px solid var(--line); border-radius:18px; overflow:hidden}
+  .fit .frow{
+    display:grid; grid-template-columns:1fr 46px 1fr; gap:0; align-items:stretch;
+    border-bottom:1px solid var(--line);
+  }
+  .fit .frow:last-child{border-bottom:none}
+  @media (max-width:820px){.fit .frow{grid-template-columns:1fr}}
+  .fit .cell{padding:18px 22px}
+  .fit .cell.today{background:#120e1c}
+  .fit .cell.jev{background:#171208}
+  .fit .cell h5{font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; margin-bottom:6px}
+  .fit .cell.today h5{color:var(--violet)}
+  .fit .cell.jev h5{color:var(--jev)}
+  .fit .cell p{font-size:13.5px; color:var(--muted)}
+  .fit .cell p b{color:var(--text)}
+  .fit .mid{display:flex; align-items:center; justify-content:center; color:var(--jev);
+    font-size:18px; background:#ffffff05}
+
+  /* ── diagram ── */
+  .diag-card{background:var(--panel2); border:1px solid var(--line); border-radius:18px; padding:20px; overflow-x:auto}
+  svg.diagram{display:block; min-width:820px; width:100%; height:auto}
+  .legend{display:flex; flex-wrap:wrap; gap:16px; margin-top:16px; font-size:12.5px; color:var(--muted)}
+  .legend span{display:flex; align-items:center; gap:7px}
+  .legend i{width:12px; height:12px; border-radius:4px; display:inline-block}
+  .lg-jev{background:#1a1508; border:1.5px solid var(--jev)}
+  .lg-llm{background:#14101c; border:1.5px dashed var(--violet)}
+  .lg-red{background:#190d0d; border:1.5px solid var(--red)}
+  .lg-grn{background:#0f1713; border:1.5px solid var(--green-dim)}
+
+  /* ── terminal ── */
+  .term{
+    background:#050807; border:1px solid var(--line); border-radius:16px; overflow:hidden;
+    font-family:var(--mono); font-size:12.8px; line-height:1.7;
+  }
+  .term .bar{
+    display:flex; gap:7px; padding:11px 16px; border-bottom:1px solid var(--line);
+    background:#0a0f0c; align-items:center;
+  }
+  .term .bar i{width:11px; height:11px; border-radius:99px; background:#24352c}
+  .term .bar i:first-child{background:#3a2424}
+  .term .bar .ttl{margin-left:8px; font-size:11px; color:var(--faint)}
+  .term pre{padding:18px 20px; overflow-x:auto; color:#b9d2c2}
+  .tk{color:#7fd4a8}      /* key   */
+  .tv{color:#e6f2ea}      /* value */
+  .tn{color:#f5a623}      /* number/prob */
+  .tc{color:#54685c; font-style:italic} /* comment */
+  .ts{color:#c9a3f0}      /* string */
+  .tb{color:#ff8f8f}      /* red-ish */
+
+  /* ── gate slider ── */
+  .gate-box{background:var(--panel2); border:1px solid var(--line); border-radius:18px; padding:28px}
+  .gate-zones{display:flex; height:46px; border-radius:12px; overflow:hidden; border:1px solid var(--line2); margin:18px 0 10px}
+  .gz{flex:1; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800;
+    letter-spacing:.08em; color:#00000000; transition:.25s}
+  .gz small{color:var(--muted); font-weight:600; letter-spacing:.04em}
+  .gz.z1{background:#1c2620} .gz.z2{background:#2b230d} .gz.z3{background:#3d2f0a}
+  .gz.lit{outline:2px solid var(--jev); outline-offset:-2px}
+  .gz.lit small, .gz.lit{color:#ffe1ad}
+  input[type=range]{width:100%; accent-color:var(--jev); cursor:pointer}
+  .gate-out{
+    margin-top:16px; font-family:var(--mono); font-size:13.5px; background:#050807;
+    border:1px solid var(--line); border-radius:10px; padding:13px 16px; color:#b9d2c2;
+  }
+  .gate-out b{color:var(--jev)}
+  .gate-out .ok{color:var(--green)} .gate-out .warn{color:var(--jev)} .gate-out .no{color:var(--muted)}
+
+  /* ── split ── */
+  .split{display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px}
+  @media (max-width:860px){.split{grid-template-columns:1fr}}
+  .split .col{border-radius:16px; padding:22px; border:1px solid var(--line); background:var(--panel2)}
+  .split .col.j{border-color:var(--jev-dim)}
+  .split .col.v{border-color:var(--violet-dim)}
+  .split .col.r{border-color:var(--red-dim)}
+  .split h4{font-size:13px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:14px}
+  .split .col.j h4{color:var(--jev)} .split .col.v h4{color:var(--violet)} .split .col.r h4{color:var(--red)}
+  .split ul{list-style:none}
+  .split li{font-size:13.5px; color:var(--muted); padding:7px 0 7px 20px; position:relative; border-bottom:1px dashed #ffffff0a}
+  .split li:last-child{border-bottom:none}
+  .split .col.j li::before{content:"→"; position:absolute; left:0; color:var(--jev)}
+  .split .col.v li::before{content:"◆"; position:absolute; left:0; color:var(--violet); font-size:10px; top:11px}
+  .split .col.r li::before{content:"■"; position:absolute; left:0; color:var(--red); font-size:9px; top:11px}
+
+  /* ── phases ── */
+  .phase{display:grid; grid-template-columns:120px 1fr; gap:20px; padding:22px 0; border-bottom:1px solid var(--line)}
+  .phase:last-of-type{border-bottom:none}
+  @media (max-width:640px){.phase{grid-template-columns:1fr; gap:6px}}
+  .phase .ph-n{font-family:var(--mono); font-size:13px; color:var(--jev); font-weight:700; padding-top:2px}
+  .phase h4{font-size:16px; margin-bottom:5px}
+  .phase p{font-size:13.5px; color:var(--muted)}
+  .phase .exit{margin-top:8px; font-size:12.5px; color:var(--green); font-family:var(--mono)}
+  .phase .exit::before{content:"✓ exit: "}
+
+  /* ── footer ── */
+  footer{border-top:1px solid var(--line); padding:44px 0 64px; color:var(--faint); font-size:13px}
+  footer .src{margin-top:10px; display:flex; flex-direction:column; gap:5px}
+  footer a{color:var(--muted)}
+
+  /* ── reveal ── */
+  .reveal{opacity:0; transform:translateY(22px)}
+  .reveal.in{opacity:1; transform:none; transition:opacity .7s ease, transform .7s ease}
+  @media (prefers-reduced-motion:reduce){.reveal{opacity:1; transform:none; transition:none}}
+</style>
+</head>
+<body>
+
+<nav class="bar">
+  <div class="wrap">
+    <span class="dot"></span>
+    <a href="#what">What Jev is</a>
+    <a href="#numbers">The numbers</a>
+    <a href="#fit">Why it fits here</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#call">The call</a>
+    <a href="#gate">Confidence gate</a>
+    <a href="#code">Integration</a>
+    <a href="#split">Move / stays</a>
+    <a href="#caveats">Honest caveats</a>
+    <a href="#rollout">Rollout</a>
+  </div>
+</nav>
+
+<!-- ═══════════════ HERO ═══════════════ -->
+<header class="hero">
+  <div class="wrap">
+    <div class="badge-row">
+      <span class="badge j">Evaluation brief · Sept 2026</span>
+      <span class="badge">TypeSafe AI — “System One” model class</span>
+      <span class="badge g">Verifier-gated control plane · untouched</span>
+    </div>
+    <h1><span class="jv">Jev</span> <span class="x">×</span> <span class="fp">FarmPal</span><br>decisions at the speed of the loop</h1>
+    <p class="sub">
+      Jev is <b>not a chat model</b>. It gives up string generation entirely and returns
+      <b>typed, probability-scored decisions</b> — a frontier-intelligence function call:
+      unstructured state in, calibrated answers out. That is almost exactly the shape of
+      the JSON contract our decision loop already begs an LLM for.
+    </p>
+    <div class="chips">
+      <div class="chip"><div class="v am">70–500 ms</div><div class="k">end-to-end decision latency</div></div>
+      <div class="chip"><div class="v am">$0.042 / MTok</div><div class="k">input · outputs are free</div></div>
+      <div class="chip"><div class="v gr">0 type errors</div><div class="k">schema-guaranteed by construction</div></div>
+      <div class="chip"><div class="v vi">calibrated</div><div class="k">p(answer) on every output</div></div>
+      <div class="chip"><div class="v">≤ 255</div><div class="k">choices per decision</div></div>
+    </div>
+    <p class="fine">
+      Vendor performance figures below are TypeSafe’s own published numbers (workflow evals, early access) and are labeled as such.
+      This brief proposes Jev as an <b>optional accelerator</b> — factory default stays ollama-first, matching the DIRECTION.md
+      decision log (2026-09-18, D5): hybrid posture, local model for routine cycles, cloud escalation for hard/anomaly calls,
+      with the scorecard picking the threshold.
+    </p>
+  </div>
+</header>
+
+<!-- ═══════════════ WHAT ═══════════════ -->
+<section id="what">
+  <div class="wrap reveal">
+    <div class="eyebrow">01 · The model class</div>
+    <h2>A new kind of model, built for software — not for talking to humans</h2>
+    <p class="lede">
+      Named after Kahneman’s <i>Thinking, Fast and Slow</i>: LLMs are deliberate “System Two” text generators.
+      System One models are the fast, intuitive layer — trained with <b>RLCD</b> (Reinforcement Learning for
+      Calibrated Decisions) to answer many typed questions <b>in parallel, in one query</b>, with epistemically
+      honest probabilities attached.
+    </p>
+    <div class="grid g4">
+      <div class="card j reveal"><div class="ic">🚫💬</div><span class="tag">No strings</span>
+        <p>It <b>cannot produce prose</b> — so it cannot produce a hallucinated sentence, a malformed JSON blob,
+        or a refusal disguised as an answer. Outputs are constrained to types you defined.</p></div>
+      <div class="card j reveal"><div class="ic">⚡</div><span class="tag">Parallel sampling</span>
+        <p>All answers are emitted in <b>one query</b>, not one token at a time. No autoregressive
+        bottleneck — that’s where the 40–200× speedup comes from.</p></div>
+      <div class="card j reveal"><div class="ic">🎯</div><span class="tag">Calibrated</span>
+        <p>Every answer carries a probability, and the probability <b>means something</b>: higher confidence
+        correlates with higher accuracy. This unlocks probability-thresholded automation.</p></div>
+      <div class="card j reveal"><div class="ic">🧩</div><span class="tag">Composable</span>
+        <p>Designed as a <b>“smart if-statement”</b> inside ordinary code — classify, route, score, extract,
+        branch — while surrounding code keeps state, policy, and side effects.</p></div>
+    </div>
+    <div class="s12 reveal">
+      <div class="half slow">
+        <h4>System Two — what we use today</h4>
+        <p>LLMs (Ollama qwen3.5:2b locally, MiniMax/GPT-class in the cloud) generate a string and we
+        <i>hope</i> it contains a well-formed decision. Flexible, great at explanation — slow, costly,
+        occasionally off the rails.</p>
+      </div>
+      <div class="half fast">
+        <h4>System One — what Jev adds</h4>
+        <p>Bounded semantic judgment as a library call. Code owns state, arithmetic, policy, and actuation;
+        the model answers “what should we do?” with typed values and honest odds, in milliseconds.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ NUMBERS ═══════════════ -->
+<section id="numbers">
+  <div class="wrap reveal">
+    <div class="eyebrow">02 · The numbers</div>
+    <h2>Fast enough to put inside the control loop</h2>
+    <p class="lede">
+      Our heartbeat-driven decision cycle is currently bounded by LLM round-trips. Press run and watch the
+      same decision land on both lanes (animation caps the LLM lane at 10 s; real frontier calls run
+      <b>3–329 s</b> end-to-end).
+    </p>
+
+    <div class="race-box">
+      <div class="race-head">
+        <div class="t">One actuation decision, two lanes&nbsp;<span>· wall-clock</span></div>
+        <button class="go" id="race-btn">▶&nbsp; Run the decision</button>
+      </div>
+      <div class="track">
+        <div class="lab"><span class="who" style="color:var(--violet)">LLM lane — callLLM → JSON extraction</span><span class="ms" id="ms-llm">—</span></div>
+        <div class="rail"><div class="fill llm" id="fill-llm"></div></div>
+      </div>
+      <div class="track">
+        <div class="lab"><span class="who" style="color:var(--jev)">Jev lane — typed decision query</span><span class="ms" id="ms-jev">—</span></div>
+        <div class="rail"><div class="fill jv" id="fill-jev"></div></div>
+      </div>
+      <div class="verdict" id="race-verdict"></div>
+    </div>
+
+    <div class="grid g3" style="margin-top:22px">
+      <div class="card reveal"><span class="tag">Vendor-reported · workflow evals</span>
+        <h3 style="font-size:34px; color:var(--jev)"><span class="count" data-count="193.6" data-dec="1">0</span>×</h3>
+        <p>faster than frontier LLMs on their production-shaped workflow benchmarks.</p></div>
+      <div class="card reveal"><span class="tag">Vendor-reported · workflow evals</span>
+        <h3 style="font-size:34px; color:var(--jev)"><span class="count" data-count="444.6" data-dec="1">0</span>×</h3>
+        <p>cheaper on the same evals — pricing is public and transparent: $42 per <b>billion</b> input tokens.</p></div>
+      <div class="card reveal"><span class="tag">Why it matters here</span>
+        <h3 style="font-size:34px; color:var(--green)">every beat</h3>
+        <p>Sub-second + near-free means we can triage <b>every</b> heartbeat tick, not just sampled ones —
+        and still afford a second opinion before actuation.</p></div>
+    </div>
+
+    <div class="cost reveal">
+      <div class="eyebrow grn" style="margin-top:34px">Illustrative cost — one farm, one decision every 30 s, ~1K-token state · 2.9M tokens/day</div>
+      <div class="row">
+        <div class="n">Ollama local<small>qwen3.5:2b · today’s default</small></div>
+        <div class="bar"><i style="width:2%; background:var(--green)"></i></div>
+        <div class="v">$0 /mo · 2–10 s</div>
+      </div>
+      <div class="row">
+        <div class="n">Jev<small>input only · output free</small></div>
+        <div class="bar"><i style="width:6%; background:var(--jev)"></i></div>
+        <div class="v">≈ $3.65 /mo · 70–500 ms</div>
+      </div>
+      <div class="row">
+        <div class="n">Frontier LLM<small>$0.20–$10/MTok in · out ≈ 5×</small></div>
+        <div class="bar"><i style="width:100%; background:linear-gradient(90deg,#6d5bd0,#a78bfa)"></i></div>
+        <div class="v">$17–$864+ /mo · 3–329 s</div>
+      </div>
+      <p class="fine">List prices, no caching, before reasoning-token overhead. Ollama stays $0 — the point is not replacing it,
+      it’s that Jev buys frontier-grade judgment at a price a $299 license can carry as an option.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ FIT ═══════════════ -->
+<section id="fit">
+  <div class="wrap reveal">
+    <div class="eyebrow">03 · Why it fits <i>this</i> codebase</div>
+    <h2>Our decision loop already bends itself into an LLM’s shape.<br>Jev just… is that shape.</h2>
+    <p class="lede">
+      <code>runDecisionCycle()</code> (<code>src/agent/decision-loop.ts</code>) asks the LLM for one JSON object and then
+      spends real engineering defending itself from the format. Each row below is live code we maintain today.
+    </p>
+    <div class="fit reveal">
+      <div class="frow">
+        <div class="cell today"><h5>Today · defensive parsing</h5>
+          <p><b><code>extractDecisionJson()</code></b> — ~50 lines of balanced-brace, string-aware scanning,
+          because reasoning models wrap JSON in prose and markdown fences. A mis-parse silently turns a valid
+          <code>turn_on</code> into a no-op.</p></div>
+        <div class="mid">→</div>
+        <div class="cell jev"><h5>With Jev</h5>
+          <p>The response <b>is</b> the typed object. The function deletes itself. No fences, no scan, no
+          silent degradation.</p></div>
+      </div>
+      <div class="frow">
+        <div class="cell today"><h5>Today · schema triage</h5>
+          <p><b>Zod <code>DecisionPayloadSchema</code></b> downgrades out-of-contract payloads (unknown verb,
+          non-numeric confidence, junk <code>tool_calls</code>) to a safe noop that smuggles the raw text
+          into the audit trail.</p></div>
+        <div class="mid">→</div>
+        <div class="cell jev"><h5>With Jev</h5>
+          <p>Type errors are <b>mathematically impossible</b> (TypeSafe’s claim — schema match is guaranteed,
+          falsifiable by a single counter-example). Zod stays as a cheap tripwire, not a way of life.</p></div>
+      </div>
+      <div class="frow">
+        <div class="cell today"><h5>Today · hallucinated device guard</h5>
+          <p>An LLM inventing <code>device_id: "Pump A"</code> (human label, not id) would throw an FK error
+          and kill the cycle — so we null it and force a noop.</p></div>
+        <div class="mid">→</div>
+        <div class="cell jev"><h5>With Jev</h5>
+          <p><code>target_device</code> is an <b>enum built from the live registry</b>. A farm’s device count sits
+          comfortably under Jev’s 255-choice ceiling. Inventing an id isn’t possible.</p></div>
+      </div>
+      <div class="frow">
+        <div class="cell today"><h5>Today · decorative confidence</h5>
+          <p>LLM <code>confidence</code> is prompted-for and <b>overconfident and inconsistent</b> (TypeSafe’s
+          critique, and our audit logs agree) — so it’s logged, never acted on.</p></div>
+        <div class="mid">→</div>
+        <div class="cell jev"><h5>With Jev</h5>
+          <p><b>Calibrated p</b> becomes a real control input: gate AUTONOMOUS actuation on it, route mid-band
+          decisions to SUGGEST, watch calibration drift in the audit log.</p></div>
+      </div>
+      <div class="frow">
+        <div class="cell today"><h5>Today · latency-bound beats</h5>
+          <p>Heartbeat decisions wait seconds-to-minutes on the model, and the sim’s efficacy runs pay for
+          every reasoning token.</p></div>
+        <div class="mid">→</div>
+        <div class="cell jev"><h5>With Jev</h5>
+          <p>Sub-second decisions make <b>tighter loops honest</b>: tick triage on every beat, actuation
+          without the coffee break, and cheap shadow-mode evals at scale.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ ARCHITECTURE ═══════════════ -->
+<section id="architecture">
+  <div class="wrap reveal">
+    <div class="eyebrow">04 · Where it slots in</div>
+    <h2>Jev proposes. The verifier still disposes.</h2>
+    <p class="lede">
+      The Safety Spine is our moat and it does not move. Jev replaces the <b>decision proposer</b> only —
+      everything amber is new surface; everything red is exactly the code that ships today.
+    </p>
+    <div class="diag-card">
+      <svg class="diagram" viewBox="0 0 980 700" role="img" aria-label="FarmPal decision flow with Jev highlighted">
+        <defs>
+          <marker id="aA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f5a623"/></marker>
+          <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ff5c5c"/></marker>
+          <marker id="aV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/></marker>
+          <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#35d07f"/></marker>
+          <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-color="#f5a623" flood-opacity="0.28"/></filter>
+        </defs>
+
+        <!-- arrows -->
+        <path d="M490,70 L490,94" stroke="#f5a623" stroke-width="1.6" fill="none" marker-end="url(#aA)"/>
+        <path d="M490,164 L490,190" stroke="#f5a623" stroke-width="1.6" fill="none" marker-end="url(#aA)"/>
+        <path d="M490,288 L490,314" stroke="#f5a623" stroke-width="1.6" fill="none" marker-end="url(#aA)"/>
+        <path d="M490,384 L490,410" stroke="#f5a623" stroke-width="1.6" fill="none" marker-end="url(#aA)"/>
+        <text x="500" y="404" font-size="11" fill="#8fa89a">p ≥ gate</text>
+        <path d="M650,352 L710,352" stroke="#8a7a55" stroke-width="1.4" fill="none" marker-end="url(#aA)"/>
+        <text x="656" y="342" font-size="11" fill="#8fa89a">p &lt; gate</text>
+        <path d="M490,488 L490,514" stroke="#ff5c5c" stroke-width="1.6" fill="none" marker-end="url(#aR)"/>
+        <path d="M490,580 L490,606" stroke="#35d07f" stroke-width="1.6" fill="none" marker-end="url(#aG)"/>
+        <path d="M716,548 L656,548" stroke="#ff5c5c" stroke-width="1.6" fill="none" marker-end="url(#aR)"/>
+        <path d="M268,242 L290,242" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#aV)"/>
+        <text x="258" y="230" font-size="10.5" fill="#a78bfa" text-anchor="end">fallback</text>
+        <path d="M296,266 L148,266 L148,434" stroke="#a78bfa" stroke-width="1.1" stroke-dasharray="3 4" fill="none" marker-end="url(#aV)"/>
+        <text x="156" y="300" font-size="10.5" fill="#8fa89a">decision + p logged</text>
+        <path d="M330,470 L274,470" stroke="#ff5c5c" stroke-width="1.1" fill="none" marker-end="url(#aR)"/>
+        <path d="M330,638 L290,638 L290,132 L324,132" stroke="#35d07f" stroke-width="1.3" stroke-dasharray="5 4" fill="none" marker-end="url(#aG)"/>
+        <text transform="rotate(-90 300 390)" x="300" y="390" font-size="10.5" fill="#5d7266">sensor state in</text>
+        <path d="M834,384 L834,496 L670,496 L670,550 L656,550" stroke="#5d7266" stroke-width="1.3" fill="none" marker-end="url(#aG)"/>
+
+        <!-- center lane -->
+        <rect x="330" y="18" width="320" height="52" rx="12" fill="#0f1713" stroke="#35d07f55" stroke-width="1.4"/>
+        <text x="490" y="40" text-anchor="middle" font-size="13.5" font-weight="700" fill="#e6f2ea">Triggers</text>
+        <text x="490" y="58" text-anchor="middle" font-size="10.5" fill="#8fa89a">message · heartbeat · scheduled task</text>
+
+        <rect x="330" y="100" width="320" height="64" rx="12" fill="#1a1508" stroke="#f5a623aa" stroke-width="1.5"/>
+        <text x="490" y="126" text-anchor="middle" font-size="13.5" font-weight="700" fill="#f5a623">① Tick triage</text>
+        <text x="490" y="147" text-anchor="middle" font-size="10.5" fill="#c7b58c">“is this beat actionable?” — every beat, ~free</text>
+
+        <rect x="296" y="196" width="388" height="92" rx="14" fill="#1a1508" stroke="#f5a623" stroke-width="1.8" filter="url(#glow)"/>
+        <text x="490" y="230" text-anchor="middle" font-size="15.5" font-weight="800" fill="#f5a623">② Decision core — Jev</text>
+        <text x="490" y="252" text-anchor="middle" font-size="11.5" fill="#e6d3ac">typed action · device pick (≤255 enum) · calibrated p</text>
+        <text x="490" y="271" text-anchor="middle" font-size="10.5" font-style="italic" fill="#8fa89a">replaces callLLM + extractDecisionJson</text>
+
+        <rect x="330" y="320" width="320" height="64" rx="12" fill="#1a1508" stroke="#f5a623aa" stroke-width="1.5"/>
+        <text x="490" y="346" text-anchor="middle" font-size="13.5" font-weight="700" fill="#f5a623">③ Confidence gate</text>
+        <text x="490" y="367" text-anchor="middle" font-size="10.5" fill="#c7b58c">FARMPAL_AUTO_CONF — a calibrated dial, not a vibe</text>
+
+        <rect x="330" y="416" width="320" height="72" rx="12" fill="#190d0d" stroke="#ff5c5c88" stroke-width="1.5"/>
+        <text x="490" y="444" text-anchor="middle" font-size="13.5" font-weight="700" fill="#ff8f8f">Safety Verifier — UNCHANGED</text>
+        <text x="490" y="464" text-anchor="middle" font-size="10.5" fill="#c98f8f">policy engine · safety rules · audit entry</text>
+
+        <rect x="330" y="520" width="320" height="60" rx="12" fill="#190d0d" stroke="#ff5c5c88" stroke-width="1.5"/>
+        <text x="490" y="545" text-anchor="middle" font-size="13.5" font-weight="700" fill="#ff8f8f">Actuation chokepoint — UNCHANGED</text>
+        <text x="490" y="564" text-anchor="middle" font-size="10.5" fill="#c98f8f">verify → execute → re-verify · rollback</text>
+
+        <rect x="330" y="612" width="320" height="52" rx="12" fill="#0f1713" stroke="#35d07f55" stroke-width="1.4"/>
+        <text x="490" y="634" text-anchor="middle" font-size="13.5" font-weight="700" fill="#e6f2ea">HAL</text>
+        <text x="490" y="652" text-anchor="middle" font-size="10.5" fill="#8fa89a">plugs · relays · sensors · camera</text>
+
+        <!-- right -->
+        <rect x="716" y="320" width="236" height="64" rx="12" fill="#0f1713" stroke="#27392f" stroke-width="1.4"/>
+        <text x="834" y="346" text-anchor="middle" font-size="12.5" font-weight="700" fill="#e6f2ea">Operator queue</text>
+        <text x="834" y="366" text-anchor="middle" font-size="10.5" fill="#8fa89a">SUGGEST / ASSISTED approval</text>
+
+        <rect x="716" y="516" width="236" height="64" rx="12" fill="#190d0d" stroke="#ff5c5c" stroke-width="1.6"/>
+        <text x="834" y="542" text-anchor="middle" font-size="12.5" font-weight="800" fill="#ff8f8f">E-STOP GATE</text>
+        <text x="834" y="562" text-anchor="middle" font-size="10.5" fill="#c98f8f">kills autonomy instantly — untouched</text>
+
+        <!-- left -->
+        <rect x="28" y="196" width="240" height="120" rx="12" fill="#14101c" stroke="#a78bfa66" stroke-width="1.4" stroke-dasharray="6 4"/>
+        <text x="148" y="224" text-anchor="middle" font-size="12.5" font-weight="700" fill="#b9a5f5">LLM lane — stays</text>
+        <text x="148" y="246" text-anchor="middle" font-size="10.5" fill="#8fa89a">chat answers · diagnostics</text>
+        <text x="148" y="264" text-anchor="middle" font-size="10.5" fill="#8fa89a">reflection · camera vision</text>
+        <text x="148" y="282" text-anchor="middle" font-size="10.5" fill="#8fa89a">narrative reasoning (on actuation)</text>
+        <text x="148" y="304" text-anchor="middle" font-size="10.5" font-style="italic" fill="#5d7266">ollama-first fallback preserved</text>
+
+        <rect x="28" y="440" width="240" height="100" rx="12" fill="#0f1713" stroke="#35d07f55" stroke-width="1.4"/>
+        <text x="148" y="466" text-anchor="middle" font-size="12.5" font-weight="700" fill="#4ad787">Decision log + audit</text>
+        <text x="148" y="487" text-anchor="middle" font-size="10.5" fill="#8fa89a">hal_decision_log · safety audit</text>
+        <text x="148" y="505" text-anchor="middle" font-size="10.5" fill="#8fa89a">model + calibrated p recorded</text>
+        <text x="148" y="524" text-anchor="middle" font-size="10" font-style="italic" fill="#5d7266">model field exists today (VAL-AUTO-042)</text>
+      </svg>
+      <div class="legend">
+        <span><i class="lg-jev"></i> new Jev surface</span>
+        <span><i class="lg-llm"></i> stays on LLM</span>
+        <span><i class="lg-red"></i> safety spine — untouched</span>
+        <span><i class="lg-grn"></i> existing infra</span>
+      </div>
+    </div>
+    <div class="grid g3" style="margin-top:22px">
+      <div class="card reveal"><span class="tag">① Tick triage</span>
+        <p>Today every heartbeat pays for a full LLM call. With triage at ~$0, the expensive path runs only
+        when something looks actionable — and <code>noop</code> spam thins out of the decision log.</p></div>
+      <div class="card reveal"><span class="tag">② Intent router</span>
+        <p><code>runFarmPalTurn</code> classifies each message (status / diagnostic / reflection / control /
+        <b>emergency_stop</b>) before routing. Pure classification is the canonical Jev task — and calibrated
+        p on <code>emergency_stop</code> is exactly the alarm you want honest.</p></div>
+      <div class="card reveal"><span class="tag">④ Second opinion</span>
+        <p>TypeSafe’s “verify everything” use case, aimed inward: score the Generator’s proposals in the
+        turn path <b>before</b> the deterministic verifier — a cheap pre-filter, never a bypass.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ THE CALL ═══════════════ -->
+<section id="call">
+  <div class="wrap reveal">
+    <div class="eyebrow">05 · What the call looks like</div>
+    <h2>Same state we prompt with today — typed answers out</h2>
+    <p class="lede">
+      One parallel query replaces the “respond ONLY with a valid JSON object” incantation.
+      Shape is illustrative, based on TypeSafe’s published query format (state paragraph + typed questions);
+      the exact API lands with early access.
+    </p>
+    <div class="term reveal">
+      <div class="bar"><i></i><i></i><i></i><span class="ttl">POST /v1/decide — one query, all answers in parallel</span></div>
+      <pre>{
+  <span class="tk">"state"</span>: <span class="ts">"tents: A(t=27.8C rh=41% soil=18% co2=890) B(t=24.1 rh=55% soil=44%).
+          devices: pump_01=off fan_01=off light_01=off heater_01=off.
+          recent: fan_01 turned_on 14m ago (heat advisory). e_stop=clear mode=AUTONOMOUS"</span>,
+  <span class="tk">"questions"</span>: {
+    <span class="tk">"action"</span>:        <span class="ts">"enum:turn_on|turn_off|adjust|alert|noop"</span>,
+    <span class="tk">"target_device"</span>: <span class="ts">"enum:pump_01|fan_01|light_01|heater_01"</span>,
+    <span class="tk">"act_now"</span>:       <span class="ts">"bool"</span>,
+    <span class="tk">"urgency"</span>:       <span class="ts">"int:1-5"</span>
+  }
+}
+
+<span class="tc">// → 200 OK in ~120ms — no prose, no fences, no parse</span>
+{
+  <span class="tk">"action"</span>:        { <span class="tk">"value"</span>: <span class="tv">"turn_on"</span>,  <span class="tk">"p"</span>: <span class="tn">0.97</span> },
+  <span class="tk">"target_device"</span>: { <span class="tk">"value"</span>: <span class="ts">"pump_01"</span>, <span class="tk">"p"</span>: <span class="tn">0.96</span> },
+  <span class="tk">"act_now"</span>:       { <span class="tk">"value"</span>: <span class="tv">true</span>,      <span class="tk">"p"</span>: <span class="tn">0.94</span> },
+  <span class="tk">"urgency"</span>:       { <span class="tk">"value"</span>: <span class="tn">4</span>,        <span class="tk">"p"</span>: <span class="tn">0.91</span> }
+}</pre>
+    </div>
+    <p class="fine" style="margin-top:16px">
+      The <code>p</code> column is the upgrade no prompt-engineering session gets us: honest, consistent odds we can
+      gate hardware on — and the audit trail already has a column waiting for the model name.
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════ GATE ═══════════════ -->
+<section id="gate">
+  <div class="wrap reveal">
+    <div class="eyebrow">06 · The new dial</div>
+    <h2>Calibrated confidence turns mode-switching into a spectrum</h2>
+    <p class="lede">
+      Today autonomy is binary per mode: OBSERVE_ONLY (factory default), SUGGEST, ASSISTED, AUTONOMOUS —
+      and autonomy stays an explicit operator action. Inside AUTONOMOUS, calibrated p adds a per-decision gate.
+      Drag it:
+    </p>
+    <div class="gate-box reveal">
+      <div class="gate-zones">
+        <div class="gz z1" id="gz1"><small>log only · &lt; 0.80</small></div>
+        <div class="gz z2" id="gz2"><small>suggest · 0.80 – 0.95</small></div>
+        <div class="gz z3" id="gz3"><small>auto-execute · ≥ 0.95</small></div>
+      </div>
+      <input type="range" id="gate-slider" min="50" max="99" value="93" aria-label="Decision probability">
+      <div class="gate-out" id="gate-out"></div>
+      <p class="fine" style="margin-top:14px">
+        Below the gate nothing regresses to chaos: mid-band decisions land in the SUGGEST queue exactly like
+        ASSISTED mode does today, and the verifier + E-stop still own the final word on everything. Calibration
+        drift is observable from the audit log — if p stops meaning accuracy, we tighten the gate.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ CODE ═══════════════ -->
+<section id="code">
+  <div class="wrap reveal">
+    <div class="eyebrow">07 · Integration sketch</div>
+    <h2>A new module beside <code style="font-size:.7em">llm.ts</code> — not a replacement of it</h2>
+    <p class="lede">
+      Provider order for <i>decisions</i> becomes <code>jev → ollama → cloud</code>. No key, no network,
+      no change: the legacy path remains the factory default and the fallback.
+    </p>
+    <div class="term reveal" style="margin-bottom:16px">
+      <div class="bar"><i></i><i></i><i></i><span class="ttl">src/agent/jev.ts — new</span></div>
+      <pre><span class="tc">// Sits beside llm.ts. Returns null on any miss → caller falls back. Zero behavior change.</span>
+<span class="tk">export</span> <span class="tk">async function</span> <span class="tv">decideWithJev</span>(input: {
+  state: <span class="ts">string</span>;                          <span class="tc">// registry + sensor snapshot (same data we prompt today)</span>
+  questions: Record&lt;<span class="ts">string</span>, <span class="ts">string</span>&gt;;      <span class="tc">// typed questions incl. device enum from halRegistry</span>
+}): Promise&lt;Record&lt;<span class="ts">string</span>, { value: <span class="ts">unknown</span>; p: <span class="ts">number</span> }&gt; | <span class="tb">null</span>&gt; {
+  <span class="tk">const</span> key = process.env.<span class="tn">JEV_API_KEY</span>;
+  <span class="tk">if</span> (!key) <span class="tk">return</span> <span class="tb">null</span>;
+  <span class="tk">try</span> {
+    <span class="tk">const</span> res = <span class="tk">await</span> fetch(<span class="ts">`${process.env.JEV_BASE_URL}/v1/decide`</span>, {
+      method: <span class="ts">'POST'</span>,
+      headers: { Authorization: <span class="ts">`Bearer ${key}`</span>, <span class="ts">'Content-Type'</span>: <span class="ts">'application/json'</span> },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(<span class="tn">1_500</span>),   <span class="tc">// sub-second budget; a miss is a fallback, not a failure</span>
+    });
+    <span class="tk">if</span> (!res.ok) <span class="tk">return</span> <span class="tb">null</span>;
+    <span class="tk">return await</span> res.json();
+  } <span class="tk">catch</span> { <span class="tk">return</span> <span class="tb">null</span>; }                <span class="tc">// unavailable → LLM fallback or existing safety hold</span>
+}</pre>
+    </div>
+    <div class="term reveal" style="margin-bottom:16px">
+      <div class="bar"><i></i><i></i><i></i><span class="ttl">src/agent/decision-loop.ts — the call site</span></div>
+      <pre><span class="tc">// 3-line change; everything downstream is untouched</span>
+<span class="tk">let</span> parsed = toDecisionShape(<span class="tk">await</span> decideWithJev({ state, questions: FARM_QUESTIONS }));
+<span class="tk">if</span> (!parsed) parsed = <span class="tk">await</span> legacyLlmDecision(userPrompt, systemPrompt);  <span class="tc">// today’s path</span>
+<span class="tc">// ↓ unchanged: schema tripwire · device_id guard · verifier · chokepoint · audit · e-stop</span></pre>
+    </div>
+    <div class="grid g2">
+      <div class="card reveal"><span class="tag">Env surface</span>
+        <p><code>JEV_API_KEY</code> (unset = feature off) · <code>JEV_BASE_URL</code> ·
+        <code>DECISION_PROVIDER=auto|jev|llm</code> · <code>FARMPAL_AUTO_CONF=0.95</code></p></div>
+      <div class="card reveal"><span class="tag">Free wins we already built for</span>
+        <p><code>hal_decision_log.model</code> (VAL-AUTO-042) means <b>shadow mode is nearly free</b>: log
+        <code>"jev"</code> verdicts beside the live model, actuate on neither, and diff them from the audit log.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SPLIT ═══════════════ -->
+<section id="split">
+  <div class="wrap reveal">
+    <div class="eyebrow">08 · Division of labor</div>
+    <h2>What moves, what stays, what never touches it</h2>
+    <div class="split">
+      <div class="col j reveal">
+        <h4>Moves to Jev</h4>
+        <ul>
+          <li>Heartbeat <b>decision core</b> in <code>runDecisionCycle</code> — action, device, urgency</li>
+          <li><b>Tick triage</b> — “worth a full decision?” on every beat</li>
+          <li><b>Intent routing</b> in <code>runFarmPalTurn</code>, incl. honest p on <code>emergency_stop</code></li>
+          <li><b>Generator-proposal scoring</b> — pre-verifier second opinion</li>
+          <li>Numeric-telemetry <b>anomaly flags</b> (threshold-adjacent judgment calls)</li>
+        </ul>
+      </div>
+      <div class="col v reveal">
+        <h4>Stays on the LLM</h4>
+        <ul>
+          <li><b>Chat answers</b> &amp; operator Q&amp;A — Jev cannot emit prose</li>
+          <li><b>Diagnostics narrative</b> &amp; reflector self-analysis</li>
+          <li><b>Camera vision</b> — no image input yet (“not on images (yet…)”)</li>
+          <li><b>Audit reasoning text</b> — templated from Jev fields; paired LLM call only when we actuate</li>
+          <li><b>Fallback lane</b> — ollama-first when Jev is unreachable or key-less</li>
+        </ul>
+      </div>
+      <div class="col r reveal">
+        <h4>Never touches Jev</h4>
+        <ul>
+          <li><b>Policy engine / safety verifier</b> — rules stay deterministic</li>
+          <li><b>E-stop</b> — hardware truth, no model in the path</li>
+          <li><b>Actuation chokepoint</b> — verify → execute → re-verify</li>
+          <li><b>Audit trail</b> — append-only, model-agnostic</li>
+          <li><b>OBSERVE_ONLY factory default</b> — autonomy remains an operator action</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ CAVEATS ═══════════════ -->
+<section id="caveats">
+  <div class="wrap reveal">
+    <div class="eyebrow red">09 · Honest constraints</div>
+    <h2>What we’d be signing up for</h2>
+    <p class="lede">
+      Extraordinary claims got a whole section on TypeSafe’s blog. The ones that matter to a product
+      shipped on an SD card:
+    </p>
+    <div class="grid g3">
+      <div class="card r reveal"><span class="tag">Early access</span>
+        <p><b>Waitlist-gated.</b> Not shippable in the $299/$449 product today; API shape may move.
+        Build behind <code>JEV_API_KEY</code> and nothing breaks if it never opens.</p></div>
+      <div class="card r reveal"><span class="tag">Cloud-only, today</span>
+        <p>Service is currently West-Coast hosted. Our SD-card product is <b>offline-capable by ethos</b>,
+        and sensor telemetry leaving the property cuts against the on-prem privacy pitch. Jev stays
+        <b>optional for connected installs</b>; ollama remains the default brain.</p></div>
+      <div class="card r reveal"><span class="tag">No images yet</span>
+        <p>The camera path (<code>describe_camera</code>, ollama-first vision) is untouched — Jev’s demos
+        run on structured state as text, explicitly “not on images (yet…)”.</p></div>
+      <div class="card r reveal"><span class="tag">Vendor-reported numbers</span>
+        <p>193×/444× come from TypeSafe’s <b>own</b> workflow evals against two named frontier models.
+        Independent benchmarks don’t exist yet. Our Phase-0 sim eval is the receipt that counts.</p></div>
+      <div class="card r reveal"><span class="tag">“Can’t hallucinate” ≠ “always right”</span>
+        <p>The guarantee is <b>type/schema</b>, not correctness. A confident, well-typed wrong
+        <code>turn_on</code> is still wrong — which is precisely why the verifier keeps the last word.</p></div>
+      <div class="card r reveal"><span class="tag">Business fit</span>
+        <p>A one-time license + recurring cloud inference = a COGS question. Until pricing matures:
+        <b>BYO-key option</b>, never a bundled dependency — and if this ever moves the product direction,
+        DIRECTION.md changes in the same PR.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ ROLLOUT ═══════════════ -->
+<section id="rollout">
+  <div class="wrap reveal">
+    <div class="eyebrow">10 · If we do this</div>
+    <h2>Shadow first, gate second, actuate last</h2>
+    <div style="margin-top:26px">
+      <div class="phase reveal">
+        <div class="ph-n">PHASE 0</div>
+        <div>
+          <h4>Eval on the twin</h4>
+          <p>Extend <code>scripts/sim-efficacy.ts</code> to grade Jev decisions against
+          <code>HalSimulator.getGroundTruth()</code>, head-to-head with qwen3.5:2b and MiniMax-M3 baselines.
+          Reports stay SIMULATION-labeled, per repo policy.</p>
+          <div class="exit">Jev ≥ baselines on the same workflow; --plumbing path green; report filed.</div>
+        </div>
+      </div>
+      <div class="phase reveal">
+        <div class="ph-n">PHASE 1</div>
+        <div>
+          <h4>Shadow mode</h4>
+          <p>Log Jev verdicts beside the live model in <code>hal_decision_log</code> (the
+          <code>model</code> column already exists). Zero actuation. Measure agreement, disagreement
+          cases, and real-world latency from our network.</p>
+          <div class="exit">Agreement analysis reviewed; p95 latency &lt; 1s from a residential connection.</div>
+        </div>
+      </div>
+      <div class="phase reveal">
+        <div class="ph-n">PHASE 2</div>
+        <div>
+          <h4>Low-risk adoption — no actuation</h4>
+          <p>Jev takes the intent router in <code>runFarmPalTurn</code> and heartbeat tick triage.
+          Worst case of a misroute is a wasted LLM call, not a flipped relay.</p>
+          <div class="exit">Misroute rate ≤ current LLM router; TUI chat intent tests pass.</div>
+        </div>
+      </div>
+      <div class="phase reveal">
+        <div class="ph-n">PHASE 3</div>
+        <div>
+          <h4>Confidence-gated actuation</h4>
+          <p>Jev becomes the decision proposer in AUTONOMOUS behind
+          <code>DECISION_PROVIDER=jev</code> + <code>FARMPAL_AUTO_CONF</code>. Verifier, chokepoint,
+          and E-stop exactly as shipped. Calibration monitored from audit data.</p>
+          <div class="exit">30-day sim soak: zero contract violations; deny-rate and calibration curves reviewed.</div>
+        </div>
+      </div>
+      <div class="phase reveal">
+        <div class="ph-n">PHASE 4</div>
+        <div>
+          <h4>Product decision</h4>
+          <p>Optionally ship as a BYO-key cloud accelerator for connected installs. Factory default stays
+          ollama-first so the SD card works offline, out of the box, with no account.</p>
+          <div class="exit">Ship-gate review; DIRECTION.md updated only if we bundle inference.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <b style="color:var(--muted)">Sources &amp; receipts</b>
+    <div class="src">
+      <a href="https://typesafe.ai/blog/introducing-system-one-models-and-jev">TypeSafe AI — “Introducing System One Models &amp; Jev” (primary; all vendor figures)</a>
+      <a href="https://www.datacamp.com/blog/system-one-models-jev">DataCamp — “System One models: Jev” explainer</a>
+      <a href="https://news.ycombinator.com/item?id=49717558">Hacker News discussion — community skepticism &amp; router reports</a>
+      <a href="https://www.latent.space/p/ainews-jev-a-system-one-model-that">Latent Space — “Jev: a System One model…” analysis</a>
+    </div>
+    <p style="margin-top:22px">
+      FarmPal evaluation brief · 2026-09-18 · local references: <code>src/agent/decision-loop.ts</code>,
+      <code>src/agent/llm.ts</code>, <code>src/agent/turn.ts</code>, <code>src/safety/verifier.ts</code>,
+      <code>scripts/sim-efficacy.ts</code>. Illustrative API and cost math labeled as such; nothing here changes the v1.0 direction.
+    </p>
+  </div>
+</footer>
+
+<script>
+  // reveal on scroll
+  const io = new IntersectionObserver((es) => {
+    for (const e of es) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  // counters
+  const cio = new IntersectionObserver((es) => {
+    for (const e of es) if (!e.isIntersecting) continue;
+    cio.unobserve(e.target);
+    const el = e.target, end = parseFloat(el.dataset.count), dec = +(el.dataset.dec || 0);
+    const t0 = performance.now(), dur = 1100;
+    (function tick(t) {
+      const k = Math.min(1, (t - t0) / dur), v = end * (1 - Math.pow(1 - k, 3));
+      el.textContent = v.toFixed(dec);
+      if (k < 1) requestAnimationFrame(tick);
+    })(t0);
+  }, { threshold: 0.6 });
+  document.querySelectorAll('.count').forEach(el => cio.observe(el));
+
+  // latency race — Jev real-time (70–500ms); LLM capped at 10s, labeled as such
+  const fills = { llm: document.getElementById('fill-llm'), jv: document.getElementById('fill-jev') };
+  const clocks = { llm: document.getElementById('ms-llm'), jv: document.getElementById('ms-jev') };
+  const verdict = document.getElementById('race-verdict');
+  let racing = false, raced = false;
+  function runRace() {
+    if (racing) return;
+    racing = true; verdict.textContent = '';
+    const llmMs = 7000 + Math.random() * 3000;           // capped stand-in for 3–329s
+    const jvMs = 90 + Math.random() * 380;               // real 70–500ms band
+    const t0 = performance.now();
+    const done = { llm: false, jv: false };
+    (function frame(t) {
+      const el = t - t0;
+      for (const k of ['llm', 'jv']) {
+        const total = k === 'llm' ? llmMs : jvMs;
+        const p = Math.min(1, el / total);
+        fills[k].style.width = (p * 100).toFixed(1) + '%';
+        clocks[k].textContent = done[k] ? clocks[k].textContent : Math.round(el) + ' ms';
+        if (p >= 1 && !done[k]) {
+          done[k] = true;
+          clocks[k].textContent = Math.round(total) + ' ms ✓';
+        }
+      }
+      if (!done.llm || !done.jv) return requestAnimationFrame(frame);
+      racing = false; raced = true;
+      verdict.innerHTML = 'same decision · Jev landed <b>' + (llmMs / jvMs).toFixed(0) +
+        '×</b> sooner — and the real frontier lane runs up to <b>329 s</b>, not 10.';
+    })(t0);
+  }
+  document.getElementById('race-btn').addEventListener('click', () => {
+    fills.llm.style.width = fills.jv.style.width = '0%';
+    clocks.llm.textContent = clocks.jv.textContent = '—';
+    setTimeout(runRace, 60);
+  });
+  const rio = new IntersectionObserver((es) => {
+    for (const e of es) if (e.isIntersecting && !raced) { rio.unobserve(e.target); setTimeout(runRace, 350); }
+  }, { threshold: 0.5 });
+  rio.observe(document.querySelector('.race-box'));
+
+  // confidence gate slider
+  const slider = document.getElementById('gate-slider');
+  const out = document.getElementById('gate-out');
+  const zones = [document.getElementById('gz1'), document.getElementById('gz2'), document.getElementById('gz3')];
+  function paintGate() {
+    const p = (+slider.value) / 100;
+    zones.forEach((z, i) => z.classList.toggle('lit',
+      (i === 0 && p < 0.80) || (i === 1 && p >= 0.80 && p < 0.95) || (i === 2 && p >= 0.95)));
+    const dev = 'pump_01', act = 'turn_on';
+    if (p < 0.80) out.innerHTML =
+      'p(' + act + ' ' + dev + ') = <b>' + p.toFixed(2) + '</b> → <span class="no">logged to hal_decision_log, no action proposed</span>';
+    else if (p < 0.95) out.innerHTML =
+      'p(' + act + ' ' + dev + ') = <b>' + p.toFixed(2) + '</b> → <span class="warn">queued for operator approval (SUGGEST)</span>';
+    else out.innerHTML =
+      'p(' + act + ' ' + dev + ') = <b>' + p.toFixed(2) + '</b> → <span class="ok">proceeds to Safety Verifier → chokepoint (AUTONOMOUS)</span>';
+  }
+  slider.addEventListener('input', paintGate);
+  paintGate();
+</script>
+</body>
+</html>

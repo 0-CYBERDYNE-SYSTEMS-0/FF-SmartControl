@@ -952,7 +952,10 @@ function renderGaugeCard(layer: SeriesLayer, title: string): string {
     axisMin = (axisMin * 9) / 5 + 32;
     axisMax = (axisMax * 9) / 5 + 32;
   }
-  const pct = Math.max(0, Math.min(1, (latest.value - axisMin) / (axisMax - axisMin)));
+  const pct = Math.max(
+    0,
+    Math.min(1, (latest.value - axisMin) / (axisMax - axisMin)),
+  );
   const r = 42,
     cx = 80,
     cy = 56;

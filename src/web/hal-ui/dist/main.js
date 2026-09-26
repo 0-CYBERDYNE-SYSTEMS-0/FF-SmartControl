@@ -7268,6 +7268,106 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     }
   });
 
+  // src/hal/device-presets.ts
+  function getGoldenKitPreset(id) {
+    return GOLDEN_KIT_PRESETS.find((p) => p.id === id);
+  }
+  var GOLDEN_KIT_PRESETS, GOLDEN_KIT_REQUIRED_IDS;
+  var init_device_presets = __esm({
+    "src/hal/device-presets.ts"() {
+      "use strict";
+      GOLDEN_KIT_PRESETS = [
+        {
+          id: "tasmota_plug",
+          label: "Tasmota Plug",
+          description: "Tasmota-flashable smart plug (HTTP, watts + relay)",
+          deviceType: "smart_plug",
+          wizardProtocol: "http_tasmota",
+          halProtocol: "tasmota",
+          metrics: [],
+          pollIntervalMs: 1e4,
+          optional: false,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "shelly_plug",
+          label: "Shelly Plug",
+          description: "Shelly WiFi smart plug (HTTP, watts + relay)",
+          deviceType: "smart_plug",
+          wizardProtocol: "http_shelly",
+          halProtocol: "shelly",
+          metrics: [],
+          pollIntervalMs: 1e4,
+          optional: false,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "kasa_plug",
+          label: "Kasa Plug",
+          description: "TP-Link Kasa WiFi smart plug (add by IP address)",
+          deviceType: "smart_plug",
+          wizardProtocol: "manual",
+          halProtocol: "kasa",
+          metrics: [],
+          pollIntervalMs: 1e4,
+          optional: false,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "soil_moisture_probe",
+          label: "Soil Moisture Probe",
+          description: "Capacitive soil-moisture probe via USB serial/ADC bridge",
+          deviceType: "sensor",
+          wizardProtocol: "serial",
+          halProtocol: "serial",
+          metrics: ["soil_moisture"],
+          pollIntervalMs: 6e4,
+          optional: false,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "temp_humidity_sensor",
+          label: "Temp / Humidity Sensor",
+          description: "BME280 / SHT-class sensor via USB serial bridge",
+          deviceType: "sensor",
+          wizardProtocol: "serial",
+          halProtocol: "serial",
+          metrics: ["temperature", "humidity"],
+          pollIntervalMs: 6e4,
+          optional: false,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "co2_sensor",
+          label: "CO2 Sensor",
+          description: "NDIR CO2 sensor (SCD/MH-Z class) \u2014 optional",
+          deviceType: "sensor",
+          wizardProtocol: "serial",
+          halProtocol: "serial",
+          metrics: ["co2"],
+          pollIntervalMs: 3e5,
+          optional: true,
+          bomRef: "reference-bom"
+        },
+        {
+          id: "relay_board",
+          label: "Relay Board",
+          description: "GPIO relay board via pigpiod \u2014 optional",
+          deviceType: "relay",
+          wizardProtocol: "gpio",
+          halProtocol: "gpio",
+          metrics: [],
+          pollIntervalMs: 1e4,
+          optional: true,
+          bomRef: "reference-bom"
+        }
+      ];
+      GOLDEN_KIT_REQUIRED_IDS = GOLDEN_KIT_PRESETS.filter(
+        (p) => !p.optional
+      ).map((p) => p.id);
+    }
+  });
+
   // src/web/hal-ui/views/DiscoveryWizard.ts
   async function openDiscoveryWizard() {
     currentStep = 1;
@@ -7277,6 +7377,8 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     isScanning = false;
     scanAbortController = null;
     scanTimeout = null;
+    goldenKitPreset = null;
+    manualAddPreset = null;
     try {
       zones = await halApi.getZones();
     } catch {
@@ -7431,11 +7533,29 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       </div>
     `;
     }).join("");
+    const goldenChips = GOLDEN_KIT_PRESETS.map(
+      (p) => `
+      <button type="button" class="dw-golden-chip" data-preset="${p.id}"
+              title="${escapeHtml9(p.description)}">
+        <span class="dw-golden-chip-name">${escapeHtml9(p.label)}</span>
+        ${p.optional ? '<span class="dw-golden-chip-optional">optional</span>' : ""}
+      </button>
+    `
+    ).join("");
     return `
     <div class="dw-step-content">
       <p class="dw-step-desc">Choose how you want to discover your devices.</p>
       <div class="dw-protocol-grid" id="dw-protocol-grid">
         ${protocolCards}
+      </div>
+      <div class="dw-golden-kit">
+        <div class="dw-golden-kit-title">Golden kit quick-pick</div>
+        <div class="dw-golden-kit-desc">
+          Reference devices the presets ship for \u2014 any equivalent works.
+          Picking one pre-selects where to look.
+        </div>
+        <div class="dw-golden-kit-grid">${goldenChips}</div>
+        <div class="dw-golden-kit-hint" id="dw-golden-hint"></div>
       </div>
     </div>
   `;
@@ -7644,6 +7764,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       <p class="dw-step-desc">
         Configure ${selectedDevices.length} device${selectedDevices.length !== 1 ? "s" : ""}.
         Set a name, assign a zone, and choose the device role.
+        ${goldenKitPreset ? `Golden-kit preset: <strong>${escapeHtml9(goldenKitPreset.label)}</strong> (expected metrics: ${goldenKitPreset.metrics.length ? goldenKitPreset.metrics.join(", ") : "none \u2014 actuator"}).` : ""}
       </p>
       <div class="dw-assign-list">
         ${deviceRows}
@@ -7698,6 +7819,37 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   function attachStep1Handlers() {
     const overlay = document.getElementById("discovery-wizard-overlay");
     if (!overlay) return;
+    overlay.querySelectorAll(".dw-golden-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const preset = getGoldenKitPreset(chip.dataset.preset || "");
+        if (!preset) return;
+        if (preset.wizardProtocol === "manual") {
+          goldenKitPreset = preset;
+          openManualAdd(preset);
+          return;
+        }
+        const card = overlay.querySelector(
+          `.dw-protocol-card[data-protocol="${preset.wizardProtocol}"]`
+        );
+        if (!card || card.classList.contains("disabled")) {
+          const hint2 = document.getElementById("dw-golden-hint");
+          if (hint2)
+            hint2.textContent = `${preset.label}: that transport is unavailable right now.`;
+          return;
+        }
+        goldenKitPreset = preset;
+        selectedProtocol = PROTOCOLS.find((p) => p.id === preset.wizardProtocol) || null;
+        overlay.querySelectorAll(".dw-protocol-card").forEach((c) => c.classList.remove("selected"));
+        card.classList.add("selected");
+        const nextBtn = overlay.querySelector(
+          "#dw-next-btn"
+        );
+        if (nextBtn) nextBtn.disabled = !selectedProtocol;
+        const hint = document.getElementById("dw-golden-hint");
+        if (hint)
+          hint.textContent = `${preset.label} preset selected \u2014 click Next to scan.`;
+      });
+    });
     overlay.querySelectorAll(".dw-protocol-card:not(.disabled)").forEach((card) => {
       card.addEventListener("click", () => {
         const id = card.dataset.protocol;
@@ -7890,9 +8042,10 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       showToast(`Failed to add devices: ${errors.join("; ")}`, "danger");
     }
   }
-  function openManualAdd() {
+  function openManualAdd(preset) {
     const overlay = document.getElementById("discovery-wizard-overlay");
     if (!overlay) return;
+    manualAddPreset = preset || null;
     const panel = overlay.querySelector(".dw-panel");
     if (!panel) return;
     const bodyEl = document.getElementById("dw-body");
@@ -7912,9 +8065,25 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     const zoneOptions = zones.map(
       (z) => `<option value="${escapeHtml9(z.name)}">${escapeHtml9(z.name)}</option>`
     ).join("");
+    const preset = manualAddPreset;
+    const protocols = ["tasmota", "shelly", "kasa", "mqtt", "gpio", "serial"];
+    const protocolOptions = protocols.map((p) => {
+      const label = {
+        tasmota: "HTTP / Tasmota",
+        shelly: "HTTP / Shelly",
+        kasa: "HTTP / Kasa",
+        mqtt: "MQTT",
+        gpio: "GPIO",
+        serial: "Serial"
+      };
+      const selected = preset?.halProtocol === p ? " selected" : "";
+      return `<option value="${p}"${selected}>${label[p]}</option>`;
+    }).join("");
+    const typeSelected = preset?.deviceType;
     return `
     <div class="dw-step-content">
       <p class="dw-step-desc">
+        ${preset ? `Golden kit: <strong>${escapeHtml9(preset.label)}</strong>. ` : ""}
         Enter your device details manually. FF_SmartControl will verify connectivity before saving.
       </p>
       <div class="dw-manual-form">
@@ -7925,25 +8094,23 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         <div class="dw-form-group">
           <label class="dw-label">Protocol *</label>
           <select class="dw-select" id="ma-protocol">
-            <option value="tasmota">HTTP / Tasmota</option>
-            <option value="shelly">HTTP / Shelly</option>
-            <option value="mqtt">MQTT</option>
-            <option value="gpio">GPIO</option>
-            <option value="serial">Serial</option>
+            ${protocolOptions}
           </select>
         </div>
         <div class="dw-form-group">
           <label class="dw-label">Device Type</label>
           <select class="dw-select" id="ma-type">
-            <option value="sensor">Sensor</option>
-            <option value="relay">Relay</option>
-            <option value="camera">Camera</option>
-            <option value="smart_plug">Smart Plug</option>
+            <option value="sensor" ${typeSelected === "sensor" ? "selected" : ""}>Sensor</option>
+            <option value="relay" ${typeSelected === "relay" ? "selected" : ""}>Relay</option>
+            <option value="camera" ${typeSelected === "camera" ? "selected" : ""}>Camera</option>
+            <option value="smart_plug" ${typeSelected === "smart_plug" ? "selected" : ""}>Smart Plug</option>
           </select>
         </div>
         <div class="dw-form-group">
           <label class="dw-label">Device Name</label>
-          <input class="dw-input" type="text" id="ma-name" placeholder="My Sensor" maxlength="64">
+          <input class="dw-input" type="text" id="ma-name"
+            value="${preset ? escapeHtml9(preset.label) : ""}"
+            placeholder="My Sensor" maxlength="64">
         </div>
         <div class="dw-form-group">
           <label class="dw-label">Zone</label>
@@ -7961,6 +8128,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     const overlay = document.getElementById("discovery-wizard-overlay");
     if (!overlay) return;
     overlay.querySelector("#dw-cancel-manual-btn")?.addEventListener("click", () => {
+      manualAddPreset = null;
       currentStep = 1;
       selectedProtocol = null;
       renderWizard();
@@ -8302,18 +8470,51 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ===== Golden kit quick-pick (D3) ===== */
+.dw-golden-kit {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+.dw-golden-kit-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.dw-golden-kit-desc { font-size: 12px; color: var(--text-secondary); margin: 2px 0 var(--space-2); }
+.dw-golden-kit-grid { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.dw-golden-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary, var(--bg-primary));
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast, 0.15s), background var(--transition-fast, 0.15s);
+}
+.dw-golden-chip:hover { border-color: var(--accent); }
+.dw-golden-chip-optional {
+  font-size: 10px;
+  color: var(--text-tertiary, var(--text-secondary));
+  font-style: normal;
+}
+.dw-golden-kit-hint { font-size: 12px; color: var(--text-secondary); min-height: 16px; margin-top: var(--space-2); }
 `;
     document.head.appendChild(style);
   }
   function escapeHtml9(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-  var PROTOCOLS, currentStep, selectedProtocol, discoveredDevices, selectedDevices, zones, isScanning, scanAbortController, scanTimeout, wizardOverlay;
+  var PROTOCOLS, currentStep, selectedProtocol, discoveredDevices, selectedDevices, zones, isScanning, scanAbortController, scanTimeout, wizardOverlay, goldenKitPreset, manualAddPreset;
   var init_DiscoveryWizard = __esm({
     "src/web/hal-ui/views/DiscoveryWizard.ts"() {
       "use strict";
       init_api();
       init_Toast();
+      init_device_presets();
       PROTOCOLS = [
         {
           id: "gpio",
@@ -8355,6 +8556,8 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       scanAbortController = null;
       scanTimeout = null;
       wizardOverlay = null;
+      goldenKitPreset = null;
+      manualAddPreset = null;
     }
   });
 
@@ -8558,22 +8761,27 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           }
         }
       }
-      renderDeviceForceGraphSvg(nodes, edges, "devices-graph-container", (nodeId) => {
-        gridContainer.style.display = "";
-        graphBtn.classList.remove("active");
-        graphContainer.style.display = "none";
-        graphVisible = false;
-        const card = document.querySelector(
-          `.device-card[data-device-id="${CSS.escape(nodeId)}"]`
-        );
-        if (card) {
-          card.scrollIntoView({ behavior: "smooth", block: "center" });
-          card.style.outline = `2px solid var(--accent)`;
-          setTimeout(() => {
-            card.style.outline = "";
-          }, 2e3);
+      renderDeviceForceGraphSvg(
+        nodes,
+        edges,
+        "devices-graph-container",
+        (nodeId) => {
+          gridContainer.style.display = "";
+          graphBtn.classList.remove("active");
+          graphContainer.style.display = "none";
+          graphVisible = false;
+          const card = document.querySelector(
+            `.device-card[data-device-id="${CSS.escape(nodeId)}"]`
+          );
+          if (card) {
+            card.scrollIntoView({ behavior: "smooth", block: "center" });
+            card.style.outline = `2px solid var(--accent)`;
+            setTimeout(() => {
+              card.style.outline = "";
+            }, 2e3);
+          }
         }
-      });
+      );
     }
     function applyFilter() {
       const q = filterInput?.value.toLowerCase() || "";
@@ -13127,8 +13335,9 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     render(container);
   }
   function render(container) {
-    const effectiveSteps = hasEthernet ? [1, 2, 3, 5, 6] : TOTAL_STEPS;
+    const effectiveSteps = hasEthernet ? [1, 2, 3, 5, 6, SUGGEST_STEP] : [1, 2, 3, 4, 5, 6, SUGGEST_STEP];
     const currentIndex = effectiveSteps.indexOf(currentStep2);
+    const onSuggestStep = currentStep2 === SUGGEST_STEP;
     container.innerHTML = `
     <div class="wizard-page">
       <div class="wizard-card">
@@ -13153,14 +13362,16 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
           ${renderStepBody(currentStep2)}
         </div>
 
+        ${onSuggestStep ? "" : `
         <div class="wizard-footer">
           ${currentIndex > 0 ? '<button class="wizard-btn wizard-btn-back" id="wizard-back">Back</button>' : "<div></div>"}
           <button class="wizard-btn wizard-btn-next" id="wizard-next" ${isSubmitting ? "disabled" : ""}>
-            ${isSubmitting ? "Saving..." : currentIndex === effectiveSteps.length - 1 ? "Complete Setup" : "Next"}
+            ${isSubmitting ? "Saving..." : "Next"}
           </button>
         </div>
+        `}
 
-        ${currentStep2 !== 1 ? '<button class="wizard-skip-label" id="wizard-back-to-start">\u2190 Start over</button>' : ""}
+        ${currentStep2 !== 1 && !onSuggestStep ? '<button class="wizard-skip-label" id="wizard-back-to-start">\u2190 Start over</button>' : ""}
       </div>
     </div>
   `;
@@ -13191,6 +13402,8 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         return renderLlmStep();
       case 6:
         return renderTelegramStep();
+      case SUGGEST_STEP:
+        return renderSuggestStep();
       default:
         return "";
     }
@@ -13472,6 +13685,98 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     </div>
   `;
   }
+  function renderSuggestStep() {
+    const canAutoEnable = !!wizardData.adminPassword;
+    return `
+    <div class="wizard-step-content">
+      <h2 class="step-title">Turn on suggestions?</h2>
+      <p class="step-desc">
+        Your farm starts in <strong>Observe</strong> mode: FF_SmartControl watches
+        your sensors and touches nothing. Turn on <strong>Suggestions</strong> and
+        it will also propose actions \u2014 lights, fans, plugs \u2014 for you to approve
+        or veto. Nothing runs without your say-so.
+      </p>
+
+      <div class="suggest-card" id="suggest-card">
+        <div class="suggest-card-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2z"/></svg>
+        </div>
+        <div class="suggest-card-body">
+          <div class="suggest-card-title">Suggestions mode</div>
+          <div class="suggest-card-desc">Watch, learn, and propose \u2014 you approve every action.</div>
+        </div>
+        <button class="wizard-btn wizard-btn-next suggest-enable-btn" id="wizard-suggest-enable" ${canAutoEnable ? "" : "disabled"}>
+          Turn on suggestions
+        </button>
+      </div>
+
+      ${canAutoEnable ? "" : '<div class="form-hint">For security, sign in on the next screen and enable Suggestions from the mode menu at the top.</div>'}
+
+      <div class="suggest-actions">
+        <button class="wizard-btn wizard-btn-back" id="wizard-suggest-keep">Keep observing</button>
+      </div>
+
+      <div class="step-error hidden" id="suggest-error"></div>
+
+      <div class="skip-note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        You can change this anytime from the mode menu \u2014 Suggestions never acts on its own.
+      </div>
+    </div>
+  `;
+  }
+  async function enableSuggestions() {
+    const enableBtn = document.getElementById(
+      "wizard-suggest-enable"
+    );
+    const keepBtn = document.getElementById(
+      "wizard-suggest-keep"
+    );
+    const errorEl = document.getElementById("suggest-error");
+    if (errorEl) {
+      errorEl.textContent = "";
+      errorEl.classList.add("hidden");
+    }
+    if (enableBtn) {
+      enableBtn.disabled = true;
+      enableBtn.textContent = "Enabling...";
+    }
+    if (keepBtn) keepBtn.disabled = true;
+    try {
+      const loginRes = await fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: "admin",
+          password: wizardData.adminPassword
+        })
+      });
+      if (!loginRes.ok) {
+        const body = await loginRes.json().catch(() => ({}));
+        throw new Error(body.error || "Sign in failed");
+      }
+      const loginBody = await loginRes.json();
+      setCsrfToken(loginBody.csrfToken);
+      await halApi.setAutomationMode("SUGGEST", "wizard");
+      goToDashboard();
+    } catch (err) {
+      if (errorEl) {
+        errorEl.textContent = err.message || "Could not enable Suggestions. You can enable it from the mode menu later.";
+        errorEl.classList.remove("hidden");
+      }
+      if (enableBtn) {
+        enableBtn.textContent = "Try again";
+        enableBtn.disabled = !wizardData.adminPassword;
+      }
+      if (keepBtn) keepBtn.disabled = false;
+    }
+  }
+  function goToDashboard() {
+    sessionStorage.setItem("operatorId", "admin");
+    window.location.hash = "#dashboard";
+    window.location.reload();
+  }
   function renderError(message) {
     return `
     <div class="wizard-page">
@@ -13527,6 +13832,17 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         telegramFields.classList.toggle("hidden", !telegramToggle.checked);
       });
     }
+    const suggestEnable = document.getElementById("wizard-suggest-enable");
+    const suggestKeep = document.getElementById("wizard-suggest-keep");
+    if (currentStep2 === SUGGEST_STEP) {
+      suggestEnable?.addEventListener("click", () => {
+        void enableSuggestions();
+      });
+      suggestKeep?.addEventListener("click", () => {
+        goToDashboard();
+      });
+      return;
+    }
     const backBtn = document.getElementById("wizard-back");
     backBtn?.addEventListener("click", async () => {
       if (currentIndex > 0) {
@@ -13557,12 +13873,19 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
       try {
         await saveCurrentStep(currentIndex, currentStep2);
         isSubmitting = false;
-        if (currentIndex < effectiveSteps.length - 1) {
-          currentStep2 = effectiveSteps[currentIndex + 1];
+        const nextStep = effectiveSteps[currentIndex + 1];
+        if (nextStep === SUGGEST_STEP) {
+          await completeProvisioning();
+          currentStep2 = SUGGEST_STEP;
+          wizardData = loadStepData(currentStep2);
+          render(container);
+        } else if (nextStep !== void 0) {
+          currentStep2 = nextStep;
           wizardData = loadStepData(currentStep2);
           render(container);
         } else {
-          await completeWizard(container);
+          await completeProvisioning();
+          goToDashboard();
         }
       } catch (err) {
         isSubmitting = false;
@@ -13691,7 +14014,7 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     `;
     }
   }
-  async function completeWizard(container) {
+  async function completeProvisioning() {
     wizardData.farmName = document.getElementById("farm-name")?.value || "My Farm";
     wizardData.timezone = document.getElementById("timezone")?.value || wizardData.timezone;
     wizardData.wifiSsid = document.getElementById("wifi-ssid")?.value || "";
@@ -13720,8 +14043,6 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     };
     await provisioningApi.complete(completeData);
     sessionStorage.setItem("operatorId", "admin");
-    window.location.hash = "#dashboard";
-    window.location.reload();
   }
   function updatePasswordStrength(pwd) {
     const bars = document.querySelectorAll(".strength-bar");
@@ -14272,6 +14593,58 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
   color: var(--text-secondary);
 }
 
+/* ===== Suggestions Step (D2) ===== */
+.suggest-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.suggest-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+
+.suggest-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.suggest-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.suggest-card-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.suggest-enable-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.suggest-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: var(--space-4);
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 600px) {
   .wizard-card {
@@ -14295,6 +14668,14 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
     gap: var(--space-3);
   }
 
+  .suggest-card {
+    flex-wrap: wrap;
+  }
+
+  .suggest-enable-btn {
+    width: 100%;
+  }
+
   .wizard-btn-back {
     padding: 0 var(--space-4);
   }
@@ -14306,12 +14687,14 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
 `;
     document.head.appendChild(style);
   }
-  var DEFAULT_DATA, STEP_LABELS, TOTAL_STEPS, currentStep2, wizardData, hasEthernet, isSubmitting, COMMON_TIMEZONES, wifiNetworks, LLM_PROVIDERS;
+  var SUGGEST_STEP, DEFAULT_DATA, STEP_LABELS, currentStep2, wizardData, hasEthernet, isSubmitting, COMMON_TIMEZONES, wifiNetworks, LLM_PROVIDERS;
   var init_SetupWizard = __esm({
     "src/web/hal-ui/views/SetupWizard.ts"() {
       "use strict";
       init_api_provisioning();
+      init_api();
       init_bcryptjs();
+      SUGGEST_STEP = 7;
       DEFAULT_DATA = {
         adminPassword: "",
         adminPasswordHash: "",
@@ -14333,9 +14716,9 @@ offset = ${pt.offset > 0 ? "+" : ""}${pt.offset.toFixed(3)}${pt.unit}`;
         3: "Timezone",
         4: "WiFi",
         5: "LLM Provider",
-        6: "Telegram"
+        6: "Telegram",
+        7: "Suggestions"
       };
-      TOTAL_STEPS = [1, 2, 3, 4, 5, 6];
       currentStep2 = 1;
       wizardData = { ...DEFAULT_DATA };
       hasEthernet = false;

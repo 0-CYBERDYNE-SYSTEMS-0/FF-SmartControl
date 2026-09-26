@@ -10,32 +10,37 @@
  * drop both flags.
  */
 
-import { describe, it, before, after } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const originalCwd = process.cwd();
-let tmpDir: string;
+// Isolation via FFT_NANO_DB_PATH (no chdir): chdir + dynamic imports under
+// tsx can race the pino transport worker's package resolution at teardown
+// ("worker thread exited" flakiness). Same pattern as
+// tests/actuation-chokepoint.test.ts: set env before any dynamic import so
+// the logger binds the silent level first and getDb() binds the temp DB.
+const oldEnv = { ...process.env };
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'estop-recovery-'));
+process.env.LOG_LEVEL = 'silent';
+process.env.FFT_NANO_DB_PATH = path.join(tmpDir, 'fft_nano.db');
 
-// Point getDb() at an isolated temp DB before importing modules that bind it.
-before(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'estop-recovery-'));
-  process.chdir(tmpDir);
-});
-
-after(() => {
-  process.chdir(originalCwd);
+after(async () => {
+  const { _closeDbForTesting } = await import('../src/hal/db.js');
+  _closeDbForTesting();
+  for (const [key, value] of Object.entries(oldEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe('E-Stop clear also clears farm-loop safety mode', () => {
   it('resumes autonomy after operator clears a hang-triggered E-Stop', async () => {
     const { getDb, runMigrations } = await import('../src/hal/db.js');
-    const { clearEstop, getFarmLoopState, isAutonomousAllowed } = await import(
-      '../src/safety/estop.js'
-    );
+    const { clearEstop, getFarmLoopState, isAutonomousAllowed } =
+      await import('../src/safety/estop.js');
 
     runMigrations();
     const db = getDb();
@@ -78,7 +83,8 @@ describe('E-Stop clear also clears farm-loop safety mode', () => {
 
   it('drops a stale safety latch even when the E-Stop is already inactive', async () => {
     const { getDb } = await import('../src/hal/db.js');
-    const { clearEstop, getFarmLoopState } = await import('../src/safety/estop.js');
+    const { clearEstop, getFarmLoopState } =
+      await import('../src/safety/estop.js');
 
     const db = getDb();
     const now = new Date().toISOString();

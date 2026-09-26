@@ -19,8 +19,40 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   play, Pacific Northwest garden-center partnership angle.
 - `ship-gate-spec.md` — the v1.0 engineering ship-gate: 3 UTC test fixes already landed,
   7-day calendar to launch, per-SKU pricing, Eugene channel opener.
+- **Launch decision record (2026-09-18).** `DIRECTION.md` now carries the locked launch calls
+  D1–D8: day-1 buyer is the serious tent hobbyist; factory automation default is OBSERVE_ONLY
+  with a one-click SUGGEST offer at the end of the wizard; a published reference BOM with
+  zero inventory; launch gated only on the 4-hour smoke test (public grow-cycle pilot runs
+  post-launch as marketing); hybrid LLM posture (local routine cycles, cloud for hard/anomalous
+  calls, scorecard-picked threshold); watering in v1.0 behind the soil-probe soak gate;
+  Telegram optional alerting with the HAL-UI PWA as the v1.1 mobile surface; and
+  trust-bridge positioning ("the autonomy of the AI-run grow tent — with the brakes it
+  didn't have").
+- **One-click SUGGEST as the wizard's final step (D2).** The first-boot wizard ends with a
+  "Turn on suggestions?" card that promotes the install from factory OBSERVE_ONLY to SUGGEST
+  through the existing authenticated mode API. Doing nothing keeps the factory-safe state.
+- **Golden-kit device presets + published reference BOM (D3).** `src/hal/device-presets.ts`
+  maps the reference-BOM hardware to labels, protocols, metric sets, and polling hints; the
+  discovery wizard gains a "Golden kit" quick-pick. `docs/REFERENCE_BOM.md` publishes the
+  parts list — reference only, zero inventory.
+- **Hybrid decision escalation (D5).** With `DECISION_ESCALATION=auto`, the decision cycle
+  answers with the local (ollama-first) model and escalates exactly one cloud call when
+  confidence falls below `FARMPAL_ESCALATION_CONF` (default 0.7), the decision is
+  alert-class, or the sensor snapshot is anomalous. Off by default; the deciding model is
+  recorded in `hal_decision_log`.
+- **Watering control, launch-gated (D6).** `src/hal/watering.ts` drives the customer's existing
+  irrigation hardware (pumps/valves on smart plugs or relays) through the safety verifier's
+  `executeActuation` chokepoint — E-stop, policy rules, and audit trail apply to every watering
+  action. A max-run interlock (`FARMPAL_WATERING_MAX_MIN`, default 30 minutes) switches water
+  off through the same chokepoint and logs it. The feature is off by default
+  (`FARMPAL_WATERING=1` enables it): watering ships in v1.0 only if the soil-probe golden kit
+  passes its 7-day soak test pre-launch; if the gate fails, it slips to v1.1 with this entry
+  standing as the honest record.
 
 ### Fixed
+- **Flaky E-stop recovery test isolation.** `tests/estop-safety-recovery.test.ts` moved from
+  `process.chdir()` isolation (which raced the pino transport worker at teardown) to the
+  repo-standard `FFT_NANO_DB_PATH` + `LOG_LEVEL=silent` pattern.
 - **Safety policy engine UTC bug.** `checkScheduleWindows` in
   `src/safety/policy-engine.ts` was using `Date#getHours` / `getDay` (local time), so on any
   Pi not in UTC the `allowed_schedule_windows` rule drifted relative to the ISO-8601 (UTC)

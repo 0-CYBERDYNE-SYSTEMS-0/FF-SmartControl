@@ -77,6 +77,47 @@ export async function callLLM(
   return callOpenAI(prompt, options);
 }
 
+// ============================================================
+// Cloud escalation (D5 hybrid LLM posture)
+// The local model owns routine cycles; hard or anomalous ones
+// may escalate once to a cloud provider. No new providers are
+// introduced: the escalation reuses the same cloud keys and
+// per-provider callers as the default selection chain above,
+// in the same priority order (anthropic > openai > zai).
+// ============================================================
+
+export type CloudProvider = 'anthropic' | 'openai' | 'zai';
+
+/**
+ * Pick a cloud provider from configured API keys, using the same fallback
+ * order as the main provider chain. Returns null when no cloud key is set —
+ * callers must treat that as "escalation unavailable" and keep the local
+ * answer, never as an error that kills the decision cycle.
+ */
+export function getCloudProvider(): CloudProvider | null {
+  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
+  if (process.env.OPENAI_API_KEY || process.env.PI_API_KEY) return 'openai';
+  if (process.env.ZAI_API_KEY) return 'zai';
+  return null;
+}
+
+/**
+ * One-shot cloud escalation call. Throws when no cloud provider is
+ * configured; the caller decides whether that is fatal (it should not be).
+ */
+export async function callCloudLLM(
+  prompt: string,
+  options: LLMOptions = {},
+): Promise<LLMResponse> {
+  const provider = getCloudProvider();
+  if (!provider) {
+    throw new Error('No cloud LLM provider configured (D5 escalation)');
+  }
+  if (provider === 'anthropic') return callAnthropic(prompt, options);
+  if (provider === 'zai') return callZai(prompt, options);
+  return callOpenAI(prompt, options);
+}
+
 async function callOpenAI(
   prompt: string,
   options: LLMOptions,

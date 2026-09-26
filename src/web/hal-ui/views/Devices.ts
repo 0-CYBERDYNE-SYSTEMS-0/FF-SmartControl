@@ -256,23 +256,28 @@ function attachDevicesHandlers(): void {
       }
     }
 
-    renderDeviceForceGraphSvg(nodes, edges, 'devices-graph-container', (nodeId) => {
-      // Clicking a node highlights the corresponding card and scrolls to it
-      gridContainer!.style.display = '';
-      graphBtn!.classList.remove('active');
-      graphContainer!.style.display = 'none';
-      graphVisible = false;
-      const card = document.querySelector<HTMLElement>(
-        `.device-card[data-device-id="${CSS.escape(nodeId)}"]`,
-      );
-      if (card) {
-        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        card.style.outline = `2px solid var(--accent)`;
-        setTimeout(() => {
-          card.style.outline = '';
-        }, 2000);
-      }
-    });
+    renderDeviceForceGraphSvg(
+      nodes,
+      edges,
+      'devices-graph-container',
+      (nodeId) => {
+        // Clicking a node highlights the corresponding card and scrolls to it
+        gridContainer!.style.display = '';
+        graphBtn!.classList.remove('active');
+        graphContainer!.style.display = 'none';
+        graphVisible = false;
+        const card = document.querySelector<HTMLElement>(
+          `.device-card[data-device-id="${CSS.escape(nodeId)}"]`,
+        );
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.style.outline = `2px solid var(--accent)`;
+          setTimeout(() => {
+            card.style.outline = '';
+          }, 2000);
+        }
+      },
+    );
   }
 
   function applyFilter(): void {

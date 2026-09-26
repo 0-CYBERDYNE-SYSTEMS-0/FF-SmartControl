@@ -40,7 +40,6 @@ type ChartOpts = {
   rightAxisLabel?: string;
 };
 
-
 function injectSmartControlChartsStyles(): void {
   if (document.getElementById('hal-smartcontrolcharts-styles')) return;
   const style = document.createElement('style');
@@ -397,7 +396,6 @@ export function renderSmartControlAreaChart(
     },
   );
 }
-
 
 export type SmartControlSensorSeries = {
   key: string;

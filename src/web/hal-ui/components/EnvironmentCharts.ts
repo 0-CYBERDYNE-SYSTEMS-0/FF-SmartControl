@@ -868,7 +868,10 @@ function renderBulletRangeBars(metrics: EnvironmentMetric[]): string {
       const current = latestValue(metric);
       let targetMin = meta.targetMin ?? meta.minAxis;
       let targetMax = meta.targetMax ?? meta.maxAxis;
-      if (metric.key === 'temperature' && getStore().unitSystem === 'imperial') {
+      if (
+        metric.key === 'temperature' &&
+        getStore().unitSystem === 'imperial'
+      ) {
         targetMin = (targetMin * 9) / 5 + 32;
         targetMax = (targetMax * 9) / 5 + 32;
       }

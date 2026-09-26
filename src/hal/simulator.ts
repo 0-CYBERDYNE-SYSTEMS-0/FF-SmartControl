@@ -986,7 +986,10 @@ export class HalSimulator {
       // Temperature drifts toward ambient (20°C) + light heat + sustained
       // external forcing (nonzero only in the *_sustained scenarios).
       const ambientTemp =
-        20 + this.envForcingTemp + (this.lightScheduleOn ? 2 : 0) + zoneTempOffset;
+        20 +
+        this.envForcingTemp +
+        (this.lightScheduleOn ? 2 : 0) +
+        zoneTempOffset;
       zone.temperature += (ambientTemp - zone.temperature) * 0.001 * dtSeconds;
 
       // Humidity drifts toward ambient (50%) + plant transpiration
