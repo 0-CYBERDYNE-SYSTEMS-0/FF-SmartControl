@@ -76,6 +76,8 @@ Effort: **S** (one hunk, two lines).
 
 ## 4. v1.0 mode-of-operations recommendation
 
+> **Superseded:** factory default shipped as `OBSERVE_ONLY`, with a one-click SUGGEST offer at the end of setup (D2). See the addendum above and `DIRECTION.md`.
+
 **Ship SUGGEST mode by default.** Reasons:
 
 - The SUGGEST mode is the AI-proposes / operator-confirms path. The LLM thinks, the safety verifier evaluates, the operator sees the proposed action in the dashboard or Telegram and has to hit "go." This means the safety verifier test surface is *exercised* (so we know the rules engine works), but the customer never gets a surprise actuator firing while they're not watching.

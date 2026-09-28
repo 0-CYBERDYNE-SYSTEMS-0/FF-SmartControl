@@ -2,9 +2,9 @@
 
 # FF_SmartControl
 
-[![Release](https://img.shields.io/github/v/release/0-CYBERDYNE-SYSTEMS-0/FFT_nano)](https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano/releases)
-[![Release Readiness](https://img.shields.io/github/actions/workflow/status/0-CYBERDYNE-SYSTEMS-0/FFT_nano/release-readiness.yml?branch=main&label=release%20readiness)](https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano/actions/workflows/release-readiness.yml)
-[![License: MIT](https://img.shields.io/github/license/0-CYBERDYNE-SYSTEMS-0/FFT_nano)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl)](https://github.com/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl/releases)
+[![Release Readiness](https://img.shields.io/github/actions/workflow/status/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl/release-readiness.yml?branch=main&label=release%20readiness)](https://github.com/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl/actions/workflows/release-readiness.yml)
+[![License: MIT](https://img.shields.io/github/license/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl)](LICENSE)
 
 > **This is a software product.** The Raspberry Pi, smart plugs, and sensors are the *customer's* hardware.
 > We sell a license ($299) or a pre-flashed SD card ($449). See **[`DIRECTION.md`](DIRECTION.md)** for the v1.0 direction.
@@ -35,7 +35,7 @@ Pricing rationale and competitor comparison: see **[`market-research-2026.md`](m
 
 Built by a farmer with 24 years of field experience and 3+ years of real operational testing on a working farm. Designed for real equipment running real loads — not a marketing demo.
 
-**Links:** [Releases](https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano/releases) · [Security](.github/SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Operator Docs](docs/) · [Direction](DIRECTION.md) · [Market Research](market-research-2026.md) · [Ship Gate](ship-gate-spec.md)
+**Links:** [Releases](https://github.com/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl/releases) · [Security](.github/SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Operator Docs](docs/) · [Direction](DIRECTION.md) · [Market Research](market-research-2026.md) · [Ship Gate](ship-gate-spec.md)
 - Support: `SUPPORT.md`
 - Changelog: `CHANGELOG.md`
 
@@ -48,7 +48,7 @@ The product ships in two ways. Pick the one that matches your hardware situation
 ```bash
 # 1. Get the image
 # Either download the latest .img.xz from
-#   https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano/releases
+#   https://github.com/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl/releases
 # Or, from this repo, build the image yourself:
 ./build-docker.sh
 
@@ -70,8 +70,8 @@ The wizard is where you do everything. By the end of it you have a working dashb
 ### B. You're starting from this repository (developer / customizer)
 
 ```bash
-git clone https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano.git
-cd FFT_nano
+git clone https://github.com/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl.git
+cd FF-SmartControl
 npm ci
 ./scripts/onboard-all.sh
 ```
@@ -221,7 +221,7 @@ Important: `fft tui` is an attach client. The host process must already be runni
 `fft` auto-detects the repo from your current directory; use `--repo` to target another checkout:
 
 ```bash
-fft --repo /absolute/path/to/FFT_nano tui
+fft --repo /absolute/path/to/FF-SmartControl tui
 ```
 
 If you prefer the linked CLI form, use:
@@ -460,8 +460,8 @@ sudo usermod -aG docker "$USER"
 # log out/in (or reboot), then:
 sudo systemctl enable --now docker
 docker info
-git clone https://github.com/0-CYBERDYNE-SYSTEMS-0/FFT_nano.git
-cd FFT_nano
+git clone https://github.com/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl.git
+cd FF-SmartControl
 ./scripts/onboard-all.sh --runtime docker
 ./scripts/service.sh status
 ./scripts/service.sh logs

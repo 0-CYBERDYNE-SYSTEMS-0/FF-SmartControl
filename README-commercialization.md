@@ -64,7 +64,7 @@ Hardware kits (Pi 5 + Tasmotas + sensors) become a separate SKU line in Q3 2026,
 - **Mode persisted** to SQLite, survives restart
 - **Threshold configuration**: per-device or per-zone min/max for temperature, humidity, soil_moisture, CO₂, light — threshold violations cause `DENIED` in safety engine
 - **Manual override**: operator can toggle any relay in AUTONOMOUS/ASSISTED at any time, bypasses pending queue, logged with `triggered_by: 'manual-ui'`
-- **LLM provider/model selection**: Ollama (default), OpenAI, Anthropic, ZAI, MiniMax, LM Studio — selectable in Settings
+- **LLM provider/model selection**: Ollama (default), OpenAI, Anthropic, ZAI, LM Studio — selectable in Settings; MiniMax and other Anthropic-compatible endpoints via `ANTHROPIC_BASE_URL`
 - **Decision display**: all decisions with timestamp, action, confidence, reasoning, sensor snapshot; status filter; DENIED shows denial reason; manual overrides distinguished with MANUAL badge
 
 ### Milestone 6: Service Reliability
