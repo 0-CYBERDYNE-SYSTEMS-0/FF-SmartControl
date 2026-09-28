@@ -1,12 +1,24 @@
 # FarmPal — Development Handoff
 
-**Last updated:** 2026-06-02
+**Last updated:** 2026-09-28
 **Status:** v1.0 direction locked in. See [`DIRECTION.md`](DIRECTION.md).
 
 > **Direction for v1.0:** this is a *software product* sold as a license ($299) or a pre-flashed SD card ($449).
 > The Pi, smart plugs, and sensors are the customer's hardware. Hardware kits (Pro Kit, $899) become a Q3 2026
 > fulfillment-partnership SKU, not a core product line. Pricing, ship-gate spec, and 1-week engineering calendar:
 > **[`market-research-2026.md`](market-research-2026.md)**, **[`ship-gate-spec.md`](ship-gate-spec.md)**.
+
+---
+
+## Current State (2026-09-28)
+
+`main` is at PR #7 (`7ea97dc`). Merged since the last handoff:
+
+- **PR #5 — truth pass (P0 fixes):** command-injection sinks closed (argv-array execution), working CSRF, provisioning guard, hashed audit tokens, control-center auth gate; chat e-stop trips the real E-stop; unknown modes fail closed; factory-default automation mode is `OBSERVE_ONLY`.
+- **PR #6 — safety spine:** `executeActuation()` in `src/safety/verifier.ts` is the single actuation chokepoint with an e-stop gate; control-center mutations bearer-gated; `hal_sensors` retention pruning; `describe_camera` feeds camera frames to the LLM.
+- **PR #7 — v1 launch specs:** launch decision record D1–D8 in `DIRECTION.md`/`ship-gate-spec.md`; one-click SUGGEST offer in the setup wizard (D2); reference BOM + golden-kit presets (D3); hybrid LLM posture with cloud escalation (D5); launch-gated watering with verifier interlock (D6).
+
+Before any release: `npm run release-check && npm run secret-scan`.
 
 ---
 
@@ -115,3 +127,14 @@ FarmPal service commands:
 | `src/web/hal-ui/dist/main.js` | Compiled dashboard bundle (esbuild) |
 | `src/web/hal-ui-server.ts` | Standalone HAL UI server on 3392 |
 | `src/hal/` | HAL layer: devices, sensors, decisions, relays, cameras |
+
+
+## index.ts Decomposition Phases
+
+**Phase 1** — DONE: Extracted `app-state.ts`, `chat-preferences.ts`, `telegram-streaming.ts`, `telegram-commands.ts`, `message-dispatch.ts`, `app.ts`.
+
+**Phase 2** — IN PROGRESS: Replace file-based IPC with EventEmitter for host-local preview/final delivery. Cross-boundary sandbox IPC files remain.
+
+**Phase 3** — IN PROGRESS: Single-path draft streaming via `TelegramPreviewRegistry`. Legacy `telegram-draft-ipc.ts` pending cleanup.
+
+**Phase 4** — IN PROGRESS: Completion resolves against preview/completed registry state. Final consolidation into shared message-dispatch helper pending.
