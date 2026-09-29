@@ -4,12 +4,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # FarmPal / FFT_nano — Project Instructions
 
-> **v1.0 direction (locked):** This is a *software product* sold as a license ($299) or a pre-flashed SD card ($449).
-> The Pi, smart plugs, and sensors are the customer's hardware. If a change moves the product off this direction,
-> update [`DIRECTION.md`](DIRECTION.md) in the same PR. See also [`market-research-2026.md`](market-research-2026.md) and [`ship-gate-spec.md`](ship-gate-spec.md).
->
-> Other planning docs: [`SPEC.md`](SPEC.md) (product spec), [`DESIGN.md`](DESIGN.md) (design system), [`EXPERIENCE_PLAN.md`](EXPERIENCE_PLAN.md) (UX roadmap), [`AGENTS.md`](AGENTS.md) (agent contributor guide), [`HANDOFF.md`](HANDOFF.md) (session handoff notes).
-
 ## Architecture
 
 > **Naming:** the npm package is still named `fft_nano` (v1.7.2) and `FFT_NANO_*` env vars / a leftover `launchd/com.fft_nano.plist` carry that prefix — this is lineage only. The product is **FarmPal**, a self-contained app. It does **not** require or spawn the separate `~/FFT_nano` or `nano-core` programs; the agent is the bundled `@mariozechner/pi-*` npm dependency. FF-SmartControl = the FFT_nano host runtime evolved + the HAL/safety control plane.
@@ -32,7 +26,7 @@ Additional surfaces:
 
 ### Automation Modes
 
-Four modes in `src/automation/modes.ts`, persisted to SQLite, survive restarts:
+Four modes in `src/automation/modes.ts`, persisted to SQLite, survive restarts. Factory default is `OBSERVE_ONLY`; unknown modes fail closed:
 
 | Mode | Behavior |
 |---|---|
@@ -47,6 +41,15 @@ Four modes in `src/automation/modes.ts`, persisted to SQLite, survive restarts:
 - `policy-engine.ts` — evaluates rules: `max_on_duration`, `min_off_duration`, `max_activations_per_hour`, `allowed_schedule_windows`, `dependency`, `threshold`
 - `estop.ts` — emergency stop flag (checked by cron service before task execution) plus the farm-loop hang watchdog. A hang latches `safety_mode` **and** fires an E-Stop together; `isAutonomousAllowed()` blocks the decision loop (returns `noop`) while either is set. Clearing the E-Stop (`clearEstop()`) also clears `safety_mode`, so recovery is operator-gated and the controller resumes after a hang/crash.
 - `audit-log.ts` — append-only record of all safety decisions
+- `verifier.ts` — wraps the policy engine. `executeActuation()` is the single hardware entry point: e-stop denies every trigger, policy is enforced for autonomous sources and advisory for manual ones, and every call is audited. Only the e-stop sweep and shutdown safe-states bypass it. Distinct from `src/agent/verifier.ts`.
+
+## Product Direction
+
+> **v1.0 direction (locked):** This is a *software product* sold as a license ($299) or a pre-flashed SD card ($449).
+> The Pi, smart plugs, and sensors are the customer's hardware. If a change moves the product off this direction,
+> update [`DIRECTION.md`](DIRECTION.md) in the same PR. See also [`market-research-2026.md`](market-research-2026.md) and [`ship-gate-spec.md`](ship-gate-spec.md).
+>
+> Other planning docs: [`SPEC.md`](SPEC.md) (product spec), [`DESIGN.md`](DESIGN.md) (design system), [`EXPERIENCE_PLAN.md`](EXPERIENCE_PLAN.md) (UX roadmap), [`AGENTS.md`](AGENTS.md) (agent contributor guide), [`HANDOFF.md`](HANDOFF.md) (session handoff notes).
 
 ## Build & Test
 
@@ -116,6 +119,9 @@ For chart toggle changes, verify both `dashboard` and `sensors` views: default z
 | `src/agent/` | Multi-agent pipeline: generator, verifier, reflector, diagnostic, decision-loop; `turn.ts` (single agent turn execution), `tool-executor.ts` (tool dispatch) |
 | `src/safety/` | Deterministic policy engine, estop, audit-log |
 | `src/license/` | License key client/cache, hardware-id binding, `feature-gates.ts` (gates the $299/$449 v1.0 product tiers) |
+| `src/security/` | HTTP-surface hardening: `auth.ts`/`session.ts` (login/session), `rate-limit.ts`/`api-rate-limit.ts`, `headers.ts`, `https.ts`, `security-audit.ts` |
+| `src/update/` | In-place updater: `checker.ts` (version check), `installer.ts`, `types.ts` |
+| `src/extensions/` | `fft-permission-gate.ts` and `pi-autoresearch` agent extension |
 | `src/automation/modes.ts` | Four automation modes and their transitions |
 | `src/cron/service.ts` | Scheduled task runner with exponential backoff |
 | `src/farm-action-gateway.ts` | Home Assistant dashboard and canvas action gateway |
@@ -125,13 +131,7 @@ For chart toggle changes, verify both `dashboard` and `sensors` views: default z
 
 ## Active Refactoring (index.ts decomposition)
 
-**Phase 1** — DONE: Extracted `app-state.ts`, `chat-preferences.ts`, `telegram-streaming.ts`, `telegram-commands.ts`, `message-dispatch.ts`, `app.ts`.
-
-**Phase 2** — IN PROGRESS: Replace file-based IPC with EventEmitter for host-local preview/final delivery. Cross-boundary sandbox IPC files remain.
-
-**Phase 3** — IN PROGRESS: Single-path draft streaming via `TelegramPreviewRegistry`. Legacy `telegram-draft-ipc.ts` pending cleanup.
-
-**Phase 4** — IN PROGRESS: Completion resolves against preview/completed registry state. Final consolidation into shared message-dispatch helper pending.
+Phase status (IPC → EventEmitter, `TelegramPreviewRegistry` streaming, completion consolidation) is tracked in [`HANDOFF.md`](HANDOFF.md).
 
 ### State Access Pattern
 
@@ -144,7 +144,7 @@ import { state, activeChatRuns, ... } from './app-state.js';
 ## Runtime and Service Notes
 
 - Singleton lock at `data/farmpal.lock` — do not run a second foreground host while the installed service is active.
-- **Port policy**: do not use `28995` or any `289xx` port. Use the FarmPal local block `3390`–`3399` unless explicitly told otherwise.
+- **Port policy**: do not use `28995` or any `289xx` port. Use the FarmPal local block `3390`–`3399` unless explicitly told otherwise, except `3391`, which must never be bound, probed, or documented as a service port.
 - **Container runtime required to boot**: `npm run dev`/`start` exits at startup with `No supported runtime found` unless Docker is present. For local dev on macOS (no Pi/Docker), run the agent unisolated on the host: prefix with `CONTAINER_RUNTIME=host FFT_NANO_ALLOW_HOST_RUNTIME=1`. (Note: provisioning bakes these same two vars into the generated `.env` — i.e. the shipped default runs the agent **on the host, not isolated**.)
 - **Provisioning gate**: a fresh checkout is unprovisioned — HAL UI data APIs return `{"error":"System not provisioned"}` and redirect to `/login` until setup completes. Setup runs via the HAL UI wizard or `npm run onboard`; it writes `.env`, `data/provisioned`, and `data/provisioning-state.json` (see `src/first-boot.ts` `generateEnv`/`completeProvisioning`). Admin login user is always `admin`; the password is set during setup (bcrypt hash, no default). If the wizard hangs on "Saving…", the host process isn't running to receive the POST (often the container-runtime exit above) — verify a listener on `3392` and that no `.env`/`provisioned` marker means `/complete` never ran.
 - **HAL UI smoke test (no LLM cost)**: boot the twin and serve the dashboard without real hardware:

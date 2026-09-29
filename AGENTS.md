@@ -166,8 +166,8 @@ npm run hal:ui:build
 
 ## Runtime and Service Notes
 
-- The long-running host uses a singleton lock at `data/fft_nano.lock`; do not run a second foreground host while the installed service is active.
-- Port policy: do not use `28995` or any higher `289xx` port for local previews, service defaults, or fallback servers. This machine has many services in that range. Prefer the FarmPal local block `3390`-`3399` unless the user explicitly provides a different port.
+- The long-running host uses a singleton lock at `data/farmpal.lock`; do not run a second foreground host while the installed service is active.
+- Port policy: do not use `28995` or any higher `289xx` port for local previews, service defaults, or fallback servers. This machine has many services in that range. Prefer the FarmPal local block `3390`-`3399` (never `3391`) unless the user explicitly provides a different port.
 - Current FarmPal local surfaces:
   - TUI websocket default: `127.0.0.1:3390`
   - Web control center default: `127.0.0.1:3393`
@@ -295,4 +295,4 @@ When investigating runtime behavior, first identify which checkout the active se
 
 - Never commit secrets. `.env` is gitignored and used for local runtime configuration.
 - Avoid committing personal paths, local data, or dev-only files to `main`.
-- The host acquires a singleton lock at `data/fft_nano.lock` to prevent multiple instances.
+- The host acquires a singleton lock at `data/farmpal.lock` to prevent multiple instances.

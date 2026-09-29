@@ -97,3 +97,19 @@ reports/efficacy/*.md
 # Local research & analysis notes (machine-local, never shipped)
 research-*.md
 *-gap-analysis.html
+
+# Local/personal artifacts (not part of the product)
+provisioning.log
+tracked.txt
+handoff-backups/
+groups/testrun_*/
+groups/missing-group/
+groups/global/TODOS.md
+groups/global/canonical/
+groups/global/memory/
+reports/
+videos/
+.vix/
+.zcode/
+feasibility-notes.md
+monetization_tracks.md
