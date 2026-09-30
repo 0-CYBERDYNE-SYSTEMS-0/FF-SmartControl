@@ -1,29 +1,53 @@
-![FF_SmartControl Logo](logo.png)
+<p align="center">
+  <img src="docs/readme/hero.png" alt="The console: temperature, humidity, soil moisture, light, and CO2 for the whole place, with every plug and sensor under it." width="100%">
+</p>
 
 # FF_SmartControl
 
-[![Release](https://img.shields.io/github/v/release/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl)](https://github.com/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl/releases)
-[![Release Readiness](https://img.shields.io/github/actions/workflow/status/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl/release-readiness.yml?branch=main&label=release%20readiness)](https://github.com/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl/actions/workflows/release-readiness.yml)
-[![License: MIT](https://img.shields.io/github/license/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl)](LICENSE)
+It reads the plugs and sensors you point it at, and it switches none of them until you say so.
 
-> **This is a software product.** The Raspberry Pi, smart plugs, and sensors are the *customer's* hardware.
-> We sell a license ($299) or a pre-flashed SD card ($449). See **[`DIRECTION.md`](DIRECTION.md)** for the v1.0 direction.
+*Both pictures on this page come from the simulator that ships with this repo: a made-up tent, made-up readings, made-up dates. No farm is on this page.*
 
-**FF_SmartControl** is the local-first, autonomous farm control plane that runs on a Raspberry Pi 5 (or any Linux box) and turns a customer's existing smart plugs, MQTT sensors, and GPIO relays into a verifier-gated, AI-controlled farm. Operator brand: **FarmPal**. Parent host: **FFT_nano**.
+![The decision log, filtered to the decisions still waiting on the operator: the fan, the reading that triggered it, and how sure it is.](docs/readme/decisions.png)
 
-It discovers Tasmota / Shelly / Kasa smart plugs on the LAN, subscribes to MQTT sensor topics, evaluates LLM-proposed actions against a deterministic safety policy engine, and only ever flips a relay when the **verifier** approves. Operator gets a Telegram chat surface, a HAL UI dashboard at `farmpal.local`, four automation modes, and an emergency stop.
+## What you can do
 
-No subscriptions. No cloud dependency. MIT licensed core, commercial license for the autonomous control plane.
+- Watch temperature, humidity, soil moisture, light, and CO₂, by zone.
+- Let it switch the lights, the fans, the pumps, and the heaters. Or hold every action for your yes. The four modes are watch, suggest, assisted, and autonomous, and you pick the one in charge.
+- Set the rules that must not bend: how long a pump may run, how often a fan may cycle, which hours a light may come on, and which device depends on which.
+- Keep an emergency stop that puts every device back to its safe state.
 
-## What we sell
+## What it will not do
 
-| SKU | Price | What's in the box | Buy it because… |
-|---|---|---|---|
-| **FarmPal Software License** | **$299** one-time | License key, full source access, MIT core + commercial license for the verifier-gated control plane. Customer brings their own Pi. | You already have a Pi and you're comfortable flashing a card. |
-| **FarmPal Edition Pre-flashed SD Card** | **$449** one-time | 64GB SanDisk Industrial card with the image pre-burned, boot wizard waiting, license pre-registered. | You want to plug, browse to `farmpal.local`, and start using it. |
-| **FarmPal Pro Kit** *(Q3 2026)* | **$899** one-time | Pi 5 8GB + case + PSU + 2× Tasmota + 1× BME280 + 1× soil moisture sensor + pre-flashed card + license | You want one cart, one shipping box, zero soldering. |
+- It will not switch a device it has not been given. You point it at the plugs and sensors; it does not go looking on its own.
+- It will not run in somebody else's cloud. Nothing goes out unless you point it at a provider yourself.
+- It will not switch a pump or a heater that a rule forbids. Every action passes the rule check before it reaches the hardware.
+- It will not control what it cannot see. It talks to Tasmota, Shelly, and Kasa plugs, MQTT sensors, and GPIO relays on your own network.
 
-Pricing rationale and competitor comparison: see **[`market-research-2026.md`](market-research-2026.md)**. Ship-gate plan and the 1-week engineering calendar: see **[`ship-gate-spec.md`](ship-gate-spec.md)**.
+## Run it
+
+Two ways, and you pick.
+
+**A pre-flashed card, if you have a Raspberry Pi 5.** Download the image from [releases](https://github.com/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl/releases), flash it, boot the Pi on your network, then open `http://farmpal.local`. A six-step wizard asks for the admin password, the farm name, the time zone, the WiFi, your AI provider, and (if you want it) Telegram.
+
+**From source, on a Pi or any Linux box.** The repo does the work in one script:
+
+```sh
+git clone https://github.com/0-CYBERDYNE-SYSTEMS-0/FF-SmartControl.git
+cd FF-SmartControl
+npm ci
+./scripts/onboard-all.sh
+```
+
+That installs the dependencies, builds it, makes a backup of anything it is about to touch, scaffolds `.env` from `.env.example`, asks the onboarding questions (AI provider, chat channel, which runtime), installs the service, and finishes with a health check.
+
+The console is then at `http://127.0.0.1:3392`, and the same page on the machine's address from any phone or laptop on the farm network.
+
+An AI provider is only needed for the deciding. The rules, the readings, and the plug switching work without one, and the provider can be a model running on that same box.
+
+## License
+
+MIT for the core; the verifier-gated control plane is commercially licensed. See [LICENSE](LICENSE) and [DIRECTION.md](DIRECTION.md).
 
 ## Key Capabilities
 
